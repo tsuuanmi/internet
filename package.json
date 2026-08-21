@@ -1,0 +1,85 @@
+{
+	"name": "@tsuuanmi/internet",
+	"version": "0.0.1",
+	"description": "Browser-backed web providers (ChatGPT Web, Gemini Web) for the DeepSeek Harness: a browser_chat model tool with isolated Chrome login and inference.",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tsuuanmi/internet.git"
+	},
+	"homepage": "https://github.com/tsuuanmi/internet",
+	"bugs": {
+		"url": "https://github.com/tsuuanmi/internet/issues"
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./client": {
+			"types": "./dist/client.d.ts",
+			"default": "./dist/client.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"imports": {
+		"#internet/*": {
+			"types": "./dist/*.d.ts",
+			"default": "./dist/*.js"
+		},
+		"#internet-test/*": {
+			"types": "./test/*.ts",
+			"default": "./test/*.ts"
+		}
+	},
+	"dsh": {
+		"client": {
+			"inject": [
+				"@deepseek-ai/dsh-client-runtime",
+				"@deepseek-ai/dsh-client-ui-conversation"
+			],
+			"platform": "web"
+		}
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/cordis": "^4.0.1",
+		"@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.7",
+		"@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.7",
+		"@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.7",
+		"@deepseek-ai/dsh-commands": "^0.1.0-rc.7",
+		"@deepseek-ai/dsh-invariants": "^0.1.0-rc.7",
+		"@deepseek-ai/dsh-tools": "^0.1.0-rc.7",
+		"@deepseek-ai/schemastery": "^3.18.1",
+		"react": "^18.2.0"
+	},
+	"dependencies": {
+		"playwright-core": "1.62.0",
+		"turndown": "7.2.0",
+		"turndown-plugin-gfm": "1.0.2"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.5",
+		"@types/node": "24.12.4",
+		"@types/turndown": "5.0.5",
+		"@typescript/native-preview": "7.0.0-dev.20260707.2",
+		"shx": "0.4.0",
+		"typescript": "5.9.3",
+		"vitest": "3.2.6"
+	},
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"build": "npm run clean && tsgo -p tsconfig.build.json && node scripts/build-client.mjs",
+		"check": "biome check src test && tsgo -p tsconfig.json",
+		"test": "vitest --run"
+	}
+}

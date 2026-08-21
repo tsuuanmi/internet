@@ -1,1 +1,126 @@
-# internet
+# @tsuuanmi/internet
+
+Browser-backed web providers (ChatGPT Web, Gemini Web) for the DeepSeek Harness.
+
+`packages/internet` (the pi monorepo) pioneered driving the real ChatGPT and Gemini web UIs through an
+isolated Chrome browser. This package re-architects that capability as a **standalone, DSH-native
+plugin**: it is not a wrapper over `@tsuuanmi/pi-internet`, it has no Bun daemon, and it speaks only to
+DSH seams (`ctx.tools`, `ctx.commands`, `ctx.systemPrompt`, and a client command renderer). It adds the one thing DSH lacks — a controllable browser —
+without re-implementing the `web_search` / `web_fetch` tools DSH already ships.
+
+## MVP scope
+
+This is an MVP delivering a model tool (`browser_chat`) and a human slash command (`/internet`), not
+a provider model. The agent stays on its configured model and calls `browser_chat` when it wants a
+ChatGPT or Gemini answer. A human can use `/internet <question>` to ask ChatGPT directly without a
+model turn. A `ctx.llm` provider adapter can be layered on later reusing the same `BrowserManager`.
+
+## Tools
+
+- `browser_chat` — ask `chatgpt-web` or `gemini-web` a question through a real, logged-in browser and
+  return the rendered answer as markdown. ChatGPT binds one native conversation to the current DSH
+  session and durably resumes it on later calls.
+- `internet_browser` — lifecycle: `login` (opens dedicated normal Chrome; sign in and close it
+  completely), `status`, `stop`.
+
+## Slash command
+
+- `/internet <question>` — ask ChatGPT directly. It uses the same durable DSH-session-to-ChatGPT
+  conversation as `browser_chat` and renders the returned markdown directly in the conversation UI.
+- `/internet` without a question returns usage help. The command is available when `enableChatgpt`
+  is true.
+
+## Architecture
+
+- **No daemon.** The plugin drives Chrome directly inside the DSH Node host.
+- **No reuse of the DSH GUI browser.** DSH has no browser-automation seam and the GUI browser cannot
+  be automated safely.
+- **Login** spawns dedicated normal Chrome without debugging or Playwright automation flags. After
+  the user signs in and closes Chrome, the plugin waits for the profile lock to release, manually
+  exports and verifies private storage state, and removes the temporary profile.
+- **Inference** launches a non-persistent Playwright context from verified `storage-state.json`; no
+  persistent Chrome profile is shared, so there are no profile singleton-lock conflicts.
+- **Durable ChatGPT conversations** use `String(exec.agent.id)` as the DSH owner. A private file at
+  `chatgpt-web/conversations/<sha256(sessionId)>.json` binds that session 1:1 to a canonical ChatGPT
+  `/c/<conversationId>` URL without storing the raw DSH session ID or prompt text.
+- Completion is detected conservatively: a newly appended assistant turn must be present, generation
+  must have stopped, and its text must stay unchanged for `stableMs` before it is returned.
+
+## Install
+
+The package must be installed where the DeepSeek Harness can load it as a plugin (it declares the
+`@deepseek-ai/*` harness packages as peer dependencies). It builds, type-checks, and unit-tests
+standalone without those peers; the `#internet/*` internal imports resolve at runtime through the
+package `imports` field.
+
+```bash
+npm install @tsuuanmi/internet
+```
+
+## Enable in a DSH profile
+
+Add the plugin to a profile's Cordis composition (an `agent.cordis.yml` or equivalent plugin list):
+
+```yaml
+plugins:
+  - name: internet
+    package: "@tsuuanmi/internet"
+    config:
+      dataDir: "~/.dsh/internet"
+      headless: false
+      loginTimeoutMs: 180000
+      turnTimeoutMs: 180000
+```
+
+The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet_browser` then become available.
+
+## Configuration
+
+| Field            | Default                    | Meaning                                                          |
+| ---------------- | -------------------------- | ---------------------------------------------------------------- |
+| `chromePath`     | (auto-discovered)          | Explicit Chrome binary, else system Chrome is found.             |
+| `dataDir`        | `~/.dsh/internet`          | Root for provider login state and durable conversation bindings.      |
+| `headless`       | `false`                    | Whether inference runs headless; headed is safer for web auth.   |
+| `loginTimeoutMs` | `180000`                   | Max time to complete an interactive sign-in.                     |
+| `turnTimeoutMs`  | `180000`                   | Max time for one `browser_chat` turn.                            |
+| `pollMs`         | `200`                      | Completion-poll interval.                                        |
+| `stableMs`       | `1500`                     | How long a response must be unchanged to count as complete.      |
+| `maxOutputChars` | `200000`                   | Upper bound on returned chat output characters.                  |
+| `enableChatgpt`  | `true`                     | Register the ChatGPT Web provider.                               |
+| `enableGemini`   | `true`                     | Register the Gemini Web provider.                                |
+
+## Usage flow
+
+```text
+/internet Explain Raft and Paxos.                         # -> direct ChatGPT answer in the UI
+/internet What trade-off did you mention for Raft?       # -> same durable ChatGPT conversation
+
+browser_chat { model: "chatgpt-web", prompt: "..." }   # -> login required, or the answer
+internet_browser { action: "login", model: "chatgpt-web" }
+# Sign in inside dedicated normal Chrome, then close that window completely.
+# The plugin exports and verifies ~/.dsh/internet/chatgpt-web/storage-state.json.
+browser_chat { model: "chatgpt-web", prompt: "Remember codeword cobalt." }
+# Later calls from this same DSH session navigate to the same ChatGPT /c/<id> conversation:
+browser_chat { model: "chatgpt-web", prompt: "What codeword did I give you?" }
+```
+
+## Development
+
+```bash
+npm run build        # tsgo -> dist (ESM) + client bundle -> dist/client.js
+npm test             # vitest (pure logic, no browser)
+npm run check        # biome + tsgo typecheck
+```
+
+`npm run build` also bundles `src/client.ts` into `dist/client.js` in the form the DeepSeek Harness
+expects for a plugin's browser surface (a `window.__ModuleLoader__.load` classic-script bundle with
+`react` and `@deepseek-ai/*` left external). Keep that step — the plain `tsgo` emit is ES modules and
+cannot be loaded by the harness web shell.
+
+The browser drivers (`chatgpt-web`, `gemini-web`) use the current ChatGPT / Gemini DOM selectors.
+Real sign-in and inference require a manual acceptance session in a DSH profile, as the harness does
+not run in this repo.
+
+## License
+
+MIT

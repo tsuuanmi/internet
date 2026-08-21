@@ -1,0 +1,56 @@
+import { InternetError } from "#internet/core/errors";
+import { sleep } from "#internet/core/sleep";
+export const GEMINI_HOME_URL = "https://gemini.google.com/app";
+export const GEMINI_COMPOSER_SELECTOR = 'rich-textarea [contenteditable="true"]';
+export const GEMINI_SEND_BUTTON_SELECTOR = 'input-area-v2 button[aria-label="Send message"]';
+export const GEMINI_STOP_BUTTON_SELECTOR = 'button[aria-label="Stop response"]';
+export const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-text message-content .markdown.markdown-main-panel";
+/** True when the Gemini home page exposes its composer. */
+export async function geminiIsAuthenticated(page) {
+    const composers = page.locator(GEMINI_COMPOSER_SELECTOR).filter({ visible: true });
+    return (await composers.count()) === 1;
+}
+/** Wait until Gemini is authenticated (composer visible), or return false. */
+export async function geminiWaitAuthenticated(page, timeoutMs, signal) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (signal?.aborted) {
+            throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "browser turn aborted");
+        }
+        if (await geminiIsAuthenticated(page))
+            return true;
+        await sleep(200, signal);
+    }
+    return false;
+}
+/** Fill the Gemini composer with the prompt and submit it. */
+export async function geminiSend(page, prompt) {
+    const composer = page.locator(GEMINI_COMPOSER_SELECTOR).filter({ visible: true }).first();
+    await composer.fill("");
+    await composer.fill(prompt);
+    const sendButton = page.locator(GEMINI_SEND_BUTTON_SELECTOR).filter({ visible: true }).last();
+    await sendButton.waitFor({ state: "visible", timeout: 20_000 });
+    if (!(await sendButton.isEnabled())) {
+        throw new InternetError("provider_error", "Gemini send button is disabled after attaching the prompt");
+    }
+    await sendButton.click();
+}
+/** Snapshot the newest Gemini response. */
+export async function geminiSnapshot(page) {
+    const responses = page.locator(GEMINI_RESPONSE_SELECTOR).filter({ visible: true });
+    const count = await responses.count();
+    if (count === 0)
+        return { responsePresent: false, text: "", html: "", running: false };
+    const response = responses.last();
+    const [text, html, running] = await Promise.all([
+        response.innerText(),
+        response.innerHTML(),
+        page
+            .locator(GEMINI_STOP_BUTTON_SELECTOR)
+            .filter({ visible: true })
+            .count()
+            .then((count) => count > 0),
+    ]);
+    return { responsePresent: true, text: text.trim(), html, running };
+}
+//# sourceMappingURL=gemini.js.map
