@@ -27,6 +27,7 @@
 	},
 	"files": [
 		"dist",
+		"cordis.patch.yml",
 		"README.md"
 	],
 	"imports": {
@@ -40,6 +41,9 @@
 		}
 	},
 	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		},
 		"client": {
 			"inject": [
 				"@deepseek-ai/dsh-client-runtime",

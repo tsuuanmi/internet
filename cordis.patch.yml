@@ -1,0 +1,6 @@
+# @tsuuanmi/internet: browser-backed web providers (ChatGPT Web, Gemini Web).
+# Installs the plugin without changing the profile's default model or routes.
+- insert:
+    - id: internet
+      name: '@tsuuanmi/internet'
+      config: {}
