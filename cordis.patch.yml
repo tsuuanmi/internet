@@ -5,4 +5,4 @@
     - id: internet
       name: '@tsuuanmi/internet'
       config: {}
-      disabled: !!js !process.env.DISPLAY
+      disabled: !!js process.env.DISPLAY
