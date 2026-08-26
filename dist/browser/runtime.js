@@ -299,8 +299,15 @@ export class BrowserManager {
         clearTimeout(timer);
         this.pendingCloses.delete(provider);
     }
-    /** Schedule closing a provider's browser after `closeAfterMs`, cancelling any prior pending close. */
+    /**
+     * Schedule closing a provider's browser after `closeAfterMs`, cancelling any
+     * prior pending close. Gemini keeps its browser open: its session and
+     * conversations live in IndexedDB, which is not persisted across a browser
+     * restart, so closing it would drop the login and durable conversation.
+     */
     scheduleClose(provider) {
+        if (provider !== "chatgpt-web")
+            return;
         this.cancelPendingClose(provider);
         const timer = setTimeout(() => {
             this.pendingCloses.delete(provider);
