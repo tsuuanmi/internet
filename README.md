@@ -20,6 +20,11 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
 - `browser_chat` — ask `chatgpt-web` or `gemini-web` a question through a real, logged-in browser and
   return the rendered answer as markdown. Both ChatGPT and Gemini bind one native conversation to the
   current DSH session and durably resume it on later calls.
+- `browser_team` — run a two-model debate between ChatGPT and Gemini on a task. The two models
+  alternate for `teamRounds` rounds, each critiquing and refining the other's latest message, then
+  produce a single final "best of both" answer. Returns only the final answer; the DSH agent is the
+  team lead and does not participate. The team's conversations are isolated from the agent's own
+  `browser_chat` threads (keyed by a derived `:team:` session id) yet durable across repeated calls.
 - `internet_browser` — lifecycle: `login` (opens dedicated normal Chrome; sign in and close it
   completely), `status`, `stop`.
 
@@ -92,6 +97,8 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | `stableMs`       | `1500`                     | How long a response must be unchanged to count as complete.      |
 | `closeAfterMs`   | `10000`                    | Delay before ChatGPT's idle browser is closed after a turn (Gemini stays open). |
 | `maxOutputChars` | `200000`                   | Upper bound on returned chat output characters.                  |
+| `teamRounds`     | `2`                        | Debate rounds for `browser_team` (each model speaks once per round). |
+| `teamSynthesis`  | `true`                     | Whether `browser_team` appends a final synthesis turn.           |
 | `enableChatgpt`  | `true`                     | Register the ChatGPT Web provider.                               |
 | `enableGemini`   | `true`                     | Register the Gemini Web provider.                                |
 
@@ -113,6 +120,11 @@ browser_chat { model: "chatgpt-web", prompt: "What codeword did I give you?" }
 # and later calls from this same DSH session navigate to the same Gemini /app/<id> conversation:
 browser_chat { model: "gemini-web", prompt: "Remember codeword emerald." }
 browser_chat { model: "gemini-web", prompt: "What codeword did I give you?" }
+
+# The team debates a task across both models and returns only the final answer:
+browser_team { task: "Design a resilient retry strategy for a payment API." }
+# Optional overrides: rounds, synthesize, startProvider, and a named team thread:
+browser_team { task: "...", rounds: 3, team: "code-review" }
 ```
 
 ## Development

@@ -5,6 +5,7 @@ import { defineInternetCommand } from "#internet/commands/internet";
 import { resolveBrowserConfig, type WebProvider } from "#internet/core/config";
 import { defineInternetBrowserTool } from "#internet/tools/browser";
 import { defineBrowserChatTool } from "#internet/tools/browser-chat";
+import { defineBrowserTeamTool } from "#internet/tools/browser-team";
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = "internet";
@@ -42,10 +43,13 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 
 	ctx.tools.register(defineBrowserChatTool(manager, config.turnTimeoutMs, allowed));
 	ctx.tools.register(defineInternetBrowserTool(manager, allowed));
+	if (allowed.size === 2) {
+		ctx.tools.register(defineBrowserTeamTool(manager, config, allowed));
+	}
 	ctx.systemPrompt?.section?.({
 		name: "tool:browser_chat",
 		order: 120,
-		text: "Use browser_chat to get a ChatGPT or Gemini answer. ChatGPT and Gemini calls from one DSH session durably resume the same native conversation, so use later calls as follow-up turns. If a provider is not signed in, run internet_browser login, tell the user to sign in and close the dedicated normal Chrome window completely, then retry after verified state is exported.",
+		text: "Use browser_chat to get a ChatGPT or Gemini answer. ChatGPT and Gemini calls from one DSH session durably resume the same native conversation, so use later calls as follow-up turns. Use browser_team to run a two-model debate between ChatGPT and Gemini on a task; it returns only the final 'best of both' answer, so prefer it when the user wants a multi-model brainstorm, debate, or second opinion. If a provider is not signed in, run internet_browser login, tell the user to sign in and close the dedicated normal Chrome window completely, then retry after verified state is exported.",
 	});
 }
 
@@ -53,4 +57,7 @@ export { BrowserManager } from "#internet/browser/runtime";
 export type { BrowserConfig, WebProvider } from "#internet/core/config";
 export { Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
-export { parseChatArgs } from "#internet/tools/args";
+export type { TeamOptions, TeamResult, TeamTurn } from "#internet/team/orchestrator";
+export { composeSynthesisPrompt, composeTurnPrompt, runTeam } from "#internet/team/orchestrator";
+export type { TeamInput } from "#internet/tools/args";
+export { parseChatArgs, parseTeamArgs } from "#internet/tools/args";

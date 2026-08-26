@@ -41,4 +41,10 @@ describe("resolveBrowserConfig", () => {
 	it("rejects invalid positive-integer config", () => {
 		expect(() => resolveBrowserConfig({ turnTimeoutMs: -5 })).toThrow(InternetError);
 	});
+
+	it("honors team config overrides", () => {
+		const config = resolveBrowserConfig({ teamRounds: 3, teamSynthesis: false });
+		expect(config.teamRounds).toBe(3);
+		expect(config.teamSynthesis).toBe(false);
+	});
 });

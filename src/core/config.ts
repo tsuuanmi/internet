@@ -29,6 +29,10 @@ export interface BrowserConfig {
 	closeAfterMs: number;
 	/** Upper bound on returned chat output characters. */
 	maxOutputChars: number;
+	/** Number of debate rounds for the `browser_team` tool (each model speaks once per round). */
+	teamRounds: number;
+	/** Whether the `browser_team` tool appends a final synthesis turn. */
+	teamSynthesis: boolean;
 	/** Register the ChatGPT Web provider. */
 	enableChatgpt: boolean;
 	/** Register the Gemini Web provider. */
@@ -49,6 +53,8 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	stableMs: 1_500,
 	closeAfterMs: 10_000,
 	maxOutputChars: 200_000,
+	teamRounds: 2,
+	teamSynthesis: true,
 	enableChatgpt: true,
 	enableGemini: true,
 };
@@ -67,6 +73,8 @@ export const Config = S.object({
 	stableMs: S.number().default(DEFAULT_CONFIG.stableMs),
 	closeAfterMs: S.number().default(DEFAULT_CONFIG.closeAfterMs),
 	maxOutputChars: S.number().default(DEFAULT_CONFIG.maxOutputChars),
+	teamRounds: S.number().default(DEFAULT_CONFIG.teamRounds),
+	teamSynthesis: S.boolean().default(DEFAULT_CONFIG.teamSynthesis),
 	enableChatgpt: S.boolean().default(DEFAULT_CONFIG.enableChatgpt),
 	enableGemini: S.boolean().default(DEFAULT_CONFIG.enableGemini),
 	chromePath: S.string(),
@@ -111,6 +119,8 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 		stableMs: asPositiveInteger(input.stableMs, DEFAULT_CONFIG.stableMs, "stableMs"),
 		closeAfterMs: asPositiveInteger(input.closeAfterMs, DEFAULT_CONFIG.closeAfterMs, "closeAfterMs"),
 		maxOutputChars: asPositiveInteger(input.maxOutputChars, DEFAULT_CONFIG.maxOutputChars, "maxOutputChars"),
+		teamRounds: asPositiveInteger(input.teamRounds, DEFAULT_CONFIG.teamRounds, "teamRounds"),
+		teamSynthesis: asBoolean(input.teamSynthesis, DEFAULT_CONFIG.teamSynthesis),
 		enableChatgpt: asBoolean(input.enableChatgpt, DEFAULT_CONFIG.enableChatgpt),
 		enableGemini: asBoolean(input.enableGemini, DEFAULT_CONFIG.enableGemini),
 	};

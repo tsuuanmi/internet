@@ -14,4 +14,38 @@ export function parseChatArgs(args) {
     }
     return { provider: model, prompt };
 }
+/**
+ * Validate and normalize the model-facing `browser_team` arguments. Kept free
+ * of any DeepSeek Harness import so it is unit-testable without DSH packages.
+ */
+export function parseTeamArgs(args) {
+    const task = args.task;
+    if (typeof task !== "string" || task.trim().length === 0) {
+        throw new Error("browser_team task must be a non-empty string");
+    }
+    const team = args.team;
+    if (team !== undefined && (typeof team !== "string" || team.trim().length === 0)) {
+        throw new Error("browser_team team must be a non-empty string");
+    }
+    const rounds = args.rounds;
+    if (rounds !== undefined && (typeof rounds !== "number" || !Number.isInteger(rounds) || rounds <= 0)) {
+        throw new Error("browser_team rounds must be a positive integer");
+    }
+    const synthesize = args.synthesize;
+    if (synthesize !== undefined && typeof synthesize !== "boolean") {
+        throw new Error("browser_team synthesize must be a boolean");
+    }
+    const startProvider = args.startProvider;
+    if (startProvider !== undefined &&
+        (typeof startProvider !== "string" || !WEB_PROVIDERS.includes(startProvider))) {
+        throw new Error(`browser_team startProvider must be one of ${WEB_PROVIDERS.join(", ")}`);
+    }
+    return {
+        task,
+        ...(team === undefined ? {} : { team }),
+        ...(rounds === undefined ? {} : { rounds }),
+        ...(synthesize === undefined ? {} : { synthesize }),
+        ...(startProvider === undefined ? {} : { startProvider: startProvider }),
+    };
+}
 //# sourceMappingURL=args.js.map
