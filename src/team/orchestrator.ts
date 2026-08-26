@@ -15,12 +15,22 @@ export interface OtherContribution {
 	text: string;
 }
 
-/** Result of a team debate: the final answer, or a partial failure. */
-export interface TeamResult {
-	finalAnswer?: string;
-	finalProvider?: WebProvider;
-	error?: { provider: WebProvider; message: string };
+/** Successful result of a team debate. */
+export interface TeamSuccess {
+	finalAnswer: string;
+	finalProvider: WebProvider;
+	/** Completed debate turns for this invocation; synthesis is not included. */
+	transcript: readonly TeamTurn[];
 }
+
+/** Failed result of a team debate, retaining completed turns for optional audit output. */
+export interface TeamFailure {
+	error: { provider: WebProvider; message: string };
+	transcript: readonly TeamTurn[];
+}
+
+/** Result of a team debate: a final answer or a failure with completed turns. */
+export type TeamResult = TeamSuccess | TeamFailure;
 
 /** Options for {@link runTeam}. */
 export interface TeamOptions {
@@ -165,18 +175,19 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 				sessionId: teamSessionId,
 				signal: options.signal,
 			});
-			return { finalAnswer: result.text, finalProvider: lastProvider };
+			return { finalAnswer: result.text, finalProvider: lastProvider, transcript: [...transcript] };
 		}
 
-		return { finalAnswer: lastByProvider.get(lastProvider), finalProvider: lastProvider };
+		const finalAnswer = lastByProvider.get(lastProvider);
+		if (finalAnswer === undefined) throw new Error("team debate completed without a final turn");
+		return { finalAnswer, finalProvider: lastProvider, transcript: [...transcript] };
 	} catch (error) {
 		return {
-			finalAnswer: undefined,
-			finalProvider: undefined,
 			error: {
 				provider: lastProvider,
 				message: error instanceof Error ? error.message : String(error),
 			},
+			transcript: [...transcript],
 		};
 	}
 }

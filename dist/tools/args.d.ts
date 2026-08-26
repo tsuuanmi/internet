@@ -15,6 +15,7 @@ export interface TeamInput {
     team?: string;
     rounds?: number;
     synthesize?: boolean;
+    includeTranscript?: boolean;
     providers?: WebProvider[];
 }
 /**

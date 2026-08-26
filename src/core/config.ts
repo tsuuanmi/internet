@@ -29,8 +29,12 @@ export interface BrowserConfig {
 	closeAfterMs: number;
 	/** Upper bound on returned chat output characters. */
 	maxOutputChars: number;
-	/** Number of debate rounds for the `browser_team` tool (each model speaks once per round). */
+	/** Default debate rounds for the `browser_team` tool (each model speaks once per round). */
 	teamRounds: number;
+	/** Maximum per-call debate rounds accepted by `browser_team`. */
+	teamMaxRounds: number;
+	/** Maximum aggregate Unicode code points returned by an opt-in team transcript. */
+	teamTranscriptMaxChars: number;
 	/** Whether the `browser_team` tool appends a final synthesis turn. */
 	teamSynthesis: boolean;
 	/** Register the ChatGPT Web provider. */
@@ -54,6 +58,8 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	closeAfterMs: 10_000,
 	maxOutputChars: 200_000,
 	teamRounds: 2,
+	teamMaxRounds: 4,
+	teamTranscriptMaxChars: 50_000,
 	teamSynthesis: true,
 	enableChatgpt: true,
 	enableGemini: true,
@@ -74,6 +80,8 @@ export const Config = S.object({
 	closeAfterMs: S.number().default(DEFAULT_CONFIG.closeAfterMs),
 	maxOutputChars: S.number().default(DEFAULT_CONFIG.maxOutputChars),
 	teamRounds: S.number().default(DEFAULT_CONFIG.teamRounds),
+	teamMaxRounds: S.number().default(DEFAULT_CONFIG.teamMaxRounds),
+	teamTranscriptMaxChars: S.number().default(DEFAULT_CONFIG.teamTranscriptMaxChars),
 	teamSynthesis: S.boolean().default(DEFAULT_CONFIG.teamSynthesis),
 	enableChatgpt: S.boolean().default(DEFAULT_CONFIG.enableChatgpt),
 	enableGemini: S.boolean().default(DEFAULT_CONFIG.enableGemini),
@@ -92,8 +100,8 @@ function expandHome(path: string): string {
 }
 
 function asPositiveInteger(value: unknown, fallback: number, name: string): number {
-	if (typeof value === "number" && (!Number.isFinite(value) || value <= 0)) {
-		throw new InternetError("config_error", `browser config ${name} must be a positive number`);
+	if (typeof value === "number" && (!Number.isFinite(value) || value < 1)) {
+		throw new InternetError("config_error", `browser config ${name} must be at least 1`);
 	}
 	return typeof value === "number" ? Math.floor(value) : fallback;
 }
@@ -105,6 +113,11 @@ function asPositiveInteger(value: unknown, fallback: number, name: string): numb
  */
 export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 	const input = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+	const teamRounds = asPositiveInteger(input.teamRounds, DEFAULT_CONFIG.teamRounds, "teamRounds");
+	const teamMaxRounds = asPositiveInteger(input.teamMaxRounds, DEFAULT_CONFIG.teamMaxRounds, "teamMaxRounds");
+	if (teamRounds > teamMaxRounds) {
+		throw new InternetError("config_error", "browser config teamRounds must not exceed teamMaxRounds");
+	}
 	return {
 		chromePath:
 			typeof input.chromePath === "string" && input.chromePath.length > 0 ? expandHome(input.chromePath) : undefined,
@@ -119,7 +132,13 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 		stableMs: asPositiveInteger(input.stableMs, DEFAULT_CONFIG.stableMs, "stableMs"),
 		closeAfterMs: asPositiveInteger(input.closeAfterMs, DEFAULT_CONFIG.closeAfterMs, "closeAfterMs"),
 		maxOutputChars: asPositiveInteger(input.maxOutputChars, DEFAULT_CONFIG.maxOutputChars, "maxOutputChars"),
-		teamRounds: asPositiveInteger(input.teamRounds, DEFAULT_CONFIG.teamRounds, "teamRounds"),
+		teamRounds,
+		teamMaxRounds,
+		teamTranscriptMaxChars: asPositiveInteger(
+			input.teamTranscriptMaxChars,
+			DEFAULT_CONFIG.teamTranscriptMaxChars,
+			"teamTranscriptMaxChars",
+		),
 		teamSynthesis: asBoolean(input.teamSynthesis, DEFAULT_CONFIG.teamSynthesis),
 		enableChatgpt: asBoolean(input.enableChatgpt, DEFAULT_CONFIG.enableChatgpt),
 		enableGemini: asBoolean(input.enableGemini, DEFAULT_CONFIG.enableGemini),

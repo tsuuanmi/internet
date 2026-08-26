@@ -43,8 +43,22 @@ describe("resolveBrowserConfig", () => {
 	});
 
 	it("honors team config overrides", () => {
-		const config = resolveBrowserConfig({ teamRounds: 3, teamSynthesis: false });
+		const config = resolveBrowserConfig({
+			teamRounds: 3,
+			teamMaxRounds: 5,
+			teamTranscriptMaxChars: 10_000,
+			teamSynthesis: false,
+		});
 		expect(config.teamRounds).toBe(3);
+		expect(config.teamMaxRounds).toBe(5);
+		expect(config.teamTranscriptMaxChars).toBe(10_000);
 		expect(config.teamSynthesis).toBe(false);
+	});
+
+	it("rejects invalid team limits", () => {
+		expect(() => resolveBrowserConfig({ teamMaxRounds: 0 })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ teamTranscriptMaxChars: 0 })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ teamTranscriptMaxChars: 0.5 })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ teamRounds: 3, teamMaxRounds: 2 })).toThrow(/must not exceed/);
 	});
 });

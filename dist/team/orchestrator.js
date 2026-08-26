@@ -114,18 +114,20 @@ export async function runTeam(chat, options) {
                 sessionId: teamSessionId,
                 signal: options.signal,
             });
-            return { finalAnswer: result.text, finalProvider: lastProvider };
+            return { finalAnswer: result.text, finalProvider: lastProvider, transcript: [...transcript] };
         }
-        return { finalAnswer: lastByProvider.get(lastProvider), finalProvider: lastProvider };
+        const finalAnswer = lastByProvider.get(lastProvider);
+        if (finalAnswer === undefined)
+            throw new Error("team debate completed without a final turn");
+        return { finalAnswer, finalProvider: lastProvider, transcript: [...transcript] };
     }
     catch (error) {
         return {
-            finalAnswer: undefined,
-            finalProvider: undefined,
             error: {
                 provider: lastProvider,
                 message: error instanceof Error ? error.message : String(error),
             },
+            transcript: [...transcript],
         };
     }
 }

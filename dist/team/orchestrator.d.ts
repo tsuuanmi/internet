@@ -11,15 +11,23 @@ export interface OtherContribution {
     provider: WebProvider;
     text: string;
 }
-/** Result of a team debate: the final answer, or a partial failure. */
-export interface TeamResult {
-    finalAnswer?: string;
-    finalProvider?: WebProvider;
-    error?: {
+/** Successful result of a team debate. */
+export interface TeamSuccess {
+    finalAnswer: string;
+    finalProvider: WebProvider;
+    /** Completed debate turns for this invocation; synthesis is not included. */
+    transcript: readonly TeamTurn[];
+}
+/** Failed result of a team debate, retaining completed turns for optional audit output. */
+export interface TeamFailure {
+    error: {
         provider: WebProvider;
         message: string;
     };
+    transcript: readonly TeamTurn[];
 }
+/** Result of a team debate: a final answer or a failure with completed turns. */
+export type TeamResult = TeamSuccess | TeamFailure;
 /** Options for {@link runTeam}. */
 export interface TeamOptions {
     task: string;

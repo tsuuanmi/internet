@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import type { WebProvider } from "#internet/core/config";
-import { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
+import {
+	composeSynthesisPrompt,
+	composeTurnPrompt,
+	joinNames,
+	runTeam,
+	type TeamResult,
+	type TeamSuccess,
+} from "#internet/team/orchestrator";
 
 interface RecordedCall {
 	provider: WebProvider;
@@ -20,6 +27,11 @@ function fakeChat(script: Array<string | Error>) {
 		return { text: next, url: "https://example.com", conversationId: "c" };
 	};
 	return { chat, calls };
+}
+
+function expectTeamSuccess(result: TeamResult): TeamSuccess {
+	if ("error" in result) throw new Error(result.error.message);
+	return result;
 }
 
 describe("joinNames", () => {
@@ -70,7 +82,7 @@ describe("composeSynthesisPrompt", () => {
 describe("runTeam", () => {
 	it("alternates providers and uses a derived team session id", async () => {
 		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
-		const result = await runTeam(chat, { task: "T", sessionId: "sess" });
+		const result = expectTeamSuccess(await runTeam(chat, { task: "T", sessionId: "sess" }));
 		expect(calls.map((c) => c.provider)).toEqual([
 			"chatgpt-web",
 			"gemini-web",
@@ -81,6 +93,12 @@ describe("runTeam", () => {
 		expect(calls.every((c) => c.sessionId === "sess:team:default")).toBe(true);
 		expect(result.finalAnswer).toBe("FINAL");
 		expect(result.finalProvider).toBe("gemini-web");
+		expect(result.transcript).toEqual([
+			{ round: 1, provider: "chatgpt-web", text: "A1" },
+			{ round: 1, provider: "gemini-web", text: "B1" },
+			{ round: 2, provider: "chatgpt-web", text: "A2" },
+			{ round: 2, provider: "gemini-web", text: "B2" },
+		]);
 	});
 
 	it("composes opener, critique, and synthesis prompts in order", async () => {
@@ -98,14 +116,14 @@ describe("runTeam", () => {
 
 	it("returns the last turn when synthesis is disabled", async () => {
 		const { chat } = fakeChat(["A1", "B1", "A2", "B2"]);
-		const result = await runTeam(chat, { task: "T", sessionId: "s", synthesize: false });
+		const result = expectTeamSuccess(await runTeam(chat, { task: "T", sessionId: "s", synthesize: false }));
 		expect(result.finalAnswer).toBe("B2");
 		expect(result.finalProvider).toBe("gemini-web");
 	});
 
 	it("honors a custom round count", async () => {
 		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "A3", "B3", "FINAL"]);
-		const result = await runTeam(chat, { task: "T", sessionId: "s", rounds: 3 });
+		const result = expectTeamSuccess(await runTeam(chat, { task: "T", sessionId: "s", rounds: 3 }));
 		expect(calls.map((c) => c.provider)).toEqual([
 			"chatgpt-web",
 			"gemini-web",
@@ -120,11 +138,13 @@ describe("runTeam", () => {
 
 	it("honors a custom provider order", async () => {
 		const { chat, calls } = fakeChat(["G1", "C1", "G2", "C2", "FINAL"]);
-		const result = await runTeam(chat, {
-			task: "T",
-			sessionId: "s",
-			providers: ["gemini-web", "chatgpt-web"],
-		});
+		const result = expectTeamSuccess(
+			await runTeam(chat, {
+				task: "T",
+				sessionId: "s",
+				providers: ["gemini-web", "chatgpt-web"],
+			}),
+		);
 		expect(calls.map((c) => c.provider)).toEqual([
 			"gemini-web",
 			"chatgpt-web",
@@ -155,8 +175,10 @@ describe("runTeam", () => {
 	it("returns a partial error when a provider fails mid-debate", async () => {
 		const { chat, calls } = fakeChat(["A1", new Error("boom")]);
 		const result = await runTeam(chat, { task: "T", sessionId: "s" });
-		expect(result.finalAnswer).toBeUndefined();
+		expect("error" in result).toBe(true);
+		if (!("error" in result)) throw new Error("expected team failure");
 		expect(result.error).toEqual({ provider: "gemini-web", message: "boom" });
+		expect(result.transcript).toEqual([{ round: 1, provider: "chatgpt-web", text: "A1" }]);
 		expect(calls).toHaveLength(2);
 	});
 
@@ -165,7 +187,10 @@ describe("runTeam", () => {
 		controller.abort(new Error("cancelled"));
 		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
 		const result = await runTeam(chat, { task: "T", sessionId: "s", signal: controller.signal });
+		expect("error" in result).toBe(true);
+		if (!("error" in result)) throw new Error("expected team failure");
 		expect(result.error).toEqual({ provider: "chatgpt-web", message: "cancelled" });
+		expect(result.transcript).toEqual([]);
 		expect(calls).toHaveLength(0);
 	});
 });

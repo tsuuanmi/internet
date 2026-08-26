@@ -48,7 +48,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		ctx.systemPrompt?.section?.({
 			name: "tool:browser_team",
 			order: 121,
-			text: "Use browser_team to run a multi-model debate between the configured web providers on a task; it returns only the final 'best of both' answer. Prefer browser_team when the user wants a brainstorm, a design decision or tradeoff analysis, a code or document review, a second opinion, or red-teaming an idea — any case where multiple independent perspectives should be merged into one answer. browser_team cannot search the web or read files: paste any code, document, or source material into the task, and gather current information with web_search or web_fetch first. The debate runs for `rounds` rounds (default 2) and appends a final synthesis turn.",
+			text: "Use browser_team to run a multi-model debate between ordered configured web providers on a task; it returns only the final 'best of both' answer by default, or the bounded current-call transcript when `includeTranscript` is true. Prefer browser_team when the user wants a brainstorm, a design decision or tradeoff analysis, a code or document review, a second opinion, or red-teaming an idea — any case where multiple independent perspectives should be merged into one answer. browser_team cannot search the web or read files: paste any code, document, or source material into the task, and gather current information with web_search or web_fetch first. The debate runs for `rounds` rounds (default 2) and appends a final synthesis turn.",
 		});
 	}
 	ctx.systemPrompt?.section?.({
@@ -62,7 +62,14 @@ export { BrowserManager } from "#internet/browser/runtime";
 export type { BrowserConfig, WebProvider } from "#internet/core/config";
 export { Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
-export type { OtherContribution, TeamOptions, TeamResult, TeamTurn } from "#internet/team/orchestrator";
+export type {
+	OtherContribution,
+	TeamFailure,
+	TeamOptions,
+	TeamResult,
+	TeamSuccess,
+	TeamTurn,
+} from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
 export type { TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseTeamArgs } from "#internet/tools/args";

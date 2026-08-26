@@ -3,11 +3,12 @@ import type { BrowserManager } from "#internet/browser/runtime";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 export type { TeamInput } from "#internet/tools/args";
 export { parseTeamArgs } from "#internet/tools/args";
+type BrowserTeamManager = Pick<BrowserManager, "chat">;
 /**
  * Define the `browser_team` model tool: run a multi-model debate between the
- * configured web providers on a task and return only the final "best of both"
- * answer. The DSH agent is the team lead — it calls this tool and receives the
- * answer without participating in the debate.
+ * configured web providers on a task and return the final "best of both"
+ * answer, optionally accompanied by a bounded current-call transcript. The DSH
+ * agent is the team lead and does not participate in the debate.
  */
-export declare function defineBrowserTeamTool(manager: BrowserManager, config: BrowserConfig, allowed: ReadonlySet<WebProvider>): ReturnType<typeof defineTool>;
+export declare function defineBrowserTeamTool(manager: BrowserTeamManager, config: BrowserConfig, allowed: ReadonlySet<WebProvider>): ReturnType<typeof defineTool>;
 //# sourceMappingURL=browser-team.d.ts.map

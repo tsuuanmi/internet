@@ -35,6 +35,10 @@ export function parseTeamArgs(args) {
     if (synthesize !== undefined && typeof synthesize !== "boolean") {
         throw new Error("browser_team synthesize must be a boolean");
     }
+    const includeTranscript = args.includeTranscript;
+    if (includeTranscript !== undefined && typeof includeTranscript !== "boolean") {
+        throw new Error("browser_team includeTranscript must be a boolean");
+    }
     const providers = args.providers;
     if (providers !== undefined) {
         if (!Array.isArray(providers) || providers.length < 2) {
@@ -56,6 +60,7 @@ export function parseTeamArgs(args) {
         ...(team === undefined ? {} : { team }),
         ...(rounds === undefined ? {} : { rounds }),
         ...(synthesize === undefined ? {} : { synthesize }),
+        ...(includeTranscript === undefined ? {} : { includeTranscript }),
         ...(providers === undefined ? {} : { providers: providers }),
     };
 }

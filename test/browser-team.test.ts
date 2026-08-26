@@ -1,5 +1,33 @@
 import { describe, expect, it } from "vitest";
+import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
+import { resolveBrowserConfig } from "#internet/core/config";
 import { parseTeamArgs } from "#internet/tools/args";
+import { defineBrowserTeamTool } from "#internet/tools/browser-team";
+
+function fakeManager(script: Array<string | Error>) {
+	const calls: Array<{ provider: string; request: ChatRequest }> = [];
+	return {
+		calls,
+		manager: {
+			async chat(provider: "chatgpt-web" | "gemini-web", request: ChatRequest): Promise<ChatResult> {
+				calls.push({ provider, request });
+				const next = script.shift();
+				if (next instanceof Error) throw next;
+				if (next === undefined) throw new Error("no more scripted responses");
+				return { text: next, url: "https://example.com" };
+			},
+		},
+	};
+}
+
+const exec = {
+	agent: { id: "agent" },
+	signal: new AbortController().signal,
+	deferContext: () => {},
+	concludeTurn: () => {},
+} as never;
+
+const allowed = new Set(["chatgpt-web", "gemini-web"] as const);
 
 describe("parseTeamArgs", () => {
 	it("accepts a valid task", () => {
@@ -13,9 +41,17 @@ describe("parseTeamArgs", () => {
 				team: "code",
 				rounds: 3,
 				synthesize: false,
+				includeTranscript: true,
 				providers: ["gemini-web", "chatgpt-web"],
 			}),
-		).toEqual({ task: "T", team: "code", rounds: 3, synthesize: false, providers: ["gemini-web", "chatgpt-web"] });
+		).toEqual({
+			task: "T",
+			team: "code",
+			rounds: 3,
+			synthesize: false,
+			includeTranscript: true,
+			providers: ["gemini-web", "chatgpt-web"],
+		});
 	});
 
 	it("rejects a blank task", () => {
@@ -29,8 +65,9 @@ describe("parseTeamArgs", () => {
 		expect(() => parseTeamArgs({ task: "T", rounds: "2" })).toThrow(/positive integer/);
 	});
 
-	it("rejects an invalid synthesize value", () => {
+	it("rejects invalid boolean options", () => {
 		expect(() => parseTeamArgs({ task: "T", synthesize: "yes" })).toThrow(/boolean/);
+		expect(() => parseTeamArgs({ task: "T", includeTranscript: "yes" })).toThrow(/boolean/);
 	});
 
 	it("rejects a non-array or too-short providers value", () => {
@@ -50,5 +87,104 @@ describe("parseTeamArgs", () => {
 
 	it("rejects a blank team name", () => {
 		expect(() => parseTeamArgs({ task: "T", team: "  " })).toThrow(/non-empty/);
+	});
+});
+
+describe("defineBrowserTeamTool", () => {
+	it("omits the transcript by default", async () => {
+		const { manager } = fakeManager(["A1", "B1"]);
+		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
+		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false }, exec);
+		expect(result).toEqual({ finalAnswer: "B1", finalProvider: "gemini-web" });
+	});
+
+	it("returns an ordered complete transcript when it fits the budget", async () => {
+		const { manager } = fakeManager(["A1", "B1"]);
+		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({ teamTranscriptMaxChars: 4 }), allowed);
+		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false, includeTranscript: true }, exec);
+		expect(result).toEqual({
+			finalAnswer: "B1",
+			finalProvider: "gemini-web",
+			transcript: [
+				{ round: 1, provider: "chatgpt-web", text: "A1" },
+				{ round: 1, provider: "gemini-web", text: "B1" },
+			],
+			transcriptTruncated: false,
+		});
+	});
+
+	it("marks a retained boundary turn whose prefix was clipped", async () => {
+		const { manager } = fakeManager(["ABCDE", "FGH"]);
+		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({ teamTranscriptMaxChars: 7 }), allowed);
+		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false, includeTranscript: true }, exec);
+		expect(result).toEqual({
+			finalAnswer: "FGH",
+			finalProvider: "gemini-web",
+			transcript: [
+				{ round: 1, provider: "chatgpt-web", text: "BCDE", textTruncation: "prefix" },
+				{ round: 1, provider: "gemini-web", text: "FGH" },
+			],
+			transcriptTruncated: true,
+		});
+	});
+
+	it("clips by Unicode code points without splitting an emoji", async () => {
+		const { manager } = fakeManager(["X", "A😀B"]);
+		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({ teamTranscriptMaxChars: 2 }), allowed);
+		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false, includeTranscript: true }, exec);
+		expect(result).toEqual({
+			finalAnswer: "A😀B",
+			finalProvider: "gemini-web",
+			transcript: [{ round: 1, provider: "gemini-web", text: "😀B", textTruncation: "prefix" }],
+			transcriptTruncated: true,
+		});
+	});
+
+	it("does not include the final synthesis response in the transcript", async () => {
+		const { manager } = fakeManager(["A1", "B1", "FINAL"]);
+		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
+		const result = await tool.execute({ task: "T", rounds: 1, includeTranscript: true }, exec);
+		expect(result).toEqual({
+			finalAnswer: "FINAL",
+			finalProvider: "gemini-web",
+			transcript: [
+				{ round: 1, provider: "chatgpt-web", text: "A1" },
+				{ round: 1, provider: "gemini-web", text: "B1" },
+			],
+			transcriptTruncated: false,
+		});
+	});
+
+	it("returns completed transcript turns on an opted-in provider failure", async () => {
+		const { manager } = fakeManager(["A1", new Error("boom")]);
+		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
+		const result = await tool.execute({ task: "T", rounds: 1, includeTranscript: true }, exec);
+		expect(result).toEqual({
+			isError: true,
+			error: "gemini-web: boom",
+			transcript: [{ round: 1, provider: "chatgpt-web", text: "A1" }],
+			transcriptTruncated: false,
+		});
+	});
+
+	it("rejects rounds above the configured maximum without calling a provider", async () => {
+		const { manager, calls } = fakeManager([]);
+		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({ teamMaxRounds: 2 }), allowed);
+		const result = await tool.execute({ task: "T", rounds: 3 }, exec);
+		expect(result).toEqual({
+			isError: true,
+			error: "browser_team rounds must not exceed the configured maximum of 2.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("declares a timeout covering the configured maximum and synthesis", () => {
+		const { manager } = fakeManager([]);
+		const tool = defineBrowserTeamTool(
+			manager,
+			resolveBrowserConfig({ turnTimeoutMs: 100, teamMaxRounds: 4 }),
+			allowed,
+		);
+		expect(tool.timeoutMs).toBe(900);
 	});
 });

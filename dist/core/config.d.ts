@@ -22,8 +22,12 @@ export interface BrowserConfig {
     closeAfterMs: number;
     /** Upper bound on returned chat output characters. */
     maxOutputChars: number;
-    /** Number of debate rounds for the `browser_team` tool (each model speaks once per round). */
+    /** Default debate rounds for the `browser_team` tool (each model speaks once per round). */
     teamRounds: number;
+    /** Maximum per-call debate rounds accepted by `browser_team`. */
+    teamMaxRounds: number;
+    /** Maximum aggregate Unicode code points returned by an opt-in team transcript. */
+    teamTranscriptMaxChars: number;
     /** Whether the `browser_team` tool appends a final synthesis turn. */
     teamSynthesis: boolean;
     /** Register the ChatGPT Web provider. */
@@ -47,6 +51,8 @@ export declare const Config: import("@deepseek-ai/schemastery").Schema<{
     closeAfterMs: number;
     maxOutputChars: number;
     teamRounds: number;
+    teamMaxRounds: number;
+    teamTranscriptMaxChars: number;
     teamSynthesis: boolean;
     enableChatgpt: boolean;
     enableGemini: boolean;
