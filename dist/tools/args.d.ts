@@ -15,7 +15,7 @@ export interface TeamInput {
     team?: string;
     rounds?: number;
     synthesize?: boolean;
-    startProvider?: WebProvider;
+    providers?: WebProvider[];
 }
 /**
  * Validate and normalize the model-facing `browser_team` arguments. Kept free

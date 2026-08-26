@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import type { WebProvider } from "#internet/core/config";
-import { composeSynthesisPrompt, composeTurnPrompt, runTeam } from "#internet/team/orchestrator";
+import { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
 
 interface RecordedCall {
 	provider: WebProvider;
@@ -22,18 +22,31 @@ function fakeChat(script: Array<string | Error>) {
 	return { chat, calls };
 }
 
+describe("joinNames", () => {
+	it("joins zero, one, two, and many names", () => {
+		expect(joinNames([])).toBe("");
+		expect(joinNames(["A"])).toBe("A");
+		expect(joinNames(["A", "B"])).toBe("A and B");
+		expect(joinNames(["A", "B", "C"])).toBe("A, B, and C");
+	});
+});
+
 describe("composeTurnPrompt", () => {
 	it("produces an opener for round 1 with no prior text", () => {
-		const prompt = composeTurnPrompt("Task X", "chatgpt-web", "gemini-web", "", 1);
+		const prompt = composeTurnPrompt("Task X", "chatgpt-web", [{ provider: "gemini-web", text: "" }], 1);
 		expect(prompt).toContain("initial analysis");
 		expect(prompt).toContain("Task X");
-		expect(prompt).toContain("ChatGPT");
-		expect(prompt).toContain("Gemini");
+		expect(prompt).toContain("You are ChatGPT on a team with Gemini.");
 		expect(prompt).not.toContain("Gemini said");
 	});
 
 	it("feeds the other model's latest message on later turns", () => {
-		const prompt = composeTurnPrompt("Task X", "gemini-web", "chatgpt-web", "ChatGPT's idea", 2);
+		const prompt = composeTurnPrompt(
+			"Task X",
+			"gemini-web",
+			[{ provider: "chatgpt-web", text: "ChatGPT's idea" }],
+			2,
+		);
 		expect(prompt).toContain("ChatGPT said");
 		expect(prompt).toContain("ChatGPT's idea");
 		expect(prompt).toContain("critique");
@@ -105,9 +118,13 @@ describe("runTeam", () => {
 		expect(result.finalAnswer).toBe("FINAL");
 	});
 
-	it("honors a custom start provider", async () => {
+	it("honors a custom provider order", async () => {
 		const { chat, calls } = fakeChat(["G1", "C1", "G2", "C2", "FINAL"]);
-		const result = await runTeam(chat, { task: "T", sessionId: "s", startProvider: "gemini-web" });
+		const result = await runTeam(chat, {
+			task: "T",
+			sessionId: "s",
+			providers: ["gemini-web", "chatgpt-web"],
+		});
 		expect(calls.map((c) => c.provider)).toEqual([
 			"gemini-web",
 			"chatgpt-web",
@@ -116,6 +133,17 @@ describe("runTeam", () => {
 			"chatgpt-web",
 		]);
 		expect(result.finalProvider).toBe("chatgpt-web");
+	});
+
+	it("rejects invalid direct orchestration options", async () => {
+		const { chat } = fakeChat([]);
+		await expect(runTeam(chat, { task: "T", sessionId: "s", rounds: 0 })).rejects.toThrow(/positive integer/);
+		await expect(runTeam(chat, { task: "T", sessionId: "s", providers: ["chatgpt-web"] })).rejects.toThrow(
+			/at least two providers/,
+		);
+		await expect(
+			runTeam(chat, { task: "T", sessionId: "s", providers: ["chatgpt-web", "chatgpt-web"] }),
+		).rejects.toThrow(/duplicates/);
 	});
 
 	it("namespaces the team session id by team name", async () => {

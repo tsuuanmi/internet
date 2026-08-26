@@ -10,10 +10,10 @@ export type { TeamInput } from "#internet/tools/args";
 export { parseTeamArgs } from "#internet/tools/args";
 
 /**
- * Define the `browser_team` model tool: run a two-model debate between ChatGPT
- * Web and Gemini Web on a task and return only the final "best of both" answer.
- * The DSH agent is the team lead — it calls this tool and receives the answer
- * without participating in the debate.
+ * Define the `browser_team` model tool: run a multi-model debate between the
+ * configured web providers on a task and return only the final "best of both"
+ * answer. The DSH agent is the team lead — it calls this tool and receives the
+ * answer without participating in the debate.
  */
 export function defineBrowserTeamTool(
 	manager: BrowserManager,
@@ -23,7 +23,7 @@ export function defineBrowserTeamTool(
 	return defineTool({
 		name: "browser_team",
 		description:
-			"Run a two-model debate between ChatGPT and Gemini on a task. The two models alternate for `rounds` rounds, each critiquing and refining the other's latest message, then produce a single final 'best of both' answer. Returns only the final answer. Use when the user wants a multi-model brainstorm, debate, or second opinion.",
+			"Run a multi-model debate between ChatGPT and Gemini on a task. The models speak in order for `rounds` rounds, each critiquing and refining the others' latest messages, then produce a single final 'best of both' answer. Returns only the final answer. Use when the user wants a multi-model brainstorm, debate, or second opinion.",
 		parameters: {
 			task: {
 				type: "string",
@@ -42,10 +42,10 @@ export function defineBrowserTeamTool(
 				type: "boolean",
 				description: "Whether to append a final synthesis turn. Defaults to the plugin config.",
 			},
-			startProvider: {
-				type: "string",
-				enum: [...WEB_PROVIDERS],
-				description: "Which model opens the debate. Defaults to chatgpt-web.",
+			providers: {
+				type: "array",
+				items: { type: "string", enum: [...WEB_PROVIDERS] },
+				description: "Ordered providers for the debate; the first opens. Defaults to [chatgpt-web, gemini-web].",
 			},
 		},
 		output: {
@@ -66,15 +66,18 @@ export function defineBrowserTeamTool(
 			},
 			presentationMeta: (_args, value) => value,
 		},
-		timeoutMs: config.turnTimeoutMs * (config.teamRounds * 2 + 1),
+		timeoutMs: config.turnTimeoutMs * (config.teamRounds * allowed.size + 1),
 		isConcurrencySafe: () => false,
 		async execute(args, exec) {
 			const input = parseTeamArgs(args);
-			if (input.startProvider !== undefined && !allowed.has(input.startProvider)) {
-				return {
-					isError: true,
-					error: `browser_team startProvider ${input.startProvider} is disabled in the internet plugin config.`,
-				};
+			if (input.providers !== undefined) {
+				const disabled = input.providers.filter((provider) => !allowed.has(provider));
+				if (disabled.length > 0) {
+					return {
+						isError: true,
+						error: `browser_team providers ${disabled.join(", ")} are disabled in the internet plugin config.`,
+					};
+				}
 			}
 			const sessionId = exec.agent?.id;
 			if (sessionId === undefined) {
@@ -90,7 +93,7 @@ export function defineBrowserTeamTool(
 					teamName: input.team,
 					rounds: input.rounds ?? config.teamRounds,
 					synthesize: input.synthesize ?? config.teamSynthesis,
-					startProvider: input.startProvider,
+					providers: input.providers,
 					signal: exec.signal,
 				});
 				if (result.error !== undefined) {
@@ -110,7 +113,7 @@ export function defineBrowserTeamTool(
 		presentCall: (args) => ({
 			card: "generic",
 			title: `browser_team · ${String(args.task).slice(0, 80)}`,
-			kind: "chat",
+			kind: "other",
 			rawInput: String(args.task),
 		}),
 	});

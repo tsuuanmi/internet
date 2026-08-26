@@ -8,8 +8,14 @@ describe("parseTeamArgs", () => {
 
 	it("accepts optional fields", () => {
 		expect(
-			parseTeamArgs({ task: "T", team: "code", rounds: 3, synthesize: false, startProvider: "gemini-web" }),
-		).toEqual({ task: "T", team: "code", rounds: 3, synthesize: false, startProvider: "gemini-web" });
+			parseTeamArgs({
+				task: "T",
+				team: "code",
+				rounds: 3,
+				synthesize: false,
+				providers: ["gemini-web", "chatgpt-web"],
+			}),
+		).toEqual({ task: "T", team: "code", rounds: 3, synthesize: false, providers: ["gemini-web", "chatgpt-web"] });
 	});
 
 	it("rejects a blank task", () => {
@@ -27,8 +33,19 @@ describe("parseTeamArgs", () => {
 		expect(() => parseTeamArgs({ task: "T", synthesize: "yes" })).toThrow(/boolean/);
 	});
 
-	it("rejects an invalid startProvider", () => {
-		expect(() => parseTeamArgs({ task: "T", startProvider: "claude" })).toThrow(/startProvider must be one of/);
+	it("rejects a non-array or too-short providers value", () => {
+		expect(() => parseTeamArgs({ task: "T", providers: "chatgpt-web" })).toThrow(/at least two/);
+		expect(() => parseTeamArgs({ task: "T", providers: ["chatgpt-web"] })).toThrow(/at least two/);
+	});
+
+	it("rejects an invalid provider element", () => {
+		expect(() => parseTeamArgs({ task: "T", providers: ["claude", "chatgpt-web"] })).toThrow(
+			/providers must be one of/,
+		);
+	});
+
+	it("rejects duplicate providers", () => {
+		expect(() => parseTeamArgs({ task: "T", providers: ["chatgpt-web", "chatgpt-web"] })).toThrow(/duplicates/);
 	});
 
 	it("rejects a blank team name", () => {

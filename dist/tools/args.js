@@ -35,17 +35,28 @@ export function parseTeamArgs(args) {
     if (synthesize !== undefined && typeof synthesize !== "boolean") {
         throw new Error("browser_team synthesize must be a boolean");
     }
-    const startProvider = args.startProvider;
-    if (startProvider !== undefined &&
-        (typeof startProvider !== "string" || !WEB_PROVIDERS.includes(startProvider))) {
-        throw new Error(`browser_team startProvider must be one of ${WEB_PROVIDERS.join(", ")}`);
+    const providers = args.providers;
+    if (providers !== undefined) {
+        if (!Array.isArray(providers) || providers.length < 2) {
+            throw new Error("browser_team providers must be an array of at least two providers");
+        }
+        const seen = new Set();
+        for (const value of providers) {
+            if (typeof value !== "string" || !WEB_PROVIDERS.includes(value)) {
+                throw new Error(`browser_team providers must be one of ${WEB_PROVIDERS.join(", ")}`);
+            }
+            if (seen.has(value)) {
+                throw new Error("browser_team providers must not contain duplicates");
+            }
+            seen.add(value);
+        }
     }
     return {
         task,
         ...(team === undefined ? {} : { team }),
         ...(rounds === undefined ? {} : { rounds }),
         ...(synthesize === undefined ? {} : { synthesize }),
-        ...(startProvider === undefined ? {} : { startProvider: startProvider }),
+        ...(providers === undefined ? {} : { providers: providers }),
     };
 }
 //# sourceMappingURL=args.js.map

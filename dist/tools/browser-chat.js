@@ -88,7 +88,7 @@ export function defineBrowserChatTool(manager, timeoutMs, allowed) {
         presentCall: (args) => ({
             card: "generic",
             title: `${String(args.model)} · ${String(args.prompt).slice(0, 80)}`,
-            kind: "chat",
+            kind: "other",
             rawInput: String(args.prompt),
         }),
     });

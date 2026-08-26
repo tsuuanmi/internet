@@ -106,7 +106,7 @@ export function defineInternetBrowserTool(
 		presentCall: (args) => ({
 			card: "generic",
 			title: `internet_browser ${String(args.action)} ${String(args.model)}`,
-			kind: "tool",
+			kind: "other",
 		}),
 	});
 }

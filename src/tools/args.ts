@@ -29,7 +29,7 @@ export interface TeamInput {
 	team?: string;
 	rounds?: number;
 	synthesize?: boolean;
-	startProvider?: WebProvider;
+	providers?: WebProvider[];
 }
 
 /**
@@ -53,18 +53,27 @@ export function parseTeamArgs(args: Record<string, unknown>): TeamInput {
 	if (synthesize !== undefined && typeof synthesize !== "boolean") {
 		throw new Error("browser_team synthesize must be a boolean");
 	}
-	const startProvider = args.startProvider;
-	if (
-		startProvider !== undefined &&
-		(typeof startProvider !== "string" || !(WEB_PROVIDERS as readonly string[]).includes(startProvider))
-	) {
-		throw new Error(`browser_team startProvider must be one of ${WEB_PROVIDERS.join(", ")}`);
+	const providers = args.providers;
+	if (providers !== undefined) {
+		if (!Array.isArray(providers) || providers.length < 2) {
+			throw new Error("browser_team providers must be an array of at least two providers");
+		}
+		const seen = new Set<string>();
+		for (const value of providers) {
+			if (typeof value !== "string" || !(WEB_PROVIDERS as readonly string[]).includes(value)) {
+				throw new Error(`browser_team providers must be one of ${WEB_PROVIDERS.join(", ")}`);
+			}
+			if (seen.has(value)) {
+				throw new Error("browser_team providers must not contain duplicates");
+			}
+			seen.add(value);
+		}
 	}
 	return {
 		task,
 		...(team === undefined ? {} : { team }),
 		...(rounds === undefined ? {} : { rounds }),
 		...(synthesize === undefined ? {} : { synthesize }),
-		...(startProvider === undefined ? {} : { startProvider: startProvider as WebProvider }),
+		...(providers === undefined ? {} : { providers: providers as WebProvider[] }),
 	};
 }

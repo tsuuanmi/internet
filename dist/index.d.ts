@@ -31,8 +31,8 @@ export { BrowserManager } from "#internet/browser/runtime";
 export type { BrowserConfig, WebProvider } from "#internet/core/config";
 export { Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
-export type { TeamOptions, TeamResult, TeamTurn } from "#internet/team/orchestrator";
-export { composeSynthesisPrompt, composeTurnPrompt, runTeam } from "#internet/team/orchestrator";
+export type { OtherContribution, TeamOptions, TeamResult, TeamTurn } from "#internet/team/orchestrator";
+export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
 export type { TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseTeamArgs } from "#internet/tools/args";
 //# sourceMappingURL=index.d.ts.map
