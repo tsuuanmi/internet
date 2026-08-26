@@ -29,6 +29,7 @@ export declare class BrowserManager {
     private resolvedChromePath;
     private readonly sessions;
     private readonly chatGptConversations;
+    private readonly geminiConversations;
     constructor(config: BrowserConfig);
     private chromeExecutable;
     private locations;
@@ -38,6 +39,7 @@ export declare class BrowserManager {
     private activePage;
     private isAuthenticated;
     private waitForChatGptConversationUrl;
+    private waitForGeminiConversationUrl;
     private waitForAuthenticatedPage;
     private clearProfileSingleton;
     private profileOwnerPid;

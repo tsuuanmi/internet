@@ -23,7 +23,7 @@ export function defineBrowserChatTool(
 	return defineTool({
 		name: "browser_chat",
 		description:
-			"Ask ChatGPT or Gemini through a logged-in browser. ChatGPT durably resumes one native conversation per current DSH session. Use when you specifically need a web-model response or want multiple turns in the same ChatGPT conversation.",
+			"Ask ChatGPT or Gemini through a logged-in browser. Both ChatGPT and Gemini durably resume one native conversation per current DSH session. Use when you specifically need a web-model response or want multiple turns in the same conversation.",
 		parameters: {
 			model: {
 				type: "string",

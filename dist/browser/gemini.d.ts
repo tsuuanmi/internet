@@ -11,6 +11,13 @@ export declare function geminiIsAuthenticated(page: Page): Promise<boolean>;
 export declare function geminiWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
 /** Fill the Gemini composer with the prompt and submit it. */
 export declare function geminiSend(page: Page, prompt: string): Promise<void>;
-/** Snapshot the newest Gemini response. */
-export declare function geminiSnapshot(page: Page): Promise<CompletionSnapshot>;
+/** Read the visible text of the current newest Gemini response (empty when none). */
+export declare function geminiLastResponseText(page: Page): Promise<string>;
+/**
+ * Snapshot the newest Gemini response. Pass `previousTurnText` (the last
+ * response's text captured before sending) so a response is only treated as
+ * present once the newest response differs from it — robust to resuming a
+ * durable conversation where the previous turn is already visible on the page.
+ */
+export declare function geminiSnapshot(page: Page, previousTurnText?: string): Promise<CompletionSnapshot>;
 //# sourceMappingURL=gemini.d.ts.map

@@ -35,8 +35,21 @@ export async function geminiSend(page, prompt) {
     }
     await sendButton.click();
 }
-/** Snapshot the newest Gemini response. */
-export async function geminiSnapshot(page) {
+/** Read the visible text of the current newest Gemini response (empty when none). */
+export async function geminiLastResponseText(page) {
+    const responses = page.locator(GEMINI_RESPONSE_SELECTOR).filter({ visible: true });
+    const count = await responses.count();
+    if (count === 0)
+        return "";
+    return (await responses.last().innerText()).trim();
+}
+/**
+ * Snapshot the newest Gemini response. Pass `previousTurnText` (the last
+ * response's text captured before sending) so a response is only treated as
+ * present once the newest response differs from it — robust to resuming a
+ * durable conversation where the previous turn is already visible on the page.
+ */
+export async function geminiSnapshot(page, previousTurnText) {
     const responses = page.locator(GEMINI_RESPONSE_SELECTOR).filter({ visible: true });
     const count = await responses.count();
     if (count === 0)
@@ -51,6 +64,8 @@ export async function geminiSnapshot(page) {
             .count()
             .then((count) => count > 0),
     ]);
-    return { responsePresent: true, text: text.trim(), html, running };
+    const trimmed = text.trim();
+    const present = previousTurnText === undefined || previousTurnText === "" ? trimmed.length > 0 : trimmed !== previousTurnText;
+    return { responsePresent: present, text: trimmed, html, running };
 }
 //# sourceMappingURL=gemini.js.map

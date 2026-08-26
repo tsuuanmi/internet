@@ -18,8 +18,8 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
 ## Tools
 
 - `browser_chat` — ask `chatgpt-web` or `gemini-web` a question through a real, logged-in browser and
-  return the rendered answer as markdown. ChatGPT binds one native conversation to the current DSH
-  session and durably resumes it on later calls.
+  return the rendered answer as markdown. Both ChatGPT and Gemini bind one native conversation to the
+  current DSH session and durably resume it on later calls.
 - `internet_browser` — lifecycle: `login` (opens dedicated normal Chrome; sign in and close it
   completely), `status`, `stop`.
 
@@ -40,9 +40,11 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
   exports and verifies private storage state, and removes the temporary profile.
 - **Inference** launches a non-persistent Playwright context from verified `storage-state.json`; no
   persistent Chrome profile is shared, so there are no profile singleton-lock conflicts.
-- **Durable ChatGPT conversations** use `String(exec.agent.id)` as the DSH owner. A private file at
-  `chatgpt-web/conversations/<sha256(sessionId)>.json` binds that session 1:1 to a canonical ChatGPT
-  `/c/<conversationId>` URL without storing the raw DSH session ID or prompt text.
+- **Durable conversations** use `String(exec.agent.id)` as the DSH owner. A private file at
+  `chatgpt-web/conversations/<sha256(sessionId)>.json` (ChatGPT) or
+  `gemini-web/conversations/<sha256(sessionId)>.json` (Gemini) binds that session 1:1 to a canonical
+  `/c/<conversationId>` or `/app/<conversationId>` URL without storing the raw DSH session ID or prompt
+  text.
 - Completion is detected conservatively: a newly appended assistant turn must be present, generation
   must have stopped, and its text must stay unchanged for `stableMs` before it is returned.
 
@@ -102,6 +104,11 @@ internet_browser { action: "login", model: "chatgpt-web" }
 browser_chat { model: "chatgpt-web", prompt: "Remember codeword cobalt." }
 # Later calls from this same DSH session navigate to the same ChatGPT /c/<id> conversation:
 browser_chat { model: "chatgpt-web", prompt: "What codeword did I give you?" }
+
+# Gemini behaves the same way: the first call starts a conversation and binds it to the session,
+# and later calls from this same DSH session navigate to the same Gemini /app/<id> conversation:
+browser_chat { model: "gemini-web", prompt: "Remember codeword emerald." }
+browser_chat { model: "gemini-web", prompt: "What codeword did I give you?" }
 ```
 
 ## Development
