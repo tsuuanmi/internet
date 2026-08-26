@@ -39,7 +39,9 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
   the user signs in and closes Chrome, the plugin waits for the profile lock to release, manually
   exports and verifies private storage state, and removes the temporary profile.
 - **Inference** launches a non-persistent Playwright context from verified `storage-state.json`; no
-  persistent Chrome profile is shared, so there are no profile singleton-lock conflicts.
+  persistent Chrome profile is shared, so there are no profile singleton-lock conflicts. The browser is
+  closed `closeAfterMs` (default 10s) after a turn and reopened on the next request, so no Chrome
+  process lingers idle.
 - **Durable conversations** use `String(exec.agent.id)` as the DSH owner. A private file at
   `chatgpt-web/conversations/<sha256(sessionId)>.json` (ChatGPT) or
   `gemini-web/conversations/<sha256(sessionId)>.json` (Gemini) binds that session 1:1 to a canonical
@@ -87,6 +89,7 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | `turnTimeoutMs`  | `180000`                   | Max time for one `browser_chat` turn.                            |
 | `pollMs`         | `200`                      | Completion-poll interval.                                        |
 | `stableMs`       | `1500`                     | How long a response must be unchanged to count as complete.      |
+| `closeAfterMs`   | `10000`                    | Delay before the idle inference browser is closed after a turn.  |
 | `maxOutputChars` | `200000`                   | Upper bound on returned chat output characters.                  |
 | `enableChatgpt`  | `true`                     | Register the ChatGPT Web provider.                               |
 | `enableGemini`   | `true`                     | Register the Gemini Web provider.                                |

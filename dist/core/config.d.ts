@@ -18,6 +18,8 @@ export interface BrowserConfig {
     pollMs: number;
     /** How long the rendered response must stay unchanged before it is "done" (ms). */
     stableMs: number;
+    /** Delay before the idle inference browser is closed after a turn (ms). */
+    closeAfterMs: number;
     /** Upper bound on returned chat output characters. */
     maxOutputChars: number;
     /** Register the ChatGPT Web provider. */
@@ -38,6 +40,7 @@ export declare const Config: import("@deepseek-ai/schemastery").Schema<{
     turnTimeoutMs: number;
     pollMs: number;
     stableMs: number;
+    closeAfterMs: number;
     maxOutputChars: number;
     enableChatgpt: boolean;
     enableGemini: boolean;

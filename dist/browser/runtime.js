@@ -21,6 +21,7 @@ import { sleep } from "#internet/core/sleep";
 export class BrowserManager {
     constructor(config) {
         this.sessions = new Map();
+        this.pendingCloses = new Map();
         this.config = config;
         this.configuredChromePath = config.chromePath;
         this.chatGptConversations = new ChatGptConversationStore(config.dataDir);
@@ -290,6 +291,23 @@ export class BrowserManager {
         await session.context.close().catch(() => { });
         await session.browser.close().catch(() => { });
     }
+    /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
+    cancelPendingClose(provider) {
+        const timer = this.pendingCloses.get(provider);
+        if (timer === undefined)
+            return;
+        clearTimeout(timer);
+        this.pendingCloses.delete(provider);
+    }
+    /** Schedule closing a provider's browser after `closeAfterMs`, cancelling any prior pending close. */
+    scheduleClose(provider) {
+        this.cancelPendingClose(provider);
+        const timer = setTimeout(() => {
+            this.pendingCloses.delete(provider);
+            void this.stop(provider);
+        }, this.config.closeAfterMs);
+        this.pendingCloses.set(provider, timer);
+    }
     async ensureContext(provider, headless) {
         const existing = this.sessions.get(provider);
         if (existing?.browser.isConnected() && existing.headless === headless) {
@@ -354,89 +372,99 @@ export class BrowserManager {
     }
     /** Run one browser chat turn against the provider and return rendered markdown. */
     async chat(provider, request) {
+        this.cancelPendingClose(provider);
         const context = await this.ensureContext(provider, this.config.headless);
-        const page = await this.activePage(context);
-        let binding;
         try {
-            binding =
-                provider === "chatgpt-web"
-                    ? this.chatGptConversations.read(request.sessionId)
-                    : this.geminiConversations.read(request.sessionId);
-        }
-        catch (error) {
-            throw new InternetError("provider_error", error instanceof Error ? error.message : `Failed to read the ${provider} conversation binding.`);
-        }
-        const targetUrl = binding?.conversationUrl ?? this.homeUrl(provider);
-        if (page.url() !== targetUrl) {
-            await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
-        }
-        if (!(await this.isAuthenticated(provider, page, 30_000, request.signal))) {
-            rmSync(this.locations(provider).verificationMarkerPath, { force: true });
-            await this.stop(provider);
-            throw new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`);
-        }
-        if (binding !== undefined) {
-            let current;
+            const page = await this.activePage(context);
+            let binding;
             try {
-                current =
+                binding =
                     provider === "chatgpt-web"
-                        ? parseChatGptConversationUrl(page.url())
-                        : parseGeminiConversationUrl(page.url());
-            }
-            catch {
-                throw new InternetError("provider_error", `${provider} conversation ${binding.conversationId} is unavailable for DSH session ${request.sessionId}.`);
-            }
-            if (current.id !== binding.conversationId) {
-                throw new InternetError("provider_error", `DSH session ${request.sessionId} is bound to ${provider} conversation ${binding.conversationId}, not ${current.id}.`);
-            }
-        }
-        const waitOptions = {
-            timeoutMs: this.config.turnTimeoutMs,
-            pollMs: this.config.pollMs,
-            stableMs: this.config.stableMs,
-            signal: request.signal,
-        };
-        let text;
-        let conversationId;
-        if (provider === "chatgpt-web") {
-            const previousTurnText = await chatgptLastAssistantTurnText(page);
-            await chatgptSend(page, request.prompt);
-            text = await waitForStableCompletion(() => chatgptSnapshot(page, previousTurnText), waitOptions);
-            const conversation = await this.waitForChatGptConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), request.signal);
-            try {
-                binding = this.chatGptConversations.bind(request.sessionId, conversation.url);
+                        ? this.chatGptConversations.read(request.sessionId)
+                        : this.geminiConversations.read(request.sessionId);
             }
             catch (error) {
-                throw new InternetError("provider_error", error instanceof Error ? error.message : "Failed to persist the ChatGPT conversation binding.");
+                throw new InternetError("provider_error", error instanceof Error ? error.message : `Failed to read the ${provider} conversation binding.`);
             }
-            conversationId = binding.conversationId;
+            const targetUrl = binding?.conversationUrl ?? this.homeUrl(provider);
+            if (page.url() !== targetUrl) {
+                await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+            }
+            if (!(await this.isAuthenticated(provider, page, 30_000, request.signal))) {
+                rmSync(this.locations(provider).verificationMarkerPath, { force: true });
+                await this.stop(provider);
+                throw new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`);
+            }
+            if (binding !== undefined) {
+                let current;
+                try {
+                    current =
+                        provider === "chatgpt-web"
+                            ? parseChatGptConversationUrl(page.url())
+                            : parseGeminiConversationUrl(page.url());
+                }
+                catch {
+                    throw new InternetError("provider_error", `${provider} conversation ${binding.conversationId} is unavailable for DSH session ${request.sessionId}.`);
+                }
+                if (current.id !== binding.conversationId) {
+                    throw new InternetError("provider_error", `DSH session ${request.sessionId} is bound to ${provider} conversation ${binding.conversationId}, not ${current.id}.`);
+                }
+            }
+            const waitOptions = {
+                timeoutMs: this.config.turnTimeoutMs,
+                pollMs: this.config.pollMs,
+                stableMs: this.config.stableMs,
+                signal: request.signal,
+            };
+            let text;
+            let conversationId;
+            if (provider === "chatgpt-web") {
+                const previousTurnText = await chatgptLastAssistantTurnText(page);
+                await chatgptSend(page, request.prompt);
+                text = await waitForStableCompletion(() => chatgptSnapshot(page, previousTurnText), waitOptions);
+                const conversation = await this.waitForChatGptConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), request.signal);
+                try {
+                    binding = this.chatGptConversations.bind(request.sessionId, conversation.url);
+                }
+                catch (error) {
+                    throw new InternetError("provider_error", error instanceof Error ? error.message : "Failed to persist the ChatGPT conversation binding.");
+                }
+                conversationId = binding.conversationId;
+            }
+            else {
+                const previousTurnText = await geminiLastResponseText(page);
+                await geminiSend(page, request.prompt);
+                text = await waitForStableCompletion(() => geminiSnapshot(page, previousTurnText), waitOptions);
+                const conversation = await this.waitForGeminiConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), request.signal);
+                try {
+                    binding = this.geminiConversations.bind(request.sessionId, conversation.url);
+                }
+                catch (error) {
+                    throw new InternetError("provider_error", error instanceof Error ? error.message : "Failed to persist the Gemini conversation binding.");
+                }
+                conversationId = binding.conversationId;
+            }
+            this.writePrivateJson(this.locations(provider).storageStatePath, await context.storageState());
+            return {
+                text: text.slice(0, this.config.maxOutputChars),
+                url: page.url(),
+                ...(conversationId === undefined ? {} : { conversationId }),
+            };
         }
-        else {
-            const previousTurnText = await geminiLastResponseText(page);
-            await geminiSend(page, request.prompt);
-            text = await waitForStableCompletion(() => geminiSnapshot(page, previousTurnText), waitOptions);
-            const conversation = await this.waitForGeminiConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), request.signal);
-            try {
-                binding = this.geminiConversations.bind(request.sessionId, conversation.url);
-            }
-            catch (error) {
-                throw new InternetError("provider_error", error instanceof Error ? error.message : "Failed to persist the Gemini conversation binding.");
-            }
-            conversationId = binding.conversationId;
+        finally {
+            this.scheduleClose(provider);
         }
-        this.writePrivateJson(this.locations(provider).storageStatePath, await context.storageState());
-        return {
-            text: text.slice(0, this.config.maxOutputChars),
-            url: page.url(),
-            ...(conversationId === undefined ? {} : { conversationId }),
-        };
     }
     /** Close the provider's managed inference browser, if one is open. */
     async stop(provider) {
+        this.cancelPendingClose(provider);
         await this.closeSession(provider);
     }
     /** Close every managed inference browser (no leaked Chrome processes). */
     async dispose() {
+        for (const timer of this.pendingCloses.values())
+            clearTimeout(timer);
+        this.pendingCloses.clear();
         await Promise.all([...this.sessions.keys()].map((provider) => this.closeSession(provider)));
     }
 }

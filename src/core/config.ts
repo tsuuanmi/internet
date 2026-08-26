@@ -25,6 +25,8 @@ export interface BrowserConfig {
 	pollMs: number;
 	/** How long the rendered response must stay unchanged before it is "done" (ms). */
 	stableMs: number;
+	/** Delay before the idle inference browser is closed after a turn (ms). */
+	closeAfterMs: number;
 	/** Upper bound on returned chat output characters. */
 	maxOutputChars: number;
 	/** Register the ChatGPT Web provider. */
@@ -45,6 +47,7 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	turnTimeoutMs: 180_000,
 	pollMs: 200,
 	stableMs: 1_500,
+	closeAfterMs: 10_000,
 	maxOutputChars: 200_000,
 	enableChatgpt: true,
 	enableGemini: true,
@@ -62,6 +65,7 @@ export const Config = S.object({
 	turnTimeoutMs: S.number().default(DEFAULT_CONFIG.turnTimeoutMs),
 	pollMs: S.number().default(DEFAULT_CONFIG.pollMs),
 	stableMs: S.number().default(DEFAULT_CONFIG.stableMs),
+	closeAfterMs: S.number().default(DEFAULT_CONFIG.closeAfterMs),
 	maxOutputChars: S.number().default(DEFAULT_CONFIG.maxOutputChars),
 	enableChatgpt: S.boolean().default(DEFAULT_CONFIG.enableChatgpt),
 	enableGemini: S.boolean().default(DEFAULT_CONFIG.enableGemini),
@@ -105,6 +109,7 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 		turnTimeoutMs: asPositiveInteger(input.turnTimeoutMs, DEFAULT_CONFIG.turnTimeoutMs, "turnTimeoutMs"),
 		pollMs: asPositiveInteger(input.pollMs, DEFAULT_CONFIG.pollMs, "pollMs"),
 		stableMs: asPositiveInteger(input.stableMs, DEFAULT_CONFIG.stableMs, "stableMs"),
+		closeAfterMs: asPositiveInteger(input.closeAfterMs, DEFAULT_CONFIG.closeAfterMs, "closeAfterMs"),
 		maxOutputChars: asPositiveInteger(input.maxOutputChars, DEFAULT_CONFIG.maxOutputChars, "maxOutputChars"),
 		enableChatgpt: asBoolean(input.enableChatgpt, DEFAULT_CONFIG.enableChatgpt),
 		enableGemini: asBoolean(input.enableGemini, DEFAULT_CONFIG.enableGemini),

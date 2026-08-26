@@ -17,12 +17,14 @@ describe("resolveBrowserConfig", () => {
 			enableChatgpt: false,
 			enableGemini: true,
 			loginTimeoutMs: 60_000,
+			closeAfterMs: 5_000,
 		});
 		expect(config.chromePath).toBe("/custom/chrome");
 		expect(config.headless).toBe(false);
 		expect(config.enableChatgpt).toBe(false);
 		expect(config.enableGemini).toBe(true);
 		expect(config.loginTimeoutMs).toBe(60_000);
+		expect(config.closeAfterMs).toBe(5_000);
 	});
 
 	it("ignores unknown fields and non-object input", () => {

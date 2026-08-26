@@ -30,6 +30,7 @@ export declare class BrowserManager {
     private readonly sessions;
     private readonly chatGptConversations;
     private readonly geminiConversations;
+    private readonly pendingCloses;
     constructor(config: BrowserConfig);
     private chromeExecutable;
     private locations;
@@ -51,6 +52,10 @@ export declare class BrowserManager {
     private inferenceArgs;
     private verifyStorageState;
     private closeSession;
+    /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
+    private cancelPendingClose;
+    /** Schedule closing a provider's browser after `closeAfterMs`, cancelling any prior pending close. */
+    private scheduleClose;
     private ensureContext;
     /** Open normal Chrome for sign-in; export its profile after the user closes it. */
     login(provider: WebProvider): Promise<ProviderStatus>;
