@@ -1,4 +1,5 @@
 import { type AccountState } from "#internet/browser/accounts";
+import { type RemoteLoginStatus } from "#internet/browser/remote-login";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 export interface ChatRequest {
     prompt: string;
@@ -13,10 +14,14 @@ export interface ChatResult {
     url: string;
     conversationId?: string;
 }
+export interface LoginOptions {
+    remote?: boolean;
+}
 export interface ProviderStatus {
     provider: WebProvider;
     state: AccountState;
     accountPath: string;
+    remoteLogin?: RemoteLoginStatus;
 }
 /**
  * Owns isolated browser sessions. Interactive login runs in a dedicated,
@@ -31,6 +36,7 @@ export declare class BrowserManager {
     private readonly configuredChromePath;
     private resolvedChromePath;
     private readonly sessions;
+    private readonly remoteLogins;
     private readonly accounts;
     private readonly chatGptConversations;
     private readonly geminiConversations;
@@ -63,10 +69,12 @@ export declare class BrowserManager {
     /** Schedule closing a provider browser after its idle TTL. */
     private scheduleClose;
     private ensureContext;
-    /** Open normal Chrome for sign-in; export its profile after the user closes it. */
-    login(provider: WebProvider): Promise<ProviderStatus>;
+    /** Open local or SSH-forwarded normal Chrome for sign-in. */
+    login(provider: WebProvider, options?: LoginOptions): Promise<ProviderStatus>;
     private loginProvider;
-    /** Report the locally persisted account state without opening a browser. */
+    private startRemoteLogin;
+    private persistLoginProfile;
+    /** Report persisted account and active remote-login state. */
     status(provider: WebProvider): Promise<ProviderStatus>;
     private providerStatus;
     /** Run one browser chat turn against the provider and return rendered markdown. */

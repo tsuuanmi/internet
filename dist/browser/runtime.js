@@ -9,6 +9,7 @@ import { waitForStableCompletion } from "#internet/browser/completion";
 import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import { GEMINI_HOME_URL, geminiIsAuthenticated, geminiLastResponseText, geminiSend, geminiSnapshot, geminiWaitAuthenticated, } from "#internet/browser/gemini";
+import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { ensureLoginProfileDirectory, providerLocations } from "#internet/browser/storage";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -23,6 +24,7 @@ import { sleep } from "#internet/core/sleep";
 export class BrowserManager {
     constructor(config) {
         this.sessions = new Map();
+        this.remoteLogins = new Map();
         this.pendingCloses = new Map();
         this.providerOperations = new Map();
         this.disposed = false;
@@ -205,7 +207,6 @@ export class BrowserManager {
                 }
             });
         });
-        await this.waitForProfileUnlock(profileDir);
     }
     async captureLoginState(provider) {
         const { profileDir } = this.locations(provider);
@@ -341,32 +342,75 @@ export class BrowserManager {
             throw error;
         }
     }
-    /** Open normal Chrome for sign-in; export its profile after the user closes it. */
-    async login(provider) {
-        return this.serializeProvider(provider, () => this.loginProvider(provider));
+    /** Open local or SSH-forwarded normal Chrome for sign-in. */
+    async login(provider, options = {}) {
+        return this.serializeProvider(provider, () => this.loginProvider(provider, options));
     }
-    async loginProvider(provider) {
-        this.display.requireInteractiveDisplay();
+    async loginProvider(provider, options) {
+        const active = this.remoteLogins.get(provider);
+        if (active?.status().state === "waiting" || active?.status().state === "finalizing") {
+            return this.providerStatus(provider);
+        }
+        if (active !== undefined) {
+            this.remoteLogins.delete(provider);
+            await active.dispose();
+        }
         await this.stopProvider(provider);
-        // Each provider retains a machine-local normal-Chrome profile for login.
-        // Automated contexts use only the canonical portable account file.
         ensureLoginProfileDirectory(this.config.dataDir, provider);
-        await this.launchNormalLogin(provider);
+        const remote = options.remote === true || !this.display.hasInteractiveDisplay();
+        if (!remote) {
+            this.display.requireInteractiveDisplay();
+            await this.launchNormalLogin(provider);
+            await this.persistLoginProfile(provider);
+            return this.providerStatus(provider);
+        }
+        if (process.platform !== "linux") {
+            throw new InternetError("browser_unavailable", "SSH-forwarded remote login is supported only on Linux.");
+        }
+        await this.startRemoteLogin(provider);
+        return this.providerStatus(provider);
+    }
+    async startRemoteLogin(provider) {
+        const locations = this.locations(provider);
+        let session;
+        session = await RemoteLoginSession.start({
+            provider,
+            dataDir: this.config.dataDir,
+            chromePath: this.chromeExecutable(),
+            profileDir: locations.profileDir,
+            homeUrl: this.homeUrl(provider),
+            timeoutMs: this.config.loginTimeoutMs,
+            finalize: () => this.serializeProvider(provider, async () => {
+                if (this.remoteLogins.get(provider) !== session || session.status().state !== "finalizing") {
+                    throw new InternetError("aborted", "Remote login was cancelled before finalization.");
+                }
+                await this.persistLoginProfile(provider);
+            }),
+            onClosed: () => {
+                if (this.remoteLogins.get(provider) === session)
+                    this.remoteLogins.delete(provider);
+            },
+        });
+        this.remoteLogins.set(provider, session);
+    }
+    async persistLoginProfile(provider) {
+        await this.waitForProfileUnlock(this.locations(provider).profileDir);
         const bootstrapState = await this.captureLoginState(provider);
         const storageState = await this.verifyStorageState(provider, bootstrapState);
         this.accounts.writeReady(provider, storageState);
-        return this.providerStatus(provider);
     }
-    /** Report the locally persisted account state without opening a browser. */
+    /** Report persisted account and active remote-login state. */
     async status(provider) {
-        return this.serializeProvider(provider, async () => this.providerStatus(provider));
+        return this.providerStatus(provider);
     }
     providerStatus(provider) {
         const inspection = this.accounts.inspect(provider);
+        const remoteLogin = this.remoteLogins.get(provider)?.status();
         return {
             provider,
             state: inspection.state,
             accountPath: inspection.path,
+            ...(remoteLogin === undefined ? {} : { remoteLogin }),
         };
     }
     /** Run one browser chat turn against the provider and return rendered markdown. */
@@ -374,6 +418,10 @@ export class BrowserManager {
         return this.serializeProvider(provider, () => this.chatProvider(provider, request));
     }
     async chatProvider(provider, request) {
+        const remoteState = this.remoteLogins.get(provider)?.status().state;
+        if (remoteState === "waiting" || remoteState === "finalizing") {
+            throw new InternetError("login_required", `${provider} remote login is ${remoteState}; save or stop it first.`);
+        }
         this.cancelPendingClose(provider);
         const visible = request.visible === true;
         const headless = visible ? false : this.config.headless;
@@ -468,6 +516,13 @@ export class BrowserManager {
     }
     async stopProvider(provider) {
         this.cancelPendingClose(provider);
+        const remote = this.remoteLogins.get(provider);
+        if (remote !== undefined) {
+            await remote.waitForFinalization();
+            if (this.remoteLogins.get(provider) === remote)
+                this.remoteLogins.delete(provider);
+            await remote.cancel();
+        }
         await this.closeSession(provider);
     }
     /** Close every managed inference browser (no leaked Chrome processes). */
@@ -480,6 +535,9 @@ export class BrowserManager {
         this.pendingCloses.clear();
         try {
             await Promise.all(this.providerOperations.values());
+            const remoteLogins = [...this.remoteLogins.values()];
+            this.remoteLogins.clear();
+            await Promise.all(remoteLogins.map((session) => session.dispose()));
             await Promise.all([...this.sessions.keys()].map((provider) => this.closeSession(provider)));
         }
         finally {

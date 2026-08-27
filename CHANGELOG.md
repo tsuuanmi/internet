@@ -13,9 +13,12 @@
   (`closeAfterMs` default `1800000`, 30 min) instead of closing it 10s after each turn.
 - **browser**: Manage one shared Xvfb display for headed automated Chrome on Linux. The package ships a
   measured Xvfb runtime closure for glibc Linux x64, then tries system `Xvfb` and inherited `$DISPLAY`.
-  It never silently switches to native headless. Interactive login still requires a visible
-  user-managed display. Managed-Xvfb contexts use a natural `1920x1080` browser window and shut down
-  with `BrowserManager`.
+  It never silently switches to native headless. Managed-Xvfb contexts use a natural `1920x1080`
+  browser window and shut down with `BrowserManager`.
+- **login**: Add zero-install interactive login on displayless Linux through a tokenized, loopback-only
+  noVNC page intended for SSH port forwarding. The package bundles x11vnc on its supported Linux x64
+  target; Save account runs the existing portable-account verification pipeline, while status, stop,
+  timeout, and plugin disposal report or clean the complete Chrome/VNC/Xvfb/web lifecycle.
 - **tools**: Add an optional `visible` flag to `browser_chat` and `browser_team`; hidden managed-browser
   operation remains the default.
 - **accounts**: Store each provider in one canonical, versioned portable account file under

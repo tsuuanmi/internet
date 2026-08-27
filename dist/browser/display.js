@@ -84,10 +84,14 @@ export class BrowserDisplayManager {
                 this.startup = undefined;
         }
     }
+    /** Whether interactive Chrome can use a user-visible display. */
+    hasInteractiveDisplay() {
+        this.assertActive();
+        return this.platform !== "linux" || this.hasSystemDisplay();
+    }
     /** Interactive login must use a display the user can actually see. */
     requireInteractiveDisplay() {
-        this.assertActive();
-        if (this.platform === "linux" && !this.hasSystemDisplay()) {
+        if (!this.hasInteractiveDisplay()) {
             throw new InternetError("browser_unavailable", "Interactive login requires a visible DISPLAY. Use a desktop, SSH X11 forwarding, or VNC for the one-time login; managed Xvfb is only used for automated browser steps.");
         }
     }
@@ -149,7 +153,7 @@ export class BrowserDisplayManager {
                 }
                 settled = true;
                 clearTimeout(timer);
-                const display = { kind: "virtual", env: { ...candidate.env, DISPLAY: `:${displayNumber}` } };
+                const display = { kind: "virtual", env: { ...this.baseEnv, DISPLAY: `:${displayNumber}` } };
                 this.active = { child, display };
                 resolve(display);
             };

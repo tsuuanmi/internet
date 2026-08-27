@@ -36,6 +36,7 @@ import {
 	geminiSnapshot,
 	geminiWaitAuthenticated,
 } from "#internet/browser/gemini";
+import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { ensureLoginProfileDirectory, type ProviderLocations, providerLocations } from "#internet/browser/storage";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";
@@ -56,10 +57,15 @@ export interface ChatResult {
 	conversationId?: string;
 }
 
+export interface LoginOptions {
+	remote?: boolean;
+}
+
 export interface ProviderStatus {
 	provider: WebProvider;
 	state: AccountState;
 	accountPath: string;
+	remoteLogin?: RemoteLoginStatus;
 }
 
 interface ManagedSession {
@@ -83,6 +89,7 @@ export class BrowserManager {
 	private readonly configuredChromePath: string | undefined;
 	private resolvedChromePath: string | undefined;
 	private readonly sessions = new Map<WebProvider, ManagedSession>();
+	private readonly remoteLogins = new Map<WebProvider, RemoteLoginSession>();
 	private readonly accounts: AccountStore;
 	private readonly chatGptConversations: ChatGptConversationStore;
 	private readonly geminiConversations: GeminiConversationStore;
@@ -305,7 +312,6 @@ export class BrowserManager {
 				}
 			});
 		});
-		await this.waitForProfileUnlock(profileDir);
 	}
 
 	private async captureLoginState(provider: WebProvider): Promise<PortableStorageState> {
@@ -453,35 +459,80 @@ export class BrowserManager {
 		}
 	}
 
-	/** Open normal Chrome for sign-in; export its profile after the user closes it. */
-	async login(provider: WebProvider): Promise<ProviderStatus> {
-		return this.serializeProvider(provider, () => this.loginProvider(provider));
+	/** Open local or SSH-forwarded normal Chrome for sign-in. */
+	async login(provider: WebProvider, options: LoginOptions = {}): Promise<ProviderStatus> {
+		return this.serializeProvider(provider, () => this.loginProvider(provider, options));
 	}
 
-	private async loginProvider(provider: WebProvider): Promise<ProviderStatus> {
-		this.display.requireInteractiveDisplay();
+	private async loginProvider(provider: WebProvider, options: LoginOptions): Promise<ProviderStatus> {
+		const active = this.remoteLogins.get(provider);
+		if (active?.status().state === "waiting" || active?.status().state === "finalizing") {
+			return this.providerStatus(provider);
+		}
+		if (active !== undefined) {
+			this.remoteLogins.delete(provider);
+			await active.dispose();
+		}
 		await this.stopProvider(provider);
-		// Each provider retains a machine-local normal-Chrome profile for login.
-		// Automated contexts use only the canonical portable account file.
 		ensureLoginProfileDirectory(this.config.dataDir, provider);
-		await this.launchNormalLogin(provider);
-		const bootstrapState = await this.captureLoginState(provider);
-		const storageState = await this.verifyStorageState(provider, bootstrapState);
-		this.accounts.writeReady(provider, storageState);
+		const remote = options.remote === true || !this.display.hasInteractiveDisplay();
+		if (!remote) {
+			this.display.requireInteractiveDisplay();
+			await this.launchNormalLogin(provider);
+			await this.persistLoginProfile(provider);
+			return this.providerStatus(provider);
+		}
+		if (process.platform !== "linux") {
+			throw new InternetError("browser_unavailable", "SSH-forwarded remote login is supported only on Linux.");
+		}
+		await this.startRemoteLogin(provider);
 		return this.providerStatus(provider);
 	}
 
-	/** Report the locally persisted account state without opening a browser. */
+	private async startRemoteLogin(provider: WebProvider): Promise<void> {
+		const locations = this.locations(provider);
+		let session: RemoteLoginSession;
+		session = await RemoteLoginSession.start({
+			provider,
+			dataDir: this.config.dataDir,
+			chromePath: this.chromeExecutable(),
+			profileDir: locations.profileDir,
+			homeUrl: this.homeUrl(provider),
+			timeoutMs: this.config.loginTimeoutMs,
+			finalize: () =>
+				this.serializeProvider(provider, async () => {
+					if (this.remoteLogins.get(provider) !== session || session.status().state !== "finalizing") {
+						throw new InternetError("aborted", "Remote login was cancelled before finalization.");
+					}
+					await this.persistLoginProfile(provider);
+				}),
+			onClosed: () => {
+				if (this.remoteLogins.get(provider) === session) this.remoteLogins.delete(provider);
+			},
+		});
+		this.remoteLogins.set(provider, session);
+	}
+
+	private async persistLoginProfile(provider: WebProvider): Promise<void> {
+		await this.waitForProfileUnlock(this.locations(provider).profileDir);
+		const bootstrapState = await this.captureLoginState(provider);
+		const storageState = await this.verifyStorageState(provider, bootstrapState);
+		this.accounts.writeReady(provider, storageState);
+	}
+
+	/** Report persisted account and active remote-login state. */
 	async status(provider: WebProvider): Promise<ProviderStatus> {
-		return this.serializeProvider(provider, async () => this.providerStatus(provider));
+		return this.providerStatus(provider);
 	}
 
 	private providerStatus(provider: WebProvider): ProviderStatus {
 		const inspection = this.accounts.inspect(provider);
+		const remoteLogin = this.remoteLogins.get(provider)?.status();
 		return {
 			provider,
 			state: inspection.state,
 			accountPath: inspection.path,
+			...(remoteLogin === undefined ? {} : { remoteLogin }),
 		};
 	}
 
@@ -491,6 +542,13 @@ export class BrowserManager {
 	}
 
 	private async chatProvider(provider: WebProvider, request: ChatRequest): Promise<ChatResult> {
+		const remoteState = this.remoteLogins.get(provider)?.status().state;
+		if (remoteState === "waiting" || remoteState === "finalizing") {
+			throw new InternetError(
+				"login_required",
+				`${provider} remote login is ${remoteState}; save or stop it first.`,
+			);
+		}
 		this.cancelPendingClose(provider);
 		const visible = request.visible === true;
 		const headless = visible ? false : this.config.headless;
@@ -608,6 +666,12 @@ export class BrowserManager {
 
 	private async stopProvider(provider: WebProvider): Promise<void> {
 		this.cancelPendingClose(provider);
+		const remote = this.remoteLogins.get(provider);
+		if (remote !== undefined) {
+			await remote.waitForFinalization();
+			if (this.remoteLogins.get(provider) === remote) this.remoteLogins.delete(provider);
+			await remote.cancel();
+		}
 		await this.closeSession(provider);
 	}
 
@@ -619,6 +683,9 @@ export class BrowserManager {
 		this.pendingCloses.clear();
 		try {
 			await Promise.all(this.providerOperations.values());
+			const remoteLogins = [...this.remoteLogins.values()];
+			this.remoteLogins.clear();
+			await Promise.all(remoteLogins.map((session) => session.dispose()));
 			await Promise.all([...this.sessions.keys()].map((provider) => this.closeSession(provider)));
 		} finally {
 			await this.display.dispose();

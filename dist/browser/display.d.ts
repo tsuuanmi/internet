@@ -51,6 +51,8 @@ export declare class BrowserDisplayManager {
     constructor(options?: BrowserDisplayManagerOptions);
     /** Prepare the environment for one automated Chrome launch. */
     prepare(headless: boolean, visible?: boolean): Promise<BrowserDisplay>;
+    /** Whether interactive Chrome can use a user-visible display. */
+    hasInteractiveDisplay(): boolean;
     /** Interactive login must use a display the user can actually see. */
     requireInteractiveDisplay(): void;
     /** Stop every Xvfb process owned by this manager. */

@@ -141,7 +141,7 @@ describe("BrowserDisplayManager", () => {
 
 	it("tries system Xvfb when the bundled candidate cannot start", async () => {
 		const child = fakeChild();
-		const spawnXvfb = vi.fn((command: string) => {
+		const spawnXvfb = vi.fn((command: string, _args: readonly string[], _options: unknown) => {
 			if (command === "/bundle/Xvfb") throw new Error("incompatible bundled binary");
 			queueMicrotask(() => child.displayFd.write("17\n"));
 			return child;
@@ -155,11 +155,9 @@ describe("BrowserDisplayManager", () => {
 				{ executable: "Xvfb", source: "system", env: { SYSTEM: "yes" } },
 			],
 		});
-		await expect(manager.prepare(false)).resolves.toEqual({
-			kind: "virtual",
-			env: { SYSTEM: "yes", DISPLAY: ":17" },
-		});
+		await expect(manager.prepare(false)).resolves.toEqual({ kind: "virtual", env: { DISPLAY: ":17" } });
 		expect(spawnXvfb.mock.calls.map(([command]) => command)).toEqual(["/bundle/Xvfb", "Xvfb"]);
+		expect(spawnXvfb.mock.calls[1]?.[2]).toMatchObject({ env: { SYSTEM: "yes" } });
 		await manager.dispose();
 	});
 

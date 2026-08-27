@@ -26,8 +26,8 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
   character-bounded current-call transcript is available with `includeTranscript: true`. The DSH agent
   is the team lead and does not participate. The team's conversations are isolated from the agent's
   own `browser_chat` threads (keyed by a derived `:team:` session id) yet durable across repeated calls.
-- `internet_browser` — lifecycle: `login` (opens dedicated normal Chrome; sign in and close it
-  completely), `status`, `stop`.
+- `internet_browser` — lifecycle: `login`, `status`, `stop`. Login uses dedicated normal Chrome locally,
+  or returns a loopback noVNC URL and SSH forwarding command on displayless Linux.
 
 ## Slash command
 
@@ -42,9 +42,10 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
 - **No reuse of the DSH GUI browser.** DSH has no browser-automation seam and the GUI browser cannot
   be automated safely.
 - **Login** spawns dedicated normal Chrome without debugging or browser-automation flags. ChatGPT and
-  Gemini each retain a private machine-local login profile, so reopening the visible login window
-  shows the same signed-in account. After Chrome closes, the plugin verifies the session in a fresh
-  context and writes one canonical portable account file under `~/.dsh/internet/accounts/`.
+  Gemini each retain a private machine-local login profile. A desktop shows Chrome directly; a
+  displayless Linux host starts a private Xvfb/x11vnc desktop and tokenized noVNC page on loopback for
+  SSH forwarding. Closing local Chrome or pressing **Save account** remotely runs the same fresh-context
+  verification and writes one canonical portable account file under `~/.dsh/internet/accounts/`.
 - **Portable accounts** contain cookies, local storage, and IndexedDB in versioned private JSON. They
   are the only authentication source for automated contexts; login profiles are local recovery
   caches and are never part of the portable contract.
@@ -117,8 +118,9 @@ When `includeTranscript` is true, the tool retains the newest debate content wit
 a boundary turn with `textTruncation: "prefix"` retained only the end of that turn.
 
 **Browser.** Google Chrome Stable is recommended (best compatibility with ChatGPT/Gemini's web APIs).
-On Linux x64 with glibc 2.35 or newer, the package includes a private Xvfb runtime, so headed inference
-works immediately after installing the plugin—no `apt install xvfb` or `xvfb-run` wrapper is needed:
+On Linux x64 with glibc 2.35 or newer, the package includes private Xvfb and x11vnc runtimes, so headed
+inference and remote interactive login work immediately after installing the plugin—no system display
+packages or `xvfb-run` wrapper are needed:
 
 ```bash
 dsh --profile superman
@@ -129,8 +131,16 @@ The bundled runtime is tried first, followed by a system `Xvfb` executable and t
 Xvfb package there if no system display exists. The plugin never silently switches to native headless.
 Set `headless: true` explicitly when native Chrome headless is desired; that path does not use Xvfb.
 
-Interactive `internet_browser login` is different: it always requires a visible, user-managed display
-(desktop, SSH X11 forwarding, or VNC), because a login window hidden in Xvfb would be unusable.
+Interactive `internet_browser login` uses a visible user-managed display when one exists. On displayless
+Linux it instead returns a tokenized loopback URL, port, expiry, and SSH command. Run the command on your
+computer, open the localhost URL, sign in through noVNC, and press **Save account**. `remote: true` forces
+this mode even when the server has `$DISPLAY`; `status` reports `waiting`, `finalizing`, `complete`, or
+`failed`, and `stop` cancels a waiting session. Once Save starts verification, finalization runs to completion.
+
+The HTTP/WebSocket and VNC listeners bind only to `127.0.0.1`. Do not publish or reverse-proxy them: the
+URL token and temporary VNC password are bearer credentials intended only for an SSH/VS Code tunnel.
+Sessions expire after `loginTimeoutMs` and remove Chrome, VNC, Xvfb, sockets, and temporary credentials.
+Unsupported architectures use a system `x11vnc` when available and otherwise fail with an explicit error.
 
 ## Portable accounts
 
@@ -167,8 +177,10 @@ that provider's account file.
 browser_chat { model: "chatgpt-web", prompt: "..." }   # -> hidden managed browser by default
 browser_chat { model: "chatgpt-web", prompt: "...", visible: true } # -> visible automated browser
 internet_browser { action: "login", model: "chatgpt-web" }
-# Sign in inside dedicated normal Chrome, then close that window completely.
-# The plugin verifies and writes ~/.dsh/internet/accounts/chatgpt-web.json.
+# Desktop: sign in inside dedicated normal Chrome, then close it completely.
+# Displayless Linux: run the returned ssh -L command, open its localhost URL,
+# sign in through noVNC, and press Save account. Check status if finalization is still running.
+# Either path verifies and writes ~/.dsh/internet/accounts/chatgpt-web.json.
 browser_chat { model: "chatgpt-web", prompt: "Remember codeword cobalt." }
 # Later calls from this same DSH session navigate to the same ChatGPT /c/<id> conversation:
 browser_chat { model: "chatgpt-web", prompt: "What codeword did I give you?" }

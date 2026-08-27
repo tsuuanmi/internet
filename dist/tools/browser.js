@@ -7,7 +7,7 @@ const BROWSER_ACTIONS = ["login", "status", "stop"];
 export function defineInternetBrowserTool(manager, allowed) {
     return defineTool({
         name: "internet_browser",
-        description: "Manage browser-backed web providers. login opens dedicated normal Chrome with no automation flags; sign in, then close that window completely so the plugin can write a portable verified account. status inspects local account state; stop closes the inference browser.",
+        description: "Manage browser-backed web providers. login opens dedicated normal Chrome locally or returns an SSH-forwarded noVNC session on displayless Linux; close local Chrome or press Save account remotely to verify the portable account. status reports account and remote-login state; stop closes inference and cancels a waiting remote login.",
         parameters: {
             action: {
                 type: "string",
@@ -21,6 +21,10 @@ export function defineInternetBrowserTool(manager, allowed) {
                 enum: [...WEB_PROVIDERS],
                 description: "Which provider.",
             },
+            remote: {
+                type: "boolean",
+                description: "Force SSH-forwarded noVNC login; displayless Linux selects it automatically.",
+            },
         },
         output: {
             schema: {
@@ -31,6 +35,18 @@ export function defineInternetBrowserTool(manager, allowed) {
                     provider: { type: "string", required: true },
                     state: { type: "string", enum: [...ACCOUNT_STATES] },
                     accountPath: { type: "string" },
+                    remoteLogin: {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                            state: { type: "string", required: true },
+                            message: { type: "string", required: true },
+                            url: { type: "string" },
+                            port: { type: "number" },
+                            sshCommand: { type: "string" },
+                            expiresAt: { type: "string" },
+                        },
+                    },
                     message: { type: "string" },
                 },
             },
@@ -39,6 +55,10 @@ export function defineInternetBrowserTool(manager, allowed) {
                 const parts = [`ok=${String(v.ok)}`, `provider=${String(v.provider)}`];
                 if (v.state !== undefined)
                     parts.push(`state=${String(v.state)}`);
+                if (v.remoteLogin?.state !== undefined)
+                    parts.push(`remote=${String(v.remoteLogin.state)}`);
+                if (v.remoteLogin?.url !== undefined)
+                    parts.push(String(v.remoteLogin.url));
                 if (v.message !== undefined)
                     parts.push(String(v.message));
                 return [{ type: "text", text: parts.join(" · ") }];
@@ -55,19 +75,30 @@ export function defineInternetBrowserTool(manager, allowed) {
             if (typeof action !== "string" || !BROWSER_ACTIONS.includes(action)) {
                 return { ok: false, provider: model, message: `unknown action ${String(action)}` };
             }
+            const remote = args.remote;
+            if (remote !== undefined && typeof remote !== "boolean") {
+                return { ok: false, provider: model, message: "remote must be a boolean" };
+            }
+            if (remote !== undefined && action !== "login") {
+                return { ok: false, provider: model, message: "remote is valid only for the login action" };
+            }
             const provider = model;
             if (!allowed.has(provider)) {
                 return { ok: false, provider, message: `provider ${provider} is disabled in the internet plugin config` };
             }
             try {
                 if (action === "login") {
-                    const status = await manager.login(provider);
+                    const status = await manager.login(provider, { remote: remote === true });
+                    const remoteLogin = status.remoteLogin;
                     return {
                         ok: true,
                         provider,
                         state: status.state,
                         accountPath: status.accountPath,
-                        message: `${provider} portable account is verified and ready.`,
+                        ...(remoteLogin === undefined ? {} : { remoteLogin }),
+                        message: remoteLogin?.state === "waiting"
+                            ? `Run ${remoteLogin.sshCommand}, open ${remoteLogin.url}, sign in, then press Save account.`
+                            : (remoteLogin?.message ?? `${provider} portable account is verified and ready.`),
                     };
                 }
                 if (action === "stop") {
@@ -80,13 +111,15 @@ export function defineInternetBrowserTool(manager, allowed) {
                     provider,
                     state: status.state,
                     accountPath: status.accountPath,
-                    message: status.state === "ready"
-                        ? `${provider} has a previously verified portable account.`
-                        : status.state === "reauth-required"
-                            ? `${provider} requires sign-in; run internet_browser login.`
-                            : status.state === "invalid"
-                                ? `${provider} account file is invalid; run internet_browser login to replace it.`
-                                : `${provider} has no account; run internet_browser login.`,
+                    ...(status.remoteLogin === undefined ? {} : { remoteLogin: status.remoteLogin }),
+                    message: status.remoteLogin?.message ??
+                        (status.state === "ready"
+                            ? `${provider} has a previously verified portable account.`
+                            : status.state === "reauth-required"
+                                ? `${provider} requires sign-in; run internet_browser login.`
+                                : status.state === "invalid"
+                                    ? `${provider} account file is invalid; run internet_browser login to replace it.`
+                                    : `${provider} has no account; run internet_browser login.`),
                 };
             }
             catch (error) {

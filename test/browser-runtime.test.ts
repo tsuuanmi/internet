@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { BrowserManager, type ProviderStatus } from "#internet/browser/runtime";
 import { ensureLoginProfileDirectory, providerLocations } from "#internet/browser/storage";
 import { resolveBrowserConfig, type WebProvider } from "#internet/core/config";
@@ -15,6 +16,7 @@ function manager(): BrowserManager {
 }
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -72,6 +74,7 @@ describe("BrowserManager visible login profiles", () => {
 		writeFileSync(sentinelPath, provider);
 
 		const browser = new BrowserManager(resolveBrowserConfig({ dataDir }));
+		(browser as any).display.hasInteractiveDisplay = vi.fn(() => true);
 		(browser as any).display.requireInteractiveDisplay = vi.fn();
 		(browser as any).launchNormalLogin = vi.fn(async (actualProvider: WebProvider) => {
 			expect(actualProvider).toBe(provider);
@@ -103,6 +106,7 @@ describe("BrowserManager visible login profiles", () => {
 			cookies: [],
 			origins: [{ origin: "https://example.com", localStorage: [], indexedDB: [{ name: "auth" }] }],
 		};
+		(browser as any).display.hasInteractiveDisplay = vi.fn(() => true);
 		(browser as any).display.requireInteractiveDisplay = vi.fn();
 		(browser as any).launchNormalLogin = vi.fn(async () => {});
 		(browser as any).captureLoginState = vi.fn(async () => bootstrap);
@@ -121,6 +125,7 @@ describe("BrowserManager visible login profiles", () => {
 		const browser = new BrowserManager(resolveBrowserConfig({ dataDir }));
 		const original = { cookies: [], origins: [] };
 		(browser as any).accounts.writeReady("chatgpt-web", original, new Date("2026-01-01T00:00:00.000Z"));
+		(browser as any).display.hasInteractiveDisplay = vi.fn(() => true);
 		(browser as any).display.requireInteractiveDisplay = vi.fn();
 		(browser as any).launchNormalLogin = vi.fn(async () => {});
 		(browser as any).captureLoginState = vi.fn(async () => original);
@@ -133,6 +138,68 @@ describe("BrowserManager visible login profiles", () => {
 			state: "ready",
 			account: { verifiedAt: "2026-01-01T00:00:00.000Z", storageState: original },
 		});
+		await browser.dispose();
+	});
+});
+
+describe("BrowserManager remote login", () => {
+	function remoteFixture() {
+		let state: RemoteLoginStatus["state"] = "waiting";
+		const status = (): RemoteLoginStatus => ({
+			state,
+			message: `remote ${state}`,
+			url: "http://127.0.0.1:3000/token/",
+			port: 3000,
+		});
+		const session = {
+			status: vi.fn(status),
+			dispose: vi.fn(async () => {}),
+			cancel: vi.fn(async () => {
+				state = "failed";
+			}),
+			requestSave: vi.fn(async () => {}),
+			waitForFinalization: vi.fn(async () => {}),
+		};
+		return {
+			session,
+			setState(next: RemoteLoginStatus["state"]): void {
+				state = next;
+			},
+		};
+	}
+
+	it("automatically starts one reusable remote login without a display", async () => {
+		const browser = manager();
+		(browser as any).display.hasInteractiveDisplay = vi.fn(() => false);
+		const remote = remoteFixture();
+		const start = vi.spyOn(RemoteLoginSession, "start").mockResolvedValue(remote.session as any);
+
+		const first = await browser.login("chatgpt-web");
+		const second = await browser.login("chatgpt-web");
+
+		expect(first.remoteLogin).toMatchObject({ state: "waiting", port: 3000 });
+		expect(second.remoteLogin).toMatchObject({ state: "waiting", port: 3000 });
+		expect(start).toHaveBeenCalledTimes(1);
+		await browser.dispose();
+		expect(remote.session.dispose).toHaveBeenCalledTimes(1);
+	});
+
+	it("serializes remote finalization through the canonical profile pipeline", async () => {
+		const browser = manager();
+		(browser as any).display.hasInteractiveDisplay = vi.fn(() => false);
+		const persist = vi.spyOn(browser as any, "persistLoginProfile").mockResolvedValue(undefined);
+		const remote = remoteFixture();
+		let finalize: (() => Promise<void>) | undefined;
+		vi.spyOn(RemoteLoginSession, "start").mockImplementation(async (options) => {
+			finalize = options.finalize;
+			return remote.session as any;
+		});
+		await browser.login("gemini-web");
+		remote.setState("finalizing");
+		await finalize?.();
+		expect(persist).toHaveBeenCalledWith("gemini-web");
+		await browser.stop("gemini-web");
+		expect(remote.session.cancel).toHaveBeenCalledTimes(1);
 		await browser.dispose();
 	});
 });

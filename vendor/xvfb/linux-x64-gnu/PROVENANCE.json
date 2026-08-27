@@ -5,6 +5,14 @@
       "version": "1:3.0.7-1build1"
     },
     {
+      "package": "libavahi-client3",
+      "version": "0.8-5ubuntu5.5"
+    },
+    {
+      "package": "libavahi-common3",
+      "version": "0.8-5ubuntu5.5"
+    },
+    {
       "package": "libbrotli1",
       "version": "1.0.9-2build6"
     },
@@ -23,6 +31,18 @@
     {
       "package": "libcap2",
       "version": "1:2.44-1ubuntu0.22.04.3"
+    },
+    {
+      "package": "libcrypt1",
+      "version": "1:4.4.27-11:4.4.27-1"
+    },
+    {
+      "package": "libdbus-1-3",
+      "version": "1.12.20-2ubuntu4.1"
+    },
+    {
+      "package": "libffi8",
+      "version": "3.4.2-43.4.2-4"
     },
     {
       "package": "libfontenc1",
@@ -49,8 +69,28 @@
       "version": "1.4.0-1"
     },
     {
+      "package": "libgmp10",
+      "version": "2:6.2.1+dfsg-3ubuntu1"
+    },
+    {
+      "package": "libgnutls30",
+      "version": "3.7.3-4ubuntu1.9"
+    },
+    {
       "package": "libgpg-error0",
       "version": "1.43-3"
+    },
+    {
+      "package": "libhogweed6",
+      "version": "3.7.3-1build2"
+    },
+    {
+      "package": "libidn2-0",
+      "version": "2.3.2-2build12.3.2-2build1"
+    },
+    {
+      "package": "libjpeg-turbo8",
+      "version": "2.1.2-0ubuntu1"
     },
     {
       "package": "liblz4-1",
@@ -61,8 +101,20 @@
       "version": "5.2.5-2ubuntu1.1"
     },
     {
+      "package": "liblzo2-2",
+      "version": "2.10-2build3"
+    },
+    {
       "package": "libmd0",
       "version": "1.0.4-1build1"
+    },
+    {
+      "package": "libnettle8",
+      "version": "3.7.3-1build2"
+    },
+    {
+      "package": "libp11-kit0",
+      "version": "0.24.0-6build1"
     },
     {
       "package": "libpcre2-8-0",
@@ -77,16 +129,40 @@
       "version": "1.6.37-3ubuntu0.6"
     },
     {
+      "package": "libsasl2-2",
+      "version": "2.1.27+dfsg2-3ubuntu1.2"
+    },
+    {
       "package": "libselinux1",
       "version": "3.3-1build2"
+    },
+    {
+      "package": "libssl3",
+      "version": "3.0.2-0ubuntu1.293.0.2-0ubuntu1.29"
     },
     {
       "package": "libsystemd0",
       "version": "249.11-0ubuntu3.22"
     },
     {
+      "package": "libtasn1-6",
+      "version": "4.18.0-4ubuntu0.2"
+    },
+    {
+      "package": "libunistring2",
+      "version": "1.0-11.0-1"
+    },
+    {
       "package": "libunwind8",
       "version": "1.3.2-2build2.1"
+    },
+    {
+      "package": "libvncclient1",
+      "version": "0.9.13+dfsg-3ubuntu0.2"
+    },
+    {
+      "package": "libvncserver1",
+      "version": "0.9.13+dfsg-3ubuntu0.2"
     },
     {
       "package": "libx11-6",
@@ -101,16 +177,48 @@
       "version": "1.14-3ubuntu3"
     },
     {
+      "package": "libxdamage1",
+      "version": "1:1.1.5-2build2"
+    },
+    {
       "package": "libxdmcp6",
       "version": "1:1.1.3-0ubuntu5"
+    },
+    {
+      "package": "libxext6",
+      "version": "2:1.3.4-1build12:1.3.4-1build1"
+    },
+    {
+      "package": "libxfixes3",
+      "version": "1:6.0.0-1"
     },
     {
       "package": "libxfont2",
       "version": "1:2.0.5-1ubuntu0.2"
     },
     {
+      "package": "libxi6",
+      "version": "2:1.8-1build1"
+    },
+    {
+      "package": "libxinerama1",
+      "version": "2:1.1.4-3"
+    },
+    {
       "package": "libxkbfile1",
       "version": "1:1.1.0-1build3"
+    },
+    {
+      "package": "libxrandr2",
+      "version": "2:1.5.2-1build1"
+    },
+    {
+      "package": "libxrender1",
+      "version": "1:0.9.10-1build4"
+    },
+    {
+      "package": "libxtst6",
+      "version": "2:1.2.3-1build4"
     },
     {
       "package": "libzstd1",
@@ -119,6 +227,10 @@
     {
       "package": "x11-xkb-utils",
       "version": "7.7+5build4"
+    },
+    {
+      "package": "x11vnc",
+      "version": "0.9.16-8"
     },
     {
       "package": "xkb-data",
@@ -134,75 +246,130 @@
     }
   ],
   "files": {
-    "README.md": "a01e60b05a563fe39ef22e7138eb5e0202c16a07cb898b8294ecfc3874036a20",
-    "bin/Xvfb": "cf71d78eab8321f7c568271053af449f966a75422140117ea1f244bf72a7e81e",
+    "bin/x11vnc": "93c0a221e188a6c03a8a720c6c758300cf3b7a9b8ddc0a988ce4d59dac9bd84a",
     "bin/xkbcomp": "740e62fde167c8b93143a7d49d215318041fb424d1e4a77ffa6b8879253bd222",
-    "lib/libGL.so.1": "92e6ea9f8caa3c265f3ef141a122a18f7d2e27d6e5fd2b490cfea83262df745e",
-    "lib/libGLX.so.0": "19ad2625b20a3afe6f5e55f9acd1e18e0dfc81b0965d7d3f2181a05b6d48edbf",
-    "lib/libGLdispatch.so.0": "a4f2642498fba54d2f39e90ca3daa94340cdd52198473185a5285608ae318cb6",
-    "lib/libX11.so.6": "34b7869a1ba702462a1aa862fc0afe5b2608a7d5a09552c07796802fcf0c684b",
-    "lib/libXau.so.6": "98343a8324ea62ed75a13c923ed5dea96b7a8ad41aeba9f18126c4cbf7178064",
-    "lib/libXdmcp.so.6": "1dc3ff1269a5ede69ef9a8ec2436d73fccbcd10531055b359292e0bde4e29b46",
-    "lib/libXfont2.so.2": "7d3861bb65b8959fa472ee923b29bfb2d344f8684f7e7dad5bcfc586fbbadc5c",
+    "bin/Xvfb": "cf71d78eab8321f7c568271053af449f966a75422140117ea1f244bf72a7e81e",
     "lib/libaudit.so.1": "a62e2fcbf8925054a5d569bd242b196de569586a372f82a2794649f9bebe0032",
+    "lib/libavahi-client.so.3": "a55516652973c2c224e8d81a1eff8ab5f8692ae3aa266ca6a93d00f73869dff4",
+    "lib/libavahi-common.so.3": "fcb49a8d318cb54828fd68be44a0ca540bde9902e01dcbd91d7e5a5403fd8602",
     "lib/libbrotlicommon.so.1": "abf86ae9362dbb413c740a55b194c74adb09a7bd92d8fbd96a293c797a4a6d08",
     "lib/libbrotlidec.so.1": "db9dbda709a46c3ae124433f47c4db71167db8aaba4eafdfd99c8a3a14584463",
     "lib/libbsd.so.0": "e4ad21c203d8e8b9b7f49071311339af6b438026e1ad236403e3b379b022f23d",
     "lib/libbz2.so.1.0": "5e516f77fc36dd924fdf02c8489a217f55fa1548883d32c3a5e041fb25d47d6e",
     "lib/libcap-ng.so.0": "881e0e171e84d9c0370475cd36bd998e6095180929cb79545620c6b180d9aa2e",
     "lib/libcap.so.2": "00e8d9ef4e9c081a3c8d8164cfd06165937c9bcb6d4f9b47c6dcfa53d9e52046",
+    "lib/libcrypt.so.1": "d8b34ade1d95c6243a48e90f2873d65399dfb0cd3fa4ee2af45afc9e6cb8642b",
+    "lib/libcrypto.so.3": "7be3a37c9d754ec214b30db1d00ce329d22ccebd5654dd7c3f92010a7b1ccf07",
+    "lib/libdbus-1.so.3": "a3d53f7215af9860f3466b94cd8fe3e95c253c46df164dea62af9b9def93dcea",
+    "lib/libffi.so.8": "247da4d5d34a91cadcdd6282be4c4644fcb8af001334d2b8a82ecda435418cbf",
     "lib/libfontenc.so.1": "7af4625003fce2de6cef84099e8c3791f21a7e10738649bad505a8da74e8aac0",
     "lib/libfreetype.so.6": "ef8908dd08eb7072dd1da355277b069048a86512122592d56b5051796ba62ee2",
     "lib/libgcrypt.so.20": "660528c417eaa35598c9045ed555148de658539686c8f01965082b3df971584c",
+    "lib/libGL.so.1": "92e6ea9f8caa3c265f3ef141a122a18f7d2e27d6e5fd2b490cfea83262df745e",
+    "lib/libGLdispatch.so.0": "a4f2642498fba54d2f39e90ca3daa94340cdd52198473185a5285608ae318cb6",
+    "lib/libGLX.so.0": "19ad2625b20a3afe6f5e55f9acd1e18e0dfc81b0965d7d3f2181a05b6d48edbf",
+    "lib/libgmp.so.10": "4dc20a901c6951e678e216e959da2534bcef7053e6efdf1492509baf142282b0",
+    "lib/libgnutls.so.30": "dcadda7f0f82c54ca157b6ca0a5fdc8e1128db4d778109c8e197e2f84c2ac9ba",
     "lib/libgpg-error.so.0": "ed682e103b671d628ef11f19f8a5b772b8d2501ba26e4b80c055331a4c4d8dfc",
+    "lib/libhogweed.so.6": "47d56894948545036bd49aed718393bf6edb93fce222874dad30b59f085ad9ee",
+    "lib/libidn2.so.0": "1420c60a18189fb2e7bb4b8da1409564b0c1c46c59df5bbb0c23339bb961403a",
+    "lib/libjpeg.so.8": "2cfbcf67051b3efd1bf634af7d0b65a47dda98ff61ba793a87415ed554731344",
     "lib/liblz4.so.1": "65f47a3dc2cec5f938379b7b625f0621657bf1254551895d22462c6a204cbad8",
     "lib/liblzma.so.5": "7fa51c1500cb9fcc4c7d69b7fe0a6d7203cfe6af64373f6c411c5445ef1b402c",
+    "lib/liblzo2.so.2": "5764ec1292351fef0cc9395139bf6d2c4bae9edd9393892ec2dcbc8959323707",
     "lib/libmd.so.0": "bb376813876bb214535bbbdac70f2c0c4b00baecb81557dab78a79518248df06",
+    "lib/libnettle.so.8": "2d3bda6cfa2d477cd91b8178843d19e081b911a124f04b4be06b6e32c9fabc73",
+    "lib/libp11-kit.so.0": "d2b01eaad185e95ef312940a3bdd4b6694f992b022a2dddb9dd494286e5a1d2c",
     "lib/libpcre2-8.so.0": "f887eed7d0df7073f3d8bdc9e60d35082453b10165cf45359b5019e33ba2b9ec",
     "lib/libpixman-1.so.0": "f6b5d0cabb6fd4b1007edbfdff4a0601f6631aa66595a89aa4f0128958661dd0",
     "lib/libpng16.so.16": "ca1306d319d9e6a904fe4b0fa21e41952db2b2f2f5384f70a1301fa713300f5b",
+    "lib/libsasl2.so.2": "344870a9ff3cfee1df28f518e9e93073df8d0522a288f016f06fdacbfa49eed8",
     "lib/libselinux.so.1": "624eb1e6a7510e0983e9caa1bbf3e1966acb64fd6d3ad4db94528addbe1e7224",
+    "lib/libssl.so.3": "3db6aff36baf2ced6dde3f340159edd2504f089c0d735765596ce96d2d835cb1",
     "lib/libsystemd.so.0": "07e1466948401c25c5026c4eb616bd8c8aef4be410dd6b4a2489f321b7cb360d",
+    "lib/libtasn1.so.6": "f198a1272ca6a071b313646ae65fc1942628df8caebe07e4c377b15b68903358",
+    "lib/libunistring.so.2": "9c28d59500f186fc28bf7e77e9b1a71129f66731c52ac1e974b9acd1a760911a",
     "lib/libunwind.so.8": "5d1f6f104f79698e137c9f17c4b0317dfd96816c0eb6a87c50619a41472ca382",
+    "lib/libvncclient.so.1": "eb3d9df2278f24e410fff0dd3f9fd31646dd9f9053e005639c5354635462e024",
+    "lib/libvncserver.so.1": "2b8b852b7b467507308f22219224f65007f46551f36e1998178ac42338b10758",
+    "lib/libX11.so.6": "34b7869a1ba702462a1aa862fc0afe5b2608a7d5a09552c07796802fcf0c684b",
+    "lib/libXau.so.6": "98343a8324ea62ed75a13c923ed5dea96b7a8ad41aeba9f18126c4cbf7178064",
     "lib/libxcb.so.1": "aabc489094abd96c876d1c989a2da8a8aa6d28f5a676c4a84dd6d0a0c34aec5d",
+    "lib/libXdamage.so.1": "2e059ebfa3ed4d37e85c7924529d4c2cf7f3890786acd806b308c2b56571bc20",
+    "lib/libXdmcp.so.6": "1dc3ff1269a5ede69ef9a8ec2436d73fccbcd10531055b359292e0bde4e29b46",
+    "lib/libXext.so.6": "d61399986f565c00c090a1f222019db7b40f42eaf2d93834136d6234c16ec465",
+    "lib/libXfixes.so.3": "3e03576f262820fe27a8cfbcf4d8a2f3bbb5f1df55290e91643794a8147dffb7",
+    "lib/libXfont2.so.2": "7d3861bb65b8959fa472ee923b29bfb2d344f8684f7e7dad5bcfc586fbbadc5c",
+    "lib/libXi.so.6": "dc46e4ed45e94b521486438d902b2c360e50bd162849448b53adc7143fa1cb84",
+    "lib/libXinerama.so.1": "2db9101cec47fe2f00fe27dedf3325ad47e9e8d8f4a552c8ca5f04d6271bd172",
     "lib/libxkbfile.so.1": "e8e948622e416b5121d3a1fb06a8552c2576322351e78f93ceeed2ba07cb2ad6",
+    "lib/libXrandr.so.2": "237b8560e61e4c2d244ea21b4d2e0cd9614de26ce284f7258646897940d8e796",
+    "lib/libXrender.so.1": "2415c0b512d332522625bc65bcc5e05dba93c2e3418329ded2855111fb0cf723",
+    "lib/libXtst.so.6": "0c81be070f7857bdcab6bd528161d1049c374f1237aabf76d92e097b2d8ba16a",
     "lib/libz.so.1": "64c206f0146cc58bbddc4f22054436f4ff278f5a554aa3ce6921ddf7e9133370",
     "lib/libzstd.so.1": "5df4f4df42d76270bb6981fabc7c1fdccd8ad28a23d84d67f73203fb3f537667",
     "licenses/libaudit1.copyright": "6c7011e93f643b112c4cc3622131e28a30477afad6c4f5efe466b13aa7f603cc",
+    "licenses/libavahi-client3.copyright": "d604305bf515c09da9bb985e08fa872d8e5e15e26c08dddb9367cb31a0c1c6bd",
+    "licenses/libavahi-common3.copyright": "d604305bf515c09da9bb985e08fa872d8e5e15e26c08dddb9367cb31a0c1c6bd",
     "licenses/libbrotli1.copyright": "24a64e5bb83d0960d1835696a1e23c0896ad6055b0ca47c66ab0eb9a766324b1",
     "licenses/libbsd0.copyright": "3761714adb9c45fa588b77b372d6e75dcc9e6822cc2d6baa712007241aec714e",
     "licenses/libbz2-1.0.copyright": "832ed535ff3c3d025a8d2348eb1b697b89addcf2eaadbc17650262040b9145e2",
     "licenses/libcap-ng0.copyright": "8cdc2d0eeeb4ed84963c58be27389b148e830ce5ec42c2598cf194721d0430ec",
     "licenses/libcap2.copyright": "a906104348c333a96d63c3573e6eb9c2cc3b410d045f3ad512dcafa4b3e4cff3",
+    "licenses/libcrypt1.copyright": "5a5e7ca0e9f3f9679977e3a3e9ede45ad92885a3297ea78e766979f9866c5a16",
+    "licenses/libdbus-1-3.copyright": "151007a06fd9409b5fd1d743ce5749a1bbd94def4caee0e2bedf33318058a1a9",
+    "licenses/libffi8.copyright": "7258c8acc378030d8dbe1fcdf394e915769fa31dcbaf3d2991d9a79891f3bcdc",
     "licenses/libfontenc1.copyright": "a7cb43c56c51407bc6539032a47c5351cd03962ed6a30b4f52dec6ed7db54383",
     "licenses/libfreetype6.copyright": "992b869abf2c114288dafb51c37f19c0afc3455477b9d589371d45ad214a8b07",
     "licenses/libgcrypt20.copyright": "8bf0ea526b7b497bf7b31842e799c37caa69090cc53fd080c76403cc8b79f659",
     "licenses/libgl1.copyright": "cf246da9d8979f9be80e5b9c3ce0010c09786f11a55637ff3d09f1a36d269b25",
     "licenses/libglvnd0.copyright": "cf246da9d8979f9be80e5b9c3ce0010c09786f11a55637ff3d09f1a36d269b25",
     "licenses/libglx0.copyright": "cf246da9d8979f9be80e5b9c3ce0010c09786f11a55637ff3d09f1a36d269b25",
+    "licenses/libgmp10.copyright": "f73f781beb9f85b3f921f9bf540fc89d6eff9e20689ef9323ce510d077a30878",
+    "licenses/libgnutls30.copyright": "c2a08ee31ea9f0a4fc0f4d590c5481f5b7fc2d325b04ae74c719fa7894dcbdd7",
     "licenses/libgpg-error0.copyright": "ef74578dd392759954c80d4ad3986273d05d8c2098b2e9ee18980f88e0ad3342",
+    "licenses/libhogweed6.copyright": "d8b51ce04d337e49df2f6258a5c8558f3080ff2cf629deb9f07c0361d1757e7b",
+    "licenses/libidn2-0.copyright": "41702469f28e8ff406345e3d1dd0c741f11bdfca319264f67036efd6aaa79e4b",
+    "licenses/libjpeg-turbo8.copyright": "193468d9eb043a180f6f9e3386f7205104908dcb8525ad39c8236990dfd452ef",
     "licenses/liblz4-1.copyright": "a82c5d50439c6d9f32b874dbc75ae5292ba5a3e50318bed80e82a8f5254689ca",
     "licenses/liblzma5.copyright": "a2dc8fac0f496e1c58aff67018cf0c6b88336316afa5642f9335b71642e28aa8",
+    "licenses/liblzo2-2.copyright": "3c412f0f1b0e1aa51d1f7efed5c02f30811bd5d26ddccfcc6760669cd4bc8c93",
     "licenses/libmd0.copyright": "4365ef6255ad553fce69dd4bc0e093472c5d0e41b8ea493a545cc926ce171aa6",
+    "licenses/libnettle8.copyright": "d8b51ce04d337e49df2f6258a5c8558f3080ff2cf629deb9f07c0361d1757e7b",
+    "licenses/libp11-kit0.copyright": "b19d4f3a62c6257c770607ba0e872ac21ba22806710ede0384c622882f84d61b",
     "licenses/libpcre2-8-0.copyright": "f65dae37239e4d61a1bdeaf2ded76b8569d012a054aa042233b78615e7a83210",
     "licenses/libpixman-1-0.copyright": "1b3fb5690861e15ca4fd6640fd4def4b2576617942eec04b6fcb7d8bc6c4c9da",
     "licenses/libpng16-16.copyright": "b2d88c45221e2016a5a0bb98406b45faf911f1aff87242eec12af05abae1de0a",
+    "licenses/libsasl2-2.copyright": "071d60cc8a42129b80fd2b8b6a8873971a0a06738eabdf5c87bc1df2424e7fd1",
     "licenses/libselinux1.copyright": "641806738b0c6a3d03168c2649e6b94205198bb66cd557e6bae3a20b71c9bb0b",
+    "licenses/libssl3.copyright": "6a7da622fe0637a334d2a8fc470852d2ffb77d9a2b2f930f854e32a41ad6ef35",
     "licenses/libsystemd0.copyright": "8541750aba2193c885f0c77df20870ef454c2ae8f905077105922bf3130108ad",
+    "licenses/libtasn1-6.copyright": "88a94e40a34bb28145805747cad4018e7eb976b5fd0bf2329dedf90088ebc6e4",
+    "licenses/libunistring2.copyright": "0035f89e5317f3cec389383e8727788521b0fde3e75cea881fa0e92e1d48cb57",
     "licenses/libunwind8.copyright": "977d981f5677652884b09cccef6b62f992aa9c74b7a748bfe9863a703f5aed58",
+    "licenses/libvncclient1.copyright": "87764bff775f3776cee3fd22d8a852a9bf0de7719dfd598274bc0b2431870876",
+    "licenses/libvncserver1.copyright": "87764bff775f3776cee3fd22d8a852a9bf0de7719dfd598274bc0b2431870876",
     "licenses/libx11-6.copyright": "0b380a7fd5b2228f26e9585e56f14812efd3350f3df307507d2bc055dfd8de3e",
     "licenses/libxau6.copyright": "118dd263a7b91c8f21c489f949bf13281dff9e766deea92b829dac4dce66601a",
     "licenses/libxcb1.copyright": "4f7cb9db6bf6542f5417e3d674c780d3a5fd12291a54d63054fb576ee0cfae80",
+    "licenses/libxdamage1.copyright": "09182bc7805ff77a41251e450cebd0d33c48a74ba8ec4b734855a22c86f50417",
     "licenses/libxdmcp6.copyright": "1bcbb50f8603fe8b86d330bfa460b772ea04fbd3c70e4499f0768b5340b9fd6e",
+    "licenses/libxext6.copyright": "bc57e445ca1d9fe082c8d54189dd411ff26caa8552c9c63d44ea06a982f32124",
+    "licenses/libxfixes3.copyright": "051ffe073ab38244c504bb379903b4ecda6081fb3d97d0d3dce44bc11712eef2",
     "licenses/libxfont2.copyright": "c0ec1767e5a927bdf17f8ca2af231263f973c06e5f30efa1b4867e93614dd061",
+    "licenses/libxi6.copyright": "c812f9c54513ae593aab9580b54a4b18219648df7068d49ca1daa47f522ba3fa",
+    "licenses/libxinerama1.copyright": "e49d9732f261b3ffcb50c40914bd9d144de5557dad9b2ae20dbe8e3c5b3d17fb",
     "licenses/libxkbfile1.copyright": "41044d815bd99a5d1267fdabc79b5041fa83c7134639bb81e84f367cefe68316",
+    "licenses/libxrandr2.copyright": "6d8e6239cfe9dd25bbeef06dcf0610d802ebbdc8968db87cf5adf00ff98927d4",
+    "licenses/libxrender1.copyright": "ed2a78123a5076b4f11da38cb1ffb85b5cb9fdc26b5746c517b1d7e7a9029704",
+    "licenses/libxtst6.copyright": "304f78731e1e0e78132fbba4e1909c8642878a3b8c4837b36cb2d38891bf2204",
     "licenses/libzstd1.copyright": "8cf66791fbe72801cb1d701c832b7e395dad0000bb9699dc42df94b49d699e91",
     "licenses/x11-xkb-utils.copyright": "bf23f1dfd52e0f7526b83496effacba1e3f29a38adaf119091efad060f8836b1",
+    "licenses/x11vnc.copyright": "9162a04ec29ce51b47d2c9cab38363b62773614d83f62239018a78b5b386ca0e",
     "licenses/xkb-data.copyright": "648621d1a2180678818eb393565849bbc8b332cc521c21e009d948ea5541b3c3",
     "licenses/xvfb.copyright": "4cc0447a22635c7b2f1a93fec4aa94f1970fadeb72a063de006b51cf4963a06f",
     "licenses/zlib1g.copyright": "d77204eee882807240f6351c4f5ae2a4bcdb5b773ff77d10647b9b66b826b2fb",
-    "share/X11/xkb/compat/Makefile.in": "3170a11a43c9397f8664756f2faf9c9daef589812c628a04f7667ca17a982ae4",
-    "share/X11/xkb/compat/README": "ab88a02b01ce646a5a3965a05f1876b70b97b24e4d6409973126a0baa59126a5",
+    "README.md": "3040d3d9e67d47a508e164f277c817c71f227ea02b45ec5960018b3328f79946",
     "share/X11/xkb/compat/accessx": "e7f0630dbf09f3bb3adf3bb8e8d2464afbd6e616fe0075dbef29b7e82bd2a50d",
     "share/X11/xkb/compat/basic": "aebbf3da932436bd2d92507fac0940f83106c6fcd7886dedefa246dede61f747",
     "share/X11/xkb/compat/caps": "d001767068fe2791a48f829153820a8717f659e08c9a061759cd66e9e37a3833",
@@ -214,15 +381,15 @@
     "share/X11/xkb/compat/lednum": "24c54410578e535f6284801c3f1bd342203eb766836bec18b3d40646d165f33d",
     "share/X11/xkb/compat/ledscroll": "4deb4eb4390d48791e27840e564b4c0737598252101063dc0a5b5471b7968da5",
     "share/X11/xkb/compat/level5": "f81b1dd7ea373290245651419b61bac751b065ecf89c8f65e18151a5b6af5f26",
+    "share/X11/xkb/compat/Makefile.in": "3170a11a43c9397f8664756f2faf9c9daef589812c628a04f7667ca17a982ae4",
     "share/X11/xkb/compat/misc": "52452b357384d7f06f5bc0a03ece55e633104d8aae970bcd3492105c579a28f8",
     "share/X11/xkb/compat/mousekeys": "805f42ae3a6ff3c0152879205f5bf6cf46d2ba8cc53529ef2a21d481840a9714",
     "share/X11/xkb/compat/olpc": "dcdd34a1aca546dba1c72da30586bfbb0cbce689f4abad3e594f9872a5f932c2",
     "share/X11/xkb/compat/pc": "99e7e42d639ca932ebb953fa0914b68dd04302e008652b7cee579e6c1a4cd478",
     "share/X11/xkb/compat/pc98": "b26b48de85d159629fa18b9fe5831092309b9631b860561c04fbda7c70c54123",
+    "share/X11/xkb/compat/README": "ab88a02b01ce646a5a3965a05f1876b70b97b24e4d6409973126a0baa59126a5",
     "share/X11/xkb/compat/xfree86": "ade96d0e9fa4427c48e50ec708407bbd94c1bf4560fd05581391647e5f9ee9bb",
     "share/X11/xkb/compat/xtest": "af9547fba4003f85913471de89e4d497cd8504ae90a14909816285ab17c2a199",
-    "share/X11/xkb/geometry/Makefile.in": "a5d46bdf0118477c07b39742bf86fd84e4b81d7bf7bd11410165747859c066fc",
-    "share/X11/xkb/geometry/README": "f0d444a24488ccc5e905ff5fc0e8190a613c3938851cb14641660c466a983297",
     "share/X11/xkb/geometry/amiga": "30c221ba7eaddcb16c5ca7f982a521e552f901adf06002e387f48c301060b751",
     "share/X11/xkb/geometry/ataritt": "b43af41ae3f50342760c8d7f6a2e53c10b6c04f47cd5f7693cd579b16cbe0395",
     "share/X11/xkb/geometry/chicony": "644bd4df8c9a816a871ff5acd5cf47bbccc3a6727b6838d4b22c78d3aa2c2b51",
@@ -237,15 +404,17 @@
     "share/X11/xkb/geometry/keytronic": "077238e18a2a33ac71b10fbca54f6ab8e60d58d9ec96a0bfa23e8eabee711956",
     "share/X11/xkb/geometry/kinesis": "f59a35cf325f9df41959249385c51b93aa207dfbc1c2529f0f50c3ff43c05a18",
     "share/X11/xkb/geometry/macintosh": "63850244702ea392f679e20b2765402936e38fb47e65ec445c7ff8ad2ab37348",
+    "share/X11/xkb/geometry/Makefile.in": "a5d46bdf0118477c07b39742bf86fd84e4b81d7bf7bd11410165747859c066fc",
     "share/X11/xkb/geometry/microsoft": "b5f943d1cbdb478778bc86ee42db6fc01e29a9ccaa12888628b8c9f749527a2e",
     "share/X11/xkb/geometry/nec": "5f9154a1dd54715cfdac75492e517b083af551850b3b4bb1de9e27a1690c14ae",
     "share/X11/xkb/geometry/nokia": "9f442dbc1742a738e44ecb2566ee5f41832c5ba19f351d040f3a6823af8deef2",
     "share/X11/xkb/geometry/northgate": "8df7bc0fca08e596ab197502f04392484de5d90962bfe4183faba8fec1e87214",
     "share/X11/xkb/geometry/pc": "18841483150a614b750ddcddf9cc71b5959f68129b42fd5a59cb3437e4e62e81",
+    "share/X11/xkb/geometry/README": "f0d444a24488ccc5e905ff5fc0e8190a613c3938851cb14641660c466a983297",
     "share/X11/xkb/geometry/sanwa": "e8a2e1347479a910d2da18aa09a53e992802106f415d349f40e691d0d32de7b2",
-    "share/X11/xkb/geometry/sgi_vndr/O2": "afeb24d94dbd5190dac1381f3b85ce1cc0a997e19eda0bb58a0605fe38caa29e",
     "share/X11/xkb/geometry/sgi_vndr/indigo": "2842902a07adab76a7430462daec6442e405f2dbb76b3d1beff1fdc58317420b",
     "share/X11/xkb/geometry/sgi_vndr/indy": "f146cd089136f7765da7dcd74820dec46ca5ce468a64be29898c2d7b191993cb",
+    "share/X11/xkb/geometry/sgi_vndr/O2": "afeb24d94dbd5190dac1381f3b85ce1cc0a997e19eda0bb58a0605fe38caa29e",
     "share/X11/xkb/geometry/sony": "260bed9d9d3e495828f91bd47426cce2aa4a42a7655570deea3591578f169f3a",
     "share/X11/xkb/geometry/steelseries": "d1b3a84216e73c5279044c72002c9f3ebc7b3b79364e496294272172843f19c4",
     "share/X11/xkb/geometry/sun": "25d4f0d4425ed26ed62f7f6d8d8cc054bd759b7f25eb7c2b0aac2ae32ae0d622",
@@ -253,8 +422,6 @@
     "share/X11/xkb/geometry/thinkpad": "bc87c1cdbe1dcaeb46b7e9fb862124de6b833fa15da0a17a4259676593285bd6",
     "share/X11/xkb/geometry/typematrix": "12b99ee4a0ce181af768d23d464ed48f4927acbea778980543856cc9b1f89877",
     "share/X11/xkb/geometry/winbook": "f96e59f44427be04f8baa9cf8860fcde3d101410bb61d95f1d37df998d68db3b",
-    "share/X11/xkb/keycodes/Makefile.in": "0e5366e600fa9fb8c1397b91ecac9be21055b9ec835b456e296b06f4693a6915",
-    "share/X11/xkb/keycodes/README": "e074717ddf8dbfda1e911efb80cf22ebad64e30c74766c0da24a084b1261056b",
     "share/X11/xkb/keycodes/aliases": "85f774170fc1526e8a909a1e2952423dae3891b721abc293a27dc450818dcc6d",
     "share/X11/xkb/keycodes/amiga": "d8469bc1c9375625b62c93847e6e1505598d825bb29d176a5a5f028f0e6a45d0",
     "share/X11/xkb/keycodes/ataritt": "8d39211d4948fe77c483d45f953ea983c0e11c120ababe634fdc696300106fa2",
@@ -267,7 +434,9 @@
     "share/X11/xkb/keycodes/ibm": "a49eb0ebdcd564a3050bd0df6158f8586791e1ba9a2fc63ff8109e8b9b6a492f",
     "share/X11/xkb/keycodes/jolla": "7f1a36f508f43c9f5613e0b167f4cebec3e6efba4c24e09eff2473fa7261f1d2",
     "share/X11/xkb/keycodes/macintosh": "4734b8dec0ae60fb4922fff38ff1f31c0d854eb685e26645130db17153e36c48",
+    "share/X11/xkb/keycodes/Makefile.in": "0e5366e600fa9fb8c1397b91ecac9be21055b9ec835b456e296b06f4693a6915",
     "share/X11/xkb/keycodes/olpc": "b0ccc40066ba04bba9afd68a002ace2b1adedde2f16caa044b7b5b1d2c167b26",
+    "share/X11/xkb/keycodes/README": "e074717ddf8dbfda1e911efb80cf22ebad64e30c74766c0da24a084b1261056b",
     "share/X11/xkb/keycodes/sgi_vndr/indigo": "e7567e5fc5892eb1c23b82d3bcfc2a1e2c8eb6e499bac24e641ff300a066cbe3",
     "share/X11/xkb/keycodes/sgi_vndr/indy": "a8e49f04133afdbbcf18b1039f9b9fdd912729ce5d6dc89eacecde2a8263a82c",
     "share/X11/xkb/keycodes/sgi_vndr/iris": "ce07fdaefbf422068d81ad11db84e97e5293e623815707b1bff37ee5089a38f8",
@@ -275,7 +444,6 @@
     "share/X11/xkb/keycodes/sun": "82a6c5dd6b6a0804efa2fc0f301705d86742198db6773fe5df926c2e53cff3dd",
     "share/X11/xkb/keycodes/xfree86": "6495c2b7886aec625d3a16ed176cff45f0559b70a15826f4caf445cfef786228",
     "share/X11/xkb/keycodes/xfree98": "cd7b8343937d98653b3a2f698fcc5dc3aff3a6b523d2cce5307d6eead5006602",
-    "share/X11/xkb/rules/README": "808e2a1f26cbfd2e26830f26179365312d0a167bfc11365cd553c8670718279d",
     "share/X11/xkb/rules/base": "14fa18cf65d33eb32411762226e62ec0b1b7ab05ea18d8aef5599e2a3ee8551a",
     "share/X11/xkb/rules/base.extras.xml": "25baa7a5980775b7260b7fd7d7489168d0bd35a470507079c74c113d0a1ad831",
     "share/X11/xkb/rules/base.lst": "161d825521563b39d26146d8a35b2fc134014d3b333a7e798b8b97ee147d0f03",
@@ -284,9 +452,12 @@
     "share/X11/xkb/rules/evdev.extras.xml": "25baa7a5980775b7260b7fd7d7489168d0bd35a470507079c74c113d0a1ad831",
     "share/X11/xkb/rules/evdev.lst": "161d825521563b39d26146d8a35b2fc134014d3b333a7e798b8b97ee147d0f03",
     "share/X11/xkb/rules/evdev.xml": "aaa2bb163414bf4b13acbbf9f1801eb62b4bc5b9872031c4c4bee90a8cadb640",
+    "share/X11/xkb/rules/README": "808e2a1f26cbfd2e26830f26179365312d0a167bfc11365cd553c8670718279d",
     "share/X11/xkb/rules/xfree98": "e09ffd5b8212d424dd0ef63f6cfc51f08cc792919a53c25e6aac1bea0234707c",
     "share/X11/xkb/rules/xkb.dtd": "7e4bb292bd76f1d5fd4b7ce46dc53a315d1e08091b7125adf8664ff9f9325cae",
-    "share/X11/xkb/symbols/Makefile.in": "0823063800ec0858649e3e145448fddb30c6d828c949798f10c8216d5fc11e48",
+    "share/X11/xkb/rules/xorg": "14fa18cf65d33eb32411762226e62ec0b1b7ab05ea18d8aef5599e2a3ee8551a",
+    "share/X11/xkb/rules/xorg.lst": "161d825521563b39d26146d8a35b2fc134014d3b333a7e798b8b97ee147d0f03",
+    "share/X11/xkb/rules/xorg.xml": "aaa2bb163414bf4b13acbbf9f1801eb62b4bc5b9872031c4c4bee90a8cadb640",
     "share/X11/xkb/symbols/af": "21f9514e8cd11f7bb0869328098f49995b445315d5c04cd069108fcaa3354655",
     "share/X11/xkb/symbols/al": "09ddcfea3c3abc36be8b16e4011602d584985c77c2a72f23781f97fa3f4a5618",
     "share/X11/xkb/symbols/altwin": "a2985f3dd1f817566caf2a0bd9bbca030a8592849bf529e644b135ecb5d73ca1",
@@ -388,6 +559,7 @@
     "share/X11/xkb/symbols/macintosh_vndr/pt": "1d3372ebb0e92eaf410fe6751659a22701b1daada66e6c3ebdcf71bcfc5f7178",
     "share/X11/xkb/symbols/macintosh_vndr/se": "5e9915df5958bd57f3744b57074a9fd8b69f44e6c80d2db06b3101d648cc082f",
     "share/X11/xkb/symbols/macintosh_vndr/us": "db6cd156b19bcd3a81d4df7f377f5beff52b1100225a595304d09d05fe00d28c",
+    "share/X11/xkb/symbols/Makefile.in": "0823063800ec0858649e3e145448fddb30c6d828c949798f10c8216d5fc11e48",
     "share/X11/xkb/symbols/mao": "d4f9d30354fbe5361d404ead6610c755c2e30440e3cb03ecf62b22eeea6973a8",
     "share/X11/xkb/symbols/md": "c9223dbe718b0555cb93886808bbc52befd4538bf8cb913ee6f448c3704eb5c6",
     "share/X11/xkb/symbols/me": "0d3fff29a0f65e7facb411ce1d56ebe9b3671ab0b06ed5f10b689db32540f8c3",
@@ -481,8 +653,6 @@
     "share/X11/xkb/symbols/xfree68_vndr/amiga": "5076bc17b2083f346a05dd13b3ebf44cbd4526064bd5ec48154343a133dbda8b",
     "share/X11/xkb/symbols/xfree68_vndr/ataritt": "7ca65f17d920a17376755778cc210342fd612015c9593fddc49ff7eabfcae1db",
     "share/X11/xkb/symbols/za": "470c2fd802678ccd0aafe76a577df1b731ba52a573c82c1339eba4d945dcb283",
-    "share/X11/xkb/types/Makefile.in": "ed7270f59608b4d6f8f6940b3b1b662f159d4b6f15e75a1c75a89760e07da29f",
-    "share/X11/xkb/types/README": "025721133e20380f998c5c6dce07aea624baad997855cba6e389ca3c26fe05b1",
     "share/X11/xkb/types/basic": "402d5b1bcfaef6c4d4703c9f5c0fc025774f53c7d19343e92c0d7f20a126d83b",
     "share/X11/xkb/types/cancel": "aee73d5786d31877a5b0c28ffe020f3de417857a39a9da17f34681901ffbc1fe",
     "share/X11/xkb/types/caps": "9f71c032734a4dcfbb74cf2ef3b92c6eb08999238205f7a97adb9e70ba8a7150",
@@ -491,15 +661,20 @@
     "share/X11/xkb/types/extra": "ed746d944397cbe5f1183d4e12cdb0352e9f6c34606d49cda14c195821d56d5c",
     "share/X11/xkb/types/iso9995": "f85ce8472b5bb69bbc46f77c7cf4a9cc4e7d6be1a334c6a7ccc123d077ea9c45",
     "share/X11/xkb/types/level5": "f26b6a47d96e1167f8ca6addd65bba222034cbef01d7b0ce8fd9edbe11c0fb26",
+    "share/X11/xkb/types/Makefile.in": "ed7270f59608b4d6f8f6940b3b1b662f159d4b6f15e75a1c75a89760e07da29f",
     "share/X11/xkb/types/mousekeys": "8671c905211fa7a4c7ced4fd17b8a9167f346422685a92cda0ecb87ec04a46fd",
     "share/X11/xkb/types/nokia": "33b40bf69088117e6c3b91faeb269b350c3b81983563b3336749458ac0e5c938",
     "share/X11/xkb/types/numpad": "9cb428f680bcc293eb751ff45581f93f5e88af32ee101e3a82902e724a884268",
-    "share/X11/xkb/types/pc": "3a7dda32e51eef8f93c1edaa48984ba903a7f1ebf29c8520c053735e82be7343"
+    "share/X11/xkb/types/pc": "3a7dda32e51eef8f93c1edaa48984ba903a7f1ebf29c8520c053735e82be7343",
+    "share/X11/xkb/types/README": "025721133e20380f998c5c6dce07aea624baad997855cba6e389ca3c26fe05b1"
   },
   "minimumGlibc": "2.35",
   "sourceDistribution": "Ubuntu 22.04 (Jammy)",
   "target": "linux-x64-gnu",
   "xvfbDebSha256": "f857020815dd091b4331cc45b37550a92480178c2931c76b486af2202e4271ec",
   "xvfbDebUrl": "http://archive.ubuntu.com/ubuntu/pool/universe/x/xorg-server/xvfb_21.1.4-2ubuntu1.7~22.04.16_amd64.deb",
-  "xvfbPackage": "2:21.1.4-2ubuntu1.7~22.04.16"
+  "xvfbPackage": "2:21.1.4-2ubuntu1.7~22.04.16",
+  "x11vncPackage": "0.9.16-8",
+  "x11vncDebSha256": "0ac54721d679abf72857a7a6f71d782f65c1e4c3897a78d1eadf00afb3972c9f",
+  "x11vncDebUrl": "http://archive.ubuntu.com/ubuntu/pool/universe/x/x11vnc/x11vnc_0.9.16-8_amd64.deb"
 }
