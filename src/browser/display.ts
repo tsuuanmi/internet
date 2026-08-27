@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
+import { discoverXvfbCandidates, type XvfbCandidate } from "#internet/browser/xvfb";
 import { InternetError } from "#internet/core/errors";
 
 const XVFB_SCREEN = "1920x1080x24";
@@ -38,6 +39,7 @@ export interface BrowserDisplayManagerOptions {
 	spawnXvfb?: SpawnXvfb;
 	startupTimeoutMs?: number;
 	shutdownTimeoutMs?: number;
+	xvfbCandidates?: readonly XvfbCandidate[];
 	onVirtualDisplayExit?: () => void;
 }
 
@@ -70,6 +72,7 @@ export class BrowserDisplayManager {
 	private readonly spawnXvfb: SpawnXvfb;
 	private readonly startupTimeoutMs: number;
 	private readonly shutdownTimeoutMs: number;
+	private readonly xvfbCandidates: readonly XvfbCandidate[];
 	private readonly onVirtualDisplayExit: (() => void) | undefined;
 	private readonly children = new Set<ChildProcess>();
 	private active: ActiveVirtualDisplay | undefined;
@@ -84,6 +87,7 @@ export class BrowserDisplayManager {
 		this.spawnXvfb = options.spawnXvfb ?? ((command, args, spawnOptions) => spawn(command, args, spawnOptions));
 		this.startupTimeoutMs = options.startupTimeoutMs ?? STARTUP_TIMEOUT_MS;
 		this.shutdownTimeoutMs = options.shutdownTimeoutMs ?? SHUTDOWN_TIMEOUT_MS;
+		this.xvfbCandidates = options.xvfbCandidates ?? discoverXvfbCandidates(this.baseEnv, { platform: this.platform });
 		this.onVirtualDisplayExit = options.onVirtualDisplayExit;
 	}
 
@@ -148,7 +152,20 @@ export class BrowserDisplayManager {
 		return typeof this.baseEnv.DISPLAY === "string" && this.baseEnv.DISPLAY.length > 0;
 	}
 
-	private startVirtualDisplay(): Promise<Extract<BrowserDisplay, { kind: "virtual" }>> {
+	private async startVirtualDisplay(): Promise<Extract<BrowserDisplay, { kind: "virtual" }>> {
+		const failures: string[] = [];
+		for (const candidate of this.xvfbCandidates) {
+			try {
+				return await this.startXvfbCandidate(candidate);
+			} catch (error) {
+				if (this.disposed) throw error;
+				failures.push(`${candidate.source}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+		throw new InternetError("browser_unavailable", unavailableMessage(failures.join("; ")));
+	}
+
+	private startXvfbCandidate(candidate: XvfbCandidate): Promise<Extract<BrowserDisplay, { kind: "virtual" }>> {
 		return new Promise((resolve, reject) => {
 			let displayOutput = "";
 			let diagnostic = "";
@@ -175,17 +192,21 @@ export class BrowserDisplayManager {
 				}
 				settled = true;
 				clearTimeout(timer);
-				const display = { kind: "virtual", env: { ...this.baseEnv, DISPLAY: `:${displayNumber}` } } as const;
+				const display = { kind: "virtual", env: { ...candidate.env, DISPLAY: `:${displayNumber}` } } as const;
 				this.active = { child, display };
 				resolve(display);
 			};
 			const timer = setTimeout(() => rejectAfterCleanup(new Error("startup timed out")), this.startupTimeoutMs);
 
 			try {
-				child = this.spawnXvfb("Xvfb", ["-displayfd", "3", "-screen", "0", XVFB_SCREEN, "-nolisten", "tcp"], {
-					env: { ...this.baseEnv },
-					stdio: ["ignore", "ignore", "pipe", "pipe"],
-				});
+				child = this.spawnXvfb(
+					candidate.executable,
+					["-displayfd", "3", "-screen", "0", XVFB_SCREEN, "-nolisten", "tcp"],
+					{
+						env: { ...candidate.env },
+						stdio: ["ignore", "ignore", "pipe", "pipe"],
+					},
+				);
 			} catch (error) {
 				settled = true;
 				clearTimeout(timer);

@@ -115,19 +115,20 @@ When `includeTranscript` is true, the tool retains the newest debate content wit
 a boundary turn with `textTruncation: "prefix"` retained only the end of that turn.
 
 **Browser.** Google Chrome Stable is recommended (best compatibility with ChatGPT/Gemini's web APIs).
-For headed mode on Linux, install Xvfb once; the plugin starts and shares it automatically, so DSH
-must not be wrapped in `xvfb-run`:
+On Linux x64 with glibc 2.35 or newer, the package includes a private Xvfb runtime, so headed inference
+works immediately after installing the plugin—no `apt install xvfb` or `xvfb-run` wrapper is needed:
 
 ```bash
-sudo apt install xvfb google-chrome-stable
 dsh --profile superman
 ```
 
-Managed Xvfb is preferred even when `$DISPLAY` exists. If Xvfb cannot start, the plugin falls back to
-that system display. Without either, it fails explicitly instead of silently switching to native
-headless Chrome. Interactive `internet_browser login` is different: it always requires a visible,
-user-managed display (desktop, SSH X11 forwarding, or VNC), because a login window hidden in Xvfb
-would be unusable.
+The bundled runtime is tried first, followed by a system `Xvfb` executable and then an inherited
+`$DISPLAY`. Unsupported Linux architectures or musl systems skip the bundle; install the distribution's
+Xvfb package there if no system display exists. The plugin never silently switches to native headless.
+Set `headless: true` explicitly when native Chrome headless is desired; that path does not use Xvfb.
+
+Interactive `internet_browser login` is different: it always requires a visible, user-managed display
+(desktop, SSH X11 forwarding, or VNC), because a login window hidden in Xvfb would be unusable.
 
 ## Usage flow
 

@@ -28,6 +28,7 @@
 	"files": [
 		"dist",
 		"src",
+		"vendor",
 		"cordis.patch.yml",
 		"README.md"
 	],
@@ -82,7 +83,7 @@
 	"scripts": {
 		"clean": "shx rm -rf dist",
 		"build": "npm run clean && tsgo -p tsconfig.build.json && node scripts/build-client.mjs",
-		"check": "biome check src test && tsgo -p tsconfig.json",
+		"check": "node scripts/verify-xvfb-vendor.mjs && biome check src test && tsgo -p tsconfig.json",
 		"test": "vitest --run"
 	}
 }

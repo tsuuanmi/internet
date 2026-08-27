@@ -1,4 +1,5 @@
 import { type ChildProcess } from "node:child_process";
+import { type XvfbCandidate } from "#internet/browser/xvfb";
 export type BrowserDisplay = {
     kind: "headless";
 } | {
@@ -26,6 +27,7 @@ export interface BrowserDisplayManagerOptions {
     spawnXvfb?: SpawnXvfb;
     startupTimeoutMs?: number;
     shutdownTimeoutMs?: number;
+    xvfbCandidates?: readonly XvfbCandidate[];
     onVirtualDisplayExit?: () => void;
 }
 /** Owns the optional Xvfb process used by headed automated Chrome launches. */
@@ -35,6 +37,7 @@ export declare class BrowserDisplayManager {
     private readonly spawnXvfb;
     private readonly startupTimeoutMs;
     private readonly shutdownTimeoutMs;
+    private readonly xvfbCandidates;
     private readonly onVirtualDisplayExit;
     private readonly children;
     private active;
@@ -52,6 +55,7 @@ export declare class BrowserDisplayManager {
     private assertActive;
     private hasSystemDisplay;
     private startVirtualDisplay;
+    private startXvfbCandidate;
     private terminateChild;
     private waitForExit;
 }

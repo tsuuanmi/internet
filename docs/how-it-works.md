@@ -61,12 +61,13 @@ the profile and manually exports cookies/local storage without calling the faili
 `storageState()` path. Only verified state is kept under `dataDir/<provider>/storage-state.json`; the
 temporary profile is deleted.
 
-For automated headed launches on Linux, `BrowserDisplayManager` first starts one shared
+For automated headed launches on Linux, `BrowserDisplayManager` starts one shared
 `Xvfb -displayfd` server at `1920x1080x24`. `-displayfd` lets Xorg choose a free display without a
-`:99` race. If startup fails and the process inherited a non-empty `$DISPLAY`, launches fall back to
-that system display; without either option they fail explicitly. Native-headless mode bypasses the
-display manager. Managed-Xvfb contexts use the normal browser window viewport; existing system-display
-and native-headless contexts retain their deterministic `1280x900` viewport.
+`:99` race. Linux x64 glibc 2.35+ uses the package's measured Xvfb runtime closure first (private
+binary, shared libraries, `xkbcomp`, and XKB data); other targets skip it. A system `Xvfb` is the next
+candidate, followed by an inherited `$DISPLAY`. Without any usable candidate, launch fails explicitly.
+Native-headless mode bypasses display discovery. Managed-Xvfb contexts use the normal browser window
+viewport; system-display and native-headless contexts retain their deterministic `1280x900` viewport.
 
 Inference uses separate non-persistent contexts, avoiding Chrome profile singleton locks.
 `internet_browser stop` closes only a provider's inference browser. The Xvfb process remains shared

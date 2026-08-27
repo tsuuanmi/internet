@@ -8,4 +8,11 @@ describe("DSH package contract", () => {
 		expect(patch).not.toContain("DISPLAY");
 		expect(patch).not.toContain("disabled:");
 	});
+
+	it("publishes the bundled Xvfb runtime with the plugin", async () => {
+		const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
+			files?: string[];
+		};
+		expect(manifest.files).toContain("vendor");
+	});
 });

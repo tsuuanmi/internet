@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	type BrowserDisplay,
 	BrowserDisplayManager,
+	type BrowserDisplayManagerOptions,
 	browserViewport,
 	headedWindowArgs,
 } from "#internet/browser/display";
@@ -55,6 +56,15 @@ function successfulSpawner(children: FakeChild[]) {
 	});
 }
 
+function displayManager(options: BrowserDisplayManagerOptions): BrowserDisplayManager {
+	return new BrowserDisplayManager({
+		...options,
+		xvfbCandidates: options.xvfbCandidates ?? [
+			{ executable: "Xvfb", source: "system", env: { ...(options.env ?? {}) } },
+		],
+	});
+}
+
 describe("automated browser display policy", () => {
 	it("uses natural viewport and a normal 1920x1080 window only for managed Xvfb", () => {
 		const display: BrowserDisplay = { kind: "virtual", env: { DISPLAY: ":42" } };
@@ -76,14 +86,14 @@ describe("automated browser display policy", () => {
 describe("BrowserDisplayManager", () => {
 	it("does not inspect or spawn a display for native headless Chrome", async () => {
 		const spawnXvfb = vi.fn();
-		const manager = new BrowserDisplayManager({ platform: "linux", env: {}, spawnXvfb });
+		const manager = displayManager({ platform: "linux", env: {}, spawnXvfb });
 		await expect(manager.prepare(true)).resolves.toEqual({ kind: "headless" });
 		expect(spawnXvfb).not.toHaveBeenCalled();
 	});
 
 	it("uses the system environment directly on non-Linux platforms", async () => {
 		const spawnXvfb = vi.fn();
-		const manager = new BrowserDisplayManager({ platform: "darwin", env: { MARKER: "yes" }, spawnXvfb });
+		const manager = displayManager({ platform: "darwin", env: { MARKER: "yes" }, spawnXvfb });
 		await expect(manager.prepare(false)).resolves.toEqual({ kind: "system", env: { MARKER: "yes" } });
 		expect(spawnXvfb).not.toHaveBeenCalled();
 	});
@@ -91,7 +101,7 @@ describe("BrowserDisplayManager", () => {
 	it("prefers one shared Xvfb even when a system DISPLAY exists", async () => {
 		const children: FakeChild[] = [];
 		const spawnXvfb = successfulSpawner(children);
-		const manager = new BrowserDisplayManager({
+		const manager = displayManager({
 			platform: "linux",
 			env: { DISPLAY: ":1", MARKER: "yes" },
 			spawnXvfb,
@@ -109,11 +119,35 @@ describe("BrowserDisplayManager", () => {
 		expect(children[0].signals).toEqual(["SIGTERM"]);
 	});
 
+	it("tries system Xvfb when the bundled candidate cannot start", async () => {
+		const child = fakeChild();
+		const spawnXvfb = vi.fn((command: string) => {
+			if (command === "/bundle/Xvfb") throw new Error("incompatible bundled binary");
+			queueMicrotask(() => child.displayFd.write("17\n"));
+			return child;
+		});
+		const manager = displayManager({
+			platform: "linux",
+			env: {},
+			spawnXvfb,
+			xvfbCandidates: [
+				{ executable: "/bundle/Xvfb", source: "bundled", env: { BUNDLE: "yes" } },
+				{ executable: "Xvfb", source: "system", env: { SYSTEM: "yes" } },
+			],
+		});
+		await expect(manager.prepare(false)).resolves.toEqual({
+			kind: "virtual",
+			env: { SYSTEM: "yes", DISPLAY: ":17" },
+		});
+		expect(spawnXvfb.mock.calls.map(([command]) => command)).toEqual(["/bundle/Xvfb", "Xvfb"]);
+		await manager.dispose();
+	});
+
 	it("falls back to the existing system DISPLAY when Xvfb cannot start", async () => {
 		const spawnXvfb = vi.fn(() => {
 			throw Object.assign(new Error("spawn Xvfb ENOENT"), { code: "ENOENT" });
 		});
-		const manager = new BrowserDisplayManager({ platform: "linux", env: { DISPLAY: ":7" }, spawnXvfb });
+		const manager = displayManager({ platform: "linux", env: { DISPLAY: ":7" }, spawnXvfb });
 		await expect(manager.prepare(false)).resolves.toEqual({ kind: "system", env: { DISPLAY: ":7" } });
 		await manager.prepare(false);
 		expect(spawnXvfb).toHaveBeenCalledTimes(1);
@@ -123,7 +157,7 @@ describe("BrowserDisplayManager", () => {
 		const spawnXvfb = vi.fn(() => {
 			throw new Error("spawn Xvfb ENOENT");
 		});
-		const manager = new BrowserDisplayManager({ platform: "linux", env: {}, spawnXvfb });
+		const manager = displayManager({ platform: "linux", env: {}, spawnXvfb });
 		const error = await manager.prepare(false).catch((reason: unknown) => reason);
 		expect(error).toBeInstanceOf(InternetError);
 		expect((error as InternetError).kind).toBe("browser_unavailable");
@@ -135,7 +169,7 @@ describe("BrowserDisplayManager", () => {
 
 	it("falls back on malformed displayfd output and bounds diagnostics", async () => {
 		const child = fakeChild();
-		const manager = new BrowserDisplayManager({
+		const manager = displayManager({
 			platform: "linux",
 			env: { DISPLAY: ":8" },
 			spawnXvfb: () => {
@@ -153,7 +187,7 @@ describe("BrowserDisplayManager", () => {
 		vi.useFakeTimers();
 		try {
 			const child = fakeChild();
-			const manager = new BrowserDisplayManager({
+			const manager = displayManager({
 				platform: "linux",
 				env: { DISPLAY: ":9" },
 				spawnXvfb: () => child,
@@ -171,7 +205,7 @@ describe("BrowserDisplayManager", () => {
 	it("invalidates a virtual display after unexpected exit and starts another", async () => {
 		const children: FakeChild[] = [];
 		const onVirtualDisplayExit = vi.fn();
-		const manager = new BrowserDisplayManager({
+		const manager = displayManager({
 			platform: "linux",
 			env: {},
 			spawnXvfb: successfulSpawner(children),
@@ -188,7 +222,7 @@ describe("BrowserDisplayManager", () => {
 
 	it("cancels an in-flight startup during disposal", async () => {
 		const child = fakeChild();
-		const manager = new BrowserDisplayManager({ platform: "linux", env: {}, spawnXvfb: () => child });
+		const manager = displayManager({ platform: "linux", env: {}, spawnXvfb: () => child });
 		const startup = manager.prepare(false);
 		const rejected = expect(startup).rejects.toThrow(/disposed/);
 		await manager.dispose();
@@ -197,12 +231,12 @@ describe("BrowserDisplayManager", () => {
 	});
 
 	it("requires a user-managed display for interactive login", async () => {
-		const manager = new BrowserDisplayManager({ platform: "linux", env: {}, spawnXvfb: successfulSpawner([]) });
+		const manager = displayManager({ platform: "linux", env: {}, spawnXvfb: successfulSpawner([]) });
 		await manager.prepare(false);
 		expect(() => manager.requireInteractiveDisplay()).toThrow(/visible DISPLAY/);
 		await manager.dispose();
 
-		const visible = new BrowserDisplayManager({ platform: "linux", env: { DISPLAY: ":1" } });
+		const visible = displayManager({ platform: "linux", env: { DISPLAY: ":1" } });
 		expect(() => visible.requireInteractiveDisplay()).not.toThrow();
 	});
 
@@ -210,7 +244,7 @@ describe("BrowserDisplayManager", () => {
 		vi.useFakeTimers();
 		try {
 			const child = fakeChild(false);
-			const manager = new BrowserDisplayManager({
+			const manager = displayManager({
 				platform: "linux",
 				env: {},
 				spawnXvfb: () => {
