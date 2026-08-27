@@ -41,9 +41,10 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
 - **No daemon.** The plugin drives Chrome directly inside the DSH Node host.
 - **No reuse of the DSH GUI browser.** DSH has no browser-automation seam and the GUI browser cannot
   be automated safely.
-- **Login** spawns dedicated normal Chrome without debugging or browser-automation flags. After
-  the user signs in and closes Chrome, the plugin waits for the profile lock to release, manually
-  exports and verifies private storage state, and removes the temporary profile.
+- **Login** spawns dedicated normal Chrome without debugging or browser-automation flags. ChatGPT and
+  Gemini each retain a private login profile, so reopening the visible login window shows the same
+  signed-in account for manual verification. After the user closes Chrome, the plugin waits for the
+  profile lock to release and manually exports and verifies private storage state.
 - **Inference** launches a non-persistent patchright context from verified `storage-state.json`; no
   persistent Chrome profile is shared, so there are no profile singleton-lock conflicts. With
   `headless: false`, Linux uses one plugin-managed Xvfb display by default and falls back to an

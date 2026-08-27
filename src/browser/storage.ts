@@ -5,7 +5,7 @@ import type { WebProvider } from "#internet/core/config";
 /** Resolved on-disk locations for one provider's isolated browser state. */
 export interface ProviderLocations {
 	provider: WebProvider;
-	/** Temporary normal-Chrome profile used only for interactive login. */
+	/** Persistent, provider-isolated normal-Chrome profile used for interactive login. */
 	profileDir: string;
 	/** patchright storage-state JSON capturing cookies/local storage after login. */
 	storageStatePath: string;

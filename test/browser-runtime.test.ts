@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserManager, type ProviderStatus } from "#internet/browser/runtime";
-import { resolveBrowserConfig } from "#internet/core/config";
+import { ensureProviderDirectories, providerLocations } from "#internet/browser/storage";
+import { resolveBrowserConfig, type WebProvider } from "#internet/core/config";
 
 const temporaryRoots: string[] = [];
 
@@ -40,6 +41,37 @@ describe("BrowserManager provider serialization", () => {
 		expect(maximumActive).toBe(1);
 		releases.shift()?.();
 		await Promise.all([first, second]);
+		await browser.dispose();
+	});
+});
+
+describe("BrowserManager visible login profiles", () => {
+	it.each(["chatgpt-web", "gemini-web"] as const)("retains the %s profile across login actions", async (provider) => {
+		const dataDir = mkdtempSync(join(tmpdir(), "internet-login-profile-"));
+		temporaryRoots.push(dataDir);
+		ensureProviderDirectories(dataDir, provider);
+		const locations = providerLocations(dataDir, provider);
+		const sentinelPath = join(locations.profileDir, "signed-in-profile-sentinel");
+		writeFileSync(sentinelPath, provider);
+
+		const browser = new BrowserManager(resolveBrowserConfig({ dataDir }));
+		(browser as any).display.requireInteractiveDisplay = vi.fn();
+		(browser as any).launchNormalLogin = vi.fn(async (actualProvider: WebProvider) => {
+			expect(actualProvider).toBe(provider);
+			expect(existsSync(sentinelPath)).toBe(true);
+		});
+		(browser as any).captureLoginState = vi.fn(async () => {
+			expect(existsSync(sentinelPath)).toBe(true);
+			return { cookies: [], origins: [] };
+		});
+		(browser as any).verifyStorageState = vi.fn(async () => {});
+
+		await browser.login(provider);
+		await browser.login(provider);
+
+		expect(existsSync(sentinelPath)).toBe(true);
+		expect((browser as any).launchNormalLogin).toHaveBeenCalledTimes(2);
+		expect((browser as any).launchNormalLogin).toHaveBeenCalledWith(provider);
 		await browser.dispose();
 	});
 });

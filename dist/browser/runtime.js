@@ -12,12 +12,12 @@ import { ensureProviderDirectories, providerLocations } from "#internet/browser/
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
 /**
- * Owns isolated browser sessions. Interactive login runs in a separately
- * spawned normal Chrome profile (without browser-automation flags). After
- * the user closes Chrome, patchright reads the unlocked profile, manually
- * exports and verifies storage state, removes the temporary profile, and
- * inference creates a fresh non-persistent context. This avoids OAuth failures and
- * Chrome profile singleton locks.
+ * Owns isolated browser sessions. Interactive login runs in a dedicated,
+ * per-provider normal Chrome profile (without browser-automation flags). The
+ * profile is retained so reopening login visibly shows the same signed-in account.
+ * After the user closes Chrome, patchright reads the unlocked profile and manually
+ * exports and verifies storage state; inference still uses a fresh non-persistent
+ * context. Waiting for the profile lock avoids Chrome singleton conflicts.
  */
 export class BrowserManager {
     constructor(config) {
@@ -391,23 +391,20 @@ export class BrowserManager {
         this.display.requireInteractiveDisplay();
         await this.stopProvider(provider);
         const locations = this.locations(provider);
-        rmSync(locations.profileDir, { recursive: true, force: true });
+        // Keep this provider-specific normal-Chrome profile across login actions. This
+        // lets users reopen the visible window and verify the same signed-in account;
+        // ChatGPT and Gemini remain isolated from each other and from desktop Chrome.
         ensureProviderDirectories(this.config.dataDir, provider);
-        try {
-            await this.launchNormalLogin(provider);
-            const storageState = await this.captureLoginState(provider);
-            await this.verifyStorageState(provider, storageState);
-            this.writePrivateJson(locations.storageStatePath, storageState);
-            this.writePrivateJson(locations.verificationMarkerPath, {
-                version: 1,
-                authenticated: true,
-                verifiedAt: new Date().toISOString(),
-            });
-            return { provider, loggedIn: true, storageStatePath: locations.storageStatePath };
-        }
-        finally {
-            rmSync(locations.profileDir, { recursive: true, force: true });
-        }
+        await this.launchNormalLogin(provider);
+        const storageState = await this.captureLoginState(provider);
+        await this.verifyStorageState(provider, storageState);
+        this.writePrivateJson(locations.storageStatePath, storageState);
+        this.writePrivateJson(locations.verificationMarkerPath, {
+            version: 1,
+            authenticated: true,
+            verifiedAt: new Date().toISOString(),
+        });
+        return { provider, loggedIn: true, storageStatePath: locations.storageStatePath };
     }
     /** Report whether a provider has an exported, verified login state. */
     async status(provider) {

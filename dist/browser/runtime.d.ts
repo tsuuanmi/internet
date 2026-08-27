@@ -16,12 +16,12 @@ export interface ProviderStatus {
     storageStatePath: string;
 }
 /**
- * Owns isolated browser sessions. Interactive login runs in a separately
- * spawned normal Chrome profile (without browser-automation flags). After
- * the user closes Chrome, patchright reads the unlocked profile, manually
- * exports and verifies storage state, removes the temporary profile, and
- * inference creates a fresh non-persistent context. This avoids OAuth failures and
- * Chrome profile singleton locks.
+ * Owns isolated browser sessions. Interactive login runs in a dedicated,
+ * per-provider normal Chrome profile (without browser-automation flags). The
+ * profile is retained so reopening login visibly shows the same signed-in account.
+ * After the user closes Chrome, patchright reads the unlocked profile and manually
+ * exports and verifies storage state; inference still uses a fresh non-persistent
+ * context. Waiting for the profile lock avoids Chrome singleton conflicts.
  */
 export declare class BrowserManager {
     private readonly config;

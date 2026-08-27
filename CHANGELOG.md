@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- **browser**: Retain separate normal-Chrome login profiles for ChatGPT and Gemini so reopening a
+  visible login window shows the same signed-in account instead of a fresh logged-out profile.
 - **client**: Build the web client entry (`src/client.ts`) as a DeepSeek Harness `__ModuleLoader__.load`
   bundle (via `scripts/build-client.mjs` in `npm run build`) instead of the plain `tsgo` ES-module
   emit. The raw ES-module `dist/client.js` failed to parse/register as the classic script the harness

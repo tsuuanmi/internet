@@ -24,7 +24,7 @@ internet_browser { action: "login", model }
   -> wait for Chrome to release the profile lock
   -> manually export and verify cookies/local storage
   -> write storage-state.json + storage-state.verified.json (mode 0600)
-  -> remove the temporary login profile
+  -> retain the provider-isolated login profile for visible account verification
 
 /internet <question>
   -> DSH command handler bypasses the model
@@ -54,12 +54,13 @@ and Gemini sessions navigate independently even when calls share one provider br
 
 ## Browser lifecycle
 
-Login uses a temporary normal-Chrome profile without debugging or browser-automation flags in the
-OAuth flow. On Linux it requires a visible, user-managed `$DISPLAY`; managed Xvfb is deliberately not
-used for the interactive window. After Chrome exits and releases its profile lock, patchright opens
-the profile and manually exports cookies/local storage without calling the failing persistent-context
-`storageState()` path. Only verified state is kept under `dataDir/<provider>/storage-state.json`; the
-temporary profile is deleted.
+Login uses a persistent, provider-isolated normal-Chrome profile without debugging or
+browser-automation flags in the OAuth flow. On Linux it requires a visible, user-managed `$DISPLAY`;
+managed Xvfb is deliberately not used for the interactive window. Retaining separate ChatGPT and
+Gemini profiles lets users reopen either visible window and verify the same signed-in account. After
+Chrome exits and releases its profile lock, patchright opens the profile and manually exports
+cookies/local storage without calling the failing persistent-context `storageState()` path. Verified
+state is also written to `dataDir/<provider>/storage-state.json` for isolated inference contexts.
 
 For automated headed launches on Linux, `BrowserDisplayManager` starts one shared
 `Xvfb -displayfd` server at `1920x1080x24`. `-displayfd` lets Xorg choose a free display without a
