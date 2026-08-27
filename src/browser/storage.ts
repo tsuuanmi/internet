@@ -7,7 +7,7 @@ export interface ProviderLocations {
 	provider: WebProvider;
 	/** Temporary normal-Chrome profile used only for interactive login. */
 	profileDir: string;
-	/** Playwright storage-state JSON capturing cookies/local storage after login. */
+	/** patchright storage-state JSON capturing cookies/local storage after login. */
 	storageStatePath: string;
 	/** Marker proving the exported state was checked against an authenticated page. */
 	verificationMarkerPath: string;

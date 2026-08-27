@@ -10,6 +10,10 @@ describe("resolveBrowserConfig", () => {
 		expect(config).toEqual(DEFAULT_CONFIG);
 	});
 
+	it("defaults closeAfterMs to a 30-minute idle TTL", () => {
+		expect(resolveBrowserConfig({}).closeAfterMs).toBe(1_800_000);
+	});
+
 	it("honors explicit overrides", () => {
 		const config = resolveBrowserConfig({
 			chromePath: "/custom/chrome",

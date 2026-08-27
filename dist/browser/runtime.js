@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync, } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "playwright-core";
+import { chromium } from "patchright-core";
 import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText, chatgptSelectThinkingLevel, chatgptSend, chatgptSnapshot, chatgptWaitAuthenticated, } from "#internet/browser/chatgpt";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
@@ -12,8 +12,8 @@ import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
 /**
  * Owns isolated browser sessions. Interactive login runs in a separately
- * spawned normal Chrome profile (without Playwright automation flags). After
- * the user closes Chrome, Playwright reads the unlocked profile, manually
+ * spawned normal Chrome profile (without browser-automation flags). After
+ * the user closes Chrome, patchright reads the unlocked profile, manually
  * exports and verifies storage state, removes the temporary profile, and
  * inference creates a fresh non-persistent context. This avoids OAuth failures and
  * Chrome profile singleton locks.

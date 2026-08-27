@@ -1,1 +1,1 @@
-{"version":3,"file":"chrome.d.ts","sourceRoot":"","sources":["../../src/browser/chrome.ts"],"names":[],"mappings":"AAeA;;;;GAIG;AACH,wBAAgB,cAAc,CAAC,cAAc,CAAC,EAAE,MAAM,GAAG,MAAM,CAuB9D"}
+{"version":3,"file":"chrome.d.ts","sourceRoot":"","sources":["../../src/browser/chrome.ts"],"names":[],"mappings":"AAeA;;;;;GAKG;AACH,wBAAgB,cAAc,CAAC,cAAc,CAAC,EAAE,MAAM,GAAG,MAAM,CAuB9D"}

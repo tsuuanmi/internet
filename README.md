@@ -41,14 +41,14 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
 - **No daemon.** The plugin drives Chrome directly inside the DSH Node host.
 - **No reuse of the DSH GUI browser.** DSH has no browser-automation seam and the GUI browser cannot
   be automated safely.
-- **Login** spawns dedicated normal Chrome without debugging or Playwright automation flags. After
+- **Login** spawns dedicated normal Chrome without debugging or browser-automation flags. After
   the user signs in and closes Chrome, the plugin waits for the profile lock to release, manually
   exports and verifies private storage state, and removes the temporary profile.
-- **Inference** launches a non-persistent Playwright context from verified `storage-state.json`; no
+- **Inference** launches a non-persistent patchright context from verified `storage-state.json`; no
   persistent Chrome profile is shared, so there are no profile singleton-lock conflicts. ChatGPT's
-  browser is closed `closeAfterMs` (default 10s) after a turn and reopened on the next request; Gemini's
-  browser stays open because its session and conversations live in IndexedDB, which is not persisted
-  across a browser restart.
+  browser is kept open through a long idle TTL (`closeAfterMs`, default 30 min) and reopened on the
+  next request after that; Gemini's browser stays open because its session and conversations live in
+  IndexedDB, which is not persisted across a browser restart.
 - **Durable conversations** use `String(exec.agent.id)` as the DSH owner. A private file at
   `chatgpt-web/conversations/<sha256(sessionId)>.json` (ChatGPT) or
   `gemini-web/conversations/<sha256(sessionId)>.json` (Gemini) binds that session 1:1 to a canonical
@@ -99,7 +99,7 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | `turnTimeoutMs`  | `180000`                   | Max time for one `browser_chat` turn.                            |
 | `pollMs`         | `200`                      | Completion-poll interval.                                        |
 | `stableMs`       | `1500`                     | How long a response must be unchanged to count as complete.      |
-| `closeAfterMs`   | `10000`                    | Delay before ChatGPT's idle browser is closed after a turn (Gemini stays open). |
+| `closeAfterMs`   | `1800000`                  | Idle delay before ChatGPT's browser is closed after a turn (Gemini stays open). |
 | `maxOutputChars` | `200000`                   | Upper bound on returned chat output characters.                  |
 | `teamRounds`     | `2`                        | Default debate rounds for `browser_team` (each model speaks once per round). |
 | `teamMaxRounds`  | `4`                        | Maximum per-call `rounds`; `teamRounds` must not exceed it.      |
@@ -112,6 +112,16 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 When `includeTranscript` is true, the tool retains the newest debate content within
 `teamTranscriptMaxChars`. `transcriptTruncated: true` means older content was omitted;
 a boundary turn with `textTruncation: "prefix"` retained only the end of that turn.
+
+**Browser.** Google Chrome Stable is recommended (best compatibility with ChatGPT/Gemini's web APIs).
+On a headless Linux server, run the harness under Xvfb with `headless: false` rather than Chrome's
+headless flag:
+
+```bash
+xvfb-run -a dsh --profile superman
+```
+
+The plugin is disabled when no `$DISPLAY` is available (see `cordis.patch.yml`).
 
 ## Usage flow
 

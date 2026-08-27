@@ -23,7 +23,7 @@ export const DEFAULT_CONFIG = {
     turnTimeoutMs: 180_000,
     pollMs: 200,
     stableMs: 1_500,
-    closeAfterMs: 10_000,
+    closeAfterMs: 1_800_000,
     maxOutputChars: 200_000,
     teamRounds: 2,
     teamMaxRounds: 4,

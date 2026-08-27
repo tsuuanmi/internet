@@ -1,4 +1,4 @@
-import type { Page } from "playwright-core";
+import type { Page } from "patchright-core";
 import type { CompletionSnapshot } from "#internet/browser/completion";
 import type { ChatGptThinkingLevel } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";

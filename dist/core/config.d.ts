@@ -26,7 +26,7 @@ export interface BrowserConfig {
     pollMs: number;
     /** How long the rendered response must stay unchanged before it is "done" (ms). */
     stableMs: number;
-    /** Delay before the idle inference browser is closed after a turn (ms). */
+    /** Idle delay before the ChatGPT inference browser is closed after a turn (ms); Gemini stays open. */
     closeAfterMs: number;
     /** Upper bound on returned chat output characters. */
     maxOutputChars: number;

@@ -10,7 +10,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { type Browser, type BrowserContext, chromium, type Page } from "playwright-core";
+import { type Browser, type BrowserContext, chromium, type Page } from "patchright-core";
 import {
 	CHATGPT_HOME_URL,
 	chatgptIsAuthenticated,
@@ -77,8 +77,8 @@ type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 
 /**
  * Owns isolated browser sessions. Interactive login runs in a separately
- * spawned normal Chrome profile (without Playwright automation flags). After
- * the user closes Chrome, Playwright reads the unlocked profile, manually
+ * spawned normal Chrome profile (without browser-automation flags). After
+ * the user closes Chrome, patchright reads the unlocked profile, manually
  * exports and verifies storage state, removes the temporary profile, and
  * inference creates a fresh non-persistent context. This avoids OAuth failures and
  * Chrome profile singleton locks.

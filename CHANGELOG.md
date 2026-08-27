@@ -8,6 +8,9 @@
   `chatgptThinkingLevel` config (default `medium`, i.e. GPT-5.6-Sol Medium). Previously every turn
   ran on the UI default (Instant). Supports `instant | medium | high | extra-high | pro`, and handles
   both the menuitemradio list and the reasoning-effort slider surfaces.
+- **browser**: Migrate the automation backend from `playwright-core` to `patchright-core` (a drop-in,
+  stealth-patched Playwright fork) and keep the ChatGPT inference browser open through a long idle TTL
+  (`closeAfterMs` default `1800000`, 30 min) instead of closing it 10s after each turn.
 
 ### Fixed
 

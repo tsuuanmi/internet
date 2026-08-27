@@ -55,8 +55,8 @@ single-turn in this version.
 
 ## Browser lifecycle
 
-Login uses a temporary normal-Chrome profile without debugging or Playwright automation flags in the
-OAuth flow. After Chrome exits and releases its profile lock, Playwright opens the profile off-screen
+Login uses a temporary normal-Chrome profile without debugging or browser-automation flags in the
+OAuth flow. After Chrome exits and releases its profile lock, patchright opens the profile off-screen
 and manually exports cookies/local storage without calling the failing persistent-context
 `storageState()` path. Only verified state is kept under `dataDir/<provider>/storage-state.json`; the
 temporary profile is deleted. Inference uses a separate non-persistent context, avoiding Chrome

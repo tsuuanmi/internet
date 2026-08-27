@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { chromium } from "playwright-core";
+import { chromium } from "patchright-core";
 import { InternetError } from "#internet/core/errors";
 const CANDIDATES = [
     process.env.GOOGLE_CHROME_BIN ?? "",
@@ -13,8 +13,9 @@ const CANDIDATES = [
 ].filter((path) => path.length > 0);
 /**
  * Resolve a usable Chrome binary. Prefers an explicit `chromePath`, then known
- * system locations, then Playwright's bundled Chromium as a last resort. The
- * plugin drives an isolated Chrome; it never reuses the DSH GUI browser.
+ * system locations, then patchright's bundled Chrome for Testing as a last
+ * resort. The plugin drives an isolated Chrome; it never reuses the DSH GUI
+ * browser.
  */
 export function discoverChrome(executablePath) {
     if (executablePath !== undefined) {
@@ -33,7 +34,7 @@ export function discoverChrome(executablePath) {
             return bundled;
     }
     catch {
-        // Playwright's bundled path is unavailable; fall through to the error below.
+        // patchright's bundled path is unavailable; fall through to the error below.
     }
     throw new InternetError("browser_unavailable", "Google Chrome was not found. Install Chrome or set chromePath in the internet plugin config.");
 }

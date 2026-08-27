@@ -1,4 +1,4 @@
-import type { Page } from "playwright-core";
+import type { Page } from "patchright-core";
 import type { CompletionSnapshot } from "#internet/browser/completion";
 export declare const GEMINI_HOME_URL = "https://gemini.google.com/app";
 export declare const GEMINI_COMPOSER_SELECTOR = "rich-textarea [contenteditable=\"true\"]";

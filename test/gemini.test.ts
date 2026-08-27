@@ -1,4 +1,4 @@
-import type { Page } from "playwright-core";
+import type { Page } from "patchright-core";
 import { describe, expect, it } from "vitest";
 import { GEMINI_STOP_BUTTON_SELECTOR, geminiLastResponseText, geminiSnapshot } from "#internet/browser/gemini";
 

@@ -41,7 +41,7 @@ export interface BrowserConfig {
 	pollMs: number;
 	/** How long the rendered response must stay unchanged before it is "done" (ms). */
 	stableMs: number;
-	/** Delay before the idle inference browser is closed after a turn (ms). */
+	/** Idle delay before the ChatGPT inference browser is closed after a turn (ms); Gemini stays open. */
 	closeAfterMs: number;
 	/** Upper bound on returned chat output characters. */
 	maxOutputChars: number;
@@ -73,7 +73,7 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	turnTimeoutMs: 180_000,
 	pollMs: 200,
 	stableMs: 1_500,
-	closeAfterMs: 10_000,
+	closeAfterMs: 1_800_000,
 	maxOutputChars: 200_000,
 	teamRounds: 2,
 	teamMaxRounds: 4,
