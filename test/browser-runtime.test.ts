@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserManager, type ProviderStatus } from "#internet/browser/runtime";
-import { ensureProviderDirectories, providerLocations } from "#internet/browser/storage";
+import { ensureLoginProfileDirectory, providerLocations } from "#internet/browser/storage";
 import { resolveBrowserConfig, type WebProvider } from "#internet/core/config";
 
 const temporaryRoots: string[] = [];
@@ -29,7 +29,7 @@ describe("BrowserManager provider serialization", () => {
 			maximumActive = Math.max(maximumActive, active);
 			await new Promise<void>((resolve) => releases.push(resolve));
 			active -= 1;
-			return { provider, loggedIn: true, storageStatePath: "/state" };
+			return { provider, state: "ready", accountPath: "/account" };
 		});
 		(browser as any).loginProvider = loginProvider;
 
@@ -43,13 +43,30 @@ describe("BrowserManager provider serialization", () => {
 		await Promise.all([first, second]);
 		await browser.dispose();
 	});
+
+	it("does not schedule idle work after disposal begins", async () => {
+		const browser = manager();
+		let release = (): void => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const operation = (browser as any).serializeProvider("chatgpt-web", async () => {
+			await gate;
+			(browser as any).scheduleClose("chatgpt-web");
+		});
+		await vi.waitFor(() => expect((browser as any).providerOperations.size).toBe(1));
+		const disposal = browser.dispose();
+		release();
+		await Promise.all([operation, disposal]);
+		expect((browser as any).pendingCloses.size).toBe(0);
+	});
 });
 
 describe("BrowserManager visible login profiles", () => {
 	it.each(["chatgpt-web", "gemini-web"] as const)("retains the %s profile across login actions", async (provider) => {
 		const dataDir = mkdtempSync(join(tmpdir(), "internet-login-profile-"));
 		temporaryRoots.push(dataDir);
-		ensureProviderDirectories(dataDir, provider);
+		ensureLoginProfileDirectory(dataDir, provider);
 		const locations = providerLocations(dataDir, provider);
 		const sentinelPath = join(locations.profileDir, "signed-in-profile-sentinel");
 		writeFileSync(sentinelPath, provider);
@@ -60,11 +77,12 @@ describe("BrowserManager visible login profiles", () => {
 			expect(actualProvider).toBe(provider);
 			expect(existsSync(sentinelPath)).toBe(true);
 		});
+		const storageState = { cookies: [], origins: [] };
 		(browser as any).captureLoginState = vi.fn(async () => {
 			expect(existsSync(sentinelPath)).toBe(true);
-			return { cookies: [], origins: [] };
+			return storageState;
 		});
-		(browser as any).verifyStorageState = vi.fn(async () => {});
+		(browser as any).verifyStorageState = vi.fn(async () => storageState);
 
 		await browser.login(provider);
 		await browser.login(provider);
@@ -72,6 +90,49 @@ describe("BrowserManager visible login profiles", () => {
 		expect(existsSync(sentinelPath)).toBe(true);
 		expect((browser as any).launchNormalLogin).toHaveBeenCalledTimes(2);
 		expect((browser as any).launchNormalLogin).toHaveBeenCalledWith(provider);
+		expect((browser as any).accounts.inspect(provider).state).toBe("ready");
+		await browser.dispose();
+	});
+
+	it("commits only the state recaptured by fresh-context verification", async () => {
+		const dataDir = mkdtempSync(join(tmpdir(), "internet-login-state-"));
+		temporaryRoots.push(dataDir);
+		const browser = new BrowserManager(resolveBrowserConfig({ dataDir }));
+		const bootstrap = { cookies: [], origins: [{ origin: "https://example.com", localStorage: [] }] };
+		const verified = {
+			cookies: [],
+			origins: [{ origin: "https://example.com", localStorage: [], indexedDB: [{ name: "auth" }] }],
+		};
+		(browser as any).display.requireInteractiveDisplay = vi.fn();
+		(browser as any).launchNormalLogin = vi.fn(async () => {});
+		(browser as any).captureLoginState = vi.fn(async () => bootstrap);
+		(browser as any).verifyStorageState = vi.fn(async () => verified);
+
+		await browser.login("gemini-web");
+
+		expect((browser as any).verifyStorageState).toHaveBeenCalledWith("gemini-web", bootstrap);
+		expect((browser as any).accounts.inspect("gemini-web").account.storageState).toEqual(verified);
+		await browser.dispose();
+	});
+
+	it("preserves a ready account when a later login verification fails", async () => {
+		const dataDir = mkdtempSync(join(tmpdir(), "internet-login-failure-"));
+		temporaryRoots.push(dataDir);
+		const browser = new BrowserManager(resolveBrowserConfig({ dataDir }));
+		const original = { cookies: [], origins: [] };
+		(browser as any).accounts.writeReady("chatgpt-web", original, new Date("2026-01-01T00:00:00.000Z"));
+		(browser as any).display.requireInteractiveDisplay = vi.fn();
+		(browser as any).launchNormalLogin = vi.fn(async () => {});
+		(browser as any).captureLoginState = vi.fn(async () => original);
+		(browser as any).verifyStorageState = vi.fn(async () => {
+			throw new Error("verification failed");
+		});
+
+		await expect(browser.login("chatgpt-web")).rejects.toThrow("verification failed");
+		expect((browser as any).accounts.inspect("chatgpt-web")).toMatchObject({
+			state: "ready",
+			account: { verifiedAt: "2026-01-01T00:00:00.000Z", storageState: original },
+		});
 		await browser.dispose();
 	});
 });

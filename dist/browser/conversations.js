@@ -1,6 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { writePrivateJson } from "#internet/core/private-json";
 const CHATGPT_ORIGIN = "https://chatgpt.com";
 const CHATGPT_CONVERSATION_PATH = /^\/c\/([A-Za-z0-9_-]+)$/;
 const GEMINI_ORIGIN = "https://gemini.google.com";
@@ -108,34 +109,5 @@ function hashSessionId(sessionId) {
     if (sessionId.trim().length === 0)
         throw new Error("DSH session ID must not be empty");
     return createHash("sha256").update(sessionId).digest("hex");
-}
-function writePrivateJson(path, value) {
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    const temporary = `${path}.tmp-${process.pid}-${randomUUID()}`;
-    let descriptor;
-    try {
-        descriptor = openSync(temporary, "wx", 0o600);
-        writeFileSync(descriptor, `${JSON.stringify(value)}\n`);
-        fsyncSync(descriptor);
-        closeSync(descriptor);
-        descriptor = undefined;
-        renameSync(temporary, path);
-        chmodSync(path, 0o600);
-        fsyncDirectory(dirname(path));
-    }
-    finally {
-        if (descriptor !== undefined)
-            closeSync(descriptor);
-        rmSync(temporary, { force: true });
-    }
-}
-function fsyncDirectory(path) {
-    const descriptor = openSync(path, "r");
-    try {
-        fsyncSync(descriptor);
-    }
-    finally {
-        closeSync(descriptor);
-    }
 }
 //# sourceMappingURL=conversations.js.map

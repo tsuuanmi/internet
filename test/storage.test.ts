@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { providerLocations } from "#internet/browser/storage";
 
 describe("providerLocations", () => {
-	it("derives profile and storage-state paths under dataDir", () => {
-		const loc = providerLocations("/tmp/pi-dsh", "chatgpt-web");
-		expect(loc.profileDir).toBe("/tmp/pi-dsh/chatgpt-web/login-profile");
-		expect(loc.storageStatePath).toBe("/tmp/pi-dsh/chatgpt-web/storage-state.json");
-		expect(loc.verificationMarkerPath).toBe("/tmp/pi-dsh/chatgpt-web/storage-state.verified.json");
+	it("separates portable accounts from machine-local login profiles", () => {
+		const locations = providerLocations("/tmp/dsh/internet", "chatgpt-web");
+		expect(locations).toEqual({
+			provider: "chatgpt-web",
+			profileDir: "/tmp/dsh/internet/chatgpt-web/login-profile",
+			accountPath: "/tmp/dsh/internet/accounts/chatgpt-web.json",
+		});
 	});
 });

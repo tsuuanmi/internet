@@ -18,11 +18,16 @@
   with `BrowserManager`.
 - **tools**: Add an optional `visible` flag to `browser_chat` and `browser_team`; hidden managed-browser
   operation remains the default.
+- **accounts**: Store each provider in one canonical, versioned portable account file under
+  `~/.dsh/internet/accounts/`. Fresh-context verification captures cookies, local storage, and
+  IndexedDB; account status now distinguishes `ready`, `reauth-required`, `invalid`, and `missing`.
 
 ### Fixed
 
-- **browser**: Retain separate normal-Chrome login profiles for ChatGPT and Gemini so reopening a
-  visible login window shows the same signed-in account instead of a fresh logged-out profile.
+- **browser**: Retain separate machine-local normal-Chrome login profiles for ChatGPT and Gemini so
+  reopening a visible login window shows the same signed-in account instead of a fresh logged-out
+  profile. Automated contexts now use only the portable account files, and both providers persist
+  IndexedDB across browser restarts.
 - **browser**: Wait for provider send controls to become ready and keyboard-activate them, avoiding
   animated-button pointer races in both ChatGPT and Gemini.
 - **client**: Build the web client entry (`src/client.ts`) as a DeepSeek Harness `__ModuleLoader__.load`

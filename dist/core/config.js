@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import S from "@deepseek-ai/schemastery";
 import { InternetError } from "#internet/core/errors";
 /** Known provider ids, used to validate tool arguments. */
@@ -95,9 +95,9 @@ export function resolveBrowserConfig(raw) {
     }
     return {
         chromePath: typeof input.chromePath === "string" && input.chromePath.length > 0 ? expandHome(input.chromePath) : undefined,
-        dataDir: typeof input.dataDir === "string" && input.dataDir.length > 0
+        dataDir: resolve(typeof input.dataDir === "string" && input.dataDir.length > 0
             ? expandHome(input.dataDir)
-            : DEFAULT_CONFIG.dataDir,
+            : DEFAULT_CONFIG.dataDir),
         headless: asBoolean(input.headless, DEFAULT_CONFIG.headless),
         loginTimeoutMs: asPositiveInteger(input.loginTimeoutMs, DEFAULT_CONFIG.loginTimeoutMs, "loginTimeoutMs"),
         turnTimeoutMs: asPositiveInteger(input.turnTimeoutMs, DEFAULT_CONFIG.turnTimeoutMs, "turnTimeoutMs"),

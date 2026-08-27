@@ -14,7 +14,7 @@ export declare const CHATGPT_THINKING_LEVELS: readonly ChatGptThinkingLevel[];
 export interface BrowserConfig {
     /** Explicit Chrome binary path; otherwise the system Chrome is discovered. */
     chromePath?: string;
-    /** Root directory that owns per-account Chrome profiles and storage state. */
+    /** DSH data directory containing portable accounts, local profiles, and conversations. */
     dataDir: string;
     /** Native headless when true; otherwise headed (managed Xvfb first on Linux). */
     headless: boolean;
@@ -26,7 +26,7 @@ export interface BrowserConfig {
     pollMs: number;
     /** How long the rendered response must stay unchanged before it is "done" (ms). */
     stableMs: number;
-    /** Idle delay before the ChatGPT inference browser is closed after a turn (ms); Gemini stays open. */
+    /** Idle delay before an inference browser is closed after a turn (ms). */
     closeAfterMs: number;
     /** Upper bound on returned chat output characters. */
     maxOutputChars: number;

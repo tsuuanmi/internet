@@ -42,15 +42,17 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
 - **No reuse of the DSH GUI browser.** DSH has no browser-automation seam and the GUI browser cannot
   be automated safely.
 - **Login** spawns dedicated normal Chrome without debugging or browser-automation flags. ChatGPT and
-  Gemini each retain a private login profile, so reopening the visible login window shows the same
-  signed-in account for manual verification. After the user closes Chrome, the plugin waits for the
-  profile lock to release and manually exports and verifies private storage state.
-- **Inference** launches a non-persistent patchright context from verified `storage-state.json`; no
+  Gemini each retain a private machine-local login profile, so reopening the visible login window
+  shows the same signed-in account. After Chrome closes, the plugin verifies the session in a fresh
+  context and writes one canonical portable account file under `~/.dsh/internet/accounts/`.
+- **Portable accounts** contain cookies, local storage, and IndexedDB in versioned private JSON. They
+  are the only authentication source for automated contexts; login profiles are local recovery
+  caches and are never part of the portable contract.
+- **Inference** launches a non-persistent patchright context from the canonical account file; no
   persistent Chrome profile is shared, so there are no profile singleton-lock conflicts. With
   `headless: false`, Linux uses one plugin-managed Xvfb display by default and falls back to an
-  existing `$DISPLAY` only when Xvfb cannot start. ChatGPT's browser is kept open through a long idle
-  TTL (`closeAfterMs`, default 30 min); Gemini's browser stays open because its session and
-  conversations live in IndexedDB, which is not persisted across a browser restart.
+  existing `$DISPLAY` only when Xvfb cannot start. Both provider browsers use the configured idle TTL
+  (`closeAfterMs`, default 30 min), and successful turns atomically refresh portable IndexedDB state.
 - **Durable conversations** use `String(exec.agent.id)` as the DSH owner. A private file at
   `chatgpt-web/conversations/<sha256(sessionId)>.json` (ChatGPT) or
   `gemini-web/conversations/<sha256(sessionId)>.json` (Gemini) binds that session 1:1 to a canonical
@@ -94,13 +96,13 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | Field            | Default                    | Meaning                                                          |
 | ---------------- | -------------------------- | ---------------------------------------------------------------- |
 | `chromePath`     | (auto-discovered)          | Explicit Chrome binary, else system Chrome is found.             |
-| `dataDir`        | `~/.dsh/internet`          | Root for provider login state and durable conversation bindings.      |
+| `dataDir`        | `~/.dsh/internet`          | DSH-local root for portable accounts, login profiles, and conversations. |
 | `headless`       | `false`                    | Native headless when true; otherwise headed (managed Xvfb first on Linux). |
 | `loginTimeoutMs` | `180000`                   | Max time to complete an interactive sign-in.                     |
 | `turnTimeoutMs`  | `180000`                   | Max time for one `browser_chat` turn.                            |
 | `pollMs`         | `200`                      | Completion-poll interval.                                        |
 | `stableMs`       | `1500`                     | How long a response must be unchanged to count as complete.      |
-| `closeAfterMs`   | `1800000`                  | Idle delay before ChatGPT's browser is closed after a turn (Gemini stays open). |
+| `closeAfterMs`   | `1800000`                  | Idle delay before a provider browser is closed after a turn.          |
 | `maxOutputChars` | `200000`                   | Upper bound on returned chat output characters.                  |
 | `teamRounds`     | `2`                        | Default debate rounds for `browser_team` (each model speaks once per round). |
 | `teamMaxRounds`  | `4`                        | Maximum per-call `rounds`; `teamRounds` must not exceed it.      |
@@ -130,6 +132,32 @@ Set `headless: true` explicitly when native Chrome headless is desired; that pat
 Interactive `internet_browser login` is different: it always requires a visible, user-managed display
 (desktop, SSH X11 forwarding, or VNC), because a login window hidden in Xvfb would be unusable.
 
+## Portable accounts
+
+The copyable account directory lives inside the DSH home by default:
+
+```text
+~/.dsh/internet/accounts/
+  chatgpt-web.json
+  gemini-web.json
+```
+
+Each file is a versioned authentication snapshot containing cookies, local storage, and IndexedDB.
+It is a plaintext bearer credential equivalent to an active browser session. Never commit it, attach
+it to diagnostics, or transfer it over an insecure channel.
+
+To move accounts, stop DSH on both computers, securely copy only the `accounts/` directory into the
+destination's configured `dataDir`, preserve private permissions (`0700` directory and `0600` files on
+POSIX), and restart DSH. Do not copy `<provider>/login-profile` or `conversations/`: Chrome profiles are
+bound to machine keyrings and browser/platform details, while conversation bindings are keyed to DSH
+session identities rather than account authentication.
+
+A copied account remains usable only while ChatGPT or Google accepts its session. Providers may expire
+or revoke sessions, react to a new IP/device, or require MFA/CAPTCHA. `internet_browser status` reports
+local state (`ready`, `reauth-required`, `invalid`, or `missing`), not a live server guarantee. Run
+`internet_browser login` when reauthentication is required; successful login atomically replaces only
+that provider's account file.
+
 ## Usage flow
 
 ```text
@@ -140,7 +168,7 @@ browser_chat { model: "chatgpt-web", prompt: "..." }   # -> hidden managed brows
 browser_chat { model: "chatgpt-web", prompt: "...", visible: true } # -> visible automated browser
 internet_browser { action: "login", model: "chatgpt-web" }
 # Sign in inside dedicated normal Chrome, then close that window completely.
-# The plugin exports and verifies ~/.dsh/internet/chatgpt-web/storage-state.json.
+# The plugin verifies and writes ~/.dsh/internet/accounts/chatgpt-web.json.
 browser_chat { model: "chatgpt-web", prompt: "Remember codeword cobalt." }
 # Later calls from this same DSH session navigate to the same ChatGPT /c/<id> conversation:
 browser_chat { model: "chatgpt-web", prompt: "What codeword did I give you?" }

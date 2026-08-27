@@ -1,16 +1,15 @@
-import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-/** Compute the per-provider login-profile and storage-state paths under `dataDir`. */
+import { join } from "node:path";
+import { ensurePrivateDirectory } from "#internet/core/private-json";
+/** Compute provider paths under the configured DSH internet data directory. */
 export function providerLocations(dataDir, provider) {
-    const profileDir = join(dataDir, provider, "login-profile");
-    const storageStatePath = join(dataDir, provider, "storage-state.json");
-    const verificationMarkerPath = join(dataDir, provider, "storage-state.verified.json");
-    return { provider, profileDir, storageStatePath, verificationMarkerPath };
+    return {
+        provider,
+        profileDir: join(dataDir, provider, "login-profile"),
+        accountPath: join(dataDir, "accounts", `${provider}.json`),
+    };
 }
-/** Ensure the directories that own a provider's browser state exist privately. */
-export function ensureProviderDirectories(dataDir, provider) {
-    const { profileDir, storageStatePath } = providerLocations(dataDir, provider);
-    mkdirSync(dirname(storageStatePath), { recursive: true, mode: 0o700 });
-    mkdirSync(profileDir, { recursive: true, mode: 0o700 });
+/** Ensure the machine-local login profile directory exists privately. */
+export function ensureLoginProfileDirectory(dataDir, provider) {
+    ensurePrivateDirectory(providerLocations(dataDir, provider).profileDir);
 }
 //# sourceMappingURL=storage.js.map

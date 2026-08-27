@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import S from "@deepseek-ai/schemastery";
 import { InternetError } from "#internet/core/errors";
 
@@ -29,7 +29,7 @@ export const CHATGPT_THINKING_LEVELS: readonly ChatGptThinkingLevel[] = [
 export interface BrowserConfig {
 	/** Explicit Chrome binary path; otherwise the system Chrome is discovered. */
 	chromePath?: string;
-	/** Root directory that owns per-account Chrome profiles and storage state. */
+	/** DSH data directory containing portable accounts, local profiles, and conversations. */
 	dataDir: string;
 	/** Native headless when true; otherwise headed (managed Xvfb first on Linux). */
 	headless: boolean;
@@ -41,7 +41,7 @@ export interface BrowserConfig {
 	pollMs: number;
 	/** How long the rendered response must stay unchanged before it is "done" (ms). */
 	stableMs: number;
-	/** Idle delay before the ChatGPT inference browser is closed after a turn (ms); Gemini stays open. */
+	/** Idle delay before an inference browser is closed after a turn (ms). */
 	closeAfterMs: number;
 	/** Upper bound on returned chat output characters. */
 	maxOutputChars: number;
@@ -152,10 +152,11 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 	return {
 		chromePath:
 			typeof input.chromePath === "string" && input.chromePath.length > 0 ? expandHome(input.chromePath) : undefined,
-		dataDir:
+		dataDir: resolve(
 			typeof input.dataDir === "string" && input.dataDir.length > 0
 				? expandHome(input.dataDir)
 				: DEFAULT_CONFIG.dataDir,
+		),
 		headless: asBoolean(input.headless, DEFAULT_CONFIG.headless),
 		loginTimeoutMs: asPositiveInteger(input.loginTimeoutMs, DEFAULT_CONFIG.loginTimeoutMs, "loginTimeoutMs"),
 		turnTimeoutMs: asPositiveInteger(input.turnTimeoutMs, DEFAULT_CONFIG.turnTimeoutMs, "turnTimeoutMs"),

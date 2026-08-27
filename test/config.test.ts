@@ -36,10 +36,11 @@ describe("resolveBrowserConfig", () => {
 		expect(resolveBrowserConfig("nope").dataDir).toBe(DEFAULT_CONFIG.dataDir);
 	});
 
-	it("expands a leading ~ in dataDir and chromePath", () => {
+	it("normalizes dataDir and expands leading home paths", () => {
 		const config = resolveBrowserConfig({ dataDir: "~/custom-dir", chromePath: "~/chrome" });
 		expect(config.dataDir).toBe(join(homedir(), "custom-dir"));
 		expect(config.chromePath).toBe(join(homedir(), "chrome"));
+		expect(resolveBrowserConfig({ dataDir: "relative-data" }).dataDir).toBe(join(process.cwd(), "relative-data"));
 	});
 
 	it("rejects invalid positive-integer config", () => {

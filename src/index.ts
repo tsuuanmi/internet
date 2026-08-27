@@ -54,7 +54,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 	ctx.systemPrompt?.section?.({
 		name: "tool:browser_chat",
 		order: 120,
-		text: "Use browser_chat to get a single answer from ChatGPT or Gemini through a logged-in browser. Calls from one DSH session durably resume the same native conversation per provider. The automated browser is hidden by default; set `visible: true` only when the user asks to watch it. Prefer browser_chat when you need one model's specific answer or a multi-turn back-and-forth with a single provider. If a provider is not signed in, run internet_browser login, tell the user to sign in and close the dedicated normal Chrome window completely, then retry after verified state is exported.",
+		text: "Use browser_chat to get a single answer from ChatGPT or Gemini through a logged-in browser. Calls from one DSH session durably resume the same native conversation per provider. The automated browser is hidden by default; set `visible: true` only when the user asks to watch it. Prefer browser_chat when you need one model's specific answer or a multi-turn back-and-forth with a single provider. If a provider has no ready portable account, run internet_browser login, tell the user to sign in and close the dedicated normal Chrome window completely, then retry after the account is verified.",
 	});
 }
 

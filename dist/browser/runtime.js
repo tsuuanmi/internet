@@ -1,23 +1,24 @@
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync, } from "node:fs";
+import { lstatSync, readlinkSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "patchright-core";
+import { AccountStore, capturePortableStorageState, captureProfileBootstrapState, } from "#internet/browser/accounts";
 import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText, chatgptSelectThinkingLevel, chatgptSend, chatgptSnapshot, chatgptWaitAuthenticated, } from "#internet/browser/chatgpt";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import { GEMINI_HOME_URL, geminiIsAuthenticated, geminiLastResponseText, geminiSend, geminiSnapshot, geminiWaitAuthenticated, } from "#internet/browser/gemini";
-import { ensureProviderDirectories, providerLocations } from "#internet/browser/storage";
+import { ensureLoginProfileDirectory, providerLocations } from "#internet/browser/storage";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
 /**
  * Owns isolated browser sessions. Interactive login runs in a dedicated,
  * per-provider normal Chrome profile (without browser-automation flags). The
  * profile is retained so reopening login visibly shows the same signed-in account.
- * After the user closes Chrome, patchright reads the unlocked profile and manually
- * exports and verifies storage state; inference still uses a fresh non-persistent
- * context. Waiting for the profile lock avoids Chrome singleton conflicts.
+ * After Chrome closes, patchright verifies bootstrap profile state in a fresh
+ * context and writes the canonical portable account file, including IndexedDB.
+ * Inference uses only that account file in non-persistent contexts.
  */
 export class BrowserManager {
     constructor(config) {
@@ -32,6 +33,7 @@ export class BrowserManager {
             },
         });
         this.configuredChromePath = config.chromePath;
+        this.accounts = new AccountStore(config.dataDir);
         this.chatGptConversations = new ChatGptConversationStore(config.dataDir);
         this.geminiConversations = new GeminiConversationStore(config.dataDir);
     }
@@ -60,29 +62,6 @@ export class BrowserManager {
             release();
             if (this.providerOperations.get(provider) === tail)
                 this.providerOperations.delete(provider);
-        }
-    }
-    storageStateExists(provider) {
-        const { storageStatePath, verificationMarkerPath } = this.locations(provider);
-        if (!existsSync(storageStatePath) || !existsSync(verificationMarkerPath))
-            return false;
-        try {
-            const marker = JSON.parse(readFileSync(verificationMarkerPath, "utf8"));
-            return marker.version === 1 && marker.authenticated === true && typeof marker.verifiedAt === "string";
-        }
-        catch {
-            return false;
-        }
-    }
-    writePrivateJson(path, value) {
-        const temporary = `${path}.tmp-${process.pid}`;
-        try {
-            writeFileSync(temporary, `${JSON.stringify(value)}\n`, { mode: 0o600 });
-            renameSync(temporary, path);
-            chmodSync(path, 0o600);
-        }
-        finally {
-            rmSync(temporary, { force: true });
         }
     }
     homeUrl(provider) {
@@ -228,27 +207,6 @@ export class BrowserManager {
         });
         await this.waitForProfileUnlock(profileDir);
     }
-    async exportContextState(context) {
-        const cookies = await context.cookies();
-        const origins = [];
-        const seen = new Set();
-        for (const page of context.pages()) {
-            if (page.isClosed())
-                continue;
-            try {
-                const url = new URL(page.url());
-                if (!url.protocol.startsWith("http") || seen.has(url.origin))
-                    continue;
-                const localStorage = await page.evaluate("Object.keys(window.localStorage).map(name => ({ name, value: window.localStorage.getItem(name) ?? '' }))");
-                origins.push({ origin: url.origin, localStorage });
-                seen.add(url.origin);
-            }
-            catch {
-                // Ignore pages that navigate or close while browser state is exported.
-            }
-        }
-        return { cookies, origins };
-    }
     async captureLoginState(provider) {
         const { profileDir } = this.locations(provider);
         const display = await this.display.prepare(false);
@@ -267,7 +225,7 @@ export class BrowserManager {
             if (authenticatedPage === undefined) {
                 throw new InternetError("login_failed", `${provider} did not expose an authenticated page after sign-in.`);
             }
-            return this.exportContextState(context);
+            return captureProfileBootstrapState(context);
         }
         finally {
             await context.close().catch(() => { });
@@ -302,6 +260,7 @@ export class BrowserManager {
                 if (!(await this.isAuthenticated(provider, page, Math.min(this.config.loginTimeoutMs, 60_000)))) {
                     throw new InternetError("login_failed", `${provider} login state could not be restored in the configured inference browser.`);
                 }
+                return capturePortableStorageState(context);
             }
             finally {
                 await context.close().catch(() => { });
@@ -333,19 +292,14 @@ export class BrowserManager {
         clearTimeout(timer);
         this.pendingCloses.delete(provider);
     }
-    /**
-     * Schedule closing a provider's browser after `closeAfterMs`, cancelling any
-     * prior pending close. Gemini keeps its browser open: its session and
-     * conversations live in IndexedDB, which is not persisted across a browser
-     * restart, so closing it would drop the login and durable conversation.
-     */
+    /** Schedule closing a provider browser after its idle TTL. */
     scheduleClose(provider) {
-        if (provider !== "chatgpt-web")
+        if (this.disposed)
             return;
         this.cancelPendingClose(provider);
         const timer = setTimeout(() => {
             this.pendingCloses.delete(provider);
-            void this.stop(provider);
+            void this.stop(provider).catch(() => { });
         }, this.config.closeAfterMs);
         this.pendingCloses.set(provider, timer);
     }
@@ -355,7 +309,11 @@ export class BrowserManager {
             return existing.context;
         }
         await this.closeSession(provider);
-        if (!this.storageStateExists(provider)) {
+        const inspection = this.accounts.inspect(provider);
+        if (inspection.state === "invalid") {
+            throw new InternetError("provider_error", `${provider} account file is invalid: ${inspection.error}`);
+        }
+        if (inspection.state !== "ready" || inspection.account === undefined) {
             throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
         }
         const display = await this.display.prepare(headless, visible);
@@ -368,7 +326,7 @@ export class BrowserManager {
         });
         try {
             const context = await browser.newContext({
-                storageState: this.locations(provider).storageStatePath,
+                storageState: inspection.account.storageState,
                 viewport: browserViewport(display),
             });
             this.sessions.set(provider, { browser, context, headless, visible, displayKind: display.kind });
@@ -390,29 +348,26 @@ export class BrowserManager {
     async loginProvider(provider) {
         this.display.requireInteractiveDisplay();
         await this.stopProvider(provider);
-        const locations = this.locations(provider);
-        // Keep this provider-specific normal-Chrome profile across login actions. This
-        // lets users reopen the visible window and verify the same signed-in account;
-        // ChatGPT and Gemini remain isolated from each other and from desktop Chrome.
-        ensureProviderDirectories(this.config.dataDir, provider);
+        // Each provider retains a machine-local normal-Chrome profile for login.
+        // Automated contexts use only the canonical portable account file.
+        ensureLoginProfileDirectory(this.config.dataDir, provider);
         await this.launchNormalLogin(provider);
-        const storageState = await this.captureLoginState(provider);
-        await this.verifyStorageState(provider, storageState);
-        this.writePrivateJson(locations.storageStatePath, storageState);
-        this.writePrivateJson(locations.verificationMarkerPath, {
-            version: 1,
-            authenticated: true,
-            verifiedAt: new Date().toISOString(),
-        });
-        return { provider, loggedIn: true, storageStatePath: locations.storageStatePath };
+        const bootstrapState = await this.captureLoginState(provider);
+        const storageState = await this.verifyStorageState(provider, bootstrapState);
+        this.accounts.writeReady(provider, storageState);
+        return this.providerStatus(provider);
     }
-    /** Report whether a provider has an exported, verified login state. */
+    /** Report the locally persisted account state without opening a browser. */
     async status(provider) {
-        return this.serializeProvider(provider, async () => ({
+        return this.serializeProvider(provider, async () => this.providerStatus(provider));
+    }
+    providerStatus(provider) {
+        const inspection = this.accounts.inspect(provider);
+        return {
             provider,
-            loggedIn: this.storageStateExists(provider),
-            storageStatePath: this.locations(provider).storageStatePath,
-        }));
+            state: inspection.state,
+            accountPath: inspection.path,
+        };
     }
     /** Run one browser chat turn against the provider and return rendered markdown. */
     async chat(provider, request) {
@@ -442,7 +397,7 @@ export class BrowserManager {
                 await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
             }
             if (!(await this.isAuthenticated(provider, page, 30_000, request.signal))) {
-                rmSync(this.locations(provider).verificationMarkerPath, { force: true });
+                this.accounts.markReauthRequired(provider);
                 await this.stopProvider(provider);
                 throw new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`);
             }
@@ -496,7 +451,7 @@ export class BrowserManager {
                 }
                 conversationId = binding.conversationId;
             }
-            this.writePrivateJson(this.locations(provider).storageStatePath, await context.storageState());
+            this.accounts.writeReady(provider, await capturePortableStorageState(context));
             return {
                 text: text.slice(0, this.config.maxOutputChars),
                 url: page.url(),

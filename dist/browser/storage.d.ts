@@ -1,16 +1,14 @@
 import type { WebProvider } from "#internet/core/config";
-/** Resolved on-disk locations for one provider's isolated browser state. */
+/** Resolved local-profile and portable-account paths for one provider. */
 export interface ProviderLocations {
     provider: WebProvider;
-    /** Persistent, provider-isolated normal-Chrome profile used for interactive login. */
+    /** Machine-local normal-Chrome profile used only for interactive login. */
     profileDir: string;
-    /** patchright storage-state JSON capturing cookies/local storage after login. */
-    storageStatePath: string;
-    /** Marker proving the exported state was checked against an authenticated page. */
-    verificationMarkerPath: string;
+    /** Canonical, copyable account state used by automated browser contexts. */
+    accountPath: string;
 }
-/** Compute the per-provider login-profile and storage-state paths under `dataDir`. */
+/** Compute provider paths under the configured DSH internet data directory. */
 export declare function providerLocations(dataDir: string, provider: WebProvider): ProviderLocations;
-/** Ensure the directories that own a provider's browser state exist privately. */
-export declare function ensureProviderDirectories(dataDir: string, provider: WebProvider): void;
+/** Ensure the machine-local login profile directory exists privately. */
+export declare function ensureLoginProfileDirectory(dataDir: string, provider: WebProvider): void;
 //# sourceMappingURL=storage.d.ts.map

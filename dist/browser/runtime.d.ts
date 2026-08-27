@@ -1,3 +1,4 @@
+import { type AccountState } from "#internet/browser/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 export interface ChatRequest {
     prompt: string;
@@ -14,22 +15,23 @@ export interface ChatResult {
 }
 export interface ProviderStatus {
     provider: WebProvider;
-    loggedIn: boolean;
-    storageStatePath: string;
+    state: AccountState;
+    accountPath: string;
 }
 /**
  * Owns isolated browser sessions. Interactive login runs in a dedicated,
  * per-provider normal Chrome profile (without browser-automation flags). The
  * profile is retained so reopening login visibly shows the same signed-in account.
- * After the user closes Chrome, patchright reads the unlocked profile and manually
- * exports and verifies storage state; inference still uses a fresh non-persistent
- * context. Waiting for the profile lock avoids Chrome singleton conflicts.
+ * After Chrome closes, patchright verifies bootstrap profile state in a fresh
+ * context and writes the canonical portable account file, including IndexedDB.
+ * Inference uses only that account file in non-persistent contexts.
  */
 export declare class BrowserManager {
     private readonly config;
     private readonly configuredChromePath;
     private resolvedChromePath;
     private readonly sessions;
+    private readonly accounts;
     private readonly chatGptConversations;
     private readonly geminiConversations;
     private readonly pendingCloses;
@@ -40,8 +42,6 @@ export declare class BrowserManager {
     private chromeExecutable;
     private locations;
     private serializeProvider;
-    private storageStateExists;
-    private writePrivateJson;
     private homeUrl;
     private activePage;
     private isAuthenticated;
@@ -53,7 +53,6 @@ export declare class BrowserManager {
     private processIsAlive;
     private waitForProfileUnlock;
     private launchNormalLogin;
-    private exportContextState;
     private captureLoginState;
     private inferenceArgs;
     private verifyStorageState;
@@ -61,19 +60,15 @@ export declare class BrowserManager {
     private closeVirtualDisplaySessions;
     /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
     private cancelPendingClose;
-    /**
-     * Schedule closing a provider's browser after `closeAfterMs`, cancelling any
-     * prior pending close. Gemini keeps its browser open: its session and
-     * conversations live in IndexedDB, which is not persisted across a browser
-     * restart, so closing it would drop the login and durable conversation.
-     */
+    /** Schedule closing a provider browser after its idle TTL. */
     private scheduleClose;
     private ensureContext;
     /** Open normal Chrome for sign-in; export its profile after the user closes it. */
     login(provider: WebProvider): Promise<ProviderStatus>;
     private loginProvider;
-    /** Report whether a provider has an exported, verified login state. */
+    /** Report the locally persisted account state without opening a browser. */
     status(provider: WebProvider): Promise<ProviderStatus>;
+    private providerStatus;
     /** Run one browser chat turn against the provider and return rendered markdown. */
     chat(provider: WebProvider, request: ChatRequest): Promise<ChatResult>;
     private chatProvider;

@@ -1,4 +1,5 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
+import { ACCOUNT_STATES } from "#internet/browser/accounts";
 import { WEB_PROVIDERS } from "#internet/core/config";
 import { isInternetError } from "#internet/core/errors";
 const BROWSER_ACTIONS = ["login", "status", "stop"];
@@ -6,7 +7,7 @@ const BROWSER_ACTIONS = ["login", "status", "stop"];
 export function defineInternetBrowserTool(manager, allowed) {
     return defineTool({
         name: "internet_browser",
-        description: "Manage browser-backed web providers. login opens dedicated normal Chrome with no automation flags; sign in, then close that window completely so the plugin can export and verify the session. status reports whether verified state exists; stop closes the inference browser.",
+        description: "Manage browser-backed web providers. login opens dedicated normal Chrome with no automation flags; sign in, then close that window completely so the plugin can write a portable verified account. status inspects local account state; stop closes the inference browser.",
         parameters: {
             action: {
                 type: "string",
@@ -28,16 +29,16 @@ export function defineInternetBrowserTool(manager, allowed) {
                 properties: {
                     ok: { type: "boolean", required: true },
                     provider: { type: "string", required: true },
-                    loggedIn: { type: "boolean" },
-                    storageStatePath: { type: "string" },
+                    state: { type: "string", enum: [...ACCOUNT_STATES] },
+                    accountPath: { type: "string" },
                     message: { type: "string" },
                 },
             },
             render: (_args, value) => {
                 const v = value;
                 const parts = [`ok=${String(v.ok)}`, `provider=${String(v.provider)}`];
-                if (v.loggedIn !== undefined)
-                    parts.push(`loggedIn=${String(v.loggedIn)}`);
+                if (v.state !== undefined)
+                    parts.push(`state=${String(v.state)}`);
                 if (v.message !== undefined)
                     parts.push(String(v.message));
                 return [{ type: "text", text: parts.join(" · ") }];
@@ -64,9 +65,9 @@ export function defineInternetBrowserTool(manager, allowed) {
                     return {
                         ok: true,
                         provider,
-                        loggedIn: status.loggedIn,
-                        storageStatePath: status.storageStatePath,
-                        message: `${provider} is signed in and ready.`,
+                        state: status.state,
+                        accountPath: status.accountPath,
+                        message: `${provider} portable account is verified and ready.`,
                     };
                 }
                 if (action === "stop") {
@@ -77,11 +78,15 @@ export function defineInternetBrowserTool(manager, allowed) {
                 return {
                     ok: true,
                     provider,
-                    loggedIn: status.loggedIn,
-                    storageStatePath: status.storageStatePath,
-                    message: status.loggedIn
-                        ? `${provider} is signed in.`
-                        : `${provider} is not signed in; run internet_browser login first.`,
+                    state: status.state,
+                    accountPath: status.accountPath,
+                    message: status.state === "ready"
+                        ? `${provider} has a previously verified portable account.`
+                        : status.state === "reauth-required"
+                            ? `${provider} requires sign-in; run internet_browser login.`
+                            : status.state === "invalid"
+                                ? `${provider} account file is invalid; run internet_browser login to replace it.`
+                                : `${provider} has no account; run internet_browser login.`,
                 };
             }
             catch (error) {

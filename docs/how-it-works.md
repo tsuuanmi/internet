@@ -22,9 +22,10 @@ internet_browser { action: "login", model }
   -> spawn dedicated normal Chrome using dataDir/<provider>/login-profile
   -> user signs in and closes that Chrome window completely
   -> wait for Chrome to release the profile lock
-  -> manually export and verify cookies/local storage
-  -> write storage-state.json + storage-state.verified.json (mode 0600)
-  -> retain the provider-isolated login profile for visible account verification
+  -> export bootstrap cookies/local storage from the unlocked profile
+  -> verify in a fresh non-persistent context and capture current IndexedDB
+  -> atomically write dataDir/accounts/<provider>.json (mode 0600)
+  -> retain the machine-local login profile for visible account recovery
 
 /internet <question>
   -> DSH command handler bypasses the model
@@ -58,9 +59,16 @@ Login uses a persistent, provider-isolated normal-Chrome profile without debuggi
 browser-automation flags in the OAuth flow. On Linux it requires a visible, user-managed `$DISPLAY`;
 managed Xvfb is deliberately not used for the interactive window. Retaining separate ChatGPT and
 Gemini profiles lets users reopen either visible window and verify the same signed-in account. After
-Chrome exits and releases its profile lock, patchright opens the profile and manually exports
-cookies/local storage without calling the failing persistent-context `storageState()` path. Verified
-state is also written to `dataDir/<provider>/storage-state.json` for isolated inference contexts.
+Chrome exits and releases its profile lock, patchright opens the profile and exports bootstrap
+cookies/local storage. Patchright cannot call `storageState()` on this native-keyring persistent
+context, so a fresh non-persistent context verifies the bootstrap, captures current IndexedDB, and
+atomically writes the canonical `dataDir/accounts/<provider>.json` file.
+
+The `accounts/` directory is the only portable authentication boundary. Full Chrome profiles are
+machine-local because their encrypted data depends on OS keyrings and Chrome internals. Conversations
+remain outside the account artifact because they are DSH-session bindings, not credentials. Account
+files are plaintext bearer secrets and must be copied only through a secure channel while DSH is
+stopped. Provider expiry, revocation, risk checks, MFA, or CAPTCHA can still require a new login.
 
 For automated headed launches on Linux, `BrowserDisplayManager` starts one shared
 `Xvfb -displayfd` server at `1920x1080x24`. `-displayfd` lets Xorg choose a free display without a
@@ -70,7 +78,9 @@ candidate, followed by an inherited `$DISPLAY`. Without any usable candidate, la
 Native-headless mode bypasses display discovery. Managed-Xvfb contexts use the normal browser window
 viewport; system-display and native-headless contexts retain their deterministic `1280x900` viewport.
 
-Inference uses separate non-persistent contexts, avoiding Chrome profile singleton locks.
+Inference uses separate non-persistent contexts restored only from the canonical account file,
+avoiding Chrome profile singleton locks. Successful turns recapture cookies, local storage, and
+IndexedDB before atomically refreshing that file. Both providers use the configured idle close TTL.
 `internet_browser stop` closes only a provider's inference browser. The Xvfb process remains shared
 until `BrowserManager.dispose()` closes all Chrome sessions and then terminates the display.
 
