@@ -1,8 +1,5 @@
 # @tsuuanmi/internet: browser-backed web providers (ChatGPT Web, Gemini Web).
-# Requires a graphical display ($DISPLAY) for headed Chrome login and inference;
-# the plugin stays disabled when no display is available.
 - insert:
     - id: internet
       name: '@tsuuanmi/internet'
       config: {}
-      disabled: !!js process.env.DISPLAY === undefined || process.env.DISPLAY === ''

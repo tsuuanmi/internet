@@ -31,9 +31,13 @@ export declare class BrowserManager {
     private readonly chatGptConversations;
     private readonly geminiConversations;
     private readonly pendingCloses;
+    private readonly providerOperations;
+    private readonly display;
+    private disposed;
     constructor(config: BrowserConfig);
     private chromeExecutable;
     private locations;
+    private serializeProvider;
     private storageStateExists;
     private writePrivateJson;
     private homeUrl;
@@ -52,6 +56,7 @@ export declare class BrowserManager {
     private inferenceArgs;
     private verifyStorageState;
     private closeSession;
+    private closeVirtualDisplaySessions;
     /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
     private cancelPendingClose;
     /**
@@ -64,12 +69,15 @@ export declare class BrowserManager {
     private ensureContext;
     /** Open normal Chrome for sign-in; export its profile after the user closes it. */
     login(provider: WebProvider): Promise<ProviderStatus>;
+    private loginProvider;
     /** Report whether a provider has an exported, verified login state. */
     status(provider: WebProvider): Promise<ProviderStatus>;
     /** Run one browser chat turn against the provider and return rendered markdown. */
     chat(provider: WebProvider, request: ChatRequest): Promise<ChatResult>;
+    private chatProvider;
     /** Close the provider's managed inference browser, if one is open. */
     stop(provider: WebProvider): Promise<void>;
+    private stopProvider;
     /** Close every managed inference browser (no leaked Chrome processes). */
     dispose(): Promise<void>;
 }

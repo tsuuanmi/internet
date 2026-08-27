@@ -45,10 +45,11 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
   the user signs in and closes Chrome, the plugin waits for the profile lock to release, manually
   exports and verifies private storage state, and removes the temporary profile.
 - **Inference** launches a non-persistent patchright context from verified `storage-state.json`; no
-  persistent Chrome profile is shared, so there are no profile singleton-lock conflicts. ChatGPT's
-  browser is kept open through a long idle TTL (`closeAfterMs`, default 30 min) and reopened on the
-  next request after that; Gemini's browser stays open because its session and conversations live in
-  IndexedDB, which is not persisted across a browser restart.
+  persistent Chrome profile is shared, so there are no profile singleton-lock conflicts. With
+  `headless: false`, Linux uses one plugin-managed Xvfb display by default and falls back to an
+  existing `$DISPLAY` only when Xvfb cannot start. ChatGPT's browser is kept open through a long idle
+  TTL (`closeAfterMs`, default 30 min); Gemini's browser stays open because its session and
+  conversations live in IndexedDB, which is not persisted across a browser restart.
 - **Durable conversations** use `String(exec.agent.id)` as the DSH owner. A private file at
   `chatgpt-web/conversations/<sha256(sessionId)>.json` (ChatGPT) or
   `gemini-web/conversations/<sha256(sessionId)>.json` (Gemini) binds that session 1:1 to a canonical
@@ -94,7 +95,7 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | ---------------- | -------------------------- | ---------------------------------------------------------------- |
 | `chromePath`     | (auto-discovered)          | Explicit Chrome binary, else system Chrome is found.             |
 | `dataDir`        | `~/.dsh/internet`          | Root for provider login state and durable conversation bindings.      |
-| `headless`       | `false`                    | Whether inference runs headless; headed is safer for web auth.   |
+| `headless`       | `false`                    | Native headless when true; otherwise headed (managed Xvfb first on Linux). |
 | `loginTimeoutMs` | `180000`                   | Max time to complete an interactive sign-in.                     |
 | `turnTimeoutMs`  | `180000`                   | Max time for one `browser_chat` turn.                            |
 | `pollMs`         | `200`                      | Completion-poll interval.                                        |
@@ -114,14 +115,19 @@ When `includeTranscript` is true, the tool retains the newest debate content wit
 a boundary turn with `textTruncation: "prefix"` retained only the end of that turn.
 
 **Browser.** Google Chrome Stable is recommended (best compatibility with ChatGPT/Gemini's web APIs).
-On a headless Linux server, run the harness under Xvfb with `headless: false` rather than Chrome's
-headless flag:
+For headed mode on Linux, install Xvfb once; the plugin starts and shares it automatically, so DSH
+must not be wrapped in `xvfb-run`:
 
 ```bash
-xvfb-run -a dsh --profile superman
+sudo apt install xvfb google-chrome-stable
+dsh --profile superman
 ```
 
-The plugin is disabled when no `$DISPLAY` is available (see `cordis.patch.yml`).
+Managed Xvfb is preferred even when `$DISPLAY` exists. If Xvfb cannot start, the plugin falls back to
+that system display. Without either, it fails explicitly instead of silently switching to native
+headless Chrome. Interactive `internet_browser login` is different: it always requires a visible,
+user-managed display (desktop, SSH X11 forwarding, or VNC), because a login window hidden in Xvfb
+would be unusable.
 
 ## Usage flow
 

@@ -2,8 +2,8 @@
 
 ## Layout
 
-- `src/browser/` — Chrome discovery, the shared completion poller, the per-provider drivers
-  (`chatgpt.ts`, `gemini.ts`), and the `BrowserManager` runtime.
+- `src/browser/` — Chrome discovery, managed-display lifecycle, the shared completion poller, the
+  per-provider drivers (`chatgpt.ts`, `gemini.ts`), and the `BrowserManager` runtime.
 - `src/core/` — plugin `Config` and validation, the error taxonomy, markdown conversion, and a
   small abort-aware sleep helper.
 - `src/tools/` — the model-facing `browser_chat` tool and the `internet_browser` lifecycle tool.
@@ -43,25 +43,34 @@ browser_chat { model, prompt }
   -> htmlToMarkdown(newResponseHtml) -> { answer, url, conversationId }
 ```
 
-## Durable ChatGPT conversations
+## Durable provider conversations
 
 Each agent-backed tool execution exposes the live DSH session as `exec.agent.id`. The plugin hashes
-that ID and stores one canonical ChatGPT conversation URL under
-`dataDir/chatgpt-web/conversations/<sessionHash>.json`; raw session IDs and prompts are not persisted.
+that ID and stores one canonical provider conversation URL under
+`dataDir/<provider>/conversations/<sessionHash>.json`; raw session IDs and prompts are not persisted.
 The directory is mode `0700`, files are mode `0600`, and writes use fsync plus atomic rename. A session
-may refresh its existing binding but cannot silently rebind to another ChatGPT conversation. Different
-DSH sessions navigate independently even when they share one browser context. Gemini remains
-single-turn in this version.
+may refresh its existing binding but cannot silently rebind to another native conversation. ChatGPT
+and Gemini sessions navigate independently even when calls share one provider browser context.
 
 ## Browser lifecycle
 
 Login uses a temporary normal-Chrome profile without debugging or browser-automation flags in the
-OAuth flow. After Chrome exits and releases its profile lock, patchright opens the profile off-screen
-and manually exports cookies/local storage without calling the failing persistent-context
+OAuth flow. On Linux it requires a visible, user-managed `$DISPLAY`; managed Xvfb is deliberately not
+used for the interactive window. After Chrome exits and releases its profile lock, patchright opens
+the profile and manually exports cookies/local storage without calling the failing persistent-context
 `storageState()` path. Only verified state is kept under `dataDir/<provider>/storage-state.json`; the
-temporary profile is deleted. Inference uses a separate non-persistent context, avoiding Chrome
-profile singleton locks. `internet_browser stop` closes a provider's inference browser, and `apply`'s
-Cordis effect disposes every remaining browser so no process outlives the plugin.
+temporary profile is deleted.
+
+For automated headed launches on Linux, `BrowserDisplayManager` first starts one shared
+`Xvfb -displayfd` server at `1920x1080x24`. `-displayfd` lets Xorg choose a free display without a
+`:99` race. If startup fails and the process inherited a non-empty `$DISPLAY`, launches fall back to
+that system display; without either option they fail explicitly. Native-headless mode bypasses the
+display manager. Managed-Xvfb contexts use the normal browser window viewport; existing system-display
+and native-headless contexts retain their deterministic `1280x900` viewport.
+
+Inference uses separate non-persistent contexts, avoiding Chrome profile singleton locks.
+`internet_browser stop` closes only a provider's inference browser. The Xvfb process remains shared
+until `BrowserManager.dispose()` closes all Chrome sessions and then terminates the display.
 
 ## Error taxonomy
 

@@ -27,17 +27,15 @@
 	},
 	"files": [
 		"dist",
+		"src",
 		"cordis.patch.yml",
 		"README.md"
 	],
 	"imports": {
 		"#internet/*": {
+			"source": "./src/*.ts",
 			"types": "./dist/*.d.ts",
 			"default": "./dist/*.js"
-		},
-		"#internet-test/*": {
-			"types": "./test/*.ts",
-			"default": "./test/*.ts"
 		}
 	},
 	"dsh": {
@@ -76,6 +74,7 @@
 		"@types/node": "24.12.4",
 		"@types/turndown": "5.0.5",
 		"@typescript/native-preview": "7.0.0-dev.20260707.2",
+		"esbuild": "0.28.2",
 		"shx": "0.4.0",
 		"typescript": "5.9.3",
 		"vitest": "3.2.6"

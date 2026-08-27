@@ -1,0 +1,59 @@
+import { type ChildProcess } from "node:child_process";
+export type BrowserDisplay = {
+    kind: "headless";
+} | {
+    kind: "system";
+    env: NodeJS.ProcessEnv;
+} | {
+    kind: "virtual";
+    env: NodeJS.ProcessEnv;
+};
+export type BrowserViewport = {
+    width: number;
+    height: number;
+} | null;
+/** Natural viewport is limited to plugin-owned Xvfb; existing modes stay stable. */
+export declare function browserViewport(display: BrowserDisplay): BrowserViewport;
+/** Browser window flags for automated headed launches. */
+export declare function headedWindowArgs(display: BrowserDisplay): string[];
+type SpawnXvfb = (command: string, args: readonly string[], options: {
+    env: NodeJS.ProcessEnv;
+    stdio: Array<"ignore" | "pipe">;
+}) => ChildProcess;
+export interface BrowserDisplayManagerOptions {
+    platform?: NodeJS.Platform;
+    env?: NodeJS.ProcessEnv;
+    spawnXvfb?: SpawnXvfb;
+    startupTimeoutMs?: number;
+    shutdownTimeoutMs?: number;
+    onVirtualDisplayExit?: () => void;
+}
+/** Owns the optional Xvfb process used by headed automated Chrome launches. */
+export declare class BrowserDisplayManager {
+    private readonly platform;
+    private readonly baseEnv;
+    private readonly spawnXvfb;
+    private readonly startupTimeoutMs;
+    private readonly shutdownTimeoutMs;
+    private readonly onVirtualDisplayExit;
+    private readonly children;
+    private active;
+    private startup;
+    private startupFailure;
+    private useSystemFallback;
+    private disposed;
+    constructor(options?: BrowserDisplayManagerOptions);
+    /** Prepare the environment for one automated Chrome launch. */
+    prepare(headless: boolean): Promise<BrowserDisplay>;
+    /** Interactive login must use a display the user can actually see. */
+    requireInteractiveDisplay(): void;
+    /** Stop every Xvfb process owned by this manager. */
+    dispose(): Promise<void>;
+    private assertActive;
+    private hasSystemDisplay;
+    private startVirtualDisplay;
+    private terminateChild;
+    private waitForExit;
+}
+export {};
+//# sourceMappingURL=display.d.ts.map

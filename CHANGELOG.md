@@ -11,6 +11,10 @@
 - **browser**: Migrate the automation backend from `playwright-core` to `patchright-core` (a drop-in,
   stealth-patched Playwright fork) and keep the ChatGPT inference browser open through a long idle TTL
   (`closeAfterMs` default `1800000`, 30 min) instead of closing it 10s after each turn.
+- **browser**: Manage one shared Xvfb display for headed automated Chrome on Linux. Xvfb is preferred,
+  an inherited `$DISPLAY` is used only when Xvfb startup fails, and the plugin never silently switches
+  to native headless. Interactive login still requires a visible user-managed display. Managed-Xvfb
+  contexts use a natural `1920x1080` browser window and shut down with `BrowserManager`.
 
 ### Fixed
 

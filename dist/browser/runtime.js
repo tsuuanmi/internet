@@ -6,6 +6,7 @@ import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText,
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
+import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import { GEMINI_HOME_URL, geminiIsAuthenticated, geminiLastResponseText, geminiSend, geminiSnapshot, geminiWaitAuthenticated, } from "#internet/browser/gemini";
 import { ensureProviderDirectories, providerLocations } from "#internet/browser/storage";
 import { InternetError } from "#internet/core/errors";
@@ -22,7 +23,14 @@ export class BrowserManager {
     constructor(config) {
         this.sessions = new Map();
         this.pendingCloses = new Map();
+        this.providerOperations = new Map();
+        this.disposed = false;
         this.config = config;
+        this.display = new BrowserDisplayManager({
+            onVirtualDisplayExit: () => {
+                void this.closeVirtualDisplaySessions();
+            },
+        });
         this.configuredChromePath = config.chromePath;
         this.chatGptConversations = new ChatGptConversationStore(config.dataDir);
         this.geminiConversations = new GeminiConversationStore(config.dataDir);
@@ -33,6 +41,26 @@ export class BrowserManager {
     }
     locations(provider) {
         return providerLocations(this.config.dataDir, provider);
+    }
+    async serializeProvider(provider, operation) {
+        if (this.disposed)
+            throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
+        const previous = this.providerOperations.get(provider) ?? Promise.resolve();
+        let release = () => { };
+        const current = new Promise((resolve) => {
+            release = resolve;
+        });
+        const tail = previous.then(() => current);
+        this.providerOperations.set(provider, tail);
+        await previous;
+        try {
+            return await operation();
+        }
+        finally {
+            release();
+            if (this.providerOperations.get(provider) === tail)
+                this.providerOperations.delete(provider);
+        }
     }
     storageStateExists(provider) {
         const { storageStatePath, verificationMarkerPath } = this.locations(provider);
@@ -223,16 +251,14 @@ export class BrowserManager {
     }
     async captureLoginState(provider) {
         const { profileDir } = this.locations(provider);
+        const display = await this.display.prepare(false);
         const context = await chromium.launchPersistentContext(profileDir, {
             executablePath: this.chromeExecutable(),
             headless: false,
+            env: display.kind === "headless" ? undefined : display.env,
+            viewport: browserViewport(display),
             ignoreDefaultArgs: ["--no-sandbox", "--password-store=basic", "--use-mock-keychain"],
-            args: [
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--window-position=-10000,-10000",
-                "--window-size=800,600",
-            ],
+            args: ["--no-first-run", "--no-default-browser-check", ...headedWindowArgs(display)],
         });
         try {
             const page = await this.activePage(context);
@@ -257,17 +283,19 @@ export class BrowserManager {
         ];
     }
     async verifyStorageState(provider, storageState) {
+        const display = await this.display.prepare(this.config.headless);
         const browser = await chromium.launch({
             executablePath: this.chromeExecutable(),
             headless: this.config.headless,
+            env: display.kind === "headless" ? undefined : display.env,
             ignoreDefaultArgs: this.config.headless ? undefined : ["--no-sandbox"],
             args: [
                 ...this.inferenceArgs(this.config.headless),
-                ...(this.config.headless ? [] : ["--window-position=-10000,-10000", "--window-size=800,600"]),
+                ...(this.config.headless ? [] : headedWindowArgs(display)),
             ],
         });
         try {
-            const context = await browser.newContext({ storageState, viewport: { width: 1280, height: 900 } });
+            const context = await browser.newContext({ storageState, viewport: browserViewport(display) });
             try {
                 const page = await context.newPage();
                 await page.goto(this.homeUrl(provider), { waitUntil: "domcontentloaded", timeout: 60_000 });
@@ -290,6 +318,12 @@ export class BrowserManager {
         this.sessions.delete(provider);
         await session.context.close().catch(() => { });
         await session.browser.close().catch(() => { });
+    }
+    async closeVirtualDisplaySessions() {
+        const providers = [...this.sessions]
+            .filter(([, session]) => session.displayKind === "virtual")
+            .map(([provider]) => provider);
+        await Promise.all(providers.map((provider) => this.closeSession(provider)));
     }
     /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
     cancelPendingClose(provider) {
@@ -324,18 +358,20 @@ export class BrowserManager {
         if (!this.storageStateExists(provider)) {
             throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
         }
+        const display = await this.display.prepare(headless);
         const browser = await chromium.launch({
             executablePath: this.chromeExecutable(),
             headless,
+            env: display.kind === "headless" ? undefined : display.env,
             ignoreDefaultArgs: headless ? undefined : ["--no-sandbox"],
-            args: this.inferenceArgs(headless),
+            args: [...this.inferenceArgs(headless), ...(headless ? [] : headedWindowArgs(display))],
         });
         try {
             const context = await browser.newContext({
                 storageState: this.locations(provider).storageStatePath,
-                viewport: { width: 1280, height: 900 },
+                viewport: browserViewport(display),
             });
-            this.sessions.set(provider, { browser, context, headless });
+            this.sessions.set(provider, { browser, context, headless, displayKind: display.kind });
             browser.once("disconnected", () => {
                 if (this.sessions.get(provider)?.browser === browser)
                     this.sessions.delete(provider);
@@ -349,7 +385,11 @@ export class BrowserManager {
     }
     /** Open normal Chrome for sign-in; export its profile after the user closes it. */
     async login(provider) {
-        await this.stop(provider);
+        return this.serializeProvider(provider, () => this.loginProvider(provider));
+    }
+    async loginProvider(provider) {
+        this.display.requireInteractiveDisplay();
+        await this.stopProvider(provider);
         const locations = this.locations(provider);
         rmSync(locations.profileDir, { recursive: true, force: true });
         ensureProviderDirectories(this.config.dataDir, provider);
@@ -371,14 +411,17 @@ export class BrowserManager {
     }
     /** Report whether a provider has an exported, verified login state. */
     async status(provider) {
-        return {
+        return this.serializeProvider(provider, async () => ({
             provider,
             loggedIn: this.storageStateExists(provider),
             storageStatePath: this.locations(provider).storageStatePath,
-        };
+        }));
     }
     /** Run one browser chat turn against the provider and return rendered markdown. */
     async chat(provider, request) {
+        return this.serializeProvider(provider, () => this.chatProvider(provider, request));
+    }
+    async chatProvider(provider, request) {
         this.cancelPendingClose(provider);
         const context = await this.ensureContext(provider, this.config.headless);
         try {
@@ -399,7 +442,7 @@ export class BrowserManager {
             }
             if (!(await this.isAuthenticated(provider, page, 30_000, request.signal))) {
                 rmSync(this.locations(provider).verificationMarkerPath, { force: true });
-                await this.stop(provider);
+                await this.stopProvider(provider);
                 throw new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`);
             }
             if (binding !== undefined) {
@@ -465,15 +508,27 @@ export class BrowserManager {
     }
     /** Close the provider's managed inference browser, if one is open. */
     async stop(provider) {
+        await this.serializeProvider(provider, () => this.stopProvider(provider));
+    }
+    async stopProvider(provider) {
         this.cancelPendingClose(provider);
         await this.closeSession(provider);
     }
     /** Close every managed inference browser (no leaked Chrome processes). */
     async dispose() {
+        if (this.disposed)
+            return;
+        this.disposed = true;
         for (const timer of this.pendingCloses.values())
             clearTimeout(timer);
         this.pendingCloses.clear();
-        await Promise.all([...this.sessions.keys()].map((provider) => this.closeSession(provider)));
+        try {
+            await Promise.all(this.providerOperations.values());
+            await Promise.all([...this.sessions.keys()].map((provider) => this.closeSession(provider)));
+        }
+        finally {
+            await this.display.dispose();
+        }
     }
 }
 //# sourceMappingURL=runtime.js.map

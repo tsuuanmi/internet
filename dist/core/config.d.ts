@@ -16,7 +16,7 @@ export interface BrowserConfig {
     chromePath?: string;
     /** Root directory that owns per-account Chrome profiles and storage state. */
     dataDir: string;
-    /** Whether inference runs Chrome headless (login always runs headed). */
+    /** Native headless when true; otherwise headed (managed Xvfb first on Linux). */
     headless: boolean;
     /** Max time to wait for an interactive login to reach the authenticated surface (ms). */
     loginTimeoutMs: number;
