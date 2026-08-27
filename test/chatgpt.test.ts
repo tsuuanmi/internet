@@ -1,9 +1,10 @@
 import type { Page } from "patchright-core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	CHATGPT_STOP_BUTTON_SELECTOR,
 	CHATGPT_THINKING_LEVEL_INDEX,
 	chatgptLastAssistantTurnText,
+	chatgptSend,
 	chatgptSnapshot,
 	parseChatGptEffortSliderState,
 } from "#internet/browser/chatgpt";
@@ -28,6 +29,32 @@ function fakePage(turns: string[]): { page: Page } {
 	} as unknown as Page;
 	return { page };
 }
+
+describe("chatgptSend", () => {
+	it("keyboard-activates the ready send button", async () => {
+		const fill = vi.fn(async () => {});
+		const press = vi.fn(async () => {});
+		const sendButton = {
+			waitFor: vi.fn(async () => {}),
+			isEnabled: vi.fn(async () => true),
+			press,
+		};
+		const composerForm = { locator: () => sendButton };
+		const composer = {
+			fill,
+			locator: () => composerForm,
+		};
+		const page = {
+			locator: () => ({ filter: () => ({ first: () => composer }) }),
+		} as unknown as Page;
+
+		await chatgptSend(page, "hello");
+
+		expect(fill).toHaveBeenNthCalledWith(1, "");
+		expect(fill).toHaveBeenNthCalledWith(2, "hello");
+		expect(press).toHaveBeenCalledWith("Enter");
+	});
+});
 
 describe("chatgptLastAssistantTurnText", () => {
 	it("returns the newest turn text, or empty when none", async () => {

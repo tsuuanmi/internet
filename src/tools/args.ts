@@ -5,6 +5,7 @@ import { WEB_PROVIDERS } from "#internet/core/config";
 export interface ChatInput {
 	provider: WebProvider;
 	prompt: string;
+	visible?: boolean;
 }
 
 /**
@@ -20,7 +21,11 @@ export function parseChatArgs(args: Record<string, unknown>): ChatInput {
 	if (typeof prompt !== "string" || prompt.trim().length === 0) {
 		throw new Error("browser_chat prompt must be a non-empty string");
 	}
-	return { provider: model as WebProvider, prompt };
+	const visible = args.visible;
+	if (visible !== undefined && typeof visible !== "boolean") {
+		throw new Error("browser_chat visible must be a boolean");
+	}
+	return { provider: model as WebProvider, prompt, ...(visible === undefined ? {} : { visible }) };
 }
 
 /** Validated `browser_team` arguments. */
@@ -31,6 +36,7 @@ export interface TeamInput {
 	synthesize?: boolean;
 	includeTranscript?: boolean;
 	providers?: WebProvider[];
+	visible?: boolean;
 }
 
 /**
@@ -58,6 +64,10 @@ export function parseTeamArgs(args: Record<string, unknown>): TeamInput {
 	if (includeTranscript !== undefined && typeof includeTranscript !== "boolean") {
 		throw new Error("browser_team includeTranscript must be a boolean");
 	}
+	const visible = args.visible;
+	if (visible !== undefined && typeof visible !== "boolean") {
+		throw new Error("browser_team visible must be a boolean");
+	}
 	const providers = args.providers;
 	if (providers !== undefined) {
 		if (!Array.isArray(providers) || providers.length < 2) {
@@ -81,5 +91,6 @@ export function parseTeamArgs(args: Record<string, unknown>): TeamInput {
 		...(synthesize === undefined ? {} : { synthesize }),
 		...(includeTranscript === undefined ? {} : { includeTranscript }),
 		...(providers === undefined ? {} : { providers: providers as WebProvider[] }),
+		...(visible === undefined ? {} : { visible }),
 	};
 }

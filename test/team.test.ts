@@ -14,13 +14,14 @@ interface RecordedCall {
 	provider: WebProvider;
 	prompt: string;
 	sessionId: string;
+	visible?: boolean;
 }
 
 /** A fake chat that consumes a script of responses (or thrown errors) in order. */
 function fakeChat(script: Array<string | Error>) {
 	const calls: RecordedCall[] = [];
 	const chat = async (provider: WebProvider, request: ChatRequest): Promise<ChatResult> => {
-		calls.push({ provider, prompt: request.prompt, sessionId: request.sessionId });
+		calls.push({ provider, prompt: request.prompt, sessionId: request.sessionId, visible: request.visible });
 		const next = script.shift();
 		if (next instanceof Error) throw next;
 		if (next === undefined) throw new Error("no more scripted responses");
@@ -114,11 +115,14 @@ describe("runTeam", () => {
 		expect(calls[4].prompt).toContain("B2");
 	});
 
-	it("returns the last turn when synthesis is disabled", async () => {
-		const { chat } = fakeChat(["A1", "B1", "A2", "B2"]);
-		const result = expectTeamSuccess(await runTeam(chat, { task: "T", sessionId: "s", synthesize: false }));
+	it("returns the last turn when synthesis is disabled and propagates visible mode", async () => {
+		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2"]);
+		const result = expectTeamSuccess(
+			await runTeam(chat, { task: "T", sessionId: "s", synthesize: false, visible: true }),
+		);
 		expect(result.finalAnswer).toBe("B2");
 		expect(result.finalProvider).toBe("gemini-web");
+		expect(calls.every((call) => call.visible === true)).toBe(true);
 	});
 
 	it("honors a custom round count", async () => {

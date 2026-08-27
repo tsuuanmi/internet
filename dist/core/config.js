@@ -31,7 +31,7 @@ export const DEFAULT_CONFIG = {
     teamSynthesis: true,
     enableChatgpt: true,
     enableGemini: true,
-    chatgptThinkingLevel: "medium",
+    chatgptThinkingLevel: "instant",
 };
 /**
  * Plugin `Config` export: a Schemastery object schema. DSH validates the

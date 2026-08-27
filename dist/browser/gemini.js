@@ -1,14 +1,17 @@
+import { waitForSendReady } from "#internet/browser/submission";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
 export const GEMINI_HOME_URL = "https://gemini.google.com/app";
 export const GEMINI_COMPOSER_SELECTOR = 'rich-textarea [contenteditable="true"]';
 export const GEMINI_SEND_BUTTON_SELECTOR = 'input-area-v2 button[aria-label="Send message"]';
 export const GEMINI_STOP_BUTTON_SELECTOR = 'button[aria-label="Stop response"]';
+export const GEMINI_ACCOUNT_SELECTOR = '[aria-label^="Google Account"], [aria-label*="Google Account:"]';
 export const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-text message-content .markdown.markdown-main-panel";
-/** True when the Gemini home page exposes its composer. */
+/** True when Gemini exposes both its composer and signed-in Google account control. */
 export async function geminiIsAuthenticated(page) {
     const composers = page.locator(GEMINI_COMPOSER_SELECTOR).filter({ visible: true });
-    return (await composers.count()) === 1;
+    const accounts = page.locator(GEMINI_ACCOUNT_SELECTOR).filter({ visible: true });
+    return (await composers.count()) === 1 && (await accounts.count()) > 0;
 }
 /** Wait until Gemini is authenticated (composer visible), or return false. */
 export async function geminiWaitAuthenticated(page, timeoutMs, signal) {
@@ -29,11 +32,10 @@ export async function geminiSend(page, prompt) {
     await composer.fill("");
     await composer.fill(prompt);
     const sendButton = page.locator(GEMINI_SEND_BUTTON_SELECTOR).filter({ visible: true }).last();
-    await sendButton.waitFor({ state: "visible", timeout: 20_000 });
-    if (!(await sendButton.isEnabled())) {
-        throw new InternetError("provider_error", "Gemini send button is disabled after attaching the prompt");
-    }
-    await sendButton.click();
+    await waitForSendReady("Gemini", sendButton);
+    // Keyboard-activate the semantic button. Gemini may replace it during input,
+    // but Locator re-resolution avoids stale elements and pointer stability checks.
+    await sendButton.press("Enter");
 }
 /** Read the visible text of the current newest Gemini response (empty when none). */
 export async function geminiLastResponseText(page) {

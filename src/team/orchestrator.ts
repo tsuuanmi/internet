@@ -45,6 +45,8 @@ export interface TeamOptions {
 	synthesize?: boolean;
 	/** Ordered providers; the first opens the debate. */
 	providers?: readonly WebProvider[];
+	/** Show automated provider browsers on the user-managed display. */
+	visible?: boolean;
 	signal?: AbortSignal;
 }
 
@@ -160,6 +162,7 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 				const result = await chat(provider, {
 					prompt,
 					sessionId: teamSessionId,
+					visible: options.visible,
 					signal: options.signal,
 				});
 				lastByProvider.set(provider, result.text);
@@ -173,6 +176,7 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 			const result = await chat(lastProvider, {
 				prompt,
 				sessionId: teamSessionId,
+				visible: options.visible,
 				signal: options.signal,
 			});
 			return { finalAnswer: result.text, finalProvider: lastProvider, transcript: [...transcript] };

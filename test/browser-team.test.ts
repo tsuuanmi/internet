@@ -43,6 +43,7 @@ describe("parseTeamArgs", () => {
 				synthesize: false,
 				includeTranscript: true,
 				providers: ["gemini-web", "chatgpt-web"],
+				visible: true,
 			}),
 		).toEqual({
 			task: "T",
@@ -51,6 +52,7 @@ describe("parseTeamArgs", () => {
 			synthesize: false,
 			includeTranscript: true,
 			providers: ["gemini-web", "chatgpt-web"],
+			visible: true,
 		});
 	});
 
@@ -68,6 +70,7 @@ describe("parseTeamArgs", () => {
 	it("rejects invalid boolean options", () => {
 		expect(() => parseTeamArgs({ task: "T", synthesize: "yes" })).toThrow(/boolean/);
 		expect(() => parseTeamArgs({ task: "T", includeTranscript: "yes" })).toThrow(/boolean/);
+		expect(() => parseTeamArgs({ task: "T", visible: "yes" })).toThrow(/boolean/);
 	});
 
 	it("rejects a non-array or too-short providers value", () => {
@@ -91,11 +94,12 @@ describe("parseTeamArgs", () => {
 });
 
 describe("defineBrowserTeamTool", () => {
-	it("omits the transcript by default", async () => {
-		const { manager } = fakeManager(["A1", "B1"]);
+	it("omits the transcript by default and propagates visible mode", async () => {
+		const { manager, calls } = fakeManager(["A1", "B1"]);
 		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
-		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false }, exec);
+		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false, visible: true }, exec);
 		expect(result).toEqual({ finalAnswer: "B1", finalProvider: "gemini-web" });
+		expect(calls.map(({ request }) => request.visible)).toEqual([true, true]);
 	});
 
 	it("returns an ordered complete transcript when it fits the budget", async () => {

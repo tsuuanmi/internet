@@ -66,8 +66,8 @@ describe("resolveBrowserConfig", () => {
 		expect(() => resolveBrowserConfig({ teamRounds: 3, teamMaxRounds: 2 })).toThrow(/must not exceed/);
 	});
 
-	it("defaults chatgptThinkingLevel to medium", () => {
-		expect(resolveBrowserConfig({}).chatgptThinkingLevel).toBe("medium");
+	it("defaults chatgptThinkingLevel to instant", () => {
+		expect(resolveBrowserConfig({}).chatgptThinkingLevel).toBe("instant");
 	});
 
 	it("honors an explicit chatgptThinkingLevel override", () => {

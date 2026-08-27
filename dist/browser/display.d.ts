@@ -6,6 +6,9 @@ export type BrowserDisplay = {
     kind: "system";
     env: NodeJS.ProcessEnv;
 } | {
+    kind: "visible";
+    env: NodeJS.ProcessEnv;
+} | {
     kind: "virtual";
     env: NodeJS.ProcessEnv;
 };
@@ -47,7 +50,7 @@ export declare class BrowserDisplayManager {
     private disposed;
     constructor(options?: BrowserDisplayManagerOptions);
     /** Prepare the environment for one automated Chrome launch. */
-    prepare(headless: boolean): Promise<BrowserDisplay>;
+    prepare(headless: boolean, visible?: boolean): Promise<BrowserDisplay>;
     /** Interactive login must use a display the user can actually see. */
     requireInteractiveDisplay(): void;
     /** Stop every Xvfb process owned by this manager. */

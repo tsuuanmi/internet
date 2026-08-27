@@ -33,13 +33,13 @@ export function apply(ctx, rawConfig) {
         ctx.systemPrompt?.section?.({
             name: "tool:browser_team",
             order: 121,
-            text: "Use browser_team to run a multi-model debate between ordered configured web providers on a task; it returns only the final 'best of both' answer by default, or the bounded current-call transcript when `includeTranscript` is true. Prefer browser_team when the user wants a brainstorm, a design decision or tradeoff analysis, a code or document review, a second opinion, or red-teaming an idea — any case where multiple independent perspectives should be merged into one answer. browser_team cannot search the web or read files: paste any code, document, or source material into the task, and gather current information with web_search or web_fetch first. The debate runs for `rounds` rounds (default 2) and appends a final synthesis turn.",
+            text: "Use browser_team to run a multi-model debate between ordered configured web providers on a task; it returns only the final 'best of both' answer by default, or the bounded current-call transcript when `includeTranscript` is true. Provider browsers are hidden by default; set `visible: true` only when the user asks to watch them. Prefer browser_team when the user wants a brainstorm, a design decision or tradeoff analysis, a code or document review, a second opinion, or red-teaming an idea — any case where multiple independent perspectives should be merged into one answer. browser_team cannot search the web or read files: paste any code, document, or source material into the task, and gather current information with web_search or web_fetch first. The debate runs for `rounds` rounds (default 2) and appends a final synthesis turn.",
         });
     }
     ctx.systemPrompt?.section?.({
         name: "tool:browser_chat",
         order: 120,
-        text: "Use browser_chat to get a single answer from ChatGPT or Gemini through a logged-in browser. Calls from one DSH session durably resume the same native conversation per provider, so use later calls as follow-up turns in that conversation. Prefer browser_chat when you need one model's specific answer or a multi-turn back-and-forth with a single provider. If a provider is not signed in, run internet_browser login, tell the user to sign in and close the dedicated normal Chrome window completely, then retry after verified state is exported.",
+        text: "Use browser_chat to get a single answer from ChatGPT or Gemini through a logged-in browser. Calls from one DSH session durably resume the same native conversation per provider. The automated browser is hidden by default; set `visible: true` only when the user asks to watch it. Prefer browser_chat when you need one model's specific answer or a multi-turn back-and-forth with a single provider. If a provider is not signed in, run internet_browser login, tell the user to sign in and close the dedicated normal Chrome window completely, then retry after verified state is exported.",
     });
 }
 export { BrowserManager } from "#internet/browser/runtime";

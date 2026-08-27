@@ -41,6 +41,8 @@ export interface TeamOptions {
     synthesize?: boolean;
     /** Ordered providers; the first opens the debate. */
     providers?: readonly WebProvider[];
+    /** Show automated provider browsers on the user-managed display. */
+    visible?: boolean;
     signal?: AbortSignal;
 }
 /** A single-turn chat function, injected so the loop is unit-testable. */

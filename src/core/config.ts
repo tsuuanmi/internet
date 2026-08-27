@@ -81,7 +81,7 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	teamSynthesis: true,
 	enableChatgpt: true,
 	enableGemini: true,
-	chatgptThinkingLevel: "medium",
+	chatgptThinkingLevel: "instant",
 };
 
 /**

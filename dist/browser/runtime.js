@@ -349,16 +349,16 @@ export class BrowserManager {
         }, this.config.closeAfterMs);
         this.pendingCloses.set(provider, timer);
     }
-    async ensureContext(provider, headless) {
+    async ensureContext(provider, headless, visible) {
         const existing = this.sessions.get(provider);
-        if (existing?.browser.isConnected() && existing.headless === headless) {
+        if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible) {
             return existing.context;
         }
         await this.closeSession(provider);
         if (!this.storageStateExists(provider)) {
             throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
         }
-        const display = await this.display.prepare(headless);
+        const display = await this.display.prepare(headless, visible);
         const browser = await chromium.launch({
             executablePath: this.chromeExecutable(),
             headless,
@@ -371,7 +371,7 @@ export class BrowserManager {
                 storageState: this.locations(provider).storageStatePath,
                 viewport: browserViewport(display),
             });
-            this.sessions.set(provider, { browser, context, headless, displayKind: display.kind });
+            this.sessions.set(provider, { browser, context, headless, visible, displayKind: display.kind });
             browser.once("disconnected", () => {
                 if (this.sessions.get(provider)?.browser === browser)
                     this.sessions.delete(provider);
@@ -420,7 +420,9 @@ export class BrowserManager {
     }
     async chatProvider(provider, request) {
         this.cancelPendingClose(provider);
-        const context = await this.ensureContext(provider, this.config.headless);
+        const visible = request.visible === true;
+        const headless = visible ? false : this.config.headless;
+        const context = await this.ensureContext(provider, headless, visible);
         try {
             const page = await this.activePage(context);
             let binding;
@@ -434,7 +436,9 @@ export class BrowserManager {
                 throw new InternetError("provider_error", error instanceof Error ? error.message : `Failed to read the ${provider} conversation binding.`);
             }
             const targetUrl = binding?.conversationUrl ?? this.homeUrl(provider);
-            if (page.url() !== targetUrl) {
+            // ChatGPT leaves transient post-response controls that can swallow the
+            // next submission; reload its bound conversation before follow-ups.
+            if ((provider === "chatgpt-web" && binding !== undefined) || page.url() !== targetUrl) {
                 await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
             }
             if (!(await this.isAuthenticated(provider, page, 30_000, request.signal))) {

@@ -58,7 +58,7 @@ export function defineBrowserTeamTool(
 	return defineTool({
 		name: "browser_team",
 		description:
-			"Run a multi-model debate between configured web providers on a task. The models speak in order for `rounds` rounds, each critiquing and refining the others' latest messages, then produce a single final 'best of both' answer. Returns only the final answer unless `includeTranscript` is requested. Use when the user wants a multi-model brainstorm, debate, or second opinion.",
+			"Run a multi-model debate between configured web providers. Provider browsers are hidden by default; set visible=true to show them on the user-managed display. Returns only the final answer unless includeTranscript is requested.",
 		parameters: {
 			task: {
 				type: "string",
@@ -86,6 +86,10 @@ export function defineBrowserTeamTool(
 				type: "array",
 				items: { type: "string", enum: [...WEB_PROVIDERS] },
 				description: "Ordered providers for the debate; the first opens. Defaults to [chatgpt-web, gemini-web].",
+			},
+			visible: {
+				type: "boolean",
+				description: "Show both provider browsers on the user-managed display. Defaults to false.",
 			},
 		},
 		output: {
@@ -155,6 +159,7 @@ export function defineBrowserTeamTool(
 					rounds,
 					synthesize: input.synthesize ?? config.teamSynthesis,
 					providers: input.providers,
+					visible: input.visible,
 					signal: exec.signal,
 				});
 				const transcript = input.includeTranscript

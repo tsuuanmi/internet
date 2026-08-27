@@ -78,6 +78,12 @@ describe("automated browser display policy", () => {
 		expect(headedWindowArgs(display)).toEqual(["--window-position=-10000,-10000", "--window-size=800,600"]);
 	});
 
+	it("uses an on-screen window for explicit visible mode", () => {
+		const display: BrowserDisplay = { kind: "visible", env: { DISPLAY: ":1" } };
+		expect(browserViewport(display)).toEqual({ width: 1280, height: 900 });
+		expect(headedWindowArgs(display)).toEqual(["--window-size=1280,900"]);
+	});
+
 	it("preserves the existing deterministic viewport for native headless Chrome", () => {
 		expect(browserViewport({ kind: "headless" })).toEqual({ width: 1280, height: 900 });
 	});
@@ -88,6 +94,20 @@ describe("BrowserDisplayManager", () => {
 		const spawnXvfb = vi.fn();
 		const manager = displayManager({ platform: "linux", env: {}, spawnXvfb });
 		await expect(manager.prepare(true)).resolves.toEqual({ kind: "headless" });
+		expect(spawnXvfb).not.toHaveBeenCalled();
+	});
+
+	it("uses the inherited display without Xvfb for explicit visible mode", async () => {
+		const spawnXvfb = vi.fn();
+		const manager = displayManager({ platform: "linux", env: { DISPLAY: ":1" }, spawnXvfb });
+		await expect(manager.prepare(false, true)).resolves.toEqual({ kind: "visible", env: { DISPLAY: ":1" } });
+		expect(spawnXvfb).not.toHaveBeenCalled();
+	});
+
+	it("rejects explicit visible mode without a user-managed display", async () => {
+		const spawnXvfb = vi.fn();
+		const manager = displayManager({ platform: "linux", env: {}, spawnXvfb });
+		await expect(manager.prepare(false, true)).rejects.toThrow(/user-managed DISPLAY/);
 		expect(spawnXvfb).not.toHaveBeenCalled();
 	});
 

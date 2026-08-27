@@ -1,5 +1,6 @@
 import type { Page } from "patchright-core";
 import type { CompletionSnapshot } from "#internet/browser/completion";
+import { waitForSendReady } from "#internet/browser/submission";
 import type { ChatGptThinkingLevel } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -14,6 +15,7 @@ export const CHATGPT_COMPOSER_SELECTOR = [
 
 export const CHATGPT_SEND_BUTTON_SELECTOR = 'button[data-testid="send-button"]';
 export const CHATGPT_STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';
+export const CHATGPT_ACCOUNT_SELECTOR = '[data-testid="accounts-profile-button"]';
 
 /** The model/effort switcher button in the ChatGPT composer. */
 export const CHATGPT_EFFORT_CONTROL_SELECTOR = [
@@ -52,10 +54,11 @@ export const CHATGPT_ASSISTANT_TURN_SELECTOR = [
 	'[data-testid^="conversation-turn-"]:has([data-message-author-role="assistant"])',
 ].join(", ");
 
-/** True when the ChatGPT home page exposes its (single visible) composer. */
+/** True when ChatGPT exposes both its composer and signed-in account control. */
 export async function chatgptIsAuthenticated(page: Page): Promise<boolean> {
 	const composers = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true });
-	return (await composers.count()) === 1;
+	const accounts = page.locator(CHATGPT_ACCOUNT_SELECTOR).filter({ visible: true });
+	return (await composers.count()) === 1 && (await accounts.count()) > 0;
 }
 
 /** Wait until ChatGPT is authenticated (composer visible), or return false. */
@@ -77,11 +80,10 @@ export async function chatgptSend(page: Page, prompt: string): Promise<void> {
 	await composer.fill("");
 	await composer.fill(prompt);
 	const sendButton = composer.locator("xpath=ancestor::form[1]").locator(CHATGPT_SEND_BUTTON_SELECTOR);
-	await sendButton.waitFor({ state: "visible", timeout: 20_000 });
-	if (!(await sendButton.isEnabled())) {
-		throw new InternetError("provider_error", "ChatGPT send button is disabled after attaching the prompt");
-	}
-	await sendButton.click();
+	await waitForSendReady("ChatGPT", sendButton);
+	// Keyboard-activate the semantic button. This avoids pointer stability and
+	// overlay interception while preserving ChatGPT's submit behavior on follow-ups.
+	await sendButton.press("Enter");
 }
 
 /** Read the visible text of the current newest ChatGPT assistant turn (empty when none). */
@@ -153,6 +155,8 @@ export function parseChatGptEffortSliderState(
  * already selected.
  */
 export async function chatgptSelectThinkingLevel(page: Page, level: ChatGptThinkingLevel): Promise<void> {
+	// Instant is the universal UI default, so it requires no picker interaction.
+	if (level === "instant") return;
 	const targetIndex = CHATGPT_THINKING_LEVEL_INDEX[level];
 	const composer = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).first();
 	const composerForm = composer.locator("xpath=ancestor::form[1]");

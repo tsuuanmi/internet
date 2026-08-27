@@ -5,8 +5,8 @@
 ### Added
 
 - **chatgpt**: Select the ChatGPT Web reasoning-effort level before each turn via the new
-  `chatgptThinkingLevel` config (default `medium`, i.e. GPT-5.6-Sol Medium). Previously every turn
-  ran on the UI default (Instant). Supports `instant | medium | high | extra-high | pro`, and handles
+  `chatgptThinkingLevel` config (default `instant`; paid levels are explicit opt-ins). Supports
+  `instant | medium | high | extra-high | pro`, and handles
   both the menuitemradio list and the reasoning-effort slider surfaces.
 - **browser**: Migrate the automation backend from `playwright-core` to `patchright-core` (a drop-in,
   stealth-patched Playwright fork) and keep the ChatGPT inference browser open through a long idle TTL
@@ -16,11 +16,15 @@
   It never silently switches to native headless. Interactive login still requires a visible
   user-managed display. Managed-Xvfb contexts use a natural `1920x1080` browser window and shut down
   with `BrowserManager`.
+- **tools**: Add an optional `visible` flag to `browser_chat` and `browser_team`; hidden managed-browser
+  operation remains the default.
 
 ### Fixed
 
 - **browser**: Retain separate normal-Chrome login profiles for ChatGPT and Gemini so reopening a
   visible login window shows the same signed-in account instead of a fresh logged-out profile.
+- **browser**: Wait for provider send controls to become ready and keyboard-activate them, avoiding
+  animated-button pointer races in both ChatGPT and Gemini.
 - **client**: Build the web client entry (`src/client.ts`) as a DeepSeek Harness `__ModuleLoader__.load`
   bundle (via `scripts/build-client.mjs` in `npm run build`) instead of the plain `tsgo` ES-module
   emit. The raw ES-module `dist/client.js` failed to parse/register as the classic script the harness

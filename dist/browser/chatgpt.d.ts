@@ -5,6 +5,7 @@ export declare const CHATGPT_HOME_URL = "https://chatgpt.com/";
 export declare const CHATGPT_COMPOSER_SELECTOR: string;
 export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button[data-testid=\"send-button\"]";
 export declare const CHATGPT_STOP_BUTTON_SELECTOR = "[data-testid=\"stop-button\"]";
+export declare const CHATGPT_ACCOUNT_SELECTOR = "[data-testid=\"accounts-profile-button\"]";
 /** The model/effort switcher button in the ChatGPT composer. */
 export declare const CHATGPT_EFFORT_CONTROL_SELECTOR: string;
 /** The open model/effort menu (menuitemradio list or reasoning-effort slider). */
@@ -18,7 +19,7 @@ export declare const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 5;
 /** UI index of each thinking level in the ChatGPT model switcher. */
 export declare const CHATGPT_THINKING_LEVEL_INDEX: Record<ChatGptThinkingLevel, number>;
 export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
-/** True when the ChatGPT home page exposes its (single visible) composer. */
+/** True when ChatGPT exposes both its composer and signed-in account control. */
 export declare function chatgptIsAuthenticated(page: Page): Promise<boolean>;
 /** Wait until ChatGPT is authenticated (composer visible), or return false. */
 export declare function chatgptWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;

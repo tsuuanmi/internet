@@ -12,7 +12,11 @@ export function parseChatArgs(args) {
     if (typeof prompt !== "string" || prompt.trim().length === 0) {
         throw new Error("browser_chat prompt must be a non-empty string");
     }
-    return { provider: model, prompt };
+    const visible = args.visible;
+    if (visible !== undefined && typeof visible !== "boolean") {
+        throw new Error("browser_chat visible must be a boolean");
+    }
+    return { provider: model, prompt, ...(visible === undefined ? {} : { visible }) };
 }
 /**
  * Validate and normalize the model-facing `browser_team` arguments. Kept free
@@ -39,6 +43,10 @@ export function parseTeamArgs(args) {
     if (includeTranscript !== undefined && typeof includeTranscript !== "boolean") {
         throw new Error("browser_team includeTranscript must be a boolean");
     }
+    const visible = args.visible;
+    if (visible !== undefined && typeof visible !== "boolean") {
+        throw new Error("browser_team visible must be a boolean");
+    }
     const providers = args.providers;
     if (providers !== undefined) {
         if (!Array.isArray(providers) || providers.length < 2) {
@@ -62,6 +70,7 @@ export function parseTeamArgs(args) {
         ...(synthesize === undefined ? {} : { synthesize }),
         ...(includeTranscript === undefined ? {} : { includeTranscript }),
         ...(providers === undefined ? {} : { providers: providers }),
+        ...(visible === undefined ? {} : { visible }),
     };
 }
 //# sourceMappingURL=args.js.map

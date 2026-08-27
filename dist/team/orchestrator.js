@@ -100,6 +100,7 @@ export async function runTeam(chat, options) {
                 const result = await chat(provider, {
                     prompt,
                     sessionId: teamSessionId,
+                    visible: options.visible,
                     signal: options.signal,
                 });
                 lastByProvider.set(provider, result.text);
@@ -112,6 +113,7 @@ export async function runTeam(chat, options) {
             const result = await chat(lastProvider, {
                 prompt,
                 sessionId: teamSessionId,
+                visible: options.visible,
                 signal: options.signal,
             });
             return { finalAnswer: result.text, finalProvider: lastProvider, transcript: [...transcript] };

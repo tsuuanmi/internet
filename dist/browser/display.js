@@ -11,9 +11,11 @@ export function browserViewport(display) {
 }
 /** Browser window flags for automated headed launches. */
 export function headedWindowArgs(display) {
-    return display.kind === "virtual"
-        ? ["--window-size=1920,1080"]
-        : ["--window-position=-10000,-10000", "--window-size=800,600"];
+    if (display.kind === "virtual")
+        return ["--window-size=1920,1080"];
+    if (display.kind === "visible")
+        return ["--window-size=1280,900"];
+    return ["--window-position=-10000,-10000", "--window-size=800,600"];
 }
 function unavailableMessage(diagnostic) {
     const suffix = diagnostic?.trim() ? ` Xvfb reported: ${diagnostic.trim()}` : "";
@@ -42,10 +44,16 @@ export class BrowserDisplayManager {
         this.onVirtualDisplayExit = options.onVirtualDisplayExit;
     }
     /** Prepare the environment for one automated Chrome launch. */
-    async prepare(headless) {
+    async prepare(headless, visible = false) {
         this.assertActive();
         if (headless)
             return { kind: "headless" };
+        if (visible) {
+            if (this.platform === "linux" && !this.hasSystemDisplay()) {
+                throw new InternetError("browser_unavailable", "Visible browser mode requires a user-managed DISPLAY. Use a desktop, SSH X11 forwarding, or VNC.");
+            }
+            return { kind: "visible", env: { ...this.baseEnv } };
+        }
         if (this.platform !== "linux" || this.useSystemFallback)
             return { kind: "system", env: { ...this.baseEnv } };
         if (this.active !== undefined)

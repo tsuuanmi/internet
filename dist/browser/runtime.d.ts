@@ -3,6 +3,8 @@ export interface ChatRequest {
     prompt: string;
     /** Durable owner key: the current DSH agent/session ID. */
     sessionId: string;
+    /** Show automated Chrome on the user-managed display instead of managed Xvfb. */
+    visible?: boolean;
     signal?: AbortSignal;
 }
 export interface ChatResult {

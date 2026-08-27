@@ -23,7 +23,7 @@ export function defineBrowserChatTool(
 	return defineTool({
 		name: "browser_chat",
 		description:
-			"Ask ChatGPT or Gemini through a logged-in browser. Both ChatGPT and Gemini durably resume one native conversation per current DSH session. Use when you specifically need a web-model response or want multiple turns in the same conversation.",
+			"Ask ChatGPT or Gemini through a logged-in browser. Both providers durably resume one native conversation per current DSH session. The browser is hidden by default; set visible=true to show it on the user-managed display.",
 		parameters: {
 			model: {
 				type: "string",
@@ -35,6 +35,10 @@ export function defineBrowserChatTool(
 				type: "string",
 				required: true,
 				description: "The question or instruction for the web model.",
+			},
+			visible: {
+				type: "boolean",
+				description: "Show the automated browser on the user-managed display. Defaults to false.",
 			},
 		},
 		output: {
@@ -55,7 +59,7 @@ export function defineBrowserChatTool(
 		timeoutMs,
 		isConcurrencySafe: () => false,
 		async execute(args, exec) {
-			const { provider, prompt } = parseChatArgs(args);
+			const { provider, prompt, visible } = parseChatArgs(args);
 			if (!allowed.has(provider)) {
 				return {
 					answer: `browser_chat provider ${provider} is disabled in the internet plugin config.`,
@@ -75,6 +79,7 @@ export function defineBrowserChatTool(
 				const result = await manager.chat(provider, {
 					prompt,
 					sessionId: String(sessionId),
+					visible,
 					signal: exec.signal,
 				});
 				return {

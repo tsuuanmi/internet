@@ -3,6 +3,7 @@ import type { WebProvider } from "#internet/core/config";
 export interface ChatInput {
     provider: WebProvider;
     prompt: string;
+    visible?: boolean;
 }
 /**
  * Validate and normalize the model-facing `browser_chat` arguments. Kept free
@@ -17,6 +18,7 @@ export interface TeamInput {
     synthesize?: boolean;
     includeTranscript?: boolean;
     providers?: WebProvider[];
+    visible?: boolean;
 }
 /**
  * Validate and normalize the model-facing `browser_team` arguments. Kept free

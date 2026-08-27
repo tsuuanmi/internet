@@ -47,6 +47,8 @@ export interface ChatRequest {
 	prompt: string;
 	/** Durable owner key: the current DSH agent/session ID. */
 	sessionId: string;
+	/** Show automated Chrome on the user-managed display instead of managed Xvfb. */
+	visible?: boolean;
 	signal?: AbortSignal;
 }
 
@@ -66,7 +68,8 @@ interface ManagedSession {
 	browser: Browser;
 	context: BrowserContext;
 	headless: boolean;
-	displayKind: "headless" | "system" | "virtual";
+	visible: boolean;
+	displayKind: "headless" | "system" | "visible" | "virtual";
 }
 
 interface VerificationMarker {
@@ -464,9 +467,9 @@ export class BrowserManager {
 		this.pendingCloses.set(provider, timer);
 	}
 
-	private async ensureContext(provider: WebProvider, headless: boolean): Promise<BrowserContext> {
+	private async ensureContext(provider: WebProvider, headless: boolean, visible: boolean): Promise<BrowserContext> {
 		const existing = this.sessions.get(provider);
-		if (existing?.browser.isConnected() && existing.headless === headless) {
+		if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible) {
 			return existing.context;
 		}
 		await this.closeSession(provider);
@@ -474,7 +477,7 @@ export class BrowserManager {
 			throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
 		}
 
-		const display = await this.display.prepare(headless);
+		const display = await this.display.prepare(headless, visible);
 		const browser = await chromium.launch({
 			executablePath: this.chromeExecutable(),
 			headless,
@@ -487,7 +490,7 @@ export class BrowserManager {
 				storageState: this.locations(provider).storageStatePath,
 				viewport: browserViewport(display),
 			});
-			this.sessions.set(provider, { browser, context, headless, displayKind: display.kind });
+			this.sessions.set(provider, { browser, context, headless, visible, displayKind: display.kind });
 			browser.once("disconnected", () => {
 				if (this.sessions.get(provider)?.browser === browser) this.sessions.delete(provider);
 			});
@@ -539,7 +542,9 @@ export class BrowserManager {
 
 	private async chatProvider(provider: WebProvider, request: ChatRequest): Promise<ChatResult> {
 		this.cancelPendingClose(provider);
-		const context = await this.ensureContext(provider, this.config.headless);
+		const visible = request.visible === true;
+		const headless = visible ? false : this.config.headless;
+		const context = await this.ensureContext(provider, headless, visible);
 		try {
 			const page = await this.activePage(context);
 			let binding: ConversationBinding | undefined;
@@ -555,7 +560,9 @@ export class BrowserManager {
 				);
 			}
 			const targetUrl = binding?.conversationUrl ?? this.homeUrl(provider);
-			if (page.url() !== targetUrl) {
+			// ChatGPT leaves transient post-response controls that can swallow the
+			// next submission; reload its bound conversation before follow-ups.
+			if ((provider === "chatgpt-web" && binding !== undefined) || page.url() !== targetUrl) {
 				await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
 			}
 			if (!(await this.isAuthenticated(provider, page, 30_000, request.signal))) {

@@ -4,8 +4,9 @@ export declare const GEMINI_HOME_URL = "https://gemini.google.com/app";
 export declare const GEMINI_COMPOSER_SELECTOR = "rich-textarea [contenteditable=\"true\"]";
 export declare const GEMINI_SEND_BUTTON_SELECTOR = "input-area-v2 button[aria-label=\"Send message\"]";
 export declare const GEMINI_STOP_BUTTON_SELECTOR = "button[aria-label=\"Stop response\"]";
+export declare const GEMINI_ACCOUNT_SELECTOR = "[aria-label^=\"Google Account\"], [aria-label*=\"Google Account:\"]";
 export declare const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-text message-content .markdown.markdown-main-panel";
-/** True when the Gemini home page exposes its composer. */
+/** True when Gemini exposes both its composer and signed-in Google account control. */
 export declare function geminiIsAuthenticated(page: Page): Promise<boolean>;
 /** Wait until Gemini is authenticated (composer visible), or return false. */
 export declare function geminiWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;

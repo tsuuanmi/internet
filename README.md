@@ -58,9 +58,8 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
   text.
 - Completion is detected conservatively: a newly appended assistant turn must be present, generation
   must have stopped, and its text must stay unchanged for `stableMs` before it is returned.
-- Before each ChatGPT turn the driver opens the model switcher and selects the configured
-  `chatgptThinkingLevel` (default `medium`), so turns reason at GPT-5.6-Sol Medium rather than the
-  UI's Instant default.
+- Before each ChatGPT turn the driver selects the configured `chatgptThinkingLevel`. The default is
+  `instant`, which is available to every signed-in account; paid levels remain explicit opt-ins.
 
 ## Install
 
@@ -109,7 +108,7 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | `teamSynthesis`  | `true`                     | Whether `browser_team` appends a final synthesis turn.           |
 | `enableChatgpt`  | `true`                     | Register the ChatGPT Web provider.                               |
 | `enableGemini`   | `true`                     | Register the Gemini Web provider.                                |
-| `chatgptThinkingLevel` | `medium`              | Default ChatGPT Web reasoning-effort level selected before each turn: `instant`, `medium`, `high`, `extra-high`, or `pro`. |
+| `chatgptThinkingLevel` | `instant`             | Default ChatGPT Web reasoning-effort level selected before each turn: `instant`, `medium`, `high`, `extra-high`, or `pro`. |
 
 When `includeTranscript` is true, the tool retains the newest debate content within
 `teamTranscriptMaxChars`. `transcriptTruncated: true` means older content was omitted;
@@ -137,7 +136,8 @@ Interactive `internet_browser login` is different: it always requires a visible,
 /internet Explain Raft and Paxos.                         # -> direct ChatGPT answer in the UI
 /internet What trade-off did you mention for Raft?       # -> same durable ChatGPT conversation
 
-browser_chat { model: "chatgpt-web", prompt: "..." }   # -> login required, or the answer
+browser_chat { model: "chatgpt-web", prompt: "..." }   # -> hidden managed browser by default
+browser_chat { model: "chatgpt-web", prompt: "...", visible: true } # -> visible automated browser
 internet_browser { action: "login", model: "chatgpt-web" }
 # Sign in inside dedicated normal Chrome, then close that window completely.
 # The plugin exports and verifies ~/.dsh/internet/chatgpt-web/storage-state.json.

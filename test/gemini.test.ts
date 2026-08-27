@@ -1,6 +1,11 @@
 import type { Page } from "patchright-core";
-import { describe, expect, it } from "vitest";
-import { GEMINI_STOP_BUTTON_SELECTOR, geminiLastResponseText, geminiSnapshot } from "#internet/browser/gemini";
+import { describe, expect, it, vi } from "vitest";
+import {
+	GEMINI_STOP_BUTTON_SELECTOR,
+	geminiLastResponseText,
+	geminiSend,
+	geminiSnapshot,
+} from "#internet/browser/gemini";
 
 function fakePage(responses: string[]): { page: Page } {
 	const response = (index: number) => ({
@@ -22,6 +27,33 @@ function fakePage(responses: string[]): { page: Page } {
 	} as unknown as Page;
 	return { page };
 }
+
+describe("geminiSend", () => {
+	it("keyboard-activates the ready send button", async () => {
+		const fill = vi.fn(async () => {});
+		const press = vi.fn(async () => {});
+		const sendButton = {
+			waitFor: vi.fn(async () => {}),
+			isEnabled: vi.fn(async () => true),
+			press,
+		};
+		const composer = { fill };
+		const page = {
+			locator(selector: string) {
+				if (selector === 'rich-textarea [contenteditable="true"]') {
+					return { filter: () => ({ first: () => composer }) };
+				}
+				return { filter: () => ({ last: () => sendButton }) };
+			},
+		} as unknown as Page;
+
+		await geminiSend(page, "hello");
+
+		expect(fill).toHaveBeenNthCalledWith(1, "");
+		expect(fill).toHaveBeenNthCalledWith(2, "hello");
+		expect(press).toHaveBeenCalledWith("Enter");
+	});
+});
 
 describe("geminiLastResponseText", () => {
 	it("returns the newest response text, or empty when none", async () => {
