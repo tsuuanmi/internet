@@ -2,6 +2,14 @@
 export type WebProvider = "chatgpt-web" | "gemini-web";
 /** Known provider ids, used to validate tool arguments. */
 export declare const WEB_PROVIDERS: readonly WebProvider[];
+/**
+ * ChatGPT Web reasoning-effort levels, ordered by the UI index the model
+ * switcher exposes (Instant=0 … Pro=4). "Medium" is the default so ChatGPT
+ * turns reason at GPT-5.6-Sol Medium instead of Instant.
+ */
+export type ChatGptThinkingLevel = "instant" | "medium" | "high" | "extra-high" | "pro";
+/** Known ChatGPT thinking levels, used to validate config and tool arguments. */
+export declare const CHATGPT_THINKING_LEVELS: readonly ChatGptThinkingLevel[];
 /** Per-plugin resolved configuration. */
 export interface BrowserConfig {
     /** Explicit Chrome binary path; otherwise the system Chrome is discovered. */
@@ -34,6 +42,8 @@ export interface BrowserConfig {
     enableChatgpt: boolean;
     /** Register the Gemini Web provider. */
     enableGemini: boolean;
+    /** Default ChatGPT Web reasoning-effort level selected before each turn. */
+    chatgptThinkingLevel: ChatGptThinkingLevel;
 }
 export declare const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">>;
 /**
@@ -56,6 +66,7 @@ export declare const Config: import("@deepseek-ai/schemastery").Schema<{
     teamSynthesis: boolean;
     enableChatgpt: boolean;
     enableGemini: boolean;
+    chatgptThinkingLevel: string;
     chromePath: string;
 }>;
 /**

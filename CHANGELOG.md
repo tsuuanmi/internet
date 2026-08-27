@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- **chatgpt**: Select the ChatGPT Web reasoning-effort level before each turn via the new
+  `chatgptThinkingLevel` config (default `medium`, i.e. GPT-5.6-Sol Medium). Previously every turn
+  ran on the UI default (Instant). Supports `instant | medium | high | extra-high | pro`, and handles
+  both the menuitemradio list and the reasoning-effort slider surfaces.
+
 ### Fixed
 
 - **client**: Build the web client entry (`src/client.ts`) as a DeepSeek Harness `__ModuleLoader__.load`

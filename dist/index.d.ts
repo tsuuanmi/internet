@@ -28,8 +28,8 @@ export interface PluginContext {
  */
 export declare function apply(ctx: PluginContext, rawConfig: unknown): void;
 export { BrowserManager } from "#internet/browser/runtime";
-export type { BrowserConfig, WebProvider } from "#internet/core/config";
-export { Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
+export type { BrowserConfig, ChatGptThinkingLevel, WebProvider } from "#internet/core/config";
+export { CHATGPT_THINKING_LEVELS, Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
 export type { OtherContribution, TeamFailure, TeamOptions, TeamResult, TeamSuccess, TeamTurn, } from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";

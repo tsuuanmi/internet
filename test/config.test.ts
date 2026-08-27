@@ -61,4 +61,19 @@ describe("resolveBrowserConfig", () => {
 		expect(() => resolveBrowserConfig({ teamTranscriptMaxChars: 0.5 })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ teamRounds: 3, teamMaxRounds: 2 })).toThrow(/must not exceed/);
 	});
+
+	it("defaults chatgptThinkingLevel to medium", () => {
+		expect(resolveBrowserConfig({}).chatgptThinkingLevel).toBe("medium");
+	});
+
+	it("honors an explicit chatgptThinkingLevel override", () => {
+		expect(resolveBrowserConfig({ chatgptThinkingLevel: "high" }).chatgptThinkingLevel).toBe("high");
+		expect(resolveBrowserConfig({ chatgptThinkingLevel: "instant" }).chatgptThinkingLevel).toBe("instant");
+		expect(resolveBrowserConfig({ chatgptThinkingLevel: "pro" }).chatgptThinkingLevel).toBe("pro");
+	});
+
+	it("rejects an invalid chatgptThinkingLevel", () => {
+		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: "ultra" })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: 1 })).toThrow(InternetError);
+	});
 });

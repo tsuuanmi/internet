@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync, } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
-import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText, chatgptSend, chatgptSnapshot, chatgptWaitAuthenticated, } from "#internet/browser/chatgpt";
+import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText, chatgptSelectThinkingLevel, chatgptSend, chatgptSnapshot, chatgptWaitAuthenticated, } from "#internet/browser/chatgpt";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
@@ -427,6 +427,7 @@ export class BrowserManager {
             let conversationId;
             if (provider === "chatgpt-web") {
                 const previousTurnText = await chatgptLastAssistantTurnText(page);
+                await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
                 await chatgptSend(page, request.prompt);
                 text = await waitForStableCompletion(() => chatgptSnapshot(page, previousTurnText), waitOptions);
                 const conversation = await this.waitForChatGptConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), request.signal);

@@ -56,6 +56,9 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
   text.
 - Completion is detected conservatively: a newly appended assistant turn must be present, generation
   must have stopped, and its text must stay unchanged for `stableMs` before it is returned.
+- Before each ChatGPT turn the driver opens the model switcher and selects the configured
+  `chatgptThinkingLevel` (default `medium`), so turns reason at GPT-5.6-Sol Medium rather than the
+  UI's Instant default.
 
 ## Install
 
@@ -104,6 +107,7 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | `teamSynthesis`  | `true`                     | Whether `browser_team` appends a final synthesis turn.           |
 | `enableChatgpt`  | `true`                     | Register the ChatGPT Web provider.                               |
 | `enableGemini`   | `true`                     | Register the Gemini Web provider.                                |
+| `chatgptThinkingLevel` | `medium`              | Default ChatGPT Web reasoning-effort level selected before each turn: `instant`, `medium`, `high`, `extra-high`, or `pro`. |
 
 When `includeTranscript` is true, the tool retains the newest debate content within
 `teamTranscriptMaxChars`. `transcriptTruncated: true` means older content was omitted;

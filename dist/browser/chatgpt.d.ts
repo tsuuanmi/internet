@@ -1,9 +1,22 @@
 import type { Page } from "playwright-core";
 import type { CompletionSnapshot } from "#internet/browser/completion";
+import type { ChatGptThinkingLevel } from "#internet/core/config";
 export declare const CHATGPT_HOME_URL = "https://chatgpt.com/";
 export declare const CHATGPT_COMPOSER_SELECTOR: string;
 export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button[data-testid=\"send-button\"]";
 export declare const CHATGPT_STOP_BUTTON_SELECTOR = "[data-testid=\"stop-button\"]";
+/** The model/effort switcher button in the ChatGPT composer. */
+export declare const CHATGPT_EFFORT_CONTROL_SELECTOR: string;
+/** The open model/effort menu (menuitemradio list or reasoning-effort slider). */
+export declare const CHATGPT_EFFORT_MENU_SELECTOR: string;
+/** One reasoning-effort choice in the menu (Instant, Medium, High, …). */
+export declare const CHATGPT_EFFORT_ITEM_SELECTOR = "[role=\"menuitemradio\"]";
+/** The reasoning-effort slider control, when the account renders a slider. */
+export declare const CHATGPT_EFFORT_SLIDER_SELECTOR = "[data-model-reasoning-effort-slider] [role=\"slider\"]";
+/** Upper bound on reasoning-effort options a slider may expose. */
+export declare const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 5;
+/** UI index of each thinking level in the ChatGPT model switcher. */
+export declare const CHATGPT_THINKING_LEVEL_INDEX: Record<ChatGptThinkingLevel, number>;
 export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
 /** True when the ChatGPT home page exposes its (single visible) composer. */
 export declare function chatgptIsAuthenticated(page: Page): Promise<boolean>;
@@ -20,4 +33,18 @@ export declare function chatgptLastAssistantTurnText(page: Page): Promise<string
  * turns so the visible count does not increase on continuation.
  */
 export declare function chatgptSnapshot(page: Page, previousTurnText?: string): Promise<CompletionSnapshot>;
+export interface ChatGptEffortSliderState {
+    min: number;
+    max: number;
+    value: number;
+}
+/** Parse a reasoning-effort slider's ARIA range, or undefined when invalid. */
+export declare function parseChatGptEffortSliderState(rawMin: string | null, rawMax: string | null, rawValue: string | null): ChatGptEffortSliderState | undefined;
+/**
+ * Select the ChatGPT reasoning-effort level before a turn. Opens the model
+ * switcher and activates the target level, handling both the menuitemradio
+ * list and the reasoning-effort slider surfaces. No-ops when the level is
+ * already selected.
+ */
+export declare function chatgptSelectThinkingLevel(page: Page, level: ChatGptThinkingLevel): Promise<void>;
 //# sourceMappingURL=chatgpt.d.ts.map

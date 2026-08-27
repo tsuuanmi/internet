@@ -9,6 +9,22 @@ export type WebProvider = "chatgpt-web" | "gemini-web";
 /** Known provider ids, used to validate tool arguments. */
 export const WEB_PROVIDERS: readonly WebProvider[] = ["chatgpt-web", "gemini-web"];
 
+/**
+ * ChatGPT Web reasoning-effort levels, ordered by the UI index the model
+ * switcher exposes (Instant=0 … Pro=4). "Medium" is the default so ChatGPT
+ * turns reason at GPT-5.6-Sol Medium instead of Instant.
+ */
+export type ChatGptThinkingLevel = "instant" | "medium" | "high" | "extra-high" | "pro";
+
+/** Known ChatGPT thinking levels, used to validate config and tool arguments. */
+export const CHATGPT_THINKING_LEVELS: readonly ChatGptThinkingLevel[] = [
+	"instant",
+	"medium",
+	"high",
+	"extra-high",
+	"pro",
+];
+
 /** Per-plugin resolved configuration. */
 export interface BrowserConfig {
 	/** Explicit Chrome binary path; otherwise the system Chrome is discovered. */
@@ -41,6 +57,8 @@ export interface BrowserConfig {
 	enableChatgpt: boolean;
 	/** Register the Gemini Web provider. */
 	enableGemini: boolean;
+	/** Default ChatGPT Web reasoning-effort level selected before each turn. */
+	chatgptThinkingLevel: ChatGptThinkingLevel;
 }
 
 /** Resolve the DeepSeek Harness home (mirrors `resolveDshHome`: `$DSH_HOME` or `~/.dsh`). */
@@ -63,6 +81,7 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	teamSynthesis: true,
 	enableChatgpt: true,
 	enableGemini: true,
+	chatgptThinkingLevel: "medium",
 };
 
 /**
@@ -85,6 +104,7 @@ export const Config = S.object({
 	teamSynthesis: S.boolean().default(DEFAULT_CONFIG.teamSynthesis),
 	enableChatgpt: S.boolean().default(DEFAULT_CONFIG.enableChatgpt),
 	enableGemini: S.boolean().default(DEFAULT_CONFIG.enableGemini),
+	chatgptThinkingLevel: S.string().default(DEFAULT_CONFIG.chatgptThinkingLevel),
 	chromePath: S.string(),
 });
 
@@ -104,6 +124,17 @@ function asPositiveInteger(value: unknown, fallback: number, name: string): numb
 		throw new InternetError("config_error", `browser config ${name} must be at least 1`);
 	}
 	return typeof value === "number" ? Math.floor(value) : fallback;
+}
+
+function asChatGptThinkingLevel(value: unknown): ChatGptThinkingLevel {
+	if (value === undefined) return DEFAULT_CONFIG.chatgptThinkingLevel;
+	if (typeof value === "string" && (CHATGPT_THINKING_LEVELS as readonly string[]).includes(value)) {
+		return value as ChatGptThinkingLevel;
+	}
+	throw new InternetError(
+		"config_error",
+		`browser config chatgptThinkingLevel must be one of ${CHATGPT_THINKING_LEVELS.join(", ")}`,
+	);
 }
 
 /**
@@ -142,5 +173,6 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 		teamSynthesis: asBoolean(input.teamSynthesis, DEFAULT_CONFIG.teamSynthesis),
 		enableChatgpt: asBoolean(input.enableChatgpt, DEFAULT_CONFIG.enableChatgpt),
 		enableGemini: asBoolean(input.enableGemini, DEFAULT_CONFIG.enableGemini),
+		chatgptThinkingLevel: asChatGptThinkingLevel(input.chatgptThinkingLevel),
 	};
 }

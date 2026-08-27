@@ -4,6 +4,14 @@ import S from "@deepseek-ai/schemastery";
 import { InternetError } from "#internet/core/errors";
 /** Known provider ids, used to validate tool arguments. */
 export const WEB_PROVIDERS = ["chatgpt-web", "gemini-web"];
+/** Known ChatGPT thinking levels, used to validate config and tool arguments. */
+export const CHATGPT_THINKING_LEVELS = [
+    "instant",
+    "medium",
+    "high",
+    "extra-high",
+    "pro",
+];
 /** Resolve the DeepSeek Harness home (mirrors `resolveDshHome`: `$DSH_HOME` or `~/.dsh`). */
 function dshHome() {
     return process.env.DSH_HOME ?? join(homedir(), ".dsh");
@@ -23,6 +31,7 @@ export const DEFAULT_CONFIG = {
     teamSynthesis: true,
     enableChatgpt: true,
     enableGemini: true,
+    chatgptThinkingLevel: "medium",
 };
 /**
  * Plugin `Config` export: a Schemastery object schema. DSH validates the
@@ -44,6 +53,7 @@ export const Config = S.object({
     teamSynthesis: S.boolean().default(DEFAULT_CONFIG.teamSynthesis),
     enableChatgpt: S.boolean().default(DEFAULT_CONFIG.enableChatgpt),
     enableGemini: S.boolean().default(DEFAULT_CONFIG.enableGemini),
+    chatgptThinkingLevel: S.string().default(DEFAULT_CONFIG.chatgptThinkingLevel),
     chromePath: S.string(),
 });
 function asBoolean(value, fallback) {
@@ -62,6 +72,14 @@ function asPositiveInteger(value, fallback, name) {
         throw new InternetError("config_error", `browser config ${name} must be at least 1`);
     }
     return typeof value === "number" ? Math.floor(value) : fallback;
+}
+function asChatGptThinkingLevel(value) {
+    if (value === undefined)
+        return DEFAULT_CONFIG.chatgptThinkingLevel;
+    if (typeof value === "string" && CHATGPT_THINKING_LEVELS.includes(value)) {
+        return value;
+    }
+    throw new InternetError("config_error", `browser config chatgptThinkingLevel must be one of ${CHATGPT_THINKING_LEVELS.join(", ")}`);
 }
 /**
  * Resolve raw plugin config (from the DSH profile) into a validated
@@ -93,6 +111,7 @@ export function resolveBrowserConfig(raw) {
         teamSynthesis: asBoolean(input.teamSynthesis, DEFAULT_CONFIG.teamSynthesis),
         enableChatgpt: asBoolean(input.enableChatgpt, DEFAULT_CONFIG.enableChatgpt),
         enableGemini: asBoolean(input.enableGemini, DEFAULT_CONFIG.enableGemini),
+        chatgptThinkingLevel: asChatGptThinkingLevel(input.chatgptThinkingLevel),
     };
 }
 //# sourceMappingURL=config.js.map

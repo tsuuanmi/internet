@@ -15,6 +15,7 @@ import {
 	CHATGPT_HOME_URL,
 	chatgptIsAuthenticated,
 	chatgptLastAssistantTurnText,
+	chatgptSelectThinkingLevel,
 	chatgptSend,
 	chatgptSnapshot,
 	chatgptWaitAuthenticated,
@@ -552,6 +553,7 @@ export class BrowserManager {
 			let conversationId: string | undefined;
 			if (provider === "chatgpt-web") {
 				const previousTurnText = await chatgptLastAssistantTurnText(page);
+				await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
 				await chatgptSend(page, request.prompt);
 				text = await waitForStableCompletion(() => chatgptSnapshot(page, previousTurnText), waitOptions);
 				const conversation = await this.waitForChatGptConversationUrl(

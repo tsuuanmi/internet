@@ -43,7 +43,7 @@ export function apply(ctx, rawConfig) {
     });
 }
 export { BrowserManager } from "#internet/browser/runtime";
-export { Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
+export { CHATGPT_THINKING_LEVELS, Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
 export { parseChatArgs, parseTeamArgs } from "#internet/tools/args";
