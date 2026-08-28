@@ -7,7 +7,7 @@ export const CHATGPT_COMPOSER_SELECTOR = [
     "#prompt-textarea",
     '[contenteditable="true"][data-lexical-editor="true"]',
 ].join(", ");
-export const CHATGPT_SEND_BUTTON_SELECTOR = 'button[data-testid="send-button"]';
+export const CHATGPT_SEND_BUTTON_SELECTOR = 'button.composer-submit-button-color[aria-label="Send prompt"]';
 export const CHATGPT_STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';
 export const CHATGPT_ACCOUNT_SELECTOR = '[data-testid="accounts-profile-button"]';
 /** The reasoning-level composer pill in the current ChatGPT UI. */
