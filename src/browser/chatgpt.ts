@@ -13,19 +13,18 @@ export const CHATGPT_COMPOSER_SELECTOR = [
 	'[contenteditable="true"][data-lexical-editor="true"]',
 ].join(", ");
 
-export const CHATGPT_SEND_BUTTON_SELECTOR = 'button[data-testid="send-button"]';
+export const CHATGPT_SEND_BUTTON_SELECTOR = 'button[data-testid="send-button"][aria-label="Send prompt"]';
 export const CHATGPT_STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';
 export const CHATGPT_ACCOUNT_SELECTOR = '[data-testid="accounts-profile-button"]';
 
 /** The reasoning-level composer pill in the current ChatGPT UI. */
 export const CHATGPT_EFFORT_CONTROL_SELECTOR =
-	'button.__composer-pill.__composer-pill--neutral[aria-haspopup="menu"][data-tone="neutral"]:has(.text-token-text-tertiary)';
+	'button.__composer-pill.__composer-pill--neutral[aria-haspopup="menu"][data-tone="neutral"]';
 
 /** The open model/effort menu (menuitemradio list or reasoning-effort slider). */
 export const CHATGPT_EFFORT_MENU_SELECTOR = [
 	'[data-testid="composer-intelligence-picker-content"]:has([role="menuitemradio"], [data-model-reasoning-effort-slider])',
 	'[role="menu"]:has([role="menuitemradio"], [data-model-reasoning-effort-slider])',
-	'[role="group"]:has([role="menuitemradio"], [data-model-reasoning-effort-slider])',
 ].join(", ");
 
 /** One reasoning-effort choice in the menu (Instant, Medium, High, …). */
@@ -76,94 +75,38 @@ export async function chatgptWaitAuthenticated(page: Page, timeoutMs: number, si
 	return false;
 }
 
-async function insertChatgptPrompt(composer: Locator, prompt: string): Promise<void> {
-	const inserted = await composer.evaluate((element, value) => {
-		const selection = window.getSelection();
-		if (
-			document.activeElement !== element ||
-			!selection ||
-			!selection.isCollapsed ||
-			!selection.anchorNode ||
-			!element.contains(selection.anchorNode)
-		) {
-			return false;
-		}
-		return document.execCommand("insertText", false, value);
-	}, prompt);
-	if (!inserted) {
-		throw new InternetError("provider_error", "ChatGPT composer rejected the plain-text editing command");
+async function attachedChatGptPromptText(composer: Locator): Promise<string> {
+	return composer.evaluate((element) => [...element.childNodes].map((child) => child.textContent ?? "").join("\n"));
+}
+
+async function verifyChatGptPromptAttached(composer: Locator, prompt: string): Promise<void> {
+	const deadline = Date.now() + 10_000;
+	let observed = "";
+	while (Date.now() < deadline) {
+		observed = await attachedChatGptPromptText(composer);
+		if (observed === prompt) return;
+		await sleep(50);
 	}
+	let commonPrefix = 0;
+	while (commonPrefix < prompt.length && prompt[commonPrefix] === observed[commonPrefix]) commonPrefix += 1;
+	throw new InternetError(
+		"provider_error",
+		`ChatGPT composer did not preserve the complete prompt` +
+			` (expectedChars=${prompt.length}; actualChars=${observed.length}; commonPrefixChars=${commonPrefix})`,
+	);
 }
 
-interface ChatGptComposerDiagnostic {
-	composer: Record<string, unknown>;
-	buttons: Array<Record<string, unknown>>;
-}
-
-async function chatgptComposerDiagnostic(composer: Locator, prompt: string): Promise<ChatGptComposerDiagnostic> {
-	return composer.evaluate((element, expectedPrompt) => {
-		const form = element.closest("form");
-		const selection = window.getSelection();
-		const rendered = (candidate: Element): boolean => {
-			const style = getComputedStyle(candidate);
-			return (
-				candidate.isConnected && style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0"
-			);
-		};
-		const attributes = (candidate: Element): Record<string, unknown> => ({
-			tag: candidate.tagName.toLowerCase(),
-			role: candidate.getAttribute("role"),
-			ariaLabel: candidate.getAttribute("aria-label"),
-			testId: candidate.getAttribute("data-testid"),
-			type: candidate.getAttribute("type"),
-			disabled: (candidate as HTMLButtonElement).disabled,
-			className: candidate.getAttribute("class"),
-			text: ((candidate as HTMLElement).innerText || candidate.textContent || "")
-				.replace(/\s+/g, " ")
-				.trim()
-				.slice(0, 200),
-			outerHtml: candidate.outerHTML.replace(/\s+/g, " ").slice(0, 1_000),
-		});
-		const text = element.textContent ?? "";
-		return {
-			composer: {
-				...attributes(element),
-				textChars: text.length,
-				promptMatches: text === expectedPrompt,
-				focused: document.activeElement === element,
-				selectionCollapsed: selection?.isCollapsed ?? null,
-				selectionInside: selection?.anchorNode ? element.contains(selection.anchorNode) : false,
-				formFound: form !== null,
-				formOuterHtml: form?.outerHTML.replace(/\s+/g, " ").slice(0, 4_000) ?? null,
-			},
-			buttons: form === null ? [] : [...form.querySelectorAll("button")].filter(rendered).map(attributes),
-		};
-	}, prompt);
-}
-
-/** Commit the prompt through ChatGPT's Lexical editor and submit it. */
+/** Commit the prompt through ChatGPT's editor and submit its verified Send action. */
 export async function chatgptSend(page: Page, prompt: string): Promise<void> {
 	const composer = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).first();
 	await composer.fill("");
 	await composer.focus();
-	await insertChatgptPrompt(composer, prompt);
+	await page.keyboard.insertText(prompt);
+	await verifyChatGptPromptAttached(composer, prompt);
 	const sendButton = composer.locator("xpath=ancestor::form[1]").locator(CHATGPT_SEND_BUTTON_SELECTOR);
-	try {
-		await waitForSendReady("ChatGPT", sendButton);
-	} catch (error) {
-		const diagnostic = await chatgptComposerDiagnostic(composer, prompt).catch((diagnosticError) => ({
-			composer: {
-				diagnosticError: diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError),
-			},
-			buttons: [],
-		}));
-		throw new InternetError(
-			"provider_error",
-			`${error instanceof Error ? error.message : String(error)}; composer diagnostic: ${JSON.stringify(diagnostic)}`,
-		);
-	}
-	// Keyboard-activate the semantic button. This avoids pointer stability and
-	// overlay interception while preserving ChatGPT's submit behavior on follow-ups.
+	await waitForSendReady("ChatGPT", sendButton);
+	// Keyboard-activate only the verified semantic Send action. Start Voice does
+	// not match the locator and therefore can never be activated as a fallback.
 	await sendButton.press("Enter");
 }
 
@@ -278,29 +221,35 @@ export async function chatgptSelectThinkingLevel(page: Page, level: ChatGptThink
 		await effortControl.press("Enter");
 	}
 
-	const effortChoices = effortMenu.locator(CHATGPT_EFFORT_ITEM_SELECTOR);
-	const effortChoice = effortChoices.nth(targetIndex);
-	const effortSlider = page.locator(CHATGPT_EFFORT_SLIDER_SELECTOR).filter({ visible: true }).last();
-	const waitAbort = new AbortController();
-	let ready: "items" | "slider";
 	try {
-		ready = await Promise.race([
-			effortChoice
-				.waitFor({ state: "visible", timeout: 70_000, signal: waitAbort.signal })
-				.then(() => "items" as const),
-			effortSlider
-				.waitFor({ state: "visible", timeout: 70_000, signal: waitAbort.signal })
-				.then(() => "slider" as const),
-		]);
+		await effortMenu.waitFor({ state: "visible", timeout: 70_000 });
 	} catch (error) {
 		throw new InternetError(
 			"provider_error",
-			`ChatGPT effort menu did not expose item index ${targetIndex}` +
-				`; item count: ${await effortChoices.count().catch(() => 0)}` +
-				(error instanceof Error ? ` (${error.message})` : ""),
+			`ChatGPT effort menu did not become visible${error instanceof Error ? ` (${error.message})` : ""}`,
 		);
-	} finally {
-		waitAbort.abort();
+	}
+
+	// The current picker combines a reasoning slider with a nested model list.
+	// Prefer the slider whenever it is attached; its menuitemradio descendants
+	// are models (for example GPT-5.6 Sol), not reasoning levels.
+	const effortSlider = effortMenu.locator(CHATGPT_EFFORT_SLIDER_SELECTOR).last();
+	const effortChoices = effortMenu.locator(CHATGPT_EFFORT_ITEM_SELECTOR);
+	const sliderAttached = await effortSlider
+		.waitFor({ state: "attached", timeout: 5_000 })
+		.then(() => true)
+		.catch(() => false);
+	const ready: "items" | "slider" = sliderAttached ? "slider" : "items";
+	if (!sliderAttached) {
+		const labels = (await effortChoices.allInnerTexts().catch(() => [])).map((text) => text.trim());
+		const expectedLabels = ["Instant", "Medium", "High"];
+		if (labels.length !== expectedLabels.length || labels.some((label, index) => label !== expectedLabels[index])) {
+			throw new InternetError(
+				"provider_error",
+				`ChatGPT effort menu exposed neither its reasoning slider nor the three reasoning choices` +
+					` (menuitemradio labels: ${JSON.stringify(labels)})`,
+			);
+		}
 	}
 
 	if (ready === "slider") {
@@ -350,9 +299,8 @@ export async function chatgptSelectThinkingLevel(page: Page, level: ChatGptThink
 		return;
 	}
 
-	if ((await effortControl.innerText().catch(() => "")).trim() !== CHATGPT_THINKING_LEVEL_LABEL[level]) {
-		await effortChoice.press("Enter");
-		await verifyChatGptThinkingLevel(effortControl, level);
-	}
-	await page.keyboard.press("Escape");
+	const effortChoice = effortChoices.nth(targetIndex);
+	await effortChoice.press("Enter");
+	if (await effortMenu.isVisible().catch(() => false)) await page.keyboard.press("Escape");
+	await verifyChatGptThinkingLevel(effortControl, level);
 }

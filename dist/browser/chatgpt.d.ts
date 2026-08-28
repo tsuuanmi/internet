@@ -3,11 +3,11 @@ import type { CompletionSnapshot } from "#internet/browser/completion";
 import type { ChatGptThinkingLevel } from "#internet/core/config";
 export declare const CHATGPT_HOME_URL = "https://chatgpt.com/";
 export declare const CHATGPT_COMPOSER_SELECTOR: string;
-export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button[data-testid=\"send-button\"]";
+export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button[data-testid=\"send-button\"][aria-label=\"Send prompt\"]";
 export declare const CHATGPT_STOP_BUTTON_SELECTOR = "[data-testid=\"stop-button\"]";
 export declare const CHATGPT_ACCOUNT_SELECTOR = "[data-testid=\"accounts-profile-button\"]";
 /** The reasoning-level composer pill in the current ChatGPT UI. */
-export declare const CHATGPT_EFFORT_CONTROL_SELECTOR = "button.__composer-pill.__composer-pill--neutral[aria-haspopup=\"menu\"][data-tone=\"neutral\"]:has(.text-token-text-tertiary)";
+export declare const CHATGPT_EFFORT_CONTROL_SELECTOR = "button.__composer-pill.__composer-pill--neutral[aria-haspopup=\"menu\"][data-tone=\"neutral\"]";
 /** The open model/effort menu (menuitemradio list or reasoning-effort slider). */
 export declare const CHATGPT_EFFORT_MENU_SELECTOR: string;
 /** One reasoning-effort choice in the menu (Instant, Medium, High, …). */
@@ -23,7 +23,7 @@ export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
 export declare function chatgptIsAuthenticated(page: Page): Promise<boolean>;
 /** Wait until ChatGPT is authenticated (composer visible), or return false. */
 export declare function chatgptWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
-/** Commit the prompt through ChatGPT's Lexical editor and submit it. */
+/** Commit the prompt through ChatGPT's editor and submit its verified Send action. */
 export declare function chatgptSend(page: Page, prompt: string): Promise<void>;
 /** Read the visible text of the current newest ChatGPT assistant turn (empty when none). */
 export declare function chatgptLastAssistantTurnText(page: Page): Promise<string>;

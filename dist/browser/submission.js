@@ -5,7 +5,11 @@ export async function waitForSendReady(provider, button, timeoutMs = 20_000) {
     await button.waitFor({ state: "visible", timeout: timeoutMs });
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-        if (await button.isEnabled().catch(() => false))
+        const [enabled, ariaDisabled] = await Promise.all([
+            button.isEnabled().catch(() => false),
+            button.getAttribute("aria-disabled").catch(() => null),
+        ]);
+        if (enabled && ariaDisabled !== "true")
             return;
         await sleep(100);
     }

@@ -2,6 +2,7 @@ import type { Page } from "patchright-core";
 import { describe, expect, it, vi } from "vitest";
 import {
 	CHATGPT_COMPOSER_SELECTOR,
+	CHATGPT_EFFORT_ITEM_SELECTOR,
 	CHATGPT_EFFORT_MENU_SELECTOR,
 	CHATGPT_EFFORT_SLIDER_SELECTOR,
 	CHATGPT_STOP_BUTTON_SELECTOR,
@@ -51,7 +52,25 @@ function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "I
 	}));
 	const effortMenu = {
 		isVisible: vi.fn(async () => true),
-		locator: vi.fn(() => ({ nth: effortChoiceIndex, count: async () => 3 })),
+		waitFor: vi.fn(async () => {}),
+		locator: vi.fn((selector: string) => {
+			if (selector === CHATGPT_EFFORT_SLIDER_SELECTOR) {
+				return {
+					last: () => ({
+						waitFor: async () => {
+							throw new Error("legacy picker has no slider");
+						},
+					}),
+				};
+			}
+			if (selector === CHATGPT_EFFORT_ITEM_SELECTOR) {
+				return {
+					nth: effortChoiceIndex,
+					allInnerTexts: async () => [...labels],
+				};
+			}
+			throw new Error(`unexpected effort-menu selector ${selector}`);
+		}),
 	};
 	const effortControl = {
 		waitFor: vi.fn(async () => {}),
@@ -78,53 +97,75 @@ function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "I
 }
 
 describe("chatgptSend", () => {
-	it("commits the prompt before keyboard-activating the stable send button", async () => {
-		const fill = vi.fn(async () => {});
+	it("verifies the complete prompt before activating the semantic Send action", async () => {
+		let attachedText = "";
+		const fill = vi.fn(async () => {
+			attachedText = "";
+		});
 		const focus = vi.fn(async () => {});
-		const evaluate = vi.fn(async () => true);
+		const evaluate = vi.fn(async () => attachedText);
 		const press = vi.fn(async () => {});
 		const sendButton = {
 			waitFor: vi.fn(async () => {}),
 			isEnabled: vi.fn(async () => true),
+			getAttribute: vi.fn(async () => "false"),
 			press,
 		};
-		const composerForm = { locator: () => sendButton };
+		const composerForm = { locator: vi.fn(() => sendButton) };
 		const composer = {
 			fill,
 			focus,
 			evaluate,
 			locator: () => composerForm,
 		};
+		const insertText = vi.fn(async (text: string) => {
+			attachedText = text;
+		});
 		const page = {
 			locator: () => ({ filter: () => ({ first: () => composer }) }),
+			keyboard: { insertText },
 		} as unknown as Page;
+		const prompt = "hello\ncomplete prompt";
 
-		await chatgptSend(page, "hello");
+		await chatgptSend(page, prompt);
 
 		expect(fill).toHaveBeenCalledExactlyOnceWith("");
 		expect(focus).toHaveBeenCalledOnce();
-		expect(evaluate).toHaveBeenCalledWith(expect.any(Function), "hello");
-		expect(press).toHaveBeenCalledWith("Enter");
+		expect(insertText).toHaveBeenCalledExactlyOnceWith(prompt);
+		expect(composerForm.locator).toHaveBeenCalledWith('button[data-testid="send-button"][aria-label="Send prompt"]');
+		expect(press).toHaveBeenCalledExactlyOnceWith("Enter");
 	});
 
-	it("does not inspect or activate Send when Lexical rejects the prompt", async () => {
+	it("never falls back to Start Voice when the semantic Send action is absent", async () => {
+		let attachedText = "";
 		const sendButton = {
-			waitFor: vi.fn(async () => {}),
+			waitFor: vi.fn(async () => {
+				throw new Error("Send absent; Start Voice is still rendered");
+			}),
 			isEnabled: vi.fn(async () => true),
+			getAttribute: vi.fn(async () => null),
 			press: vi.fn(async () => {}),
 		};
+		const composerForm = { locator: vi.fn(() => sendButton) };
 		const composer = {
-			fill: vi.fn(async () => {}),
+			fill: vi.fn(async () => {
+				attachedText = "";
+			}),
 			focus: vi.fn(async () => {}),
-			evaluate: vi.fn(async () => false),
-			locator: vi.fn(() => ({ locator: () => sendButton })),
+			evaluate: vi.fn(async () => attachedText),
+			locator: vi.fn(() => composerForm),
 		};
 		const page = {
 			locator: () => ({ filter: () => ({ first: () => composer }) }),
+			keyboard: {
+				insertText: vi.fn(async (text: string) => {
+					attachedText = text;
+				}),
+			},
 		} as unknown as Page;
 
-		await expect(chatgptSend(page, "hello")).rejects.toThrow("rejected the plain-text editing command");
-		expect(composer.locator).not.toHaveBeenCalled();
+		await expect(chatgptSend(page, "hello")).rejects.toThrow("Start Voice is still rendered");
+		expect(composerForm.locator).toHaveBeenCalledWith('button[data-testid="send-button"][aria-label="Send prompt"]');
 		expect(sendButton.press).not.toHaveBeenCalled();
 	});
 });
@@ -173,6 +214,60 @@ describe("chatgptSelectThinkingLevel", () => {
 		await chatgptSelectThinkingLevel(page, "medium");
 		expect(effortChoiceIndex).toHaveBeenCalledWith(1);
 		expect(effortChoicePress).toHaveBeenCalledWith("Enter");
+		expect(closePicker).toHaveBeenCalledWith("Escape");
+	});
+
+	it("uses the reasoning slider instead of nested model radio items", async () => {
+		const modelChoiceIndex = vi.fn(() => ({ press: vi.fn(async () => {}) }));
+		const sliderControlPress = vi.fn(async () => {});
+		const effortSlider = {
+			waitFor: vi.fn(async () => {}),
+			getAttribute: vi.fn(async (name: string) => {
+				if (name === "aria-valuemin") return "0";
+				if (name === "aria-valuemax") return "2";
+				if (name === "aria-valuenow") return "1";
+				return null;
+			}),
+			locator: vi.fn(() => ({ press: sliderControlPress })),
+		};
+		const modelChoices = {
+			nth: modelChoiceIndex,
+			allInnerTexts: vi.fn(async () => ["GPT-5.6 Sol", "GPT-5.5"]),
+		};
+		const effortMenu = {
+			isVisible: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
+			waitFor: vi.fn(async () => {}),
+			locator: vi.fn((selector: string) => {
+				if (selector === CHATGPT_EFFORT_SLIDER_SELECTOR) return { last: () => effortSlider };
+				if (selector === CHATGPT_EFFORT_ITEM_SELECTOR) return modelChoices;
+				throw new Error(`unexpected effort-menu selector ${selector}`);
+			}),
+		};
+		const effortControl = {
+			waitFor: vi.fn(async () => {}),
+			getAttribute: vi.fn(async () => "false"),
+			innerText: vi.fn(async () => "Medium"),
+			press: vi.fn(async () => {}),
+		};
+		const composer = {
+			locator: vi.fn(() => ({ locator: vi.fn(() => ({ last: () => effortControl })) })),
+		};
+		const closePicker = vi.fn(async () => {});
+		const page = {
+			locator(selector: string) {
+				if (selector === CHATGPT_COMPOSER_SELECTOR) return { filter: () => ({ first: () => composer }) };
+				if (selector === CHATGPT_EFFORT_MENU_SELECTOR) return { last: () => effortMenu };
+				throw new Error(`unexpected selector ${selector}`);
+			},
+			keyboard: { press: closePicker },
+		} as unknown as Page;
+
+		await chatgptSelectThinkingLevel(page, "medium");
+
+		expect(effortSlider.getAttribute).toHaveBeenCalledWith("aria-valuenow");
+		expect(modelChoiceIndex).not.toHaveBeenCalled();
+		expect(modelChoices.allInnerTexts).not.toHaveBeenCalled();
+		expect(sliderControlPress).not.toHaveBeenCalled();
 		expect(closePicker).toHaveBeenCalledWith("Escape");
 	});
 

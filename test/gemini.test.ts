@@ -35,6 +35,7 @@ describe("geminiSend", () => {
 		const sendButton = {
 			waitFor: vi.fn(async () => {}),
 			isEnabled: vi.fn(async () => true),
+			getAttribute: vi.fn(async () => null),
 			press,
 		};
 		const composer = { fill };
