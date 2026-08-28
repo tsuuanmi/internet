@@ -17,11 +17,9 @@ export const CHATGPT_SEND_BUTTON_SELECTOR = 'button[data-testid="send-button"]';
 export const CHATGPT_STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';
 export const CHATGPT_ACCOUNT_SELECTOR = '[data-testid="accounts-profile-button"]';
 
-/** The model/effort switcher button in the ChatGPT composer. */
-export const CHATGPT_EFFORT_CONTROL_SELECTOR = [
-	'button[aria-haspopup="menu"][data-tone="neutral"]:has([data-animated-slider-trigger="true"])',
-	'button[data-testid="model-switcher-dropdown-button"][aria-haspopup="menu"]',
-].join(", ");
+/** The reasoning-level composer pill in the current ChatGPT UI. */
+export const CHATGPT_EFFORT_CONTROL_SELECTOR =
+	'button.__composer-pill.__composer-pill--neutral[aria-haspopup="menu"][data-tone="neutral"]:has(.text-token-text-tertiary)';
 
 /** The open model/effort menu (menuitemradio list or reasoning-effort slider). */
 export const CHATGPT_EFFORT_MENU_SELECTOR = [

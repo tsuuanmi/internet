@@ -6,8 +6,8 @@ export declare const CHATGPT_COMPOSER_SELECTOR: string;
 export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button[data-testid=\"send-button\"]";
 export declare const CHATGPT_STOP_BUTTON_SELECTOR = "[data-testid=\"stop-button\"]";
 export declare const CHATGPT_ACCOUNT_SELECTOR = "[data-testid=\"accounts-profile-button\"]";
-/** The model/effort switcher button in the ChatGPT composer. */
-export declare const CHATGPT_EFFORT_CONTROL_SELECTOR: string;
+/** The reasoning-level composer pill in the current ChatGPT UI. */
+export declare const CHATGPT_EFFORT_CONTROL_SELECTOR = "button.__composer-pill.__composer-pill--neutral[aria-haspopup=\"menu\"][data-tone=\"neutral\"]:has(.text-token-text-tertiary)";
 /** The open model/effort menu (menuitemradio list or reasoning-effort slider). */
 export declare const CHATGPT_EFFORT_MENU_SELECTOR: string;
 /** One reasoning-effort choice in the menu (Instant, Medium, High, …). */
