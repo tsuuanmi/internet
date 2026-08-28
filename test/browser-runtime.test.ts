@@ -132,6 +132,25 @@ describe("BrowserManager shared-account turn scheduling", () => {
 		await browser.dispose();
 	});
 
+	it("commits one of two concurrent snapshots from the same account revision", async () => {
+		const browser = manager({ maxConcurrentTurnsPerProvider: 2 });
+		const original = { cookies: [], origins: [] };
+		(browser as any).accounts.writeReady("chatgpt-web", original);
+		const revision = (browser as any).accounts.inspect("chatgpt-web").account.revision;
+		const first = { cookies: [], origins: [{ origin: "https://one.example", localStorage: [] }] };
+		const second = { cookies: [], origins: [{ origin: "https://two.example", localStorage: [] }] };
+		const lease = { generation: 0, signal: new AbortController().signal };
+
+		await Promise.all([
+			(browser as any).commitAccountSnapshot("chatgpt-web", lease, revision, first),
+			(browser as any).commitAccountSnapshot("chatgpt-web", lease, revision, second),
+		]);
+		const account = (browser as any).accounts.inspect("chatgpt-web").account;
+		expect(account.revision).toBe(revision + 1);
+		expect([first, second]).toContainEqual(account.storageState);
+		await browser.dispose();
+	});
+
 	it("aborts an active hidden lease before running a lifecycle exclusive", async () => {
 		const browser = manager({ maxConcurrentTurnsPerProvider: 2 });
 		let aborted = false;
