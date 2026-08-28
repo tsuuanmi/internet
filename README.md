@@ -257,11 +257,14 @@ a fallback. `visible: true` bypasses managed Xvfb and requires a user-managed di
 `headless: true` only when native Chrome headless is explicitly desired; the plugin does not silently
 switch to native headless.
 
-By default, one hidden turn runs per provider. `maxConcurrentTurnsPerProvider` can opt into bounded
-parallel hidden turns for different DSH sessions; turns in one session, visible calls, login, stop, and a
-single team's dependent rounds remain ordered. Each active turn uses an isolated non-persistent browser
-context restored from the same portable account. Plugin disposal closes contexts, Chrome processes, remote
-logins, and managed displays.
+By default, two hidden turns run per provider. `maxConcurrentTurnsPerProvider: 1` remains the operator
+fallback when provider policy or account-state acceptance requires it. Different DSH sessions may run in
+parallel; turns in one session, visible calls, login, stop, and a single team's dependent rounds remain
+ordered. A queued lifecycle operation forms a fence, so later turns wait until it completes. Each active
+turn uses an isolated non-persistent browser context restored from the same portable account. Snapshot
+commits use the bootstrap account revision: the first current snapshot commits, and stale full snapshots
+are discarded rather than unsafely merging cookies or IndexedDB. Plugin disposal closes contexts, Chrome
+processes, remote logins, and managed displays.
 
 ## Durable conversation storage
 

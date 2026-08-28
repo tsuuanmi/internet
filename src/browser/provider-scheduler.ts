@@ -2,6 +2,8 @@ import { InternetError } from "#internet/core/errors";
 
 export interface ProviderLease {
 	generation: number;
+	/** Aborts when the caller cancels, the provider is invalidated, or it closes. */
+	signal: AbortSignal;
 }
 
 type TurnJob<T> = {
@@ -23,15 +25,22 @@ type ExclusiveJob<T> = {
 
 type Job<T> = TurnJob<T> | ExclusiveJob<T>;
 
+type ActiveJob = {
+	controller: AbortController;
+	externalAbort?: () => void;
+};
+
 /**
  * Bounded provider scheduler. Different sessions may occupy the configured
  * capacity, while each native conversation session remains strictly ordered.
- * Exclusive lifecycle work forms a FIFO barrier after earlier turns drain.
+ * A queued exclusive lifecycle job is a FIFO fence: earlier turns drain, then
+ * the exclusive work runs before any later turn begins.
  */
 export class ProviderScheduler {
 	private readonly capacity: number;
 	private readonly queue: Job<unknown>[] = [];
 	private readonly activeSessions = new Set<string>();
+	private readonly activeJobs = new Set<ActiveJob>();
 	private readonly idleWaiters = new Set<() => void>();
 	private active = 0;
 	private exclusive = false;
@@ -53,13 +62,14 @@ export class ProviderScheduler {
 	}
 
 	isCurrent(lease: ProviderLease): boolean {
-		return this.closed === undefined && lease.generation === this.generation;
+		return this.closed === undefined && lease.generation === this.generation && !lease.signal.aborted;
 	}
 
-	/** Invalidate leases and reject queued work without interrupting running work. */
+	/** Invalidate all leases, reject queued work, and abort active work. */
 	invalidate(reason: Error): void {
 		this.generation += 1;
 		this.rejectQueued(reason);
+		this.abortActive(reason);
 	}
 
 	async waitForIdle(): Promise<void> {
@@ -72,6 +82,7 @@ export class ProviderScheduler {
 		this.closed = reason;
 		this.generation += 1;
 		this.rejectQueued(reason);
+		this.abortActive(reason);
 	}
 
 	runTurn<T>(
@@ -141,33 +152,49 @@ export class ProviderScheduler {
 
 	private nextRunnable(): { index: number; job: Job<unknown> } | undefined {
 		if (this.active >= this.capacity) return undefined;
-		for (let index = 0; index < this.queue.length; index += 1) {
+		const exclusiveFence = this.queue.findIndex((job) => job.kind === "exclusive");
+		const limit = exclusiveFence < 0 ? this.queue.length : exclusiveFence;
+		for (let index = 0; index < limit; index += 1) {
 			const job = this.queue[index];
-			if (job === undefined) continue;
-			if (job.kind === "exclusive") return this.active === 0 && index === 0 ? { index, job } : undefined;
-			if (!this.activeSessions.has(job.sessionId)) return { index, job };
+			if (job?.kind === "turn" && !this.activeSessions.has(job.sessionId)) return { index, job };
+		}
+		if (exclusiveFence === 0 && this.active === 0) {
+			const job = this.queue[0];
+			if (job !== undefined) return { index: 0, job };
 		}
 		return undefined;
 	}
 
 	private start(job: Job<unknown>): void {
-		const lease = { generation: this.generation };
-		this.active += 1;
+		const controller = new AbortController();
+		const active: ActiveJob = { controller };
 		if (job.kind === "turn") {
 			job.signal?.removeEventListener("abort", job.abort!);
+			active.externalAbort = () => controller.abort(job.signal?.reason);
+			job.signal?.addEventListener("abort", active.externalAbort, { once: true });
 			this.activeSessions.add(job.sessionId);
 		} else {
 			this.exclusive = true;
 		}
+		const lease = { generation: this.generation, signal: controller.signal };
+		this.active += 1;
+		this.activeJobs.add(active);
 		void job
 			.work(lease)
 			.then(job.resolve, job.reject)
 			.finally(() => {
 				this.active -= 1;
-				if (job.kind === "turn") this.activeSessions.delete(job.sessionId);
-				else this.exclusive = false;
+				this.activeJobs.delete(active);
+				if (job.kind === "turn") {
+					job.signal?.removeEventListener("abort", active.externalAbort!);
+					this.activeSessions.delete(job.sessionId);
+				} else this.exclusive = false;
 				this.drive();
 			});
+	}
+
+	private abortActive(reason: Error): void {
+		for (const active of this.activeJobs) active.controller.abort(reason);
 	}
 
 	private rejectQueued(reason: Error): void {

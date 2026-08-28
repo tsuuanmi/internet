@@ -10,14 +10,20 @@ describe("DSH package contract", () => {
 		expect(patch).not.toContain("disabled:");
 	});
 
-	it("publishes the bundled Xvfb and x11vnc runtime", async () => {
+	it("publishes the built provider tools, client assets, and bundled Xvfb runtime", async () => {
 		const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
 			files?: string[];
 			scripts?: Record<string, string>;
 		};
-		expect(manifest.files).toContain("vendor");
+		expect(manifest.files).toEqual(expect.arrayContaining(["dist", "vendor", "cordis.patch.yml", "README.md"]));
 		expect(manifest.scripts?.build).toContain("build-remote-login-client.mjs");
-		await access(new URL("../vendor/xvfb/linux-x64-gnu/bin/Xvfb", import.meta.url), constants.X_OK);
-		await access(new URL("../vendor/xvfb/linux-x64-gnu/bin/x11vnc", import.meta.url), constants.X_OK);
+		expect(manifest.scripts?.["verify-package"]).toContain("verify-package.mjs");
+		await Promise.all([
+			access(new URL("../dist/index.js", import.meta.url), constants.R_OK),
+			access(new URL("../dist/client.js", import.meta.url), constants.R_OK),
+			access(new URL("../dist/remote-login-client.js", import.meta.url), constants.R_OK),
+			access(new URL("../vendor/xvfb/linux-x64-gnu/bin/Xvfb", import.meta.url), constants.X_OK),
+			access(new URL("../vendor/xvfb/linux-x64-gnu/bin/x11vnc", import.meta.url), constants.X_OK),
+		]);
 	});
 });

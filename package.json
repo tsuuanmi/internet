@@ -1,7 +1,7 @@
 {
 	"name": "@tsuuanmi/internet",
 	"version": "0.0.1",
-	"description": "Browser-backed web providers (ChatGPT Web, Gemini Web) for the DeepSeek Harness: a browser_chat model tool with isolated Chrome login and inference.",
+	"description": "Browser-backed ChatGPT Web and Gemini Web tools for DeepSeek Harness: browser_chat, browser_team, and portable-account internet_browser login.",
 	"type": "module",
 	"license": "MIT",
 	"repository": {
@@ -87,6 +87,7 @@
 		"clean": "shx rm -rf dist",
 		"build": "npm run clean && tsgo -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-remote-login-client.mjs",
 		"check": "node scripts/verify-browser-vendor.mjs && biome check src test scripts && tsgo -p tsconfig.json",
-		"test": "vitest --run"
+		"test": "vitest --run",
+		"verify-package": "node scripts/verify-package.mjs"
 	}
 }

@@ -59,21 +59,51 @@ describe("ProviderScheduler", () => {
 		expect(order).toEqual(["turn", "exclusive", "later"]);
 	});
 
-	it("rejects queued aborted work and invalidates old leases", async () => {
-		const scheduler = new ProviderScheduler(1);
+	it("treats a queued exclusive operation as a fence for later sessions", async () => {
+		const scheduler = new ProviderScheduler(2);
 		const first = gate();
-		let leaseCurrent = false;
-		const active = scheduler.runTurn("a", undefined, async (lease) => {
+		const order: string[] = [];
+		const active = scheduler.runTurn("a", undefined, async () => {
+			order.push("active");
 			await first.promise;
-			leaseCurrent = scheduler.isCurrent(lease);
+		});
+		const exclusive = scheduler.runExclusive(async () => {
+			order.push("exclusive");
+		});
+		const later = scheduler.runTurn("b", undefined, async () => {
+			order.push("later");
+		});
+
+		await vi.waitFor(() => expect(order).toEqual(["active"]));
+		first.release();
+		await Promise.all([active, exclusive, later]);
+		expect(order).toEqual(["active", "exclusive", "later"]);
+	});
+
+	it("rejects queued aborted work and aborts active leases on invalidation", async () => {
+		const scheduler = new ProviderScheduler(1);
+		let leaseCurrent = true;
+		let aborted = false;
+		const active = scheduler.runTurn("a", undefined, async (lease) => {
+			await new Promise<void>((resolve) => {
+				lease.signal.addEventListener(
+					"abort",
+					() => {
+						aborted = true;
+						leaseCurrent = scheduler.isCurrent(lease);
+						resolve();
+					},
+					{ once: true },
+				);
+			});
 		});
 		const controller = new AbortController();
 		const queued = scheduler.runTurn("b", controller.signal, async () => {});
 		controller.abort(new Error("cancelled"));
 		await expect(queued).rejects.toThrow("cancelled");
 		scheduler.invalidate(new Error("reauth"));
-		first.release();
 		await active;
+		expect(aborted).toBe(true);
 		expect(leaseCurrent).toBe(false);
 	});
 });

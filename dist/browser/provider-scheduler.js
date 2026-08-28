@@ -2,12 +2,14 @@ import { InternetError } from "#internet/core/errors";
 /**
  * Bounded provider scheduler. Different sessions may occupy the configured
  * capacity, while each native conversation session remains strictly ordered.
- * Exclusive lifecycle work forms a FIFO barrier after earlier turns drain.
+ * A queued exclusive lifecycle job is a FIFO fence: earlier turns drain, then
+ * the exclusive work runs before any later turn begins.
  */
 export class ProviderScheduler {
     constructor(capacity) {
         this.queue = [];
         this.activeSessions = new Set();
+        this.activeJobs = new Set();
         this.idleWaiters = new Set();
         this.active = 0;
         this.exclusive = false;
@@ -23,12 +25,13 @@ export class ProviderScheduler {
         return this.generation;
     }
     isCurrent(lease) {
-        return this.closed === undefined && lease.generation === this.generation;
+        return this.closed === undefined && lease.generation === this.generation && !lease.signal.aborted;
     }
-    /** Invalidate leases and reject queued work without interrupting running work. */
+    /** Invalidate all leases, reject queued work, and abort active work. */
     invalidate(reason) {
         this.generation += 1;
         this.rejectQueued(reason);
+        this.abortActive(reason);
     }
     async waitForIdle() {
         if (this.isIdle)
@@ -41,6 +44,7 @@ export class ProviderScheduler {
         this.closed = reason;
         this.generation += 1;
         this.rejectQueued(reason);
+        this.abortActive(reason);
     }
     runTurn(sessionId, signal, work) {
         if (sessionId.trim().length === 0)
@@ -102,38 +106,53 @@ export class ProviderScheduler {
     nextRunnable() {
         if (this.active >= this.capacity)
             return undefined;
-        for (let index = 0; index < this.queue.length; index += 1) {
+        const exclusiveFence = this.queue.findIndex((job) => job.kind === "exclusive");
+        const limit = exclusiveFence < 0 ? this.queue.length : exclusiveFence;
+        for (let index = 0; index < limit; index += 1) {
             const job = this.queue[index];
-            if (job === undefined)
-                continue;
-            if (job.kind === "exclusive")
-                return this.active === 0 && index === 0 ? { index, job } : undefined;
-            if (!this.activeSessions.has(job.sessionId))
+            if (job?.kind === "turn" && !this.activeSessions.has(job.sessionId))
                 return { index, job };
+        }
+        if (exclusiveFence === 0 && this.active === 0) {
+            const job = this.queue[0];
+            if (job !== undefined)
+                return { index: 0, job };
         }
         return undefined;
     }
     start(job) {
-        const lease = { generation: this.generation };
-        this.active += 1;
+        const controller = new AbortController();
+        const active = { controller };
         if (job.kind === "turn") {
             job.signal?.removeEventListener("abort", job.abort);
+            active.externalAbort = () => controller.abort(job.signal?.reason);
+            job.signal?.addEventListener("abort", active.externalAbort, { once: true });
             this.activeSessions.add(job.sessionId);
         }
         else {
             this.exclusive = true;
         }
+        const lease = { generation: this.generation, signal: controller.signal };
+        this.active += 1;
+        this.activeJobs.add(active);
         void job
             .work(lease)
             .then(job.resolve, job.reject)
             .finally(() => {
             this.active -= 1;
-            if (job.kind === "turn")
+            this.activeJobs.delete(active);
+            if (job.kind === "turn") {
+                job.signal?.removeEventListener("abort", active.externalAbort);
                 this.activeSessions.delete(job.sessionId);
+            }
             else
                 this.exclusive = false;
             this.drive();
         });
+    }
+    abortActive(reason) {
+        for (const active of this.activeJobs)
+            active.controller.abort(reason);
     }
     rejectQueued(reason) {
         for (const job of this.queue.splice(0)) {

@@ -18,6 +18,8 @@ export interface AccountFile {
     provider: WebProvider;
     status: "ready" | "reauth-required";
     verifiedAt: string;
+    /** Monotonic canonical snapshot version; legacy version-1 files normalize to 0. */
+    revision: number;
     invalidatedAt?: string;
     storageState: PortableStorageState;
 }
@@ -41,7 +43,14 @@ export declare class AccountStore {
     constructor(dataDir: string);
     inspect(provider: WebProvider): AccountInspection;
     writeReady(provider: WebProvider, storageState: PortableStorageState, verifiedAt?: Date): AccountFile;
+    /**
+     * Commit an inference snapshot only if it was bootstrapped from the current
+     * canonical revision. Storage state is opaque (including IndexedDB), so a
+     * stale full snapshot is discarded rather than unsafely merged.
+     */
+    writeReadyIfRevision(provider: WebProvider, expectedRevision: number, storageState: PortableStorageState, verifiedAt?: Date): AccountFile | undefined;
     markReauthRequired(provider: WebProvider, invalidatedAt?: Date): AccountFile | undefined;
+    private nextRevision;
     private write;
 }
 export declare function parseAccountFile(value: unknown, provider: WebProvider): AccountFile;

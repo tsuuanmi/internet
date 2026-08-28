@@ -131,6 +131,31 @@ describe("BrowserManager shared-account turn scheduling", () => {
 		await Promise.all([hidden, visible]);
 		await browser.dispose();
 	});
+
+	it("aborts an active hidden lease before running a lifecycle exclusive", async () => {
+		const browser = manager({ maxConcurrentTurnsPerProvider: 2 });
+		let aborted = false;
+		(browser as any).chatProvider = vi.fn(async (_provider: WebProvider, _request: ChatRequest, lease: any) => {
+			await new Promise<void>((resolve) => {
+				lease.signal.addEventListener(
+					"abort",
+					() => {
+						aborted = true;
+						resolve();
+					},
+					{ once: true },
+				);
+			});
+			return { text: "cancelled", url: "https://example.com" };
+		});
+
+		const hidden = browser.chat("chatgpt-web", request("hidden"));
+		await vi.waitFor(() => expect((browser as any).chatProvider).toHaveBeenCalledTimes(1));
+		await (browser as any).runProviderExclusive("chatgpt-web", async () => {});
+		await hidden;
+		expect(aborted).toBe(true);
+		await browser.dispose();
+	});
 });
 
 describe("BrowserManager visible login profiles", () => {

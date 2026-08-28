@@ -24,6 +24,8 @@ export interface AccountFile {
 	provider: WebProvider;
 	status: "ready" | "reauth-required";
 	verifiedAt: string;
+	/** Monotonic canonical snapshot version; legacy version-1 files normalize to 0. */
+	revision: number;
 	invalidatedAt?: string;
 	storageState: PortableStorageState;
 }
@@ -101,6 +103,31 @@ export class AccountStore {
 			provider,
 			status: "ready",
 			verifiedAt: verifiedAt.toISOString(),
+			revision: this.nextRevision(provider),
+			storageState,
+		};
+		this.write(provider, account);
+		return account;
+	}
+
+	/**
+	 * Commit an inference snapshot only if it was bootstrapped from the current
+	 * canonical revision. Storage state is opaque (including IndexedDB), so a
+	 * stale full snapshot is discarded rather than unsafely merged.
+	 */
+	writeReadyIfRevision(
+		provider: WebProvider,
+		expectedRevision: number,
+		storageState: PortableStorageState,
+		verifiedAt = new Date(),
+	): AccountFile | undefined {
+		const inspection = this.inspect(provider);
+		if (inspection.state !== "ready" || inspection.account?.revision !== expectedRevision) return undefined;
+		const account: AccountFile = {
+			...inspection.account,
+			status: "ready",
+			verifiedAt: verifiedAt.toISOString(),
+			revision: expectedRevision + 1,
 			storageState,
 		};
 		this.write(provider, account);
@@ -114,9 +141,15 @@ export class AccountStore {
 			...inspection.account,
 			status: "reauth-required",
 			invalidatedAt: invalidatedAt.toISOString(),
+			revision: inspection.account.revision + 1,
 		};
 		this.write(provider, account);
 		return account;
+	}
+
+	private nextRevision(provider: WebProvider): number {
+		const revision = this.inspect(provider).account?.revision;
+		return (revision ?? 0) + 1;
 	}
 
 	private write(provider: WebProvider, account: AccountFile): void {
@@ -130,6 +163,12 @@ export function parseAccountFile(value: unknown, provider: WebProvider): Account
 	if (value.provider !== provider) throw new Error(`account file belongs to ${String(value.provider)}`);
 	if (value.status !== "ready" && value.status !== "reauth-required") throw new Error("invalid account status");
 	if (!isTimestamp(value.verifiedAt)) throw new Error("invalid account verification timestamp");
+	if (
+		value.revision !== undefined &&
+		(typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 0)
+	) {
+		throw new Error("invalid account revision");
+	}
 	if (value.status === "ready" && value.invalidatedAt !== undefined) {
 		throw new Error("ready account must not have an invalidation timestamp");
 	}
@@ -137,7 +176,7 @@ export function parseAccountFile(value: unknown, provider: WebProvider): Account
 		throw new Error("invalid account invalidation timestamp");
 	}
 	if (!isPortableStorageState(value.storageState)) throw new Error("invalid account storage state");
-	return value as unknown as AccountFile;
+	return { ...value, revision: value.revision ?? 0 } as unknown as AccountFile;
 }
 
 function isPortableStorageState(value: unknown): value is PortableStorageState {

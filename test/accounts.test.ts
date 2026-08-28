@@ -62,6 +62,7 @@ describe("AccountStore", () => {
 			provider,
 			status: "ready",
 			verifiedAt: "2026-01-02T03:04:05.000Z",
+			revision: 1,
 		});
 		expect(inspection.account?.storageState.origins[0]?.indexedDB).toEqual(indexedDB);
 		if (process.platform !== "win32") {
@@ -85,6 +86,33 @@ describe("AccountStore", () => {
 		const path = providerLocations(root, "chatgpt-web").accountPath;
 		writeFileSync(path, "not json", { mode: 0o600 });
 		expect(store.inspect("chatgpt-web")).toMatchObject({ state: "invalid", error: expect.any(String) });
+	});
+
+	it("normalizes legacy version-one accounts without a revision", () => {
+		const account = parseAccountFile(
+			{
+				schema: "@tsuuanmi/internet-account",
+				version: 1,
+				provider: "chatgpt-web",
+				status: "ready",
+				verifiedAt: "2026-01-02T03:04:05.000Z",
+				storageState: storageState(),
+			},
+			"chatgpt-web",
+		);
+		expect(account.revision).toBe(0);
+	});
+
+	it("commits only a snapshot based on the current account revision", () => {
+		const store = new AccountStore(temporaryRoot());
+		store.writeReady("gemini-web", storageState([{ name: "initial" }]));
+		const initial = store.inspect("gemini-web").account!;
+		const committed = store.writeReadyIfRevision("gemini-web", initial.revision, storageState([{ name: "first" }]));
+		const stale = store.writeReadyIfRevision("gemini-web", initial.revision, storageState([{ name: "stale" }]));
+
+		expect(committed?.revision).toBe(initial.revision + 1);
+		expect(stale).toBeUndefined();
+		expect(store.inspect("gemini-web").account?.storageState.origins[0]?.indexedDB).toEqual([{ name: "first" }]);
 	});
 
 	it("rejects unsupported schemas, provider mismatches, and malformed storage state", () => {

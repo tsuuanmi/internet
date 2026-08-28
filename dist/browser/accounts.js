@@ -67,6 +67,26 @@ export class AccountStore {
             provider,
             status: "ready",
             verifiedAt: verifiedAt.toISOString(),
+            revision: this.nextRevision(provider),
+            storageState,
+        };
+        this.write(provider, account);
+        return account;
+    }
+    /**
+     * Commit an inference snapshot only if it was bootstrapped from the current
+     * canonical revision. Storage state is opaque (including IndexedDB), so a
+     * stale full snapshot is discarded rather than unsafely merged.
+     */
+    writeReadyIfRevision(provider, expectedRevision, storageState, verifiedAt = new Date()) {
+        const inspection = this.inspect(provider);
+        if (inspection.state !== "ready" || inspection.account?.revision !== expectedRevision)
+            return undefined;
+        const account = {
+            ...inspection.account,
+            status: "ready",
+            verifiedAt: verifiedAt.toISOString(),
+            revision: expectedRevision + 1,
             storageState,
         };
         this.write(provider, account);
@@ -80,9 +100,14 @@ export class AccountStore {
             ...inspection.account,
             status: "reauth-required",
             invalidatedAt: invalidatedAt.toISOString(),
+            revision: inspection.account.revision + 1,
         };
         this.write(provider, account);
         return account;
+    }
+    nextRevision(provider) {
+        const revision = this.inspect(provider).account?.revision;
+        return (revision ?? 0) + 1;
     }
     write(provider, account) {
         writePrivateJson(providerLocations(this.dataDir, provider).accountPath, account);
@@ -99,6 +124,10 @@ export function parseAccountFile(value, provider) {
         throw new Error("invalid account status");
     if (!isTimestamp(value.verifiedAt))
         throw new Error("invalid account verification timestamp");
+    if (value.revision !== undefined &&
+        (typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 0)) {
+        throw new Error("invalid account revision");
+    }
     if (value.status === "ready" && value.invalidatedAt !== undefined) {
         throw new Error("ready account must not have an invalidation timestamp");
     }
@@ -107,7 +136,7 @@ export function parseAccountFile(value, provider) {
     }
     if (!isPortableStorageState(value.storageState))
         throw new Error("invalid account storage state");
-    return value;
+    return { ...value, revision: value.revision ?? 0 };
 }
 function isPortableStorageState(value) {
     if (!isRecord(value) || !Array.isArray(value.cookies) || !Array.isArray(value.origins))

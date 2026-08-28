@@ -43,6 +43,8 @@ export declare class BrowserManager {
     private readonly chatGptConversations;
     private readonly geminiConversations;
     private readonly pendingCloses;
+    private readonly activeContexts;
+    private readonly accountCommitQueues;
     private readonly display;
     private disposed;
     constructor(config: BrowserConfig);
@@ -75,6 +77,8 @@ export declare class BrowserManager {
     private launchBrowser;
     private ensureBrowser;
     private ensureContext;
+    private trackContext;
+    private commitAccountSnapshot;
     /** Open local or SSH-forwarded normal Chrome for sign-in. */
     login(provider: WebProvider, options?: LoginOptions): Promise<ProviderStatus>;
     private loginProvider;

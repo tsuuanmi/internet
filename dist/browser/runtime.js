@@ -33,6 +33,8 @@ export class BrowserManager {
         this.schedulers = new Map();
         this.remoteLogins = new Map();
         this.pendingCloses = new Map();
+        this.activeContexts = new Map();
+        this.accountCommitQueues = new Map();
         this.disposed = false;
         this.config = config;
         this.display = new BrowserDisplayManager({
@@ -375,15 +377,57 @@ export class BrowserManager {
         }
         const managed = await this.ensureBrowser(provider, headless, visible);
         try {
-            return await managed.browser.newContext({
+            const context = await managed.browser.newContext({
                 storageState: inspection.account.storageState,
                 viewport: managed.viewport,
             });
+            return { context, accountRevision: inspection.account.revision };
         }
         catch (error) {
             if (!managed.browser.isConnected())
                 this.browsers.delete(provider);
             throw error;
+        }
+    }
+    trackContext(provider, lease, context) {
+        let contexts = this.activeContexts.get(provider);
+        if (contexts === undefined) {
+            contexts = new Map();
+            this.activeContexts.set(provider, contexts);
+        }
+        const closeOnAbort = () => {
+            void context.close().catch(() => { });
+        };
+        contexts.set(lease.signal, context);
+        lease.signal.addEventListener("abort", closeOnAbort, { once: true });
+        if (lease.signal.aborted)
+            closeOnAbort();
+        return () => {
+            lease.signal.removeEventListener("abort", closeOnAbort);
+            const current = this.activeContexts.get(provider);
+            if (current === undefined)
+                return;
+            current.delete(lease.signal);
+            if (current.size === 0)
+                this.activeContexts.delete(provider);
+        };
+    }
+    async commitAccountSnapshot(provider, lease, expectedRevision, storageState) {
+        const previous = this.accountCommitQueues.get(provider) ?? Promise.resolve();
+        const commit = previous
+            .catch(() => { })
+            .then(() => {
+            if (!this.scheduler(provider).isCurrent(lease))
+                return;
+            this.accounts.writeReadyIfRevision(provider, expectedRevision, storageState);
+        });
+        this.accountCommitQueues.set(provider, commit);
+        try {
+            await commit;
+        }
+        finally {
+            if (this.accountCommitQueues.get(provider) === commit)
+                this.accountCommitQueues.delete(provider);
         }
     }
     /** Open local or SSH-forwarded normal Chrome for sign-in. */
@@ -481,7 +525,8 @@ export class BrowserManager {
         this.cancelPendingClose(provider);
         const visible = request.visible === true;
         const headless = visible ? false : this.config.headless;
-        const context = await this.ensureContext(provider, headless, visible);
+        const { context, accountRevision } = await this.ensureContext(provider, headless, visible);
+        const untrackContext = this.trackContext(provider, lease, context);
         try {
             const page = await this.activePage(context);
             let binding;
@@ -500,7 +545,7 @@ export class BrowserManager {
             if ((provider === "chatgpt-web" && binding !== undefined) || page.url() !== targetUrl) {
                 await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
             }
-            if (!(await this.isAuthenticated(provider, page, 30_000, request.signal))) {
+            if (!(await this.isAuthenticated(provider, page, 30_000, lease.signal))) {
                 const reason = new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`);
                 this.accounts.markReauthRequired(provider);
                 this.scheduler(provider).invalidate(reason);
@@ -528,7 +573,7 @@ export class BrowserManager {
                 timeoutMs: this.config.turnTimeoutMs,
                 pollMs: this.config.pollMs,
                 stableMs: this.config.stableMs,
-                signal: request.signal,
+                signal: lease.signal,
             };
             let text;
             let conversationId;
@@ -537,7 +582,7 @@ export class BrowserManager {
                 await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
                 await chatgptSend(page, request.prompt);
                 text = await waitForStableCompletion(() => chatgptSnapshot(page, previousTurnText), waitOptions);
-                const conversation = await this.waitForChatGptConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), request.signal);
+                const conversation = await this.waitForChatGptConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), lease.signal);
                 try {
                     binding = this.chatGptConversations.bind(request.sessionId, conversation.url);
                 }
@@ -550,7 +595,7 @@ export class BrowserManager {
                 const previousTurnText = await geminiLastResponseText(page);
                 await geminiSend(page, request.prompt);
                 text = await waitForStableCompletion(() => geminiSnapshot(page, previousTurnText), waitOptions);
-                const conversation = await this.waitForGeminiConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), request.signal);
+                const conversation = await this.waitForGeminiConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), lease.signal);
                 try {
                     binding = this.geminiConversations.bind(request.sessionId, conversation.url);
                 }
@@ -560,8 +605,7 @@ export class BrowserManager {
                 conversationId = binding.conversationId;
             }
             const storageState = await capturePortableStorageState(context);
-            if (this.scheduler(provider).isCurrent(lease))
-                this.accounts.writeReady(provider, storageState);
+            await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);
             return {
                 text: text.slice(0, this.config.maxOutputChars),
                 url: page.url(),
@@ -569,6 +613,7 @@ export class BrowserManager {
             };
         }
         finally {
+            untrackContext();
             await context.close().catch(() => { });
         }
     }

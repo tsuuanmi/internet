@@ -274,10 +274,11 @@ visible call, login, remote-login finalization, stop, reauthentication, and disp
 exclusive barriers. Contexts close after their turns; compatible browser processes close after
 `closeAfterMs` of pool-wide idleness.
 
-Successful current-generation turns serialize portable-account refreshes. Reauthentication invalidates the
-provider generation and prevents already-running older turns from restoring a `ready` snapshot. The stored
-account is a bootstrap cache, not a mergeable replica of arbitrary provider IndexedDB; use concurrent
-capacity only after provider-policy and real-account acceptance testing. `BrowserManager.dispose()` closes
+Successful current-generation turns serialize portable-account refreshes. Every context remembers the
+canonical account revision used to bootstrap it; a commit advances that revision, and later completions
+from the older revision are discarded. The stored account is a bootstrap cache, not a mergeable replica of
+arbitrary provider cookies or IndexedDB. Reauthentication invalidates the provider generation, aborts active
+leases, and prevents older turns from restoring a `ready` snapshot. `BrowserManager.dispose()` closes
 contexts, Chrome, pending remote logins, timers, and the shared inference display.
 
 ## Errors
