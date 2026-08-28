@@ -59,11 +59,28 @@ export async function chatgptWaitAuthenticated(page, timeoutMs, signal) {
     }
     return false;
 }
-/** Fill the ChatGPT composer with the prompt and submit it. */
+async function insertChatgptPrompt(composer, prompt) {
+    const inserted = await composer.evaluate((element, value) => {
+        const selection = window.getSelection();
+        if (document.activeElement !== element ||
+            !selection ||
+            !selection.isCollapsed ||
+            !selection.anchorNode ||
+            !element.contains(selection.anchorNode)) {
+            return false;
+        }
+        return document.execCommand("insertText", false, value);
+    }, prompt);
+    if (!inserted) {
+        throw new InternetError("provider_error", "ChatGPT composer rejected the plain-text editing command");
+    }
+}
+/** Commit the prompt through ChatGPT's Lexical editor and submit it. */
 export async function chatgptSend(page, prompt) {
     const composer = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).first();
     await composer.fill("");
-    await composer.fill(prompt);
+    await composer.focus();
+    await insertChatgptPrompt(composer, prompt);
     const sendButton = composer.locator("xpath=ancestor::form[1]").locator(CHATGPT_SEND_BUTTON_SELECTOR);
     await waitForSendReady("ChatGPT", sendButton);
     // Keyboard-activate the semantic button. This avoids pointer stability and

@@ -78,8 +78,10 @@ function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "I
 }
 
 describe("chatgptSend", () => {
-	it("fills the composer and keyboard-activates the ready send button", async () => {
+	it("commits the prompt before keyboard-activating the stable send button", async () => {
 		const fill = vi.fn(async () => {});
+		const focus = vi.fn(async () => {});
+		const evaluate = vi.fn(async () => true);
 		const press = vi.fn(async () => {});
 		const sendButton = {
 			waitFor: vi.fn(async () => {}),
@@ -89,6 +91,8 @@ describe("chatgptSend", () => {
 		const composerForm = { locator: () => sendButton };
 		const composer = {
 			fill,
+			focus,
+			evaluate,
 			locator: () => composerForm,
 		};
 		const page = {
@@ -97,9 +101,31 @@ describe("chatgptSend", () => {
 
 		await chatgptSend(page, "hello");
 
-		expect(fill).toHaveBeenNthCalledWith(1, "");
-		expect(fill).toHaveBeenNthCalledWith(2, "hello");
+		expect(fill).toHaveBeenCalledExactlyOnceWith("");
+		expect(focus).toHaveBeenCalledOnce();
+		expect(evaluate).toHaveBeenCalledWith(expect.any(Function), "hello");
 		expect(press).toHaveBeenCalledWith("Enter");
+	});
+
+	it("does not inspect or activate Send when Lexical rejects the prompt", async () => {
+		const sendButton = {
+			waitFor: vi.fn(async () => {}),
+			isEnabled: vi.fn(async () => true),
+			press: vi.fn(async () => {}),
+		};
+		const composer = {
+			fill: vi.fn(async () => {}),
+			focus: vi.fn(async () => {}),
+			evaluate: vi.fn(async () => false),
+			locator: vi.fn(() => ({ locator: () => sendButton })),
+		};
+		const page = {
+			locator: () => ({ filter: () => ({ first: () => composer }) }),
+		} as unknown as Page;
+
+		await expect(chatgptSend(page, "hello")).rejects.toThrow("rejected the plain-text editing command");
+		expect(composer.locator).not.toHaveBeenCalled();
+		expect(sendButton.press).not.toHaveBeenCalled();
 	});
 });
 
