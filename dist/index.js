@@ -8,6 +8,21 @@ import { defineBrowserTeamTool } from "#internet/tools/browser-team";
 export const name = "internet";
 /** Services required by this plugin. */
 export const inject = ["tools", "systemPrompt", "commands"];
+const BROWSER_CHAT_GUIDANCE = [
+    "Use browser_chat for one answer or a durable multi-turn exchange with ChatGPT Web or Gemini Web through the authenticated provider website.",
+    "Each provider resumes one native conversation for the current DSH session. The automated browser is hidden by default on the managed display; set visible: true only when the user asks to watch or when live UI inspection is needed.",
+    "ChatGPT selects and verifies the configured reasoning level before every turn (Medium by default). Prompt submission is accepted only after complete editor read-back and the semantic Send action becomes ready.",
+    "If a provider is missing or requires reauthentication, use internet_browser status and then login. On a desktop, the user signs in through dedicated normal Chrome and closes it completely. On a displayless server, or when remote: true is requested, relay the returned SSH port-forward command and complete tokenized noVNC URL; tell the user to sign in, press Save account, and check status until ready.",
+    "browser_chat cannot read local files or search the web by itself. Paste required material into the prompt and gather current sources with web_search or web_fetch first.",
+].join(" ");
+const BROWSER_TEAM_GUIDANCE = [
+    "Use browser_team when multiple independent web-model perspectives should be debated and merged: design decisions, tradeoff analysis, brainstorming, code or document review, second opinions, and adversarial review.",
+    "Providers speak sequentially in the configured order once per round (default 2, maximum 4). By default the last provider then synthesizes the full current-call debate into one final answer.",
+    "Named teams have durable provider conversations isolated from direct browser_chat threads. Provider browsers are hidden by default; set visible: true only when the user asks to watch both browsers or requests live acceptance testing.",
+    "The tool returns only the final answer by default. includeTranscript: true adds a bounded current-call transcript with truncation metadata and uses more agent context.",
+    "Every selected provider needs a ready portable account. A model refusal is provider output, while login, timeout, and DOM failures are orchestration errors that should be reported distinctly.",
+    "browser_team cannot search the web or read files. Paste all source material into task, and use web_search or web_fetch before the debate when current information is required.",
+].join(" ");
 /**
  * Register the browser-backed web tools. The {@link BrowserManager} is created
  * lazily (Chrome is only discovered on first use) and disposed through a
@@ -33,13 +48,13 @@ export function apply(ctx, rawConfig) {
         ctx.systemPrompt?.section?.({
             name: "tool:browser_team",
             order: 121,
-            text: "Use browser_team to run a multi-model debate between ordered configured web providers on a task; it returns only the final 'best of both' answer by default, or the bounded current-call transcript when `includeTranscript` is true. Provider browsers are hidden by default; set `visible: true` only when the user asks to watch them. Prefer browser_team when the user wants a brainstorm, a design decision or tradeoff analysis, a code or document review, a second opinion, or red-teaming an idea — any case where multiple independent perspectives should be merged into one answer. browser_team cannot search the web or read files: paste any code, document, or source material into the task, and gather current information with web_search or web_fetch first. The debate runs for `rounds` rounds (default 2) and appends a final synthesis turn.",
+            text: BROWSER_TEAM_GUIDANCE,
         });
     }
     ctx.systemPrompt?.section?.({
         name: "tool:browser_chat",
         order: 120,
-        text: "Use browser_chat to get a single answer from ChatGPT or Gemini through a logged-in browser. Calls from one DSH session durably resume the same native conversation per provider. The automated browser is hidden by default; set `visible: true` only when the user asks to watch it. Prefer browser_chat when you need one model's specific answer or a multi-turn back-and-forth with a single provider. If a provider has no ready portable account, run internet_browser login. On a desktop, tell the user to sign in and close the dedicated normal Chrome window completely. On a displayless Linux server, relay the returned SSH tunnel and noVNC URL, then tell the user to press Save account and check internet_browser status before retrying.",
+        text: BROWSER_CHAT_GUIDANCE,
     });
 }
 export { BrowserManager } from "#internet/browser/runtime";

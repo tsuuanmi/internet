@@ -1,103 +1,287 @@
-# How the internet plugin works
+# How `@tsuuanmi/internet` works
 
-## Layout
+This document describes the server-side plugin architecture, authentication boundary, browser lifecycle,
+provider interaction contracts, durable conversations, and `browser_team` orchestration.
 
-- `src/browser/` — Chrome discovery, managed Xvfb/x11vnc and remote-login lifecycle, the shared
-  completion poller, provider drivers (`chatgpt.ts`, `gemini.ts`), and the `BrowserManager` runtime.
-- `src/core/` — plugin `Config` and validation, the error taxonomy, markdown conversion, and a
-  small abort-aware sleep helper.
-- `src/tools/` — the model-facing `browser_chat` tool and the `internet_browser` lifecycle tool.
-  `args.ts` is the DSH-free argument parser so it is unit-testable without harness packages.
-- `src/commands/` — the human-facing `/internet` command that asks ChatGPT without a model turn.
-- `src/client.ts` — the browser-side `/internet` renderer. `src/remote-login-client.ts` is the isolated,
-  bundled noVNC client with Save/Cancel controls; it is not part of the DSH application shell.
-- `src/types/dsh.d.ts` — minimal ambient declarations for the `@deepseek-ai/*` peer packages, so the
-  package builds and type-checks standalone without installing them.
-- `src/index.ts` — the Cordis plugin entry exporting `{ name, inject, apply, Config }`.
+## Package layout
 
-## Request flow
+- `src/index.ts` — Cordis plugin entry, tool registration, command registration, lifecycle disposal, and
+  agent-facing system-prompt guidance.
+- `src/browser/runtime.ts` — `BrowserManager`, provider serialization, Chrome/context ownership, account
+  refresh, durable conversation navigation, and turn execution.
+- `src/browser/chatgpt.ts` — ChatGPT authentication, reasoning selection, prompt attachment, semantic
+  submission, assistant-turn snapshots, and completion state.
+- `src/browser/gemini.ts` — Gemini authentication, prompt submission, response snapshots, and completion
+  state.
+- `src/browser/accounts.ts` — versioned portable account inspection, private writes, and IndexedDB-aware
+  storage-state capture.
+- `src/browser/conversations.ts` — private, hashed DSH-session-to-provider-conversation bindings.
+- `src/browser/display.ts` — visible display selection and shared hidden inference Xvfb lifecycle.
+- `src/browser/remote-login.ts`, `vnc.ts`, and `xvfb.ts` — tokenized loopback noVNC, x11vnc, Xvfb,
+  timeout, finalization, and cleanup.
+- `src/browser/completion.ts` — conservative provider-independent response stabilization.
+- `src/browser/submission.ts` — semantic enabled-state waiting, including `aria-disabled`.
+- `src/team/orchestrator.ts` — provider ordering, debate prompts, team session isolation, transcript, and
+  synthesis.
+- `src/tools/` — DSH definitions for `browser_chat`, `browser_team`, and `internet_browser`.
+- `src/commands/internet.ts` — human `/internet` command backed by ChatGPT.
+- `src/client.ts` — DSH-side command renderer.
+- `src/remote-login-client.ts` — isolated noVNC page with Save and Cancel controls; it is not part of the
+  DSH application shell.
+- `src/core/` — configuration, errors, markdown conversion, and abort-aware sleep.
+- `src/types/dsh.d.ts` — minimal ambient declarations that allow standalone builds without installing
+  the DSH peer packages.
+
+## Plugin registration
+
+`apply()` resolves and validates the profile configuration, creates one `BrowserManager`, and registers a
+Cordis disposal effect. Chrome is discovered lazily on first browser operation.
+
+Registration depends on enabled providers:
+
+- `browser_chat` and `internet_browser` are available when at least one provider is enabled.
+- `/internet` is available only when ChatGPT is enabled.
+- `browser_team` is available only when at least two providers are enabled.
+
+The plugin also contributes tool-selection guidance through `ctx.systemPrompt`. Updating the installed
+package requires restarting the existing DSH host so its server-side module is reloaded.
+
+## Direct request flow
 
 ```text
-internet_browser { action: "login", model }
-  -> local DISPLAY: open dedicated normal Chrome and wait for the user to close it
-  -> displayless Linux: start dedicated Xvfb + loopback x11vnc + tokenized noVNC server
-  -> return loopback URL/port/SSH command immediately; user signs in and presses Save account
-  -> stop Chrome, VNC, and the dedicated Xvfb; wait for the profile lock
-  -> export bootstrap cookies/local storage from the unlocked profile
-  -> verify in a fresh non-persistent context and capture current IndexedDB
-  -> atomically write dataDir/accounts/<provider>.json (mode 0600)
-  -> retain the machine-local login profile for account recovery
-
-/internet <question>
-  -> DSH command handler bypasses the model
-  -> BrowserManager.chat("chatgpt-web", { prompt, sessionId: String(invocation.agent.id), signal })
-  -> return command text; the client command renderer displays it as markdown
-
-browser_chat { model, prompt }
-  -> read current DSH identity from String(exec.agent.id)
-  -> BrowserManager.chat(provider, { prompt, sessionId, signal })
-  -> for ChatGPT, read conversations/<sha256(sessionId)>.json
-  -> navigate to the bound /c/<conversationId>, or home for the first turn
-  -> ensure authenticated (composer visible)
-  -> record the latest assistant text, fill composer, submit
-  -> waitForStableCompletion(newTurnSnapshot)   # changed, not running, stable for stableMs
-  -> atomically persist/validate the 1:1 conversation binding (mode 0600)
-  -> htmlToMarkdown(newResponseHtml) -> { answer, url, conversationId }
+browser_chat { model, prompt, visible? }
+  -> validate model, prompt, and visible
+  -> read String(exec.agent.id) as the durable owner
+  -> BrowserManager.chat(provider, request)
+  -> serialize operations for that provider
+  -> ensure account file is ready
+  -> ensure a compatible browser/context exists
+       visible=true  -> headed Chrome on user-managed display
+       visible=false + headless=false -> headed Chrome on managed Xvfb
+       visible=false + headless=true  -> native Chrome headless
+  -> read dataDir/<provider>/conversations/<sha256(sessionId)>.json
+  -> navigate to bound URL, or provider home on the first turn
+  -> verify authenticated provider surface
+  -> capture the previous response identity
+  -> perform provider-specific prompt selection/submission
+  -> wait for a changed, stopped, stable response
+  -> bind or refresh the canonical conversation URL
+  -> recapture cookies, local storage, and IndexedDB
+  -> atomically refresh the portable account
+  -> return markdown, URL, and conversation id
 ```
+
+`/internet <question>` enters the same ChatGPT path with
+`sessionId = String(invocation.agent.id)`, bypasses an agent model turn, and returns markdown to the DSH
+client command renderer.
+
+## ChatGPT turn contract
+
+ChatGPT currently exposes a ProseMirror `contenteditable` composer. The provider driver scopes every
+control lookup to the visible composer or its ancestor form.
+
+### Reasoning selection
+
+Before every ChatGPT turn:
+
+1. Locate the composer reasoning pill.
+2. Open its menu even when the pill already displays the configured value.
+3. Prefer the attached reasoning slider.
+4. Parse and validate `aria-valuemin`, `aria-valuemax`, and `aria-valuenow` as exactly three supported
+   positions.
+5. Move one keyboard step at a time until the target index is reached:
+   `instant = 0`, `medium = 1`, `high = 2`.
+6. Close the menu and verify the pill text (`Instant`, `Medium`, or `High`).
+
+The current picker also contains a nested **Select model** view with `menuitemradio` entries such as
+GPT-5.6 and GPT-5.5. Those radio entries are model choices, not reasoning choices. The driver therefore
+uses the slider whenever present. A legacy radio-only picker is accepted only when its complete labels
+are exactly `Instant`, `Medium`, and `High`; any other radio list fails rather than changing models.
+
+The default is `medium`, and every turn reopens and semantically verifies the picker so provider UI state
+cannot leak from a previous call.
+
+### Prompt attachment and Send transition
+
+1. Clear the visible composer and focus it.
+2. Insert the complete prompt through Patchright's browser keyboard input path. This updates the live
+   ProseMirror component state instead of only changing displayed DOM.
+3. Reconstruct the editor text by joining top-level editor blocks with newlines.
+4. Require an exact prompt match. On failure, report expected length, actual length, and common-prefix
+   length without embedding the prompt in the error.
+5. Locate only `button[data-testid="send-button"][aria-label="Send prompt"]` inside the active form.
+6. Wait until it is visible, natively enabled, and not `aria-disabled="true"`.
+7. Keyboard-activate that semantic Send control once.
+
+An empty composer may show Start Voice, or may expose a visually disabled Send control. Start Voice does
+not match the Send locator and is never used as a fallback. This protects against accidental voice-mode
+activation and against clicking before the editor component has committed the prompt.
+
+### Completion
+
+The previous newest assistant text is captured before submission. `chatgptSnapshot()` then reports the
+newest visible assistant turn, rendered HTML, and whether the stop-generation control is visible.
+`waitForStableCompletion()` returns only after a response differs from the prior response, generation is
+not running, and text remains unchanged for `stableMs`.
+
+## Gemini turn contract
+
+Gemini uses its visible `rich-textarea` editor. The driver clears and fills the prompt, waits for the
+semantic send button to be visible and enabled (including ARIA state), keyboard-activates it, and polls
+the newest response container through the same stable-completion policy.
+
+ChatGPT and Gemini use different durable conversation files and can share a DSH session without sharing
+native provider history.
+
+## `browser_team` flow
+
+`browser_team` derives a durable team owner:
+
+```text
+<dsh-session-id>:team:<team-name-or-default>
+```
+
+This isolates team conversations from direct `browser_chat` conversations. All calls using the same DSH
+session and team name resume the same ChatGPT and Gemini team threads.
+
+For each round, providers speak sequentially in the requested order:
+
+```text
+for round 1..rounds:
+  for provider in providers:
+    prompt = task + every other provider's latest contribution
+    result = BrowserManager.chat(provider, teamSessionId, visible)
+    transcript.push(result)
+```
+
+The first provider in round one receives an initial-analysis prompt because no teammate has spoken yet.
+Later turns receive the task plus each other provider's latest message and are asked to critique, refine,
+and improve it. A provider's own prior messages already exist in its native durable conversation, so the
+orchestrator injects only teammates' latest messages.
+
+When synthesis is enabled, the last provider receives the full current-call debate transcript and returns
+a single final answer. Synthesis is not included in the optional transcript. Without synthesis, the last
+debate contribution is the final answer.
+
+The same `visible` flag is passed to every provider turn and synthesis turn. `visible: false` is not a
+separate orchestration path: it uses the same prompts and provider drivers on hidden browser displays.
+
+The orchestrator stops at the first provider failure and returns that provider plus all completed current-
+call turns. It does not silently continue with a missing teammate. Per-provider operations are serialized,
+and the DSH tool itself declares the team call non-concurrency-safe.
+
+### Transcript projection
+
+The full current-call transcript exists internally for synthesis. It is returned only when
+`includeTranscript: true`.
+
+Projection walks backward from the newest turn using a Unicode code-point budget. Newest complete turns
+are retained first. If the boundary turn does not fit, only its suffix is retained and marked
+`textTruncation: "prefix"`. `transcriptTruncated` is true whenever any earlier content was omitted. The
+final synthesis response is returned separately and does not consume transcript budget.
 
 ## Durable provider conversations
 
-Each agent-backed tool execution exposes the live DSH session as `exec.agent.id`. The plugin hashes
-that ID and stores one canonical provider conversation URL under
-`dataDir/<provider>/conversations/<sessionHash>.json`; raw session IDs and prompts are not persisted.
-The directory is mode `0700`, files are mode `0600`, and writes use fsync plus atomic rename. A session
-may refresh its existing binding but cannot silently rebind to another native conversation. ChatGPT
-and Gemini sessions navigate independently even when calls share one provider browser context.
+Every agent-backed tool execution exposes the DSH owner as `exec.agent.id`. The plugin hashes its string
+form and stores one binding at:
 
-## Browser lifecycle
+```text
+dataDir/chatgpt-web/conversations/<sha256(sessionId)>.json
+dataDir/gemini-web/conversations/<sha256(sessionId)>.json
+```
 
-Login uses a persistent, provider-isolated normal-Chrome profile without debugging or
-browser-automation flags in the OAuth flow. A user-managed display opens Chrome directly. Without one
-on Linux, `RemoteLoginSession` owns a dedicated `BrowserDisplayManager`, bundled-first x11vnc process,
-loopback Node HTTP/WebSocket bridge, noVNC page, normal Chrome process, timeout, and cleanup. The tool
-returns immediately while provider serialization is free; Save re-enters the provider queue for the
-single authoritative finalization path. HTTP/WebSocket uses stable provider ports (`remoteLoginPort` for
-ChatGPT and the next port for Gemini), while the VNC upstream remains private and ephemeral. All listeners
-bind to `127.0.0.1`; a 256-bit path token, independent temporary VNC password, same-origin checks, strict
-routes, no-store/CSP headers, and SSH
-forwarding define the security boundary. Public binding and proxy trust are intentionally absent.
+The directory is mode `0700`; files are mode `0600`. Writes use fsync and atomic rename. The raw DSH
+session ID and prompts are not persisted. A session may refresh its existing binding but cannot silently
+rebind to another conversation id.
 
-After Chrome exits and releases its profile lock, patchright opens the profile and exports bootstrap
-cookies/local storage. Patchright cannot call `storageState()` on this native-keyring persistent
-context, so a fresh non-persistent context verifies the bootstrap, captures current IndexedDB, and
-atomically writes the canonical `dataDir/accounts/<provider>.json` file. A failed, cancelled, or expired
-remote login never replaces an existing ready account.
+Team-derived session ids pass through the same hashing and binding layer, which is why named team threads
+remain private and durable without a separate storage implementation.
 
-The `accounts/` directory is the only portable authentication boundary. Full Chrome profiles are
-machine-local because their encrypted data depends on OS keyrings and Chrome internals. Conversations
-remain outside the account artifact because they are DSH-session bindings, not credentials. Account
-files are plaintext bearer secrets and must be copied only through a secure channel while DSH is
-stopped. Provider expiry, revocation, risk checks, MFA, or CAPTCHA can still require a new login.
+## Authentication and login
 
-For automated headed launches on Linux, `BrowserDisplayManager` starts one shared
-`Xvfb -displayfd` server at `1920x1080x24`. `-displayfd` lets Xorg choose a free display without a
-`:99` race. Linux x64 glibc 2.35+ uses the package's measured Xvfb runtime closure first (private
-binary, shared libraries, `xkbcomp`, and XKB data); other targets skip it. A system `Xvfb` is the next
-candidate, followed by an inherited `$DISPLAY`. The same supported bundle includes x11vnc and its
-measured library closure for remote login, with system `x11vnc` as the unsupported-target fallback.
-Without a usable candidate, launch fails explicitly.
-Native-headless mode bypasses display discovery. Managed-Xvfb contexts use the normal browser window
-viewport; system-display and native-headless contexts retain their deterministic `1280x900` viewport.
+### Local desktop
 
-Inference uses separate non-persistent contexts restored only from the canonical account file,
-avoiding Chrome profile singleton locks. Successful turns recapture cookies, local storage, and
-IndexedDB before atomically refreshing that file. Both providers use the configured idle close TTL.
-`internet_browser stop` closes a provider's inference browser and cancels a waiting remote login. The shared
-inference Xvfb remains until `BrowserManager.dispose()` closes all sessions and terminates the display;
-a remote login's dedicated Xvfb always closes with that login.
+`internet_browser login` stops existing provider inference, creates or reuses a provider-isolated login
+profile, and launches normal Chrome without browser-automation or remote-debugging flags. The user signs
+in and closes Chrome completely.
 
-## Error taxonomy
+### Remote noVNC
 
-Failures are surfaced as `InternetError` with a `kind` the tool reports to the model:
-`browser_unavailable`, `login_required`, `login_failed`, `timeout`, `aborted`, `provider_error`, and
-`config_error`.
+On displayless Linux, or when `remote: true`, `RemoteLoginSession` owns:
+
+- a dedicated Xvfb display,
+- bundled-first x11vnc,
+- a loopback HTTP/WebSocket bridge,
+- an isolated noVNC page,
+- normal Chrome using the provider login profile,
+- expiry, finalization, and cleanup.
+
+The stable HTTP ports are `remoteLoginPort` for ChatGPT and `remoteLoginPort + 1` for Gemini. The VNC
+upstream is private and ephemeral. All listeners bind to `127.0.0.1`. A 256-bit URL path token, temporary
+VNC password, strict same-origin handling, explicit routes, no-store headers, and CSP define the boundary.
+Public binding and proxy trust are intentionally absent.
+
+The lifecycle state is `waiting`, `finalizing`, `complete`, or `failed`. The login tool returns immediately
+while waiting. Pressing **Save account** re-enters the serialized provider queue and runs the one
+authoritative finalization path. Once finalization starts, it runs to completion; `stop` cancels only a
+waiting login.
+
+### Portable account creation
+
+After Chrome releases the login profile lock:
+
+1. Patchright opens the persistent profile and captures bootstrap cookies/local storage.
+2. A fresh non-persistent context verifies the authenticated provider surface.
+3. The context captures current IndexedDB in addition to cookies and local storage.
+4. The plugin atomically writes `dataDir/accounts/<provider>.json` with mode `0600`.
+
+A failed, cancelled, expired, or unverified login never replaces an existing ready account.
+
+## Portable security boundary
+
+`dataDir/accounts/` is the only portable authentication boundary. Login profiles are machine-local
+recovery caches because Chrome encryption depends on OS keyrings and browser/platform internals.
+Conversation files are DSH identity bindings, not credentials.
+
+Account JSON files are plaintext bearer secrets. Copy them only through a secure channel while DSH is
+stopped. Provider expiration, revocation, risk checks, MFA, or CAPTCHA can still require a fresh login.
+`status=ready` confirms a valid local file, not a live provider session.
+
+## Display and browser lifecycle
+
+Inference uses non-persistent contexts restored only from canonical account files, avoiding profile
+singleton locks.
+
+For `headless: false`, hidden Linux inference asks `BrowserDisplayManager` for one shared managed Xvfb:
+
+1. bundled Linux x64/glibc runtime closure,
+2. system `Xvfb`,
+3. inherited `$DISPLAY` fallback.
+
+`Xvfb -displayfd` lets Xorg select a free display without a fixed-display race. The managed display uses
+`1920x1080x24`. Supported bundles include measured Xvfb/x11vnc binaries, libraries, `xkbcomp`, and XKB
+data. Unsupported targets skip private binaries and use system executables when available.
+
+`visible: true` requires a user-managed display and never falls back to Xvfb. Native `headless: true`
+bypasses display discovery. The plugin does not silently convert a failed headed launch into native
+headless mode.
+
+Provider browser sessions are reused while their mode matches and close after `closeAfterMs` of idle time.
+Switching between visible and hidden modes replaces the incompatible provider session. Successful turns
+refresh portable account state. `BrowserManager.dispose()` closes contexts, Chrome, pending remote
+logins, timers, and the shared inference display.
+
+## Errors
+
+Expected failures use `InternetError`:
+
+- `browser_unavailable` — Chrome/display/runtime unavailable.
+- `login_required` — no accepted portable authentication state.
+- `login_failed` — interactive login or verification failed.
+- `timeout` — login, provider turn, or completion exceeded its deadline.
+- `aborted` — DSH cancelled the operation.
+- `provider_error` — provider DOM/state violated the interaction contract.
+- `config_error` — explicit plugin configuration is invalid.
+
+Tools convert these into structured error results. `browser_team` additionally reports the provider whose
+turn failed and can return already completed transcript turns when transcript output was requested.
