@@ -80,7 +80,8 @@ export async function chatgptWaitAuthenticated(page: Page, timeoutMs: number, si
 export async function chatgptSend(page: Page, prompt: string): Promise<void> {
 	const composer = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).first();
 	await composer.fill("");
-	await composer.fill(prompt);
+	await composer.focus();
+	await page.keyboard.insertText(prompt);
 	const sendButton = composer.locator("xpath=ancestor::form[1]").locator(CHATGPT_SEND_BUTTON_SELECTOR);
 	await waitForSendReady("ChatGPT", sendButton);
 	// Keyboard-activate the semantic button. This avoids pointer stability and

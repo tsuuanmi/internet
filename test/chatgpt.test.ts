@@ -78,8 +78,10 @@ function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "I
 }
 
 describe("chatgptSend", () => {
-	it("keyboard-activates the ready send button", async () => {
+	it("uses native text insertion before keyboard-activating the ready send button", async () => {
 		const fill = vi.fn(async () => {});
+		const focus = vi.fn(async () => {});
+		const insertText = vi.fn(async () => {});
 		const press = vi.fn(async () => {});
 		const sendButton = {
 			waitFor: vi.fn(async () => {}),
@@ -89,16 +91,19 @@ describe("chatgptSend", () => {
 		const composerForm = { locator: () => sendButton };
 		const composer = {
 			fill,
+			focus,
 			locator: () => composerForm,
 		};
 		const page = {
 			locator: () => ({ filter: () => ({ first: () => composer }) }),
+			keyboard: { insertText },
 		} as unknown as Page;
 
 		await chatgptSend(page, "hello");
 
-		expect(fill).toHaveBeenNthCalledWith(1, "");
-		expect(fill).toHaveBeenNthCalledWith(2, "hello");
+		expect(fill).toHaveBeenCalledExactlyOnceWith("");
+		expect(focus).toHaveBeenCalledOnce();
+		expect(insertText).toHaveBeenCalledWith("hello");
 		expect(press).toHaveBeenCalledWith("Enter");
 	});
 });
