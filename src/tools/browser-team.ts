@@ -58,7 +58,7 @@ export function defineBrowserTeamTool(
 	return defineTool({
 		name: "browser_team",
 		description:
-			"Run a multi-model debate between configured web providers. Provider browsers are hidden by default; set visible=true to show them on the user-managed display. Returns only the final answer unless includeTranscript is requested.",
+			"Run a multi-model debate between configured web providers. Provider browsers are shown by default on the user-managed display; set visible=false to hide them. Returns only the final answer unless includeTranscript is requested.",
 		parameters: {
 			task: {
 				type: "string",
@@ -159,7 +159,7 @@ export function defineBrowserTeamTool(
 					rounds,
 					synthesize: input.synthesize ?? config.teamSynthesis,
 					providers: input.providers,
-					visible: input.visible,
+					visible: input.visible ?? true,
 					signal: exec.signal,
 				});
 				const transcript = input.includeTranscript
