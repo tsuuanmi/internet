@@ -61,8 +61,10 @@ browser-automation flags in the OAuth flow. A user-managed display opens Chrome 
 on Linux, `RemoteLoginSession` owns a dedicated `BrowserDisplayManager`, bundled-first x11vnc process,
 loopback Node HTTP/WebSocket bridge, noVNC page, normal Chrome process, timeout, and cleanup. The tool
 returns immediately while provider serialization is free; Save re-enters the provider queue for the
-single authoritative finalization path. HTTP/WebSocket and VNC bind to `127.0.0.1`; a 256-bit path token,
-independent temporary VNC password, same-origin checks, strict routes, no-store/CSP headers, and SSH
+single authoritative finalization path. HTTP/WebSocket uses stable provider ports (`remoteLoginPort` for
+ChatGPT and the next port for Gemini), while the VNC upstream remains private and ephemeral. All listeners
+bind to `127.0.0.1`; a 256-bit path token, independent temporary VNC password, same-origin checks, strict
+routes, no-store/CSP headers, and SSH
 forwarding define the security boundary. Public binding and proxy trust are intentionally absent.
 
 After Chrome exits and releases its profile lock, patchright opens the profile and exports bootstrap

@@ -87,6 +87,7 @@ plugins:
       dataDir: "~/.dsh/internet"
       headless: false
       loginTimeoutMs: 600000
+      remoteLoginPort: 39000
       turnTimeoutMs: 180000
 ```
 
@@ -100,6 +101,7 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | `dataDir`        | `~/.dsh/internet`          | DSH-local root for portable accounts, login profiles, and conversations. |
 | `headless`       | `false`                    | Native headless when true; otherwise headed (managed Xvfb first on Linux). |
 | `loginTimeoutMs` | `600000`                   | Max time to complete an interactive sign-in (10 min).            |
+| `remoteLoginPort` | `39000`                    | Stable ChatGPT noVNC port; Gemini uses the next port (`39001`).  |
 | `turnTimeoutMs`  | `180000`                   | Max time for one `browser_chat` turn.                            |
 | `pollMs`         | `200`                      | Completion-poll interval.                                        |
 | `stableMs`       | `1500`                     | How long a response must be unchanged to count as complete.      |
@@ -132,8 +134,9 @@ Xvfb package there if no system display exists. The plugin never silently switch
 Set `headless: true` explicitly when native Chrome headless is desired; that path does not use Xvfb.
 
 Interactive `internet_browser login` uses a visible user-managed display when one exists. On displayless
-Linux it instead returns a tokenized loopback URL, port, expiry, and SSH command. Run the command on your
-computer, open the localhost URL, sign in through noVNC, and press **Save account**. `remote: true` forces
+Linux it instead returns a tokenized loopback URL, expiry, and copyable SSH command. The stable defaults
+are port `39000` for ChatGPT and `39001` for Gemini; only the secret URL token changes. Run the command
+on your computer, open the complete localhost URL, sign in through noVNC, and press **Save account**. `remote: true` forces
 this mode even when the server has `$DISPLAY`; `status` reports `waiting`, `finalizing`, `complete`, or
 `failed`, and `stop` cancels a waiting session. Once Save starts verification, finalization runs to completion.
 

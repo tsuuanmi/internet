@@ -511,6 +511,7 @@ export class BrowserManager {
 			profileDir: locations.profileDir,
 			homeUrl: this.homeUrl(provider),
 			timeoutMs: this.config.loginTimeoutMs,
+			port: this.config.remoteLoginPort + (provider === "gemini-web" ? 1 : 0),
 			finalize: () =>
 				this.serializeProvider(provider, async () => {
 					if (this.remoteLogins.get(provider) !== session || session.status().state !== "finalizing") {

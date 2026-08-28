@@ -36,6 +36,8 @@ export interface RemoteLoginOptions {
 	profileDir: string;
 	homeUrl: string;
 	timeoutMs: number;
+	/** Stable HTTP/WebSocket loopback port; zero selects an ephemeral test port. */
+	port?: number;
 	finalize: () => Promise<void>;
 	onClosed?: () => void;
 	env?: NodeJS.ProcessEnv;
@@ -303,7 +305,17 @@ export class RemoteLoginSession {
 		});
 		this.server = server;
 		this.websocket = websocket;
-		this.httpPort = await listen(server);
+		try {
+			this.httpPort = await listen(server, this.options.port ?? 0);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+				throw new InternetError(
+					"browser_unavailable",
+					`Remote login port ${String(this.options.port)} is already in use; stop the existing login and retry.`,
+				);
+			}
+			throw error;
+		}
 	}
 
 	private async startChrome(env: NodeJS.ProcessEnv): Promise<void> {

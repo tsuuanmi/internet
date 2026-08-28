@@ -20,6 +20,8 @@ export interface BrowserConfig {
     headless: boolean;
     /** Max time to wait for an interactive login to reach the authenticated surface (ms). */
     loginTimeoutMs: number;
+    /** Stable loopback port for ChatGPT remote login; Gemini uses the next port. */
+    remoteLoginPort: number;
     /** Max time for one browser chat turn to reach completion (ms). */
     turnTimeoutMs: number;
     /** Completion-poll interval (ms). */
@@ -55,6 +57,7 @@ export declare const Config: import("@deepseek-ai/schemastery").Schema<{
     dataDir: string;
     headless: boolean;
     loginTimeoutMs: number;
+    remoteLoginPort: number;
     turnTimeoutMs: number;
     pollMs: number;
     stableMs: number;

@@ -18,7 +18,8 @@
 - **login**: Add zero-install interactive login on displayless Linux through a tokenized, loopback-only
   noVNC page intended for SSH port forwarding. The package bundles x11vnc on its supported Linux x64
   target; Save account runs the existing portable-account verification pipeline, while status, stop,
-  timeout, and plugin disposal report or clean the complete Chrome/VNC/Xvfb/web lifecycle.
+  timeout, and plugin disposal report or clean the complete Chrome/VNC/Xvfb/web lifecycle. Copyable
+  login output uses stable ports `39000` (ChatGPT) and `39001` (Gemini) by default.
 - **tools**: Add an optional `visible` flag to `browser_chat` and `browser_team`; hidden managed-browser
   operation remains the default.
 - **accounts**: Store each provider in one canonical, versioned portable account file under

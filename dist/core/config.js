@@ -20,6 +20,7 @@ export const DEFAULT_CONFIG = {
     dataDir: join(dshHome(), "internet"),
     headless: false,
     loginTimeoutMs: 600_000,
+    remoteLoginPort: 39_000,
     turnTimeoutMs: 180_000,
     pollMs: 200,
     stableMs: 1_500,
@@ -42,6 +43,7 @@ export const Config = S.object({
     dataDir: S.string().default(DEFAULT_CONFIG.dataDir),
     headless: S.boolean().default(DEFAULT_CONFIG.headless),
     loginTimeoutMs: S.number().default(DEFAULT_CONFIG.loginTimeoutMs),
+    remoteLoginPort: S.number().default(DEFAULT_CONFIG.remoteLoginPort),
     turnTimeoutMs: S.number().default(DEFAULT_CONFIG.turnTimeoutMs),
     pollMs: S.number().default(DEFAULT_CONFIG.pollMs),
     stableMs: S.number().default(DEFAULT_CONFIG.stableMs),
@@ -90,6 +92,10 @@ export function resolveBrowserConfig(raw) {
     const input = raw && typeof raw === "object" ? raw : {};
     const teamRounds = asPositiveInteger(input.teamRounds, DEFAULT_CONFIG.teamRounds, "teamRounds");
     const teamMaxRounds = asPositiveInteger(input.teamMaxRounds, DEFAULT_CONFIG.teamMaxRounds, "teamMaxRounds");
+    const remoteLoginPort = asPositiveInteger(input.remoteLoginPort, DEFAULT_CONFIG.remoteLoginPort, "remoteLoginPort");
+    if (remoteLoginPort > 65_534) {
+        throw new InternetError("config_error", "browser config remoteLoginPort must not exceed 65534");
+    }
     if (teamRounds > teamMaxRounds) {
         throw new InternetError("config_error", "browser config teamRounds must not exceed teamMaxRounds");
     }
@@ -100,6 +106,7 @@ export function resolveBrowserConfig(raw) {
             : DEFAULT_CONFIG.dataDir),
         headless: asBoolean(input.headless, DEFAULT_CONFIG.headless),
         loginTimeoutMs: asPositiveInteger(input.loginTimeoutMs, DEFAULT_CONFIG.loginTimeoutMs, "loginTimeoutMs"),
+        remoteLoginPort,
         turnTimeoutMs: asPositiveInteger(input.turnTimeoutMs, DEFAULT_CONFIG.turnTimeoutMs, "turnTimeoutMs"),
         pollMs: asPositiveInteger(input.pollMs, DEFAULT_CONFIG.pollMs, "pollMs"),
         stableMs: asPositiveInteger(input.stableMs, DEFAULT_CONFIG.stableMs, "stableMs"),

@@ -181,6 +181,7 @@ describe("BrowserManager remote login", () => {
 		expect(first.remoteLogin).toMatchObject({ state: "waiting", port: 3000 });
 		expect(second.remoteLogin).toMatchObject({ state: "waiting", port: 3000 });
 		expect(start).toHaveBeenCalledTimes(1);
+		expect(start.mock.calls[0]?.[0].port).toBe(39_000);
 		await browser.dispose();
 		expect(remote.session.dispose).toHaveBeenCalledTimes(1);
 	});
@@ -191,11 +192,14 @@ describe("BrowserManager remote login", () => {
 		const persist = vi.spyOn(browser as any, "persistLoginProfile").mockResolvedValue(undefined);
 		const remote = remoteFixture();
 		let finalize: (() => Promise<void>) | undefined;
+		let port: number | undefined;
 		vi.spyOn(RemoteLoginSession, "start").mockImplementation(async (options) => {
 			finalize = options.finalize;
+			port = options.port;
 			return remote.session as any;
 		});
 		await browser.login("gemini-web");
+		expect(port).toBe(39_001);
 		remote.setState("finalizing");
 		await finalize?.();
 		expect(persist).toHaveBeenCalledWith("gemini-web");

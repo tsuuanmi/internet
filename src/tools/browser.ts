@@ -65,15 +65,17 @@ export function defineInternetBrowserTool(
 					ok?: unknown;
 					provider?: unknown;
 					state?: unknown;
-					remoteLogin?: { state?: unknown; url?: unknown };
+					remoteLogin?: { state?: unknown; url?: unknown; sshCommand?: unknown };
 					message?: unknown;
 				};
-				const parts = [`ok=${String(v.ok)}`, `provider=${String(v.provider)}`];
-				if (v.state !== undefined) parts.push(`state=${String(v.state)}`);
-				if (v.remoteLogin?.state !== undefined) parts.push(`remote=${String(v.remoteLogin.state)}`);
-				if (v.remoteLogin?.url !== undefined) parts.push(String(v.remoteLogin.url));
-				if (v.message !== undefined) parts.push(String(v.message));
-				return [{ type: "text", text: parts.join(" · ") }];
+				const summary = [`ok=${String(v.ok)}`, `provider=${String(v.provider)}`];
+				if (v.state !== undefined) summary.push(`state=${String(v.state)}`);
+				if (v.remoteLogin?.state !== undefined) summary.push(`remote=${String(v.remoteLogin.state)}`);
+				const lines = [summary.join(" · ")];
+				if (v.remoteLogin?.url !== undefined) lines.push(`URL: ${String(v.remoteLogin.url)}`);
+				if (v.remoteLogin?.sshCommand !== undefined) lines.push(`SSH: ${String(v.remoteLogin.sshCommand)}`);
+				if (v.message !== undefined) lines.push(String(v.message));
+				return [{ type: "text", text: lines.join("\n") }];
 			},
 			presentationMeta: (_args, value) => value,
 		},

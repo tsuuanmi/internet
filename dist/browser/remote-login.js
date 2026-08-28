@@ -250,7 +250,15 @@ export class RemoteLoginSession {
         });
         this.server = server;
         this.websocket = websocket;
-        this.httpPort = await listen(server);
+        try {
+            this.httpPort = await listen(server, this.options.port ?? 0);
+        }
+        catch (error) {
+            if (error.code === "EADDRINUSE") {
+                throw new InternetError("browser_unavailable", `Remote login port ${String(this.options.port)} is already in use; stop the existing login and retry.`);
+            }
+            throw error;
+        }
     }
     async startChrome(env) {
         const child = spawn(this.options.chromePath, [

@@ -52,16 +52,19 @@ export function defineInternetBrowserTool(manager, allowed) {
             },
             render: (_args, value) => {
                 const v = value;
-                const parts = [`ok=${String(v.ok)}`, `provider=${String(v.provider)}`];
+                const summary = [`ok=${String(v.ok)}`, `provider=${String(v.provider)}`];
                 if (v.state !== undefined)
-                    parts.push(`state=${String(v.state)}`);
+                    summary.push(`state=${String(v.state)}`);
                 if (v.remoteLogin?.state !== undefined)
-                    parts.push(`remote=${String(v.remoteLogin.state)}`);
+                    summary.push(`remote=${String(v.remoteLogin.state)}`);
+                const lines = [summary.join(" · ")];
                 if (v.remoteLogin?.url !== undefined)
-                    parts.push(String(v.remoteLogin.url));
+                    lines.push(`URL: ${String(v.remoteLogin.url)}`);
+                if (v.remoteLogin?.sshCommand !== undefined)
+                    lines.push(`SSH: ${String(v.remoteLogin.sshCommand)}`);
                 if (v.message !== undefined)
-                    parts.push(String(v.message));
-                return [{ type: "text", text: parts.join(" · ") }];
+                    lines.push(String(v.message));
+                return [{ type: "text", text: lines.join("\n") }];
             },
             presentationMeta: (_args, value) => value,
         },

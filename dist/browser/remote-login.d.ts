@@ -16,6 +16,8 @@ export interface RemoteLoginOptions {
     profileDir: string;
     homeUrl: string;
     timeoutMs: number;
+    /** Stable HTTP/WebSocket loopback port; zero selects an ephemeral test port. */
+    port?: number;
     finalize: () => Promise<void>;
     onClosed?: () => void;
     env?: NodeJS.ProcessEnv;
