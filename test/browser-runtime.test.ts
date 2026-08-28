@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { chromium } from "patchright-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { BrowserManager, type ProviderStatus } from "#internet/browser/runtime";
@@ -200,6 +201,41 @@ describe("BrowserManager remote login", () => {
 		expect(persist).toHaveBeenCalledWith("gemini-web");
 		await browser.stop("gemini-web");
 		expect(remote.session.cancel).toHaveBeenCalledTimes(1);
+		await browser.dispose();
+	});
+});
+
+describe("BrowserManager portable-state verification", () => {
+	it("retries a transient browser-context protocol failure once", async () => {
+		const browser = manager();
+		const verified = { cookies: [], origins: [{ origin: "https://example.com", localStorage: [] }] };
+		const page = { goto: vi.fn(async () => {}) };
+		const firstContext = {
+			newPage: vi.fn(async () => page),
+			storageState: vi.fn(async () => {
+				throw new Error("Protocol error (Target.createTarget): Failed to find browser context with id deadbeef");
+			}),
+			close: vi.fn(async () => {}),
+		};
+		const secondContext = {
+			newPage: vi.fn(async () => page),
+			storageState: vi.fn(async () => verified),
+			close: vi.fn(async () => {}),
+		};
+		const browsers = [firstContext, secondContext].map((context) => ({
+			newContext: vi.fn(async () => context),
+			close: vi.fn(async () => {}),
+		}));
+		vi.spyOn(chromium, "launch")
+			.mockResolvedValueOnce(browsers[0] as any)
+			.mockResolvedValueOnce(browsers[1] as any);
+		(browser as any).display.prepare = vi.fn(async () => ({ kind: "headless" }));
+		(browser as any).isAuthenticated = vi.fn(async () => true);
+
+		await expect((browser as any).verifyStorageState("gemini-web", { cookies: [], origins: [] })).resolves.toEqual(
+			verified,
+		);
+		expect(chromium.launch).toHaveBeenCalledTimes(2);
 		await browser.dispose();
 	});
 });

@@ -145,15 +145,17 @@ export class RemoteLoginSession {
         return this.finalization ?? Promise.resolve();
     }
     async finalizeAccount() {
-        const accountFinalization = this.options.finalize();
+        const accountFinalization = this.options.finalize().then(() => ({ ok: true }), (error) => ({ ok: false, error }));
         try {
             await this.closeDesktop();
-            await accountFinalization;
+            const result = await accountFinalization;
+            if (!result.ok)
+                throw result.error;
             this.state = "complete";
             this.message = `${this.options.provider} account saved successfully.`;
         }
         catch (error) {
-            await accountFinalization.catch(() => { });
+            await accountFinalization;
             this.state = "failed";
             this.message = error instanceof Error ? error.message : "Remote login finalization failed.";
         }

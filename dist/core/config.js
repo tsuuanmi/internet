@@ -19,7 +19,7 @@ function dshHome() {
 export const DEFAULT_CONFIG = {
     dataDir: join(dshHome(), "internet"),
     headless: false,
-    loginTimeoutMs: 180_000,
+    loginTimeoutMs: 600_000,
     turnTimeoutMs: 180_000,
     pollMs: 200,
     stableMs: 1_500,

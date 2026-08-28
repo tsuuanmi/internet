@@ -27,6 +27,9 @@
 
 ### Fixed
 
+- **login**: Handle account-verification rejection immediately so a failed remote Save cannot trigger
+  an unhandled-rejection shutdown. Retry one transient Patchright browser-context protocol failure,
+  and allow ten minutes for human interactive sign-in by default.
 - **browser**: Retain separate machine-local normal-Chrome login profiles for ChatGPT and Gemini so
   reopening a visible login window shows the same signed-in account instead of a fresh logged-out
   profile. Automated contexts now use only the portable account files, and both providers persist

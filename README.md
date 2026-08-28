@@ -86,7 +86,7 @@ plugins:
     config:
       dataDir: "~/.dsh/internet"
       headless: false
-      loginTimeoutMs: 180000
+      loginTimeoutMs: 600000
       turnTimeoutMs: 180000
 ```
 
@@ -99,7 +99,7 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | `chromePath`     | (auto-discovered)          | Explicit Chrome binary, else system Chrome is found.             |
 | `dataDir`        | `~/.dsh/internet`          | DSH-local root for portable accounts, login profiles, and conversations. |
 | `headless`       | `false`                    | Native headless when true; otherwise headed (managed Xvfb first on Linux). |
-| `loginTimeoutMs` | `180000`                   | Max time to complete an interactive sign-in.                     |
+| `loginTimeoutMs` | `600000`                   | Max time to complete an interactive sign-in (10 min).            |
 | `turnTimeoutMs`  | `180000`                   | Max time for one `browser_chat` turn.                            |
 | `pollMs`         | `200`                      | Completion-poll interval.                                        |
 | `stableMs`       | `1500`                     | How long a response must be unchanged to count as complete.      |

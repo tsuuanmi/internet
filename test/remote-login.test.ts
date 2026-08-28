@@ -97,6 +97,24 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 		expect(readdirSync(join(files.dataDir, "remote-login"))).toEqual([]);
 	}, 10_000);
 
+	it("contains an immediately rejected account finalizer", async () => {
+		const files = fixture();
+		const session = await RemoteLoginSession.start({
+			provider: "gemini-web",
+			...files,
+			homeUrl: "https://gemini.google.com/",
+			timeoutMs: 5_000,
+			finalize: async () => {
+				throw new Error("portable capture failed");
+			},
+			clientScript: "export {};",
+		});
+		await session.requestSave();
+		expect(session.status()).toMatchObject({ state: "failed", message: "portable capture failed" });
+		await session.dispose();
+		expect(readdirSync(join(files.dataDir, "remote-login"))).toEqual([]);
+	}, 15_000);
+
 	it("expires and cleans a login that was not saved", async () => {
 		const files = fixture();
 		const finalize = vi.fn(async () => {});

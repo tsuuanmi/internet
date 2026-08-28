@@ -76,6 +76,13 @@ interface ManagedSession {
 	displayKind: "headless" | "system" | "visible" | "virtual";
 }
 
+function isTransientStorageCaptureError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return /Protocol error \(Target\.(?:createTarget|createBrowserContext)\)|Failed to find browser context/i.test(
+		message,
+	);
+}
+
 /**
  * Owns isolated browser sessions. Interactive login runs in a dedicated,
  * per-provider normal Chrome profile (without browser-automation flags). The
@@ -357,34 +364,39 @@ export class BrowserManager {
 		storageState: PortableStorageState,
 	): Promise<PortableStorageState> {
 		const display = await this.display.prepare(this.config.headless);
-		const browser = await chromium.launch({
-			executablePath: this.chromeExecutable(),
-			headless: this.config.headless,
-			env: display.kind === "headless" ? undefined : display.env,
-			ignoreDefaultArgs: this.config.headless ? undefined : ["--no-sandbox"],
-			args: [
-				...this.inferenceArgs(this.config.headless),
-				...(this.config.headless ? [] : headedWindowArgs(display)),
-			],
-		});
-		try {
-			const context = await browser.newContext({ storageState, viewport: browserViewport(display) });
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			const browser = await chromium.launch({
+				executablePath: this.chromeExecutable(),
+				headless: this.config.headless,
+				env: display.kind === "headless" ? undefined : display.env,
+				ignoreDefaultArgs: this.config.headless ? undefined : ["--no-sandbox"],
+				args: [
+					...this.inferenceArgs(this.config.headless),
+					...(this.config.headless ? [] : headedWindowArgs(display)),
+				],
+			});
 			try {
-				const page = await context.newPage();
-				await page.goto(this.homeUrl(provider), { waitUntil: "domcontentloaded", timeout: 60_000 });
-				if (!(await this.isAuthenticated(provider, page, Math.min(this.config.loginTimeoutMs, 60_000)))) {
-					throw new InternetError(
-						"login_failed",
-						`${provider} login state could not be restored in the configured inference browser.`,
-					);
+				const context = await browser.newContext({ storageState, viewport: browserViewport(display) });
+				try {
+					const page = await context.newPage();
+					await page.goto(this.homeUrl(provider), { waitUntil: "domcontentloaded", timeout: 60_000 });
+					if (!(await this.isAuthenticated(provider, page, Math.min(this.config.loginTimeoutMs, 60_000)))) {
+						throw new InternetError(
+							"login_failed",
+							`${provider} login state could not be restored in the configured inference browser.`,
+						);
+					}
+					return await capturePortableStorageState(context);
+				} finally {
+					await context.close().catch(() => {});
 				}
-				return capturePortableStorageState(context);
+			} catch (error) {
+				if (attempt > 0 || !isTransientStorageCaptureError(error)) throw error;
 			} finally {
-				await context.close().catch(() => {});
+				await browser.close().catch(() => {});
 			}
-		} finally {
-			await browser.close().catch(() => {});
 		}
+		throw new InternetError("login_failed", `${provider} portable account capture failed.`);
 	}
 
 	private async closeSession(provider: WebProvider): Promise<void> {
