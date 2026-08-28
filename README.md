@@ -22,12 +22,11 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
   current DSH session and durably resume it on later calls.
 - `browser_team` — run an ordered debate among the configured web providers on a task. Each model
   speaks for `teamRounds` rounds, critiquing and refining the others' latest messages, then produces
-  a single final "best of both" answer. Provider browsers are visible by default so each response can
-  be watched; pass `visible: false` to hide them. The tool returns only the final answer by default;
-  an opt-in, character-bounded current-call transcript is available with `includeTranscript: true`.
-  The DSH agent is the team lead and does not participate. The team's conversations are isolated from
-  the agent's own `browser_chat` threads (keyed by a derived `:team:` session id) yet durable across
-  repeated calls.
+  a single final "best of both" answer. Provider browsers are hidden by default; pass `visible: true`
+  to watch each response. The tool returns only the final answer by default; an opt-in,
+  character-bounded current-call transcript is available with `includeTranscript: true`. The DSH agent
+  is the team lead and does not participate. The team's conversations are isolated from the agent's
+  own `browser_chat` threads (keyed by a derived `:team:` session id) yet durable across repeated calls.
 - `internet_browser` — lifecycle: `login`, `status`, `stop`. Login uses dedicated normal Chrome locally,
   or returns a loopback noVNC URL and SSH forwarding command on displayless Linux.
 

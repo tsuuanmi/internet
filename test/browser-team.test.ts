@@ -94,19 +94,19 @@ describe("parseTeamArgs", () => {
 });
 
 describe("defineBrowserTeamTool", () => {
-	it("omits the transcript and shows provider browsers by default", async () => {
+	it("omits the transcript and hides provider browsers by default", async () => {
 		const { manager, calls } = fakeManager(["A1", "B1"]);
 		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false }, exec);
 		expect(result).toEqual({ finalAnswer: "B1", finalProvider: "gemini-web" });
-		expect(calls.map(({ request }) => request.visible)).toEqual([true, true]);
+		expect(calls.map(({ request }) => request.visible)).toEqual([undefined, undefined]);
 	});
 
-	it("propagates an explicit hidden-browser request", async () => {
+	it("propagates an explicit visible-browser request", async () => {
 		const { manager, calls } = fakeManager(["A1", "B1"]);
 		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
-		await tool.execute({ task: "T", rounds: 1, synthesize: false, visible: false }, exec);
-		expect(calls.map(({ request }) => request.visible)).toEqual([false, false]);
+		await tool.execute({ task: "T", rounds: 1, synthesize: false, visible: true }, exec);
+		expect(calls.map(({ request }) => request.visible)).toEqual([true, true]);
 	});
 
 	it("returns an ordered complete transcript when it fits the budget", async () => {
