@@ -95,6 +95,52 @@ async function insertChatgptPrompt(composer: Locator, prompt: string): Promise<v
 	}
 }
 
+interface ChatGptComposerDiagnostic {
+	composer: Record<string, unknown>;
+	buttons: Array<Record<string, unknown>>;
+}
+
+async function chatgptComposerDiagnostic(composer: Locator, prompt: string): Promise<ChatGptComposerDiagnostic> {
+	return composer.evaluate((element, expectedPrompt) => {
+		const form = element.closest("form");
+		const selection = window.getSelection();
+		const rendered = (candidate: Element): boolean => {
+			const style = getComputedStyle(candidate);
+			return (
+				candidate.isConnected && style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0"
+			);
+		};
+		const attributes = (candidate: Element): Record<string, unknown> => ({
+			tag: candidate.tagName.toLowerCase(),
+			role: candidate.getAttribute("role"),
+			ariaLabel: candidate.getAttribute("aria-label"),
+			testId: candidate.getAttribute("data-testid"),
+			type: candidate.getAttribute("type"),
+			disabled: (candidate as HTMLButtonElement).disabled,
+			className: candidate.getAttribute("class"),
+			text: ((candidate as HTMLElement).innerText || candidate.textContent || "")
+				.replace(/\s+/g, " ")
+				.trim()
+				.slice(0, 200),
+			outerHtml: candidate.outerHTML.replace(/\s+/g, " ").slice(0, 1_000),
+		});
+		const text = element.textContent ?? "";
+		return {
+			composer: {
+				...attributes(element),
+				textChars: text.length,
+				promptMatches: text === expectedPrompt,
+				focused: document.activeElement === element,
+				selectionCollapsed: selection?.isCollapsed ?? null,
+				selectionInside: selection?.anchorNode ? element.contains(selection.anchorNode) : false,
+				formFound: form !== null,
+				formOuterHtml: form?.outerHTML.replace(/\s+/g, " ").slice(0, 4_000) ?? null,
+			},
+			buttons: form === null ? [] : [...form.querySelectorAll("button")].filter(rendered).map(attributes),
+		};
+	}, prompt);
+}
+
 /** Commit the prompt through ChatGPT's Lexical editor and submit it. */
 export async function chatgptSend(page: Page, prompt: string): Promise<void> {
 	const composer = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).first();
@@ -102,7 +148,20 @@ export async function chatgptSend(page: Page, prompt: string): Promise<void> {
 	await composer.focus();
 	await insertChatgptPrompt(composer, prompt);
 	const sendButton = composer.locator("xpath=ancestor::form[1]").locator(CHATGPT_SEND_BUTTON_SELECTOR);
-	await waitForSendReady("ChatGPT", sendButton);
+	try {
+		await waitForSendReady("ChatGPT", sendButton);
+	} catch (error) {
+		const diagnostic = await chatgptComposerDiagnostic(composer, prompt).catch((diagnosticError) => ({
+			composer: {
+				diagnosticError: diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError),
+			},
+			buttons: [],
+		}));
+		throw new InternetError(
+			"provider_error",
+			`${error instanceof Error ? error.message : String(error)}; composer diagnostic: ${JSON.stringify(diagnostic)}`,
+		);
+	}
 	// Keyboard-activate the semantic button. This avoids pointer stability and
 	// overlay interception while preserving ChatGPT's submit behavior on follow-ups.
 	await sendButton.press("Enter");
