@@ -1,9 +1,7 @@
 import type { Page } from "patchright-core";
-import { type AuthenticationAssessment, strongerAuthenticationAssessment } from "#internet/browser/authentication";
+import { type AuthenticationAssessment, waitAuthenticationAssessment } from "#internet/browser/authentication";
 import type { CompletionSnapshot } from "#internet/browser/completion";
 import { waitForSendReady } from "#internet/browser/submission";
-import { InternetError } from "#internet/core/errors";
-import { sleep } from "#internet/core/sleep";
 
 export const GEMINI_HOME_URL = "https://gemini.google.com/app";
 
@@ -64,23 +62,13 @@ export async function geminiAuthenticationAssessment(page: Page): Promise<Authen
 	return { state: "unconfirmed", evidence: "timeout" };
 }
 
-/** Wait for a conclusive Gemini auth surface and otherwise return the strongest observed state. */
+/** Wait for a conclusive Gemini auth surface or return the latest conclusive observation. */
 export async function geminiWaitAuthenticationAssessment(
 	page: Page,
 	timeoutMs: number,
 	signal?: AbortSignal,
 ): Promise<AuthenticationAssessment> {
-	const deadline = Date.now() + timeoutMs;
-	let latest = await geminiAuthenticationAssessment(page);
-	while (Date.now() < deadline) {
-		if (signal?.aborted) {
-			throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "browser turn aborted");
-		}
-		if (latest.state === "authenticated") return latest;
-		await sleep(200, signal);
-		latest = strongerAuthenticationAssessment(latest, await geminiAuthenticationAssessment(page));
-	}
-	return latest;
+	return waitAuthenticationAssessment(() => geminiAuthenticationAssessment(page), timeoutMs, signal);
 }
 
 /** Wait until Gemini is authenticated (composer visible), or return false. */

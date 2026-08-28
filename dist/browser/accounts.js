@@ -182,7 +182,9 @@ function isPortableStorageState(value) {
 function isReauthDiagnostic(value) {
     if (!isRecord(value))
         return false;
-    return isTimestamp(value.observedAt) && (value.evidence === "login-url" || value.evidence === "login-surface");
+    return (isTimestamp(value.observedAt) &&
+        (value.evidence === "login-url" || value.evidence === "login-surface") &&
+        Object.keys(value).length === 2);
 }
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);

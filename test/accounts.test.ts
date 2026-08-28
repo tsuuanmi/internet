@@ -140,6 +140,26 @@ describe("AccountStore", () => {
 		);
 	});
 
+	it("rejects a reauth diagnostic with extra keys", () => {
+		const root = temporaryRoot();
+		const store = new AccountStore(root);
+		store.writeReady("chatgpt-web", storageState());
+		const account = store.inspect("chatgpt-web").account!;
+		const path = providerLocations(root, "chatgpt-web").accountPath;
+		const withExtra = {
+			...account,
+			status: "reauth-required",
+			invalidatedAt: "2026-03-01T00:00:00.000Z",
+			reauthDiagnostic: {
+				observedAt: "2026-03-01T00:00:00.000Z",
+				evidence: "login-url",
+				secret: "leaked",
+			},
+		};
+		writeFileSync(path, `${JSON.stringify(withExtra)}\n`, { mode: 0o600 });
+		expect(store.inspect("chatgpt-web").state).toBe("invalid");
+	});
+
 	it("preserves the previous account when serialization fails", () => {
 		const root = temporaryRoot();
 		const store = new AccountStore(root);

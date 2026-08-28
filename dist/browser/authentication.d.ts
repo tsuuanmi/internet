@@ -13,6 +13,16 @@ export type AuthenticationAssessment = {
     state: "unconfirmed";
     evidence: "timeout";
 };
-/** Preserve positive observations over later transient/unknown page states. */
-export declare function strongerAuthenticationAssessment(current: AuthenticationAssessment, next: AuthenticationAssessment): AuthenticationAssessment;
+/**
+ * Preserve the latest conclusive observation over later transient/unknown
+ * states. Authenticated is terminal; signed-out and challenge replace each
+ * other (latest wins); unconfirmed never overrides a conclusive state.
+ */
+export declare function latestConclusiveAssessment(current: AuthenticationAssessment, next: AuthenticationAssessment): AuthenticationAssessment;
+/**
+ * Shared authentication polling. Samples a provider-specific assessment at
+ * 200ms intervals until authenticated or the deadline expires, retaining the
+ * latest conclusive observation. Aborts immediately on signal cancellation.
+ */
+export declare function waitAuthenticationAssessment(assess: () => Promise<AuthenticationAssessment>, timeoutMs: number, signal?: AbortSignal): Promise<AuthenticationAssessment>;
 //# sourceMappingURL=authentication.d.ts.map

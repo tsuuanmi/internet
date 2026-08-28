@@ -1,4 +1,4 @@
-import { strongerAuthenticationAssessment } from "#internet/browser/authentication";
+import { waitAuthenticationAssessment } from "#internet/browser/authentication";
 import { waitForSendReady } from "#internet/browser/submission";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -89,20 +89,9 @@ export async function chatgptAuthenticationAssessment(page) {
     }
     return { state: "unconfirmed", evidence: "timeout" };
 }
-/** Wait for a conclusive ChatGPT auth surface and otherwise return the strongest observed state. */
+/** Wait for a conclusive ChatGPT auth surface or return the latest conclusive observation. */
 export async function chatgptWaitAuthenticationAssessment(page, timeoutMs, signal) {
-    const deadline = Date.now() + timeoutMs;
-    let latest = await chatgptAuthenticationAssessment(page);
-    while (Date.now() < deadline) {
-        if (signal?.aborted) {
-            throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "browser turn aborted");
-        }
-        if (latest.state === "authenticated")
-            return latest;
-        await sleep(200, signal);
-        latest = strongerAuthenticationAssessment(latest, await chatgptAuthenticationAssessment(page));
-    }
-    return latest;
+    return waitAuthenticationAssessment(() => chatgptAuthenticationAssessment(page), timeoutMs, signal);
 }
 /** Wait until ChatGPT is authenticated (composer visible), or return false. */
 export async function chatgptWaitAuthenticated(page, timeoutMs, signal) {

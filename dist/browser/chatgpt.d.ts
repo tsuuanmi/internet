@@ -24,7 +24,7 @@ export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
 export declare function chatgptIsAuthenticated(page: Page): Promise<boolean>;
 /** Assess ChatGPT auth without treating a missing composer as proof of logout. */
 export declare function chatgptAuthenticationAssessment(page: Page): Promise<AuthenticationAssessment>;
-/** Wait for a conclusive ChatGPT auth surface and otherwise return the strongest observed state. */
+/** Wait for a conclusive ChatGPT auth surface or return the latest conclusive observation. */
 export declare function chatgptWaitAuthenticationAssessment(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<AuthenticationAssessment>;
 /** Wait until ChatGPT is authenticated (composer visible), or return false. */
 export declare function chatgptWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;

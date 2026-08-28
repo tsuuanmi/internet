@@ -53,7 +53,7 @@ browser_chat { model, prompt, visible? }
   -> validate model, prompt, and visible
   -> read String(exec.agent.id) as the durable owner
   -> BrowserManager.chat(provider, request)
-  -> acquire a provider lease (same session FIFO; default hidden capacity two)
+  -> acquire a provider lease (same session FIFO; default hidden capacity one)
   -> ensure account file is ready
   -> ensure a compatible browser and isolated per-turn context exist
        visible=true  -> headed Chrome on user-managed display

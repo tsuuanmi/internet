@@ -1,5 +1,5 @@
 import type { Locator, Page } from "patchright-core";
-import { type AuthenticationAssessment, strongerAuthenticationAssessment } from "#internet/browser/authentication";
+import { type AuthenticationAssessment, waitAuthenticationAssessment } from "#internet/browser/authentication";
 import type { CompletionSnapshot } from "#internet/browser/completion";
 import { waitForSendReady } from "#internet/browser/submission";
 import type { ChatGptThinkingLevel } from "#internet/core/config";
@@ -106,23 +106,13 @@ export async function chatgptAuthenticationAssessment(page: Page): Promise<Authe
 	return { state: "unconfirmed", evidence: "timeout" };
 }
 
-/** Wait for a conclusive ChatGPT auth surface and otherwise return the strongest observed state. */
+/** Wait for a conclusive ChatGPT auth surface or return the latest conclusive observation. */
 export async function chatgptWaitAuthenticationAssessment(
 	page: Page,
 	timeoutMs: number,
 	signal?: AbortSignal,
 ): Promise<AuthenticationAssessment> {
-	const deadline = Date.now() + timeoutMs;
-	let latest = await chatgptAuthenticationAssessment(page);
-	while (Date.now() < deadline) {
-		if (signal?.aborted) {
-			throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "browser turn aborted");
-		}
-		if (latest.state === "authenticated") return latest;
-		await sleep(200, signal);
-		latest = strongerAuthenticationAssessment(latest, await chatgptAuthenticationAssessment(page));
-	}
-	return latest;
+	return waitAuthenticationAssessment(() => chatgptAuthenticationAssessment(page), timeoutMs, signal);
 }
 
 /** Wait until ChatGPT is authenticated (composer visible), or return false. */

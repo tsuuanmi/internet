@@ -1,5 +1,6 @@
 import type { Page } from "patchright-core";
 import { describe, expect, it, vi } from "vitest";
+import { latestConclusiveAssessment } from "#internet/browser/authentication";
 import {
 	CHATGPT_ACCOUNT_SELECTOR,
 	CHATGPT_COMPOSER_SELECTOR,
@@ -115,6 +116,22 @@ function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "I
 	return { page, effortChoiceIndex, effortChoicePress, closePicker };
 }
 
+describe("latestConclusiveAssessment", () => {
+	const authenticated = { state: "authenticated" as const, evidence: "authenticated-surface" as const };
+	const signedOut = { state: "signed-out" as const, evidence: "login-url" as const };
+	const challenge = { state: "challenge" as const, evidence: "challenge-url" as const };
+	const unconfirmed = { state: "unconfirmed" as const, evidence: "timeout" as const };
+
+	it("lets the latest conclusive state win and authenticated terminate", () => {
+		expect(latestConclusiveAssessment(signedOut, challenge)).toEqual(challenge);
+		expect(latestConclusiveAssessment(challenge, signedOut)).toEqual(signedOut);
+		expect(latestConclusiveAssessment(challenge, unconfirmed)).toEqual(challenge);
+		expect(latestConclusiveAssessment(signedOut, unconfirmed)).toEqual(signedOut);
+		expect(latestConclusiveAssessment(unconfirmed, authenticated)).toEqual(authenticated);
+		expect(latestConclusiveAssessment(authenticated, signedOut)).toEqual(authenticated);
+	});
+});
+
 describe("chatgptAuthenticationAssessment", () => {
 	it("distinguishes authenticated, signed-out, challenge, and unconfirmed pages", async () => {
 		await expect(
@@ -157,6 +174,20 @@ describe("chatgptWaitAuthenticationAssessment", () => {
 		});
 		const assessment = await chatgptWaitAuthenticationAssessment(page, 600, undefined);
 		expect(assessment.state).toBe("challenge");
+	});
+
+	it("recognizes a final signed-out page after an earlier challenge", async () => {
+		const urls = ["https://chatgpt.com/challenge/captcha", "https://auth.openai.com/log-in"];
+		let index = 0;
+		const page = {
+			url: () => urls[Math.min(index, urls.length - 1)] ?? "",
+			locator: () => ({ filter: () => ({ count: async () => 0 }) }),
+		} as unknown as Page;
+		vi.spyOn(await import("#internet/core/sleep"), "sleep").mockImplementation(async () => {
+			index += 1;
+		});
+		const assessment = await chatgptWaitAuthenticationAssessment(page, 600, undefined);
+		expect(assessment.state).toBe("signed-out");
 	});
 });
 

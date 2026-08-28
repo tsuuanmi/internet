@@ -92,6 +92,20 @@ describe("geminiWaitAuthenticationAssessment", () => {
 		const assessment = await geminiWaitAuthenticationAssessment(page, 600, undefined);
 		expect(assessment.state).toBe("challenge");
 	});
+
+	it("recognizes a final signed-out page after an earlier challenge", async () => {
+		const urls = ["https://accounts.google.com/v3/signin/challenge", "https://accounts.google.com/v3/signin"];
+		let index = 0;
+		const page = {
+			url: () => urls[Math.min(index, urls.length - 1)] ?? "",
+			locator: () => ({ filter: () => ({ count: async () => 0 }) }),
+		} as unknown as Page;
+		vi.spyOn(await import("#internet/core/sleep"), "sleep").mockImplementation(async () => {
+			index += 1;
+		});
+		const assessment = await geminiWaitAuthenticationAssessment(page, 600, undefined);
+		expect(assessment.state).toBe("signed-out");
+	});
 });
 
 describe("geminiSend", () => {

@@ -249,7 +249,11 @@ function isPortableStorageState(value: unknown): value is PortableStorageState {
 
 function isReauthDiagnostic(value: unknown): value is ReauthDiagnostic {
 	if (!isRecord(value)) return false;
-	return isTimestamp(value.observedAt) && (value.evidence === "login-url" || value.evidence === "login-surface");
+	return (
+		isTimestamp(value.observedAt) &&
+		(value.evidence === "login-url" || value.evidence === "login-surface") &&
+		Object.keys(value).length === 2
+	);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

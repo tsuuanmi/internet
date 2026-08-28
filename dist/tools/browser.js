@@ -39,8 +39,8 @@ export function defineInternetBrowserTool(manager, allowed) {
                         type: "object",
                         additionalProperties: false,
                         properties: {
-                            verifiedAt: { type: "string" },
-                            revision: { type: "number" },
+                            verifiedAt: { type: "string", required: true },
+                            revision: { type: "number", required: true },
                             reauthDiagnostic: {
                                 type: "object",
                                 additionalProperties: false,

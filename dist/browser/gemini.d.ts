@@ -11,7 +11,7 @@ export declare const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-
 export declare function geminiIsAuthenticated(page: Page): Promise<boolean>;
 /** Assess Gemini auth without treating a missing composer as proof of logout. */
 export declare function geminiAuthenticationAssessment(page: Page): Promise<AuthenticationAssessment>;
-/** Wait for a conclusive Gemini auth surface and otherwise return the strongest observed state. */
+/** Wait for a conclusive Gemini auth surface or return the latest conclusive observation. */
 export declare function geminiWaitAuthenticationAssessment(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<AuthenticationAssessment>;
 /** Wait until Gemini is authenticated (composer visible), or return false. */
 export declare function geminiWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
