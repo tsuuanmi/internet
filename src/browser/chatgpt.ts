@@ -77,17 +77,56 @@ export async function chatgptWaitAuthenticated(page: Page, timeoutMs: number, si
 	return false;
 }
 
+async function insertChatgptPrompt(composer: Locator, prompt: string): Promise<void> {
+	const inserted = await composer.evaluate((element, value) => {
+		const selection = window.getSelection();
+		if (
+			document.activeElement !== element ||
+			!selection ||
+			!selection.isCollapsed ||
+			!selection.anchorNode ||
+			!element.contains(selection.anchorNode)
+		) {
+			return false;
+		}
+		return document.execCommand("insertText", false, value);
+	}, prompt);
+	if (inserted) return;
+	throw new InternetError("provider_error", "ChatGPT composer rejected the plain-text editing command");
+}
+
+async function readChatgptComposerText(composer: Locator): Promise<string> {
+	return await composer.evaluate((element) => {
+		const clone = element.cloneNode(true) as HTMLElement;
+		clone
+			.querySelectorAll('[data-id^="plugin:"][data-keyword], [data-inline-selection-pill-cursor-target]')
+			.forEach((part) => {
+				part.remove();
+			});
+		return [...clone.childNodes]
+			.map((child) => child.textContent ?? "")
+			.join("\n")
+			.trimStart();
+	});
+}
+
+function commonPrefixLength(left: string, right: string): number {
+	let index = 0;
+	while (index < left.length && index < right.length && left[index] === right[index]) index += 1;
+	return index;
+}
+
 async function assertChatgptPromptAttached(composer: Locator, prompt: string): Promise<void> {
 	const deadline = Date.now() + 10_000;
 	let observed = "";
 	while (Date.now() < deadline) {
-		observed = (await composer.innerText()).trimStart();
+		observed = await readChatgptComposerText(composer);
 		if (observed === prompt) return;
 		await sleep(50);
 	}
 	throw new InternetError(
 		"provider_error",
-		`ChatGPT composer did not preserve the complete prompt (expectedChars=${prompt.length}, actualChars=${observed.length})`,
+		`ChatGPT composer did not preserve the complete prompt (expectedChars=${prompt.length}, actualChars=${observed.length}, commonPrefixChars=${commonPrefixLength(prompt, observed)})`,
 	);
 }
 
@@ -96,7 +135,7 @@ export async function chatgptSend(page: Page, prompt: string): Promise<void> {
 	const composer = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).first();
 	await composer.fill("");
 	await composer.focus();
-	await page.keyboard.insertText(prompt);
+	await insertChatgptPrompt(composer, prompt);
 	await assertChatgptPromptAttached(composer, prompt);
 	const sendButton = page.locator(CHATGPT_SEND_BUTTON_SELECTOR).filter({ visible: true }).last();
 	await waitForSendReady("ChatGPT", sendButton);

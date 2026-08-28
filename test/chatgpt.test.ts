@@ -78,31 +78,90 @@ function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "I
 }
 
 describe("chatgptSend", () => {
-	it("uses native text insertion before keyboard-activating the ready send button", async () => {
+	it("commits and verifies plain text before activating Send", async () => {
 		const fill = vi.fn(async () => {});
 		const focus = vi.fn(async () => {});
-		const insertText = vi.fn(async () => {});
+		const evaluate = vi.fn(async (_callback: unknown, argument?: unknown) =>
+			typeof argument === "string" ? true : "hello",
+		);
 		const press = vi.fn(async () => {});
 		const sendButton = {
 			waitFor: vi.fn(async () => {}),
 			isEnabled: vi.fn(async () => true),
 			press,
 		};
-		const composer = { fill, focus, innerText: vi.fn(async () => "hello") };
+		const composer = { fill, focus, evaluate };
 		const page = {
 			locator: (selector: string) =>
 				selector === CHATGPT_COMPOSER_SELECTOR
 					? { filter: () => ({ first: () => composer }) }
 					: { filter: () => ({ last: () => sendButton }) },
-			keyboard: { insertText },
 		} as unknown as Page;
 
 		await chatgptSend(page, "hello");
 
 		expect(fill).toHaveBeenCalledExactlyOnceWith("");
 		expect(focus).toHaveBeenCalledOnce();
-		expect(insertText).toHaveBeenCalledWith("hello");
+		expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), "hello");
+		expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function));
 		expect(press).toHaveBeenCalledWith("Enter");
+	});
+
+	it("fails before Send when the composer rejects plain-text insertion", async () => {
+		const sendButton = {
+			waitFor: vi.fn(async () => {}),
+			isEnabled: vi.fn(async () => true),
+			press: vi.fn(async () => {}),
+		};
+		const composer = {
+			fill: vi.fn(async () => {}),
+			focus: vi.fn(async () => {}),
+			evaluate: vi.fn(async () => false),
+		};
+		const page = {
+			locator: (selector: string) =>
+				selector === CHATGPT_COMPOSER_SELECTOR
+					? { filter: () => ({ first: () => composer }) }
+					: { filter: () => ({ last: () => sendButton }) },
+		} as unknown as Page;
+
+		await expect(chatgptSend(page, "hello")).rejects.toThrow("rejected the plain-text editing command");
+		expect(sendButton.waitFor).not.toHaveBeenCalled();
+		expect(sendButton.press).not.toHaveBeenCalled();
+	});
+
+	it("fails before Send when the committed prompt disappears", async () => {
+		vi.useFakeTimers();
+		try {
+			const sendButton = {
+				waitFor: vi.fn(async () => {}),
+				isEnabled: vi.fn(async () => true),
+				press: vi.fn(async () => {}),
+			};
+			const composer = {
+				fill: vi.fn(async () => {}),
+				focus: vi.fn(async () => {}),
+				evaluate: vi.fn(async (_callback: unknown, argument?: unknown) =>
+					typeof argument === "string" ? true : "",
+				),
+			};
+			const page = {
+				locator: (selector: string) =>
+					selector === CHATGPT_COMPOSER_SELECTOR
+						? { filter: () => ({ first: () => composer }) }
+						: { filter: () => ({ last: () => sendButton }) },
+			} as unknown as Page;
+			const result = chatgptSend(page, "hello").then(
+				() => undefined,
+				(error: unknown) => error,
+			);
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(await result).toMatchObject({ message: expect.stringMatching(/did not preserve the complete prompt/) });
+			expect(sendButton.waitFor).not.toHaveBeenCalled();
+			expect(sendButton.press).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 
