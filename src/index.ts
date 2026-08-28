@@ -23,7 +23,10 @@ const BROWSER_CHAT_GUIDANCE = [
 
 const BROWSER_TEAM_GUIDANCE = [
 	"Use browser_team when multiple independent web-model perspectives should be debated and merged: design decisions, tradeoff analysis, brainstorming, code or document review, second opinions, and adversarial review.",
-	"Providers speak sequentially in the configured order once per round (default 2, maximum 4). By default the last provider then synthesizes the full current-call debate into one final answer.",
+	"For several independent aspects, prefer one focused background subagent (or context-inheriting subagent_fork) per aspect. Assign each worker a browser_team debate, continue useful parent work while they run, then combine their returned findings when needed; do not busy-poll.",
+	"Each child agent has a unique DSH agent id, so its browser_team uses distinct durable provider threads under <child-agent-id>:team:<name>, isolated from the parent's direct and team conversations. A subagent explicitly assigned a browser_team debate should call browser_team itself rather than recursively delegating it.",
+	"Background delegation provides independent task fan-out and lets the parent continue; it does not guarantee simultaneous provider turns. This plugin serializes browser operations per provider, so several child debates can queue at ChatGPT or Gemini.",
+	"For one simple debate, call browser_team directly. Providers speak sequentially in the configured order once per round (default 2, maximum 4). By default the last provider then synthesizes the full current-call debate into one final answer.",
 	"Named teams have durable provider conversations isolated from direct browser_chat threads. Provider browsers are hidden by default; set visible: true only when the user asks to watch both browsers or requests live acceptance testing.",
 	"The tool returns only the final answer by default. includeTranscript: true adds a bounded current-call transcript with truncation metadata and uses more agent context.",
 	"Every selected provider needs a ready portable account. A model refusal is provider output, while login, timeout, and DOM failures are orchestration errors that should be reported distinctly.",
