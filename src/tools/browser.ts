@@ -55,8 +55,8 @@ export function defineInternetBrowserTool(
 								type: "object",
 								additionalProperties: false,
 								properties: {
-									observedAt: { type: "string" },
-									evidence: { type: "string", enum: ["login-url", "login-surface"] },
+									observedAt: { type: "string", required: true },
+									evidence: { type: "string", enum: ["login-url", "login-surface"], required: true },
 								},
 							},
 						},
