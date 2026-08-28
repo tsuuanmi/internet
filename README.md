@@ -79,7 +79,7 @@ from direct `browser_chat` conversations while remaining durable across repeated
 team name. Different `team` values create separate native threads.
 
 By default the tool returns only `finalAnswer` and `finalProvider`. `includeTranscript: true` adds the
-bounded transcript from the current invocation. The newest content is retained within
+bounded transcript to both the structured result and model-visible rendered output. The newest content is retained within
 `teamTranscriptMaxChars`; `transcriptTruncated: true` reports omitted older content, and
 `textTruncation: "prefix"` marks a boundary turn whose beginning was removed. Returning the transcript
 also consumes more agent context.
@@ -142,7 +142,7 @@ plugins:
       loginTimeoutMs: 600000
       remoteLoginPort: 39000
       turnTimeoutMs: 180000
-      maxConcurrentTurnsPerProvider: 1
+      maxConcurrentTurnsPerProvider: 2
       chatgptThinkingLevel: medium
       teamRounds: 2
       teamMaxRounds: 4
@@ -164,7 +164,7 @@ the new build. Starting a second web server does not update an already running D
 | `pollMs` | `200` | Response completion polling interval. |
 | `stableMs` | `1500` | Required unchanged, non-running response interval. |
 | `closeAfterMs` | `1800000` | Idle delay before closing an idle provider browser pool. |
-| `maxConcurrentTurnsPerProvider` | `1` | Maximum simultaneous hidden turns per provider from different DSH sessions; use values above one only after provider-policy and account-state acceptance testing. |
+| `maxConcurrentTurnsPerProvider` | `2` | Maximum simultaneous hidden turns per provider from different DSH sessions; reduce to `1` if provider policy or account-state acceptance requires it. |
 | `maxOutputChars` | `200000` | Maximum returned response characters. |
 | `teamRounds` | `2` | Default debate rounds; every provider speaks once per round. |
 | `teamMaxRounds` | `4` | Maximum accepted per-call `rounds`. |
@@ -175,9 +175,8 @@ the new build. Starting a second web server does not update an already running D
 | `chatgptThinkingLevel` | `medium` | ChatGPT reasoning level: `instant`, `medium`, or `high`. |
 
 Invalid explicit values fail configuration loading. `teamRounds` cannot exceed `teamMaxRounds`, and
-`remoteLoginPort` must leave room for Gemini on the next TCP port. Keep `maxConcurrentTurnsPerProvider` at
-its default until a controlled real-account acceptance test confirms that concurrent sessions are supported;
-it improves independent child-team throughput, not a single team's dependent rounds.
+`remoteLoginPort` must leave room for Gemini on the next TCP port. Capacity `2` passed controlled
+real-account acceptance; it improves independent child-team throughput, not a single team's dependent rounds.
 
 ## Login
 

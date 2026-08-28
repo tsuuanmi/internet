@@ -4,6 +4,21 @@ import { isInternetError } from "#internet/core/errors";
 import { runTeam } from "#internet/team/orchestrator";
 import { parseTeamArgs } from "#internet/tools/args";
 export { parseTeamArgs } from "#internet/tools/args";
+/** Render opt-in transcript data into model-visible tool content, not only UI metadata. */
+export function renderBrowserTeamResult(value) {
+    const output = value;
+    const answer = output.finalAnswer !== undefined ? String(output.finalAnswer) : String(output.error ?? value);
+    if (output.transcript === undefined)
+        return answer;
+    const turns = output.transcript
+        .map((turn) => {
+        const omitted = turn.textTruncation === "prefix" ? "[Earlier content omitted]\n\n" : "";
+        return `### ${turn.provider} · round ${turn.round}\n${omitted}${turn.text}`;
+    })
+        .join("\n\n");
+    const truncation = output.transcriptTruncated === true ? " (truncated)" : "";
+    return `${answer}\n\n---\n\n## Debate transcript${truncation}\n\n${turns}`;
+}
 /** Retain the newest debate content within the tool's aggregate Unicode code-point budget. */
 function projectTranscript(transcript, maxChars) {
     let remaining = maxChars;
@@ -94,11 +109,7 @@ export function defineBrowserTeamTool(manager, config, allowed) {
                     error: { type: "string" },
                 },
             },
-            render: (_args, value) => {
-                const v = value;
-                const text = v.finalAnswer !== undefined ? String(v.finalAnswer) : String(v.error ?? value);
-                return [{ type: "text", text }];
-            },
+            render: (_args, value) => [{ type: "text", text: renderBrowserTeamResult(value) }],
             presentationMeta: (_args, value) => value,
         },
         timeoutMs: config.turnTimeoutMs * (config.teamMaxRounds * allowed.size + 1),

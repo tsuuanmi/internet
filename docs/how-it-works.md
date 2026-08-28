@@ -53,9 +53,9 @@ browser_chat { model, prompt, visible? }
   -> validate model, prompt, and visible
   -> read String(exec.agent.id) as the durable owner
   -> BrowserManager.chat(provider, request)
-  -> serialize operations for that provider
+  -> acquire a provider lease (same session FIFO; default hidden capacity two)
   -> ensure account file is ready
-  -> ensure a compatible browser/context exists
+  -> ensure a compatible browser and isolated per-turn context exist
        visible=true  -> headed Chrome on user-managed display
        visible=false + headless=false -> headed Chrome on managed Xvfb
        visible=false + headless=true  -> native Chrome headless
@@ -173,8 +173,8 @@ hidden child-team session ids.
 
 ### Transcript projection
 
-The full current-call transcript exists internally for synthesis. It is returned only when
-`includeTranscript: true`.
+The full current-call transcript exists internally for synthesis. When `includeTranscript: true`, it is
+included in both the structured result and the model-visible rendered tool content.
 
 Projection walks backward from the newest turn using a Unicode code-point budget. Newest complete turns
 are retained first. If the boundary turn does not fit, only its suffix is retained and marked
@@ -267,9 +267,9 @@ data. Unsupported targets skip private binaries and use system executables when 
 bypasses display discovery. The plugin does not silently convert a failed headed launch into native
 headless mode.
 
-The default allows one hidden turn per provider. When the profile explicitly sets
-`maxConcurrentTurnsPerProvider` above one, different DSH session ids may lease isolated non-persistent
-contexts concurrently from the same portable account; repeated turns for one session remain FIFO. A
+The default allows two hidden turns per provider. Different DSH session ids lease isolated non-persistent
+contexts concurrently from the same portable account; repeated turns for one session remain FIFO. Set
+`maxConcurrentTurnsPerProvider: 1` if provider policy or account-state acceptance requires it. A
 visible call, login, remote-login finalization, stop, reauthentication, and display loss are provider-
 exclusive barriers. Contexts close after their turns; compatible browser processes close after
 `closeAfterMs` of pool-wide idleness.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import { resolveBrowserConfig } from "#internet/core/config";
 import { parseTeamArgs } from "#internet/tools/args";
-import { defineBrowserTeamTool } from "#internet/tools/browser-team";
+import { defineBrowserTeamTool, renderBrowserTeamResult } from "#internet/tools/browser-team";
 
 function fakeManager(script: Array<string | Error>) {
 	const calls: Array<{ provider: string; request: ChatRequest }> = [];
@@ -93,6 +93,28 @@ describe("parseTeamArgs", () => {
 	});
 });
 
+describe("renderBrowserTeamResult", () => {
+	it("keeps an opted-in transcript in model-visible content", () => {
+		expect(
+			renderBrowserTeamResult({
+				finalAnswer: "Final",
+				transcript: [
+					{ round: 1, provider: "chatgpt-web", text: "Alpha" },
+					{ round: 1, provider: "gemini-web", text: "Beta", textTruncation: "prefix" },
+				],
+				transcriptTruncated: true,
+			}),
+		).toBe(
+			"Final\n\n---\n\n## Debate transcript (truncated)\n\n### chatgpt-web · round 1\nAlpha\n\n" +
+				"### gemini-web · round 1\n[Earlier content omitted]\n\nBeta",
+		);
+	});
+
+	it("leaves the default final-answer presentation concise", () => {
+		expect(renderBrowserTeamResult({ finalAnswer: "Final" })).toBe("Final");
+	});
+});
+
 describe("defineBrowserTeamTool", () => {
 	it("omits the transcript and hides provider browsers by default", async () => {
 		const { manager, calls } = fakeManager(["A1", "B1"]);
@@ -122,6 +144,12 @@ describe("defineBrowserTeamTool", () => {
 			],
 			transcriptTruncated: false,
 		});
+		expect(tool.output.render({}, result as never)).toEqual([
+			{
+				type: "text",
+				text: "B1\n\n---\n\n## Debate transcript\n\n### chatgpt-web · round 1\nA1\n\n### gemini-web · round 1\nB1",
+			},
+		]);
 	});
 
 	it("marks a retained boundary turn whose prefix was clipped", async () => {

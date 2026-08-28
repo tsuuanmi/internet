@@ -4,6 +4,8 @@ import type { BrowserConfig, WebProvider } from "#internet/core/config";
 export type { TeamInput } from "#internet/tools/args";
 export { parseTeamArgs } from "#internet/tools/args";
 type BrowserTeamManager = Pick<BrowserManager, "chat">;
+/** Render opt-in transcript data into model-visible tool content, not only UI metadata. */
+export declare function renderBrowserTeamResult(value: unknown): string;
 /**
  * Define the `browser_team` model tool: run a multi-model debate between the
  * configured web providers on a task and return the final "best of both"
