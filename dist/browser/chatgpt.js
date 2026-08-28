@@ -30,6 +30,11 @@ export const CHATGPT_THINKING_LEVEL_INDEX = {
     medium: 1,
     high: 2,
 };
+const CHATGPT_THINKING_LEVEL_LABEL = {
+    instant: "Instant",
+    medium: "Medium",
+    high: "High",
+};
 export const CHATGPT_ASSISTANT_TURN_SELECTOR = [
     '[data-testid^="conversation-turn-"][data-turn="assistant"]',
     '[data-testid^="conversation-turn-"][data-message-author-role="assistant"]',
@@ -118,6 +123,16 @@ export function parseChatGptEffortSliderState(rawMin, rawMax, rawValue) {
         return undefined;
     return { min, max, value };
 }
+async function verifyChatGptThinkingLevel(control, level) {
+    const expected = CHATGPT_THINKING_LEVEL_LABEL[level];
+    const deadline = Date.now() + 40_000;
+    while (Date.now() < deadline) {
+        if ((await control.innerText().catch(() => "")).trim() === expected)
+            return;
+        await sleep(100);
+    }
+    throw new InternetError("provider_error", `ChatGPT did not confirm reasoning level ${expected}`);
+}
 /**
  * Select the ChatGPT reasoning-effort level before a turn. Opens the model
  * switcher and activates the target level, handling both the menuitemradio
@@ -196,40 +211,13 @@ export async function chatgptSelectThinkingLevel(page, level) {
             }
         }
         await page.keyboard.press("Escape");
+        await verifyChatGptThinkingLevel(effortControl, level);
         return;
     }
-    const selected = await effortChoice.getAttribute("aria-checked");
-    if (selected !== "true" && selected !== "false") {
-        throw new InternetError("provider_error", `ChatGPT effort item index ${targetIndex} has no semantic checked state`);
+    if ((await effortControl.innerText().catch(() => "")).trim() !== CHATGPT_THINKING_LEVEL_LABEL[level]) {
+        await effortChoice.press("Enter");
+        await verifyChatGptThinkingLevel(effortControl, level);
     }
-    if (selected === "true") {
-        await page.keyboard.press("Escape");
-        return;
-    }
-    await effortChoice.press("Enter");
-    const deadline = Date.now() + 40_000;
-    let confirmed = null;
-    while (Date.now() < deadline) {
-        if (!(await effortMenu.isVisible().catch(() => false))) {
-            const expanded = await effortControl.getAttribute("aria-expanded").catch(() => null);
-            if (expanded !== "true") {
-                await effortControl.press("Enter");
-            }
-            await effortChoice.waitFor({
-                state: "visible",
-                timeout: Math.max(1, Math.min(5_000, deadline - Date.now())),
-            });
-        }
-        confirmed = await effortChoice.getAttribute("aria-checked");
-        if (confirmed === "true") {
-            await page.keyboard.press("Escape");
-            return;
-        }
-        if (confirmed !== "false") {
-            throw new InternetError("provider_error", `ChatGPT effort item index ${targetIndex} lost its semantic checked state`);
-        }
-        await sleep(100);
-    }
-    throw new InternetError("provider_error", `ChatGPT did not confirm effort item index ${targetIndex} (aria-checked=${JSON.stringify(confirmed)})`);
+    await page.keyboard.press("Escape");
 }
 //# sourceMappingURL=chatgpt.js.map

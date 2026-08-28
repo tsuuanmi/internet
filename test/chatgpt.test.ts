@@ -34,22 +34,21 @@ function fakePage(turns: string[]): { page: Page } {
 	return { page };
 }
 
-function fakeThinkingPickerPage(): {
+function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "Instant"): {
 	page: Page;
 	effortChoiceIndex: ReturnType<typeof vi.fn>;
 	effortChoicePress: ReturnType<typeof vi.fn>;
 	closePicker: ReturnType<typeof vi.fn>;
 } {
-	let selected = false;
-	const effortChoicePress = vi.fn(async () => {
-		selected = true;
+	const labels = ["Instant", "Medium", "High"] as const;
+	let selectedLevel = initialLevel;
+	const effortChoicePress = vi.fn(async function (this: { index: number }) {
+		selectedLevel = labels[this.index] ?? selectedLevel;
 	});
-	const effortChoice = {
+	const effortChoiceIndex = vi.fn((index: number) => ({
 		waitFor: vi.fn(async () => {}),
-		getAttribute: vi.fn(async () => (selected ? "true" : "false")),
-		press: effortChoicePress,
-	};
-	const effortChoiceIndex = vi.fn(() => effortChoice);
+		press: effortChoicePress.bind({ index }),
+	}));
 	const effortMenu = {
 		isVisible: vi.fn(async () => true),
 		locator: vi.fn(() => ({ nth: effortChoiceIndex, count: async () => 3 })),
@@ -57,6 +56,7 @@ function fakeThinkingPickerPage(): {
 	const effortControl = {
 		waitFor: vi.fn(async () => {}),
 		getAttribute: vi.fn(async () => "true"),
+		innerText: vi.fn(async () => selectedLevel),
 		press: vi.fn(async () => {}),
 	};
 	const composer = {
@@ -151,7 +151,7 @@ describe("chatgptSelectThinkingLevel", () => {
 	});
 
 	it("does not bypass the picker for an explicit Instant override", async () => {
-		const { page, effortChoiceIndex, effortChoicePress, closePicker } = fakeThinkingPickerPage();
+		const { page, effortChoiceIndex, effortChoicePress, closePicker } = fakeThinkingPickerPage("Medium");
 		await chatgptSelectThinkingLevel(page, "instant");
 		expect(effortChoiceIndex).toHaveBeenCalledWith(0);
 		expect(effortChoicePress).toHaveBeenCalledWith("Enter");
