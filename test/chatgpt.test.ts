@@ -14,6 +14,7 @@ import {
 	chatgptSelectThinkingLevel,
 	chatgptSend,
 	chatgptSnapshot,
+	chatgptWaitAuthenticationAssessment,
 	parseChatGptEffortSliderState,
 } from "#internet/browser/chatgpt";
 
@@ -140,6 +141,22 @@ describe("chatgptAuthenticationAssessment", () => {
 			state: "unconfirmed",
 			evidence: "timeout",
 		});
+	});
+});
+
+describe("chatgptWaitAuthenticationAssessment", () => {
+	it("retains a challenge over an earlier signed-out observation", async () => {
+		const urls = ["https://auth.openai.com/log-in", "https://chatgpt.com/challenge/captcha"];
+		let index = 0;
+		const page = {
+			url: () => urls[Math.min(index, urls.length - 1)] ?? "",
+			locator: () => ({ filter: () => ({ count: async () => 0 }) }),
+		} as unknown as Page;
+		vi.spyOn(await import("#internet/core/sleep"), "sleep").mockImplementation(async () => {
+			index += 1;
+		});
+		const assessment = await chatgptWaitAuthenticationAssessment(page, 600, undefined);
+		expect(assessment.state).toBe("challenge");
 	});
 });
 

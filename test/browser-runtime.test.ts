@@ -286,6 +286,41 @@ describe("BrowserManager authentication assessment", () => {
 		expect((browser as any).accounts.inspect("chatgpt-web").account.storageState).toEqual(refreshed);
 		await browser.dispose();
 	});
+
+	it("does not invalidate the scheduler when a stale revision rejects reauth", async () => {
+		const browser = manager();
+		(browser as any).accounts.writeReady("gemini-web", { cookies: [], origins: [] });
+		const revision = (browser as any).accounts.inspect("gemini-web").account.revision;
+		// Simulate a newer login replacing the account after this lease was bootstrapped.
+		(browser as any).accounts.writeReady("gemini-web", {
+			cookies: [],
+			origins: [{ origin: "https://newer", localStorage: [] }],
+		});
+		const staleLease = { generation: 0, signal: new AbortController().signal };
+		await (browser as any).handleSignedOut("gemini-web", staleLease, revision, "login-url");
+		expect((browser as any).accounts.inspect("gemini-web").state).toBe("ready");
+		expect((browser as any).scheduler("gemini-web").currentGeneration()).toBe(0);
+		await browser.dispose();
+	});
+
+	it("marks reauth when catch-path recovery detects sign-out", async () => {
+		const browser = manager();
+		(browser as any).accounts.writeReady("chatgpt-web", { cookies: [], origins: [] });
+		const revision = (browser as any).accounts.inspect("chatgpt-web").account.revision;
+		const context = authenticatedContext();
+		const page = { goto: vi.fn(async () => {}), url: () => "https://chatgpt.com/" };
+		const lease = { generation: 0, signal: new AbortController().signal };
+		(browser as any).assessAuthentication = vi.fn(async () => ({
+			state: "signed-out",
+			evidence: "login-url",
+		}));
+		(browser as any).closeBrowser = vi.fn(async () => {});
+
+		await (browser as any).recoverAuthenticatedSnapshot("chatgpt-web", page, context, lease, revision);
+		expect((browser as any).accounts.inspect("chatgpt-web").state).toBe("reauth-required");
+		expect((browser as any).scheduler("chatgpt-web").currentGeneration()).toBe(1);
+		await browser.dispose();
+	});
 });
 
 describe("BrowserManager visible login profiles", () => {

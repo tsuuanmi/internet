@@ -609,10 +609,11 @@ export class BrowserManager {
 		evidence: "login-url" | "login-surface",
 	): Promise<void> {
 		if (!this.scheduler(provider).isCurrent(lease)) return;
-		this.accounts.markReauthRequiredIfRevision(provider, accountRevision, new Date(), {
+		const invalidated = this.accounts.markReauthRequiredIfRevision(provider, accountRevision, new Date(), {
 			observedAt: new Date().toISOString(),
 			evidence,
 		});
+		if (invalidated === undefined) return;
 		this.scheduler(provider).invalidate(
 			new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`),
 		);

@@ -15,8 +15,8 @@ export type AuthenticationAssessment =
 
 const ASSESSMENT_PRIORITY: Record<AuthenticationAssessment["state"], number> = {
 	unconfirmed: 0,
-	challenge: 1,
-	"signed-out": 2,
+	"signed-out": 1,
+	challenge: 2,
 	authenticated: 3,
 };
 

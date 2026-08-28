@@ -8,6 +8,7 @@ import {
 	geminiLastResponseText,
 	geminiSend,
 	geminiSnapshot,
+	geminiWaitAuthenticationAssessment,
 } from "#internet/browser/gemini";
 
 function fakePage(responses: string[]): { page: Page } {
@@ -74,6 +75,22 @@ describe("geminiAuthenticationAssessment", () => {
 			state: "unconfirmed",
 			evidence: "timeout",
 		});
+	});
+});
+
+describe("geminiWaitAuthenticationAssessment", () => {
+	it("retains a challenge over an earlier signed-out observation", async () => {
+		const urls = ["https://accounts.google.com/v3/signin", "https://accounts.google.com/v3/signin/challenge"];
+		let index = 0;
+		const page = {
+			url: () => urls[Math.min(index, urls.length - 1)] ?? "",
+			locator: () => ({ filter: () => ({ count: async () => 0 }) }),
+		} as unknown as Page;
+		vi.spyOn(await import("#internet/core/sleep"), "sleep").mockImplementation(async () => {
+			index += 1;
+		});
+		const assessment = await geminiWaitAuthenticationAssessment(page, 600, undefined);
+		expect(assessment.state).toBe("challenge");
 	});
 });
 
