@@ -23,6 +23,7 @@ export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
 export declare function chatgptIsAuthenticated(page: Page): Promise<boolean>;
 /** Wait until ChatGPT is authenticated (composer visible), or return false. */
 export declare function chatgptWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
+export declare function chatgptPromptTextMatches(prompt: string, observed: string): boolean;
 /** Commit the prompt through ChatGPT's editor and submit its verified Send action. */
 export declare function chatgptSend(page: Page, prompt: string): Promise<void>;
 /** Read the visible text of the current newest ChatGPT assistant turn (empty when none). */

@@ -8,6 +8,7 @@ import {
 	CHATGPT_STOP_BUTTON_SELECTOR,
 	CHATGPT_THINKING_LEVEL_INDEX,
 	chatgptLastAssistantTurnText,
+	chatgptPromptTextMatches,
 	chatgptSelectThinkingLevel,
 	chatgptSend,
 	chatgptSnapshot,
@@ -95,6 +96,19 @@ function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "I
 	} as unknown as Page;
 	return { page, effortChoiceIndex, effortChoicePress, closePicker };
 }
+
+describe("chatgptPromptTextMatches", () => {
+	it("accepts ProseMirror non-breaking spaces as equivalent indentation", () => {
+		expect(chatgptPromptTextMatches("before\n\n    - item", "before\n\n\u00a0\u00a0\u00a0\u00a0- item")).toBe(true);
+	});
+
+	it("still rejects missing, reordered, or otherwise changed prompt text", () => {
+		expect(chatgptPromptTextMatches("complete prompt", "complete promp")).toBe(false);
+		expect(chatgptPromptTextMatches("complete prompt", "complete pxompt")).toBe(false);
+		expect(chatgptPromptTextMatches("line one\nline two", "line two\nline one")).toBe(false);
+		expect(chatgptPromptTextMatches("normal space", "normal\u00a0space")).toBe(false);
+	});
+});
 
 describe("chatgptSend", () => {
 	it("verifies the complete prompt before activating the semantic Send action", async () => {

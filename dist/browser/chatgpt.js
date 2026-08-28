@@ -61,20 +61,54 @@ export async function chatgptWaitAuthenticated(page, timeoutMs, signal) {
 async function attachedChatGptPromptText(composer) {
     return composer.evaluate((element) => [...element.childNodes].map((child) => child.textContent ?? "").join("\n"));
 }
+/**
+ * ProseMirror represents indentation after an empty paragraph with non-breaking
+ * spaces. Treat only that editor-level space substitution as equivalent while
+ * keeping every other UTF-16 code unit and the complete block structure exact.
+ */
+function isLeadingIndentation(text, index) {
+    for (let cursor = index - 1; cursor >= 0 && text[cursor] !== "\n"; cursor -= 1) {
+        if (text[cursor] !== " " && text[cursor] !== "\u00a0")
+            return false;
+    }
+    return true;
+}
+export function chatgptPromptTextMatches(prompt, observed) {
+    if (prompt.length !== observed.length)
+        return false;
+    for (let index = 0; index < prompt.length; index += 1) {
+        const expected = prompt[index];
+        const actual = observed[index];
+        if (expected === actual)
+            continue;
+        const spaceSubstitution = (expected === " " && actual === "\u00a0") || (expected === "\u00a0" && actual === " ");
+        if (spaceSubstitution && isLeadingIndentation(prompt, index) && isLeadingIndentation(observed, index))
+            continue;
+        return false;
+    }
+    return true;
+}
 async function verifyChatGptPromptAttached(composer, prompt) {
     const deadline = Date.now() + 10_000;
     let observed = "";
     while (Date.now() < deadline) {
         observed = await attachedChatGptPromptText(composer);
-        if (observed === prompt)
+        if (chatgptPromptTextMatches(prompt, observed))
             return;
         await sleep(50);
     }
     let commonPrefix = 0;
-    while (commonPrefix < prompt.length && prompt[commonPrefix] === observed[commonPrefix])
+    while (commonPrefix < prompt.length &&
+        commonPrefix < observed.length &&
+        chatgptPromptTextMatches(prompt[commonPrefix] ?? "", observed[commonPrefix] ?? "")) {
         commonPrefix += 1;
+    }
+    const expectedCode = prompt.codePointAt(commonPrefix);
+    const actualCode = observed.codePointAt(commonPrefix);
     throw new InternetError("provider_error", `ChatGPT composer did not preserve the complete prompt` +
-        ` (expectedChars=${prompt.length}; actualChars=${observed.length}; commonPrefixChars=${commonPrefix})`);
+        ` (expectedChars=${prompt.length}; actualChars=${observed.length}; commonPrefixChars=${commonPrefix};` +
+        ` expectedCode=${expectedCode === undefined ? "end" : `U+${expectedCode.toString(16).toUpperCase()}`};` +
+        ` actualCode=${actualCode === undefined ? "end" : `U+${actualCode.toString(16).toUpperCase()}`})`);
 }
 /** Commit the prompt through ChatGPT's editor and submit its verified Send action. */
 export async function chatgptSend(page, prompt) {
