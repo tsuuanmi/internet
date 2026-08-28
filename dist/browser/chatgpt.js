@@ -7,7 +7,7 @@ export const CHATGPT_COMPOSER_SELECTOR = [
     "#prompt-textarea",
     '[contenteditable="true"][data-lexical-editor="true"]',
 ].join(", ");
-export const CHATGPT_SEND_BUTTON_SELECTOR = "button.composer-submit-button-color";
+export const CHATGPT_SEND_BUTTON_SELECTOR = 'button[data-testid="send-button"]';
 export const CHATGPT_STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';
 export const CHATGPT_ACCOUNT_SELECTOR = '[data-testid="accounts-profile-button"]';
 /** The reasoning-level composer pill in the current ChatGPT UI. */
@@ -64,7 +64,7 @@ export async function chatgptSend(page, prompt) {
     const composer = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).first();
     await composer.fill("");
     await composer.fill(prompt);
-    const sendButton = page.locator(CHATGPT_SEND_BUTTON_SELECTOR).filter({ visible: true }).last();
+    const sendButton = composer.locator("xpath=ancestor::form[1]").locator(CHATGPT_SEND_BUTTON_SELECTOR);
     await waitForSendReady("ChatGPT", sendButton);
     // Keyboard-activate the semantic button. This avoids pointer stability and
     // overlay interception while preserving ChatGPT's submit behavior on follow-ups.

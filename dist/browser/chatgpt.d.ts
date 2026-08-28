@@ -3,7 +3,7 @@ import type { CompletionSnapshot } from "#internet/browser/completion";
 import type { ChatGptThinkingLevel } from "#internet/core/config";
 export declare const CHATGPT_HOME_URL = "https://chatgpt.com/";
 export declare const CHATGPT_COMPOSER_SELECTOR: string;
-export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button.composer-submit-button-color";
+export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button[data-testid=\"send-button\"]";
 export declare const CHATGPT_STOP_BUTTON_SELECTOR = "[data-testid=\"stop-button\"]";
 export declare const CHATGPT_ACCOUNT_SELECTOR = "[data-testid=\"accounts-profile-button\"]";
 /** The reasoning-level composer pill in the current ChatGPT UI. */
