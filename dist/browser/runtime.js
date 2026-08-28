@@ -510,7 +510,7 @@ export class BrowserManager {
         const scheduler = this.scheduler(provider);
         try {
             return request.visible === true
-                ? await scheduler.runExclusive((lease) => this.chatProvider(provider, request, lease))
+                ? await scheduler.runExclusive((lease) => this.chatProvider(provider, request, lease), request.signal)
                 : await scheduler.runTurn(request.sessionId, request.signal, (lease) => this.chatProvider(provider, request, lease));
         }
         finally {

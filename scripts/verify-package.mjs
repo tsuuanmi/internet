@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,15 +19,20 @@ try {
 		throw new Error("npm pack did not report a tarball filename");
 	}
 	tarball = join(packageRoot, packed[0].filename);
-	execFileSync("tar", ["-xzf", tarball, "-C", temporaryRoot]);
-	const installed = join(temporaryRoot, "package");
+	const consumer = join(temporaryRoot, "consumer");
+	mkdirSync(consumer);
+	writeFileSync(join(consumer, "package.json"), '{"private":true,"type":"module"}\n');
+	execFileSync(
+		process.platform === "win32" ? "npm.cmd" : "npm",
+		["install", "--ignore-scripts", "--package-lock=false", "--omit=dev", "--no-audit", "--no-fund", tarball],
+		{ cwd: consumer, stdio: "pipe" },
+	);
+	const installed = join(consumer, "node_modules", "@tsuuanmi", "internet");
 	for (const artifact of ["dist/index.js", "dist/client.js", "dist/remote-login-client.js", "cordis.patch.yml"]) {
 		if (!existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact missing: ${artifact}`);
 	}
-	// Resolve this repository's development peer dependencies exactly as a consumer host would.
-	symlinkSync(join(packageRoot, "node_modules"), join(installed, "node_modules"), "dir");
 	await import(pathToFileURL(join(installed, "dist/index.js")).href);
-	console.log("verified packed root consumer import and browser client artifacts");
+	console.log("verified isolated packed root consumer import and browser client artifacts");
 } finally {
 	if (tarball !== undefined) rmSync(tarball, { force: true });
 	rmSync(temporaryRoot, { recursive: true, force: true });

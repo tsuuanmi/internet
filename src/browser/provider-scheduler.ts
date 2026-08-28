@@ -18,9 +18,11 @@ type TurnJob<T> = {
 
 type ExclusiveJob<T> = {
 	kind: "exclusive";
+	signal?: AbortSignal;
 	work: (lease: ProviderLease) => Promise<T>;
 	resolve: (value: T | PromiseLike<T>) => void;
 	reject: (reason?: unknown) => void;
+	abort?: () => void;
 };
 
 type Job<T> = TurnJob<T> | ExclusiveJob<T>;
@@ -121,13 +123,36 @@ export class ProviderScheduler {
 		});
 	}
 
-	runExclusive<T>(work: (lease: ProviderLease) => Promise<T>): Promise<T> {
+	runExclusive<T>(work: (lease: ProviderLease) => Promise<T>, signal?: AbortSignal): Promise<T> {
 		return new Promise<T>((resolve, reject) => {
 			if (this.closed !== undefined) {
 				reject(this.closed);
 				return;
 			}
-			this.queue.push({ kind: "exclusive", work, resolve, reject } as Job<unknown>);
+			if (signal?.aborted) {
+				reject(
+					signal.reason instanceof Error
+						? signal.reason
+						: new InternetError("aborted", "browser operation aborted"),
+				);
+				return;
+			}
+			const job: ExclusiveJob<T> = { kind: "exclusive", signal, work, resolve, reject };
+			const abort = (): void => {
+				const index = this.queue.indexOf(job as Job<unknown>);
+				if (index < 0) return;
+				this.queue.splice(index, 1);
+				reject(
+					signal?.reason instanceof Error
+						? signal.reason
+						: new InternetError("aborted", "browser operation aborted"),
+				);
+				this.notifyIdle();
+				this.drive();
+			};
+			job.abort = abort;
+			signal?.addEventListener("abort", abort, { once: true });
+			this.queue.push(job as Job<unknown>);
 			this.drive();
 		});
 	}
@@ -168,14 +193,11 @@ export class ProviderScheduler {
 	private start(job: Job<unknown>): void {
 		const controller = new AbortController();
 		const active: ActiveJob = { controller };
-		if (job.kind === "turn") {
-			job.signal?.removeEventListener("abort", job.abort!);
-			active.externalAbort = () => controller.abort(job.signal?.reason);
-			job.signal?.addEventListener("abort", active.externalAbort, { once: true });
-			this.activeSessions.add(job.sessionId);
-		} else {
-			this.exclusive = true;
-		}
+		job.signal?.removeEventListener("abort", job.abort!);
+		active.externalAbort = () => controller.abort(job.signal?.reason);
+		job.signal?.addEventListener("abort", active.externalAbort, { once: true });
+		if (job.kind === "turn") this.activeSessions.add(job.sessionId);
+		else this.exclusive = true;
 		const lease = { generation: this.generation, signal: controller.signal };
 		this.active += 1;
 		this.activeJobs.add(active);
@@ -185,10 +207,9 @@ export class ProviderScheduler {
 			.finally(() => {
 				this.active -= 1;
 				this.activeJobs.delete(active);
-				if (job.kind === "turn") {
-					job.signal?.removeEventListener("abort", active.externalAbort!);
-					this.activeSessions.delete(job.sessionId);
-				} else this.exclusive = false;
+				job.signal?.removeEventListener("abort", active.externalAbort!);
+				if (job.kind === "turn") this.activeSessions.delete(job.sessionId);
+				else this.exclusive = false;
 				this.drive();
 			});
 	}
@@ -199,7 +220,7 @@ export class ProviderScheduler {
 
 	private rejectQueued(reason: Error): void {
 		for (const job of this.queue.splice(0)) {
-			if (job.kind === "turn") job.signal?.removeEventListener("abort", job.abort!);
+			job.signal?.removeEventListener("abort", job.abort!);
 			job.reject(reason);
 		}
 		this.notifyIdle();

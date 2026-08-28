@@ -29,7 +29,7 @@ export declare class ProviderScheduler {
     waitForIdle(): Promise<void>;
     close(reason?: InternetError): void;
     runTurn<T>(sessionId: string, signal: AbortSignal | undefined, work: (lease: ProviderLease) => Promise<T>): Promise<T>;
-    runExclusive<T>(work: (lease: ProviderLease) => Promise<T>): Promise<T>;
+    runExclusive<T>(work: (lease: ProviderLease) => Promise<T>, signal?: AbortSignal): Promise<T>;
     private drive;
     private nextRunnable;
     private start;

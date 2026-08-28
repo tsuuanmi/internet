@@ -132,6 +132,36 @@ describe("BrowserManager shared-account turn scheduling", () => {
 		await browser.dispose();
 	});
 
+	it("passes request cancellation through an active visible exclusive turn", async () => {
+		const browser = manager();
+		let aborted = false;
+		(browser as any).chatProvider = vi.fn(async (_provider: WebProvider, _request: ChatRequest, lease: any) => {
+			await new Promise<void>((resolve) => {
+				lease.signal.addEventListener(
+					"abort",
+					() => {
+						aborted = true;
+						resolve();
+					},
+					{ once: true },
+				);
+			});
+			return { text: "cancelled", url: "https://example.com" };
+		});
+		const controller = new AbortController();
+		const visible = browser.chat("gemini-web", {
+			prompt: "test",
+			sessionId: "visible",
+			visible: true,
+			signal: controller.signal,
+		});
+		await vi.waitFor(() => expect((browser as any).chatProvider).toHaveBeenCalledTimes(1));
+		controller.abort(new Error("cancelled"));
+		await visible;
+		expect(aborted).toBe(true);
+		await browser.dispose();
+	});
+
 	it("commits one of two concurrent snapshots from the same account revision", async () => {
 		const browser = manager({ maxConcurrentTurnsPerProvider: 2 });
 		const original = { cookies: [], origins: [] };
