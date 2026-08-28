@@ -267,19 +267,21 @@ data. Unsupported targets skip private binaries and use system executables when 
 bypasses display discovery. The plugin does not silently convert a failed headed launch into native
 headless mode.
 
-The default allows two hidden turns per provider. Different DSH session ids lease isolated non-persistent
-contexts concurrently from the same portable account; repeated turns for one session remain FIFO. Set
-`maxConcurrentTurnsPerProvider: 1` if provider policy or account-state acceptance requires it. A
-visible call, login, remote-login finalization, stop, reauthentication, and display loss are provider-
-exclusive barriers. Contexts close after their turns; compatible browser processes close after
-`closeAfterMs` of pool-wide idleness.
+The default allows one hidden turn per provider. Different DSH session ids lease isolated non-persistent
+contexts from the same portable account; repeated turns for one session remain FIFO. Set
+`maxConcurrentTurnsPerProvider` above `1` only after confirming provider policy and account-state
+acceptance. A visible call, login, remote-login finalization, stop, reauthentication, and display loss
+are provider-exclusive barriers. Contexts close after their turns; compatible browser processes close
+after `closeAfterMs` of pool-wide idleness.
 
 Successful current-generation turns serialize portable-account refreshes. Every context remembers the
 canonical account revision used to bootstrap it; a commit advances that revision, and later completions
 from the older revision are discarded. The stored account is a bootstrap cache, not a mergeable replica of
-arbitrary provider cookies or IndexedDB. Reauthentication invalidates the provider generation, aborts active
-leases, and prevents older turns from restoring a `ready` snapshot. `BrowserManager.dispose()` closes
-contexts, Chrome, pending remote logins, timers, and the shared inference display.
+arbitrary provider cookies or IndexedDB. Only affirmative sign-out proof marks reauth-required; a
+challenge or unconfirmed surface preserves the ready snapshot. Reauthentication invalidates the provider
+generation, aborts active leases, and prevents older turns from restoring a `ready` snapshot.
+`BrowserManager.dispose()` closes contexts, Chrome, pending remote logins, timers, and the shared
+inference display.
 
 ## Errors
 

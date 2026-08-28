@@ -1,12 +1,14 @@
 import type { Page } from "patchright-core";
 import { describe, expect, it, vi } from "vitest";
 import {
+	CHATGPT_ACCOUNT_SELECTOR,
 	CHATGPT_COMPOSER_SELECTOR,
 	CHATGPT_EFFORT_ITEM_SELECTOR,
 	CHATGPT_EFFORT_MENU_SELECTOR,
 	CHATGPT_EFFORT_SLIDER_SELECTOR,
 	CHATGPT_STOP_BUTTON_SELECTOR,
 	CHATGPT_THINKING_LEVEL_INDEX,
+	chatgptAuthenticationAssessment,
 	chatgptLastAssistantTurnText,
 	chatgptPromptTextMatches,
 	chatgptSelectThinkingLevel,
@@ -34,6 +36,21 @@ function fakePage(turns: string[]): { page: Page } {
 		},
 	} as unknown as Page;
 	return { page };
+}
+
+function authenticationPage(url: string, composerCount = 0, accountCount = 0): Page {
+	return {
+		url: () => url,
+		locator(selector: string) {
+			const count =
+				selector === CHATGPT_COMPOSER_SELECTOR
+					? composerCount
+					: selector === CHATGPT_ACCOUNT_SELECTOR
+						? accountCount
+						: 0;
+			return { filter: () => ({ count: async () => count }) };
+		},
+	} as unknown as Page;
 }
 
 function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "Instant"): {
@@ -96,6 +113,35 @@ function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "I
 	} as unknown as Page;
 	return { page, effortChoiceIndex, effortChoicePress, closePicker };
 }
+
+describe("chatgptAuthenticationAssessment", () => {
+	it("distinguishes authenticated, signed-out, challenge, and unconfirmed pages", async () => {
+		await expect(
+			chatgptAuthenticationAssessment(authenticationPage("https://chatgpt.com/", 1, 1)),
+		).resolves.toMatchObject({
+			state: "authenticated",
+			evidence: "authenticated-surface",
+		});
+		await expect(
+			chatgptAuthenticationAssessment(authenticationPage("https://auth.openai.com/log-in?next=secret")),
+		).resolves.toEqual({
+			state: "signed-out",
+			evidence: "login-url",
+		});
+		await expect(
+			chatgptAuthenticationAssessment(authenticationPage("https://chatgpt.com/challenge/captcha")),
+		).resolves.toMatchObject({
+			state: "challenge",
+			evidence: "challenge-url",
+		});
+		await expect(
+			chatgptAuthenticationAssessment(authenticationPage("https://chatgpt.com/loading")),
+		).resolves.toMatchObject({
+			state: "unconfirmed",
+			evidence: "timeout",
+		});
+	});
+});
 
 describe("chatgptPromptTextMatches", () => {
 	it("accepts ProseMirror non-breaking spaces as equivalent editor spaces", () => {

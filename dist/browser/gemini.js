@@ -1,3 +1,4 @@
+import { strongerAuthenticationAssessment } from "#internet/browser/authentication";
 import { waitForSendReady } from "#internet/browser/submission";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -13,18 +14,67 @@ export async function geminiIsAuthenticated(page) {
     const accounts = page.locator(GEMINI_ACCOUNT_SELECTOR).filter({ visible: true });
     return (await composers.count()) === 1 && (await accounts.count()) > 0;
 }
-/** Wait until Gemini is authenticated (composer visible), or return false. */
-export async function geminiWaitAuthenticated(page, timeoutMs, signal) {
+const GEMINI_LOGIN_SURFACE_SELECTOR = ['[data-identifier="sign-in"]'].join(", ");
+const GEMINI_CHALLENGE_SURFACE_SELECTOR = [
+    "[data-challengeid]",
+    ':text("Verify it’s you")',
+    ':text("Verify it is you")',
+    ':text("unusual traffic")',
+].join(", ");
+async function hasVisibleSurface(page, selector) {
+    try {
+        return (await page.locator(selector).filter({ visible: true }).count()) > 0;
+    }
+    catch {
+        return false;
+    }
+}
+function urlContainsChallenge(url) {
+    return /(?:challenge|captcha|verify)(?:[/?#]|$)/i.test(url);
+}
+function urlIsLogin(url) {
+    return /^https:\/\/accounts\.google\.com\/(?:signin|v3\/signin|ServiceLogin)/i.test(url);
+}
+/** Assess Gemini auth without treating a missing composer as proof of logout. */
+export async function geminiAuthenticationAssessment(page) {
+    const url = page.url();
+    try {
+        if (await geminiIsAuthenticated(page))
+            return { state: "authenticated", evidence: "authenticated-surface" };
+    }
+    catch {
+        // Navigation may replace the document between locator checks.
+    }
+    if (urlContainsChallenge(url))
+        return { state: "challenge", evidence: "challenge-url" };
+    if (await hasVisibleSurface(page, GEMINI_CHALLENGE_SURFACE_SELECTOR)) {
+        return { state: "challenge", evidence: "challenge-surface" };
+    }
+    if (urlIsLogin(url))
+        return { state: "signed-out", evidence: "login-url" };
+    if (await hasVisibleSurface(page, GEMINI_LOGIN_SURFACE_SELECTOR)) {
+        return { state: "signed-out", evidence: "login-surface" };
+    }
+    return { state: "unconfirmed", evidence: "timeout" };
+}
+/** Wait for a conclusive Gemini auth surface and otherwise return the strongest observed state. */
+export async function geminiWaitAuthenticationAssessment(page, timeoutMs, signal) {
     const deadline = Date.now() + timeoutMs;
+    let latest = await geminiAuthenticationAssessment(page);
     while (Date.now() < deadline) {
         if (signal?.aborted) {
             throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "browser turn aborted");
         }
-        if (await geminiIsAuthenticated(page))
-            return true;
+        if (latest.state === "authenticated")
+            return latest;
         await sleep(200, signal);
+        latest = strongerAuthenticationAssessment(latest, await geminiAuthenticationAssessment(page));
     }
-    return false;
+    return latest;
+}
+/** Wait until Gemini is authenticated (composer visible), or return false. */
+export async function geminiWaitAuthenticated(page, timeoutMs, signal) {
+    return (await geminiWaitAuthenticationAssessment(page, timeoutMs, signal)).state === "authenticated";
 }
 /** Fill the Gemini composer with the prompt and submit it. */
 export async function geminiSend(page, prompt) {

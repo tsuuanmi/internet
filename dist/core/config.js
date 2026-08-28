@@ -19,7 +19,7 @@ export const DEFAULT_CONFIG = {
     pollMs: 200,
     stableMs: 1_500,
     closeAfterMs: 1_800_000,
-    maxConcurrentTurnsPerProvider: 2,
+    maxConcurrentTurnsPerProvider: 1,
     maxOutputChars: 200_000,
     teamRounds: 2,
     teamMaxRounds: 4,

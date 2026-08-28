@@ -10,9 +10,9 @@ describe("resolveBrowserConfig", () => {
 		expect(config).toEqual(DEFAULT_CONFIG);
 	});
 
-	it("defaults closeAfterMs to a 30-minute idle TTL and provider concurrency to two", () => {
+	it("defaults closeAfterMs to a 30-minute idle TTL and serial provider turns", () => {
 		expect(resolveBrowserConfig({}).closeAfterMs).toBe(1_800_000);
-		expect(resolveBrowserConfig({}).maxConcurrentTurnsPerProvider).toBe(2);
+		expect(resolveBrowserConfig({}).maxConcurrentTurnsPerProvider).toBe(1);
 	});
 
 	it("honors explicit overrides", () => {

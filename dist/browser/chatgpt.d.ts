@@ -1,4 +1,5 @@
 import type { Page } from "patchright-core";
+import { type AuthenticationAssessment } from "#internet/browser/authentication";
 import type { CompletionSnapshot } from "#internet/browser/completion";
 import type { ChatGptThinkingLevel } from "#internet/core/config";
 export declare const CHATGPT_HOME_URL = "https://chatgpt.com/";
@@ -21,6 +22,10 @@ export declare const CHATGPT_THINKING_LEVEL_INDEX: Record<ChatGptThinkingLevel, 
 export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
 /** True when ChatGPT exposes both its composer and signed-in account control. */
 export declare function chatgptIsAuthenticated(page: Page): Promise<boolean>;
+/** Assess ChatGPT auth without treating a missing composer as proof of logout. */
+export declare function chatgptAuthenticationAssessment(page: Page): Promise<AuthenticationAssessment>;
+/** Wait for a conclusive ChatGPT auth surface and otherwise return the strongest observed state. */
+export declare function chatgptWaitAuthenticationAssessment(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<AuthenticationAssessment>;
 /** Wait until ChatGPT is authenticated (composer visible), or return false. */
 export declare function chatgptWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
 /**

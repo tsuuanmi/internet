@@ -8,7 +8,9 @@ import {
 	capturePortableStorageState,
 	captureProfileBootstrapState,
 	type PortableStorageState,
+	type ReauthDiagnostic,
 } from "#internet/browser/accounts";
+import type { AuthenticationAssessment } from "#internet/browser/authentication";
 import {
 	CHATGPT_HOME_URL,
 	chatgptIsAuthenticated,
@@ -16,7 +18,7 @@ import {
 	chatgptSelectThinkingLevel,
 	chatgptSend,
 	chatgptSnapshot,
-	chatgptWaitAuthenticated,
+	chatgptWaitAuthenticationAssessment,
 } from "#internet/browser/chatgpt";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
@@ -34,7 +36,7 @@ import {
 	geminiLastResponseText,
 	geminiSend,
 	geminiSnapshot,
-	geminiWaitAuthenticated,
+	geminiWaitAuthenticationAssessment,
 } from "#internet/browser/gemini";
 import { type ProviderLease, ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
@@ -66,6 +68,11 @@ export interface ProviderStatus {
 	provider: WebProvider;
 	state: AccountState;
 	accountPath: string;
+	account?: {
+		verifiedAt: string;
+		revision: number;
+		reauthDiagnostic?: ReauthDiagnostic;
+	};
 	remoteLogin?: RemoteLoginStatus;
 }
 
@@ -166,15 +173,24 @@ export class BrowserManager {
 		return context.newPage();
 	}
 
+	private async assessAuthentication(
+		provider: WebProvider,
+		page: Page,
+		timeoutMs: number,
+		signal?: AbortSignal,
+	): Promise<AuthenticationAssessment> {
+		return provider === "chatgpt-web"
+			? chatgptWaitAuthenticationAssessment(page, timeoutMs, signal)
+			: geminiWaitAuthenticationAssessment(page, timeoutMs, signal);
+	}
+
 	private async isAuthenticated(
 		provider: WebProvider,
 		page: Page,
 		timeoutMs: number,
 		signal?: AbortSignal,
 	): Promise<boolean> {
-		return provider === "chatgpt-web"
-			? chatgptWaitAuthenticated(page, timeoutMs, signal)
-			: geminiWaitAuthenticated(page, timeoutMs, signal);
+		return (await this.assessAuthentication(provider, page, timeoutMs, signal)).state === "authenticated";
 	}
 
 	private async waitForChatGptConversationUrl(
@@ -559,6 +575,52 @@ export class BrowserManager {
 		}
 	}
 
+	/** Preserve a provider-rotated session after a recoverable failed turn. */
+	private async recoverAuthenticatedSnapshot(
+		provider: WebProvider,
+		page: Page,
+		context: BrowserContext,
+		lease: ProviderLease,
+		accountRevision: number,
+	): Promise<void> {
+		try {
+			if (!this.scheduler(provider).isCurrent(lease)) return;
+			const assessment = await this.assessAuthentication(provider, page, 5_000, lease.signal);
+			if (assessment.state === "signed-out") {
+				await this.handleSignedOut(provider, lease, accountRevision, assessment.evidence);
+				return;
+			}
+			if (assessment.state !== "authenticated" || !this.scheduler(provider).isCurrent(lease)) return;
+			const storageState = await capturePortableStorageState(context);
+			await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);
+		} catch {
+			// Keep the original turn error; recovery is an opportunistic state refresh.
+		}
+	}
+
+	/**
+	 * Persist reauth-required only when the canonical account is still the
+	 * bootstrapped revision and the lease is current, then invalidate turns.
+	 */
+	private async handleSignedOut(
+		provider: WebProvider,
+		lease: ProviderLease,
+		accountRevision: number,
+		evidence: "login-url" | "login-surface",
+	): Promise<void> {
+		if (!this.scheduler(provider).isCurrent(lease)) return;
+		this.accounts.markReauthRequiredIfRevision(provider, accountRevision, new Date(), {
+			observedAt: new Date().toISOString(),
+			evidence,
+		});
+		this.scheduler(provider).invalidate(
+			new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`),
+		);
+		void this.scheduler(provider)
+			.runExclusive(() => this.closeBrowser(provider))
+			.catch(() => {});
+	}
+
 	/** Open local or SSH-forwarded normal Chrome for sign-in. */
 	async login(provider: WebProvider, options: LoginOptions = {}): Promise<ProviderStatus> {
 		return this.runProviderExclusive(provider, () => this.loginProvider(provider, options));
@@ -633,6 +695,17 @@ export class BrowserManager {
 			provider,
 			state: inspection.state,
 			accountPath: inspection.path,
+			...(inspection.account === undefined
+				? {}
+				: {
+						account: {
+							verifiedAt: inspection.account.verifiedAt,
+							revision: inspection.account.revision,
+							...(inspection.account.reauthDiagnostic === undefined
+								? {}
+								: { reauthDiagnostic: inspection.account.reauthDiagnostic }),
+						},
+					}),
 			...(remoteLogin === undefined ? {} : { remoteLogin }),
 		};
 	}
@@ -666,8 +739,9 @@ export class BrowserManager {
 		const headless = visible ? false : this.config.headless;
 		const { context, accountRevision } = await this.ensureContext(provider, headless, visible);
 		const untrackContext = this.trackContext(provider, lease, context);
+		let page: Page | undefined;
 		try {
-			const page = await this.activePage(context);
+			page = await this.activePage(context);
 			let binding: ConversationBinding | undefined;
 			try {
 				binding =
@@ -686,17 +760,19 @@ export class BrowserManager {
 			if ((provider === "chatgpt-web" && binding !== undefined) || page.url() !== targetUrl) {
 				await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
 			}
-			if (!(await this.isAuthenticated(provider, page, 30_000, lease.signal))) {
-				const reason = new InternetError(
-					"login_required",
-					`Sign in to ${provider} first with the internet_browser login action.`,
+			const authentication = await this.assessAuthentication(provider, page, 30_000, lease.signal);
+			if (authentication.state !== "authenticated") {
+				if (authentication.state === "signed-out") {
+					await this.handleSignedOut(provider, lease, accountRevision, authentication.evidence);
+					throw new InternetError(
+						"login_required",
+						`Sign in to ${provider} first with the internet_browser login action.`,
+					);
+				}
+				throw new InternetError(
+					"provider_error",
+					`${provider} authentication could not be confirmed (${authentication.state}; ${authentication.evidence}). Retry the turn or inspect the provider visibly before signing in again.`,
 				);
-				this.accounts.markReauthRequired(provider);
-				this.scheduler(provider).invalidate(reason);
-				void this.scheduler(provider)
-					.runExclusive(() => this.closeBrowser(provider))
-					.catch(() => {});
-				throw reason;
 			}
 			if (binding !== undefined) {
 				let current: { id: string; url: string };
@@ -731,7 +807,7 @@ export class BrowserManager {
 				const previousTurnText = await chatgptLastAssistantTurnText(page);
 				await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
 				await chatgptSend(page, request.prompt);
-				text = await waitForStableCompletion(() => chatgptSnapshot(page, previousTurnText), waitOptions);
+				text = await waitForStableCompletion(() => chatgptSnapshot(page!, previousTurnText), waitOptions);
 				const conversation = await this.waitForChatGptConversationUrl(
 					page,
 					Math.min(this.config.turnTimeoutMs, 30_000),
@@ -749,7 +825,7 @@ export class BrowserManager {
 			} else {
 				const previousTurnText = await geminiLastResponseText(page);
 				await geminiSend(page, request.prompt);
-				text = await waitForStableCompletion(() => geminiSnapshot(page, previousTurnText), waitOptions);
+				text = await waitForStableCompletion(() => geminiSnapshot(page!, previousTurnText), waitOptions);
 				const conversation = await this.waitForGeminiConversationUrl(
 					page,
 					Math.min(this.config.turnTimeoutMs, 30_000),
@@ -772,6 +848,11 @@ export class BrowserManager {
 				url: page.url(),
 				...(conversationId === undefined ? {} : { conversationId }),
 			};
+		} catch (error) {
+			if (page !== undefined) {
+				await this.recoverAuthenticatedSnapshot(provider, page, context, lease, accountRevision);
+			}
+			throw error;
 		} finally {
 			untrackContext();
 			await context.close().catch(() => {});

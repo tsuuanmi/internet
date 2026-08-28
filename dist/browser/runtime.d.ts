@@ -1,4 +1,4 @@
-import { type AccountState } from "#internet/browser/accounts";
+import { type AccountState, type ReauthDiagnostic } from "#internet/browser/accounts";
 import { type RemoteLoginStatus } from "#internet/browser/remote-login";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 export interface ChatRequest {
@@ -21,6 +21,11 @@ export interface ProviderStatus {
     provider: WebProvider;
     state: AccountState;
     accountPath: string;
+    account?: {
+        verifiedAt: string;
+        revision: number;
+        reauthDiagnostic?: ReauthDiagnostic;
+    };
     remoteLogin?: RemoteLoginStatus;
 }
 /**
@@ -55,6 +60,7 @@ export declare class BrowserManager {
     private runProviderExclusive;
     private homeUrl;
     private activePage;
+    private assessAuthentication;
     private isAuthenticated;
     private waitForChatGptConversationUrl;
     private waitForGeminiConversationUrl;
@@ -79,6 +85,13 @@ export declare class BrowserManager {
     private ensureContext;
     private trackContext;
     private commitAccountSnapshot;
+    /** Preserve a provider-rotated session after a recoverable failed turn. */
+    private recoverAuthenticatedSnapshot;
+    /**
+     * Persist reauth-required only when the canonical account is still the
+     * bootstrapped revision and the lease is current, then invalidate turns.
+     */
+    private handleSignedOut;
     /** Open local or SSH-forwarded normal Chrome for sign-in. */
     login(provider: WebProvider, options?: LoginOptions): Promise<ProviderStatus>;
     private loginProvider;

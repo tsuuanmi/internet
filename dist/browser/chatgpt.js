@@ -1,3 +1,4 @@
+import { strongerAuthenticationAssessment } from "#internet/browser/authentication";
 import { waitForSendReady } from "#internet/browser/submission";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -45,18 +46,67 @@ export async function chatgptIsAuthenticated(page) {
     const accounts = page.locator(CHATGPT_ACCOUNT_SELECTOR).filter({ visible: true });
     return (await composers.count()) === 1 && (await accounts.count()) > 0;
 }
-/** Wait until ChatGPT is authenticated (composer visible), or return false. */
-export async function chatgptWaitAuthenticated(page, timeoutMs, signal) {
+const CHATGPT_LOGIN_SURFACE_SELECTOR = ['a[href*="/auth/login"]', '[data-testid="login-button"]'].join(", ");
+const CHATGPT_CHALLENGE_SURFACE_SELECTOR = [
+    '[data-testid*="captcha"]',
+    '[data-testid*="challenge"]',
+    ':text("Verify you are human")',
+    ':text("Security check")',
+].join(", ");
+async function hasVisibleSurface(page, selector) {
+    try {
+        return (await page.locator(selector).filter({ visible: true }).count()) > 0;
+    }
+    catch {
+        return false;
+    }
+}
+function urlContainsChallenge(url) {
+    return /(?:captcha|challenge|verify)(?:[/?#]|$)/i.test(url);
+}
+function urlIsLogin(url) {
+    return /^https:\/\/(?:auth\.openai\.com|chatgpt\.com\/auth(?:\/|$))/i.test(url);
+}
+/** Assess ChatGPT auth without treating a missing composer as proof of logout. */
+export async function chatgptAuthenticationAssessment(page) {
+    const url = page.url();
+    try {
+        if (await chatgptIsAuthenticated(page))
+            return { state: "authenticated", evidence: "authenticated-surface" };
+    }
+    catch {
+        // Navigation may replace the document between locator checks.
+    }
+    if (urlContainsChallenge(url))
+        return { state: "challenge", evidence: "challenge-url" };
+    if (await hasVisibleSurface(page, CHATGPT_CHALLENGE_SURFACE_SELECTOR)) {
+        return { state: "challenge", evidence: "challenge-surface" };
+    }
+    if (urlIsLogin(url))
+        return { state: "signed-out", evidence: "login-url" };
+    if (await hasVisibleSurface(page, CHATGPT_LOGIN_SURFACE_SELECTOR)) {
+        return { state: "signed-out", evidence: "login-surface" };
+    }
+    return { state: "unconfirmed", evidence: "timeout" };
+}
+/** Wait for a conclusive ChatGPT auth surface and otherwise return the strongest observed state. */
+export async function chatgptWaitAuthenticationAssessment(page, timeoutMs, signal) {
     const deadline = Date.now() + timeoutMs;
+    let latest = await chatgptAuthenticationAssessment(page);
     while (Date.now() < deadline) {
         if (signal?.aborted) {
             throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "browser turn aborted");
         }
-        if (await chatgptIsAuthenticated(page))
-            return true;
+        if (latest.state === "authenticated")
+            return latest;
         await sleep(200, signal);
+        latest = strongerAuthenticationAssessment(latest, await chatgptAuthenticationAssessment(page));
     }
-    return false;
+    return latest;
+}
+/** Wait until ChatGPT is authenticated (composer visible), or return false. */
+export async function chatgptWaitAuthenticated(page, timeoutMs, signal) {
+    return (await chatgptWaitAuthenticationAssessment(page, timeoutMs, signal)).state === "authenticated";
 }
 async function attachedChatGptPromptText(composer) {
     return composer.evaluate((element) => [...element.childNodes].map((child) => child.textContent ?? "").join("\n"));

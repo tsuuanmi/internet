@@ -207,6 +207,87 @@ describe("BrowserManager shared-account turn scheduling", () => {
 	});
 });
 
+describe("BrowserManager authentication assessment", () => {
+	function request(sessionId: string): ChatRequest {
+		return { prompt: "test", sessionId };
+	}
+
+	function authenticatedContext(storageState = { cookies: [], origins: [] }) {
+		return { close: vi.fn(async () => {}), storageState: vi.fn(async () => storageState) };
+	}
+
+	it("preserves a ready account for an unconfirmed or challenged page", async () => {
+		for (const state of ["unconfirmed", "challenge"] as const) {
+			const browser = manager();
+			(browser as any).accounts.writeReady("chatgpt-web", { cookies: [], origins: [] });
+			const context = authenticatedContext();
+			const page = { goto: vi.fn(async () => {}), url: () => "https://chatgpt.com/challenge" };
+			(browser as any).ensureContext = vi.fn(async () => ({ context, accountRevision: 1 }));
+			(browser as any).trackContext = vi.fn(() => () => {});
+			(browser as any).activePage = vi.fn(async () => page);
+			(browser as any).assessAuthentication = vi.fn(async () => ({
+				state,
+				evidence: state === "challenge" ? "challenge-url" : "timeout",
+			}));
+
+			await expect(browser.chat("chatgpt-web", request("session"))).rejects.toMatchObject({
+				kind: "provider_error",
+			});
+			expect((browser as any).accounts.inspect("chatgpt-web").state).toBe("ready");
+			expect((browser as any).scheduler("chatgpt-web").currentGeneration()).toBe(0);
+			await browser.dispose();
+		}
+	});
+
+	it("invalidates only a positively signed-out account and retains its diagnostic", async () => {
+		const browser = manager();
+		(browser as any).accounts.writeReady("gemini-web", { cookies: [], origins: [] });
+		const context = authenticatedContext();
+		(browser as any).ensureContext = vi.fn(async () => ({ context, accountRevision: 1 }));
+		(browser as any).trackContext = vi.fn(() => () => {});
+		(browser as any).activePage = vi.fn(async () => ({
+			goto: vi.fn(async () => {}),
+			url: () => "https://accounts.google.com/signin",
+		}));
+		(browser as any).assessAuthentication = vi.fn(async () => ({
+			state: "signed-out",
+			evidence: "login-url",
+		}));
+		(browser as any).closeBrowser = vi.fn(async () => {});
+
+		await expect(browser.chat("gemini-web", request("session"))).rejects.toMatchObject({ kind: "login_required" });
+		expect((browser as any).accounts.inspect("gemini-web")).toMatchObject({
+			state: "reauth-required",
+			account: { reauthDiagnostic: { evidence: "login-url" } },
+		});
+		expect((browser as any).scheduler("gemini-web").currentGeneration()).toBe(1);
+		await browser.dispose();
+	});
+
+	it("commits an authenticated snapshot after a recoverable failed turn", async () => {
+		const browser = manager();
+		const original = { cookies: [], origins: [] };
+		const refreshed = { cookies: [], origins: [{ origin: "https://chatgpt.com", localStorage: [] }] };
+		(browser as any).accounts.writeReady("chatgpt-web", original);
+		const revision = (browser as any).accounts.inspect("chatgpt-web").account.revision;
+		(browser as any).assessAuthentication = vi.fn(async () => ({
+			state: "authenticated",
+			evidence: "authenticated-surface",
+		}));
+		const lease = { generation: 0, signal: new AbortController().signal };
+
+		await (browser as any).recoverAuthenticatedSnapshot(
+			"chatgpt-web",
+			{},
+			{ storageState: vi.fn(async () => refreshed) },
+			lease,
+			revision,
+		);
+		expect((browser as any).accounts.inspect("chatgpt-web").account.storageState).toEqual(refreshed);
+		await browser.dispose();
+	});
+});
+
 describe("BrowserManager visible login profiles", () => {
 	it.each(["chatgpt-web", "gemini-web"] as const)("retains the %s profile across login actions", async (provider) => {
 		const dataDir = mkdtempSync(join(tmpdir(), "internet-login-profile-"));

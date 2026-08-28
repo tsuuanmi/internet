@@ -35,6 +35,22 @@ export function defineInternetBrowserTool(manager, allowed) {
                     provider: { type: "string", required: true },
                     state: { type: "string", enum: [...ACCOUNT_STATES] },
                     accountPath: { type: "string" },
+                    account: {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                            verifiedAt: { type: "string" },
+                            revision: { type: "number" },
+                            reauthDiagnostic: {
+                                type: "object",
+                                additionalProperties: false,
+                                properties: {
+                                    observedAt: { type: "string" },
+                                    evidence: { type: "string", enum: ["login-url", "login-surface"] },
+                                },
+                            },
+                        },
+                    },
                     remoteLogin: {
                         type: "object",
                         additionalProperties: false,
@@ -98,6 +114,7 @@ export function defineInternetBrowserTool(manager, allowed) {
                         provider,
                         state: status.state,
                         accountPath: status.accountPath,
+                        ...(status.account === undefined ? {} : { account: status.account }),
                         ...(remoteLogin === undefined ? {} : { remoteLogin }),
                         message: remoteLogin?.state === "waiting"
                             ? `Run ${remoteLogin.sshCommand}, open ${remoteLogin.url}, sign in, then press Save account.`
@@ -114,6 +131,7 @@ export function defineInternetBrowserTool(manager, allowed) {
                     provider,
                     state: status.state,
                     accountPath: status.accountPath,
+                    ...(status.account === undefined ? {} : { account: status.account }),
                     ...(status.remoteLogin === undefined ? {} : { remoteLogin: status.remoteLogin }),
                     message: status.remoteLogin?.message ??
                         (status.state === "ready"

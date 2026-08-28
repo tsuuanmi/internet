@@ -92,7 +92,7 @@ export class AccountStore {
         this.write(provider, account);
         return account;
     }
-    markReauthRequired(provider, invalidatedAt = new Date()) {
+    markReauthRequired(provider, invalidatedAt = new Date(), reauthDiagnostic) {
         const inspection = this.inspect(provider);
         if (inspection.account === undefined)
             return undefined;
@@ -100,6 +100,26 @@ export class AccountStore {
             ...inspection.account,
             status: "reauth-required",
             invalidatedAt: invalidatedAt.toISOString(),
+            reauthDiagnostic,
+            revision: inspection.account.revision + 1,
+        };
+        this.write(provider, account);
+        return account;
+    }
+    /**
+     * Invalidate only if the canonical account is still the bootstrapped
+     * revision. This prevents a stale or cancelled turn from overwriting a
+     * newer login or refreshed snapshot made through a different lease.
+     */
+    markReauthRequiredIfRevision(provider, expectedRevision, invalidatedAt = new Date(), reauthDiagnostic) {
+        const inspection = this.inspect(provider);
+        if (inspection.account === undefined || inspection.account.revision !== expectedRevision)
+            return undefined;
+        const account = {
+            ...inspection.account,
+            status: "reauth-required",
+            invalidatedAt: invalidatedAt.toISOString(),
+            reauthDiagnostic,
             revision: inspection.account.revision + 1,
         };
         this.write(provider, account);
@@ -128,11 +148,14 @@ export function parseAccountFile(value, provider) {
         (typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 0)) {
         throw new Error("invalid account revision");
     }
-    if (value.status === "ready" && value.invalidatedAt !== undefined) {
-        throw new Error("ready account must not have an invalidation timestamp");
+    if (value.status === "ready" && (value.invalidatedAt !== undefined || value.reauthDiagnostic !== undefined)) {
+        throw new Error("ready account must not have invalidation data");
     }
     if (value.status === "reauth-required" && !isTimestamp(value.invalidatedAt)) {
         throw new Error("invalid account invalidation timestamp");
+    }
+    if (value.reauthDiagnostic !== undefined && !isReauthDiagnostic(value.reauthDiagnostic)) {
+        throw new Error("invalid account reauthentication diagnostic");
     }
     if (!isPortableStorageState(value.storageState))
         throw new Error("invalid account storage state");
@@ -155,6 +178,11 @@ function isPortableStorageState(value) {
             Array.isArray(origin.localStorage) &&
             origin.localStorage.every((item) => isRecord(item) && typeof item.name === "string" && typeof item.value === "string") &&
             (origin.indexedDB === undefined || Array.isArray(origin.indexedDB))));
+}
+function isReauthDiagnostic(value) {
+    if (!isRecord(value))
+        return false;
+    return isTimestamp(value.observedAt) && (value.evidence === "login-url" || value.evidence === "login-surface");
 }
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);

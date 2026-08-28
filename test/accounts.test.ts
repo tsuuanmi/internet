@@ -77,11 +77,20 @@ describe("AccountStore", () => {
 		expect(store.inspect("chatgpt-web").state).toBe("missing");
 
 		store.writeReady("chatgpt-web", storageState());
-		store.markReauthRequired("chatgpt-web", new Date("2026-02-03T04:05:06.000Z"));
+		store.markReauthRequired("chatgpt-web", new Date("2026-02-03T04:05:06.000Z"), {
+			observedAt: "2026-02-03T04:05:06.000Z",
+			evidence: "login-url",
+		});
 		expect(store.inspect("chatgpt-web")).toMatchObject({
 			state: "reauth-required",
-			account: { status: "reauth-required", invalidatedAt: "2026-02-03T04:05:06.000Z" },
+			account: {
+				status: "reauth-required",
+				invalidatedAt: "2026-02-03T04:05:06.000Z",
+				reauthDiagnostic: { evidence: "login-url" },
+			},
 		});
+		store.writeReady("chatgpt-web", storageState());
+		expect(store.inspect("chatgpt-web").account?.reauthDiagnostic).toBeUndefined();
 
 		const path = providerLocations(root, "chatgpt-web").accountPath;
 		writeFileSync(path, "not json", { mode: 0o600 });

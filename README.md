@@ -142,7 +142,7 @@ plugins:
       loginTimeoutMs: 600000
       remoteLoginPort: 39000
       turnTimeoutMs: 180000
-      maxConcurrentTurnsPerProvider: 2
+      maxConcurrentTurnsPerProvider: 1
       chatgptThinkingLevel: medium
       teamRounds: 2
       teamMaxRounds: 4
@@ -164,7 +164,7 @@ the new build. Starting a second web server does not update an already running D
 | `pollMs` | `200` | Response completion polling interval. |
 | `stableMs` | `1500` | Required unchanged, non-running response interval. |
 | `closeAfterMs` | `1800000` | Idle delay before closing an idle provider browser pool. |
-| `maxConcurrentTurnsPerProvider` | `2` | Maximum simultaneous hidden turns per provider from different DSH sessions; reduce to `1` if provider policy or account-state acceptance requires it. |
+| `maxConcurrentTurnsPerProvider` | `1` | Maximum simultaneous hidden turns per provider from different DSH sessions; increase only after confirming provider account-state acceptance. |
 | `maxOutputChars` | `200000` | Maximum returned response characters. |
 | `teamRounds` | `2` | Default debate rounds; every provider speaks once per round. |
 | `teamMaxRounds` | `4` | Maximum accepted per-call `rounds`. |
@@ -175,8 +175,8 @@ the new build. Starting a second web server does not update an already running D
 | `chatgptThinkingLevel` | `medium` | ChatGPT reasoning level: `instant`, `medium`, or `high`. |
 
 Invalid explicit values fail configuration loading. `teamRounds` cannot exceed `teamMaxRounds`, and
-`remoteLoginPort` must leave room for Gemini on the next TCP port. Capacity `2` passed controlled
-real-account acceptance; it improves independent child-team throughput, not a single team's dependent rounds.
+`remoteLoginPort` must leave room for Gemini on the next TCP port. Capacity above `1` is an explicit
+throughput opt-in for independent child-team work; it does not improve a single team's dependent rounds.
 
 ## Login
 
@@ -242,8 +242,11 @@ keyrings and platform details. Conversation files bind DSH session identities to
 URLs and are not authentication state.
 
 Providers can expire or revoke a copied session, challenge a new device/IP, or require MFA/CAPTCHA.
-When that happens, run `internet_browser login`; successful verification atomically replaces only that
-provider's portable account file.
+A challenge or temporarily unconfirmed browser surface does not by itself invalidate the local snapshot:
+retry it or inspect the provider visibly first. Only positive sign-out evidence marks an account as
+`reauth-required`, and `internet_browser status` reports its non-secret reason. When sign-in is actually
+required, run `internet_browser login`; successful verification atomically replaces only that provider's
+portable account file.
 
 ## Browser and display lifecycle
 
@@ -257,14 +260,15 @@ a fallback. `visible: true` bypasses managed Xvfb and requires a user-managed di
 `headless: true` only when native Chrome headless is explicitly desired; the plugin does not silently
 switch to native headless.
 
-By default, two hidden turns run per provider. `maxConcurrentTurnsPerProvider: 1` remains the operator
-fallback when provider policy or account-state acceptance requires it. Different DSH sessions may run in
+By default, one hidden turn runs per provider. Set `maxConcurrentTurnsPerProvider` above `1` only after
+confirming provider policy and account-state acceptance. Different DSH sessions may otherwise run in
 parallel; turns in one session, visible calls, login, stop, and a single team's dependent rounds remain
 ordered. A queued lifecycle operation forms a fence, so later turns wait until it completes. Each active
 turn uses an isolated non-persistent browser context restored from the same portable account. Snapshot
 commits use the bootstrap account revision: the first current snapshot commits, and stale full snapshots
-are discarded rather than unsafely merging cookies or IndexedDB. Plugin disposal closes contexts, Chrome
-processes, remote logins, and managed displays.
+are discarded rather than unsafely merging cookies or IndexedDB. Recoverable failed turns also attempt a
+short authenticated state refresh, so provider token rotation is less likely to be lost. Plugin disposal
+closes contexts, Chrome processes, remote logins, and managed displays.
 
 ## Durable conversation storage
 

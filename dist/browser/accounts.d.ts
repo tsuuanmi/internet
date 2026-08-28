@@ -1,4 +1,5 @@
 import type { BrowserContext } from "patchright-core";
+import type { AuthenticationEvidence } from "#internet/browser/authentication";
 import type { WebProvider } from "#internet/core/config";
 declare const ACCOUNT_SCHEMA = "@tsuuanmi/internet-account";
 type NativeStorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
@@ -12,6 +13,11 @@ export interface PortableStorageState {
 }
 export declare const ACCOUNT_STATES: readonly ["missing", "ready", "reauth-required", "invalid"];
 export type AccountState = (typeof ACCOUNT_STATES)[number];
+/** Non-secret evidence retained when positive sign-out proof invalidates an account. */
+export interface ReauthDiagnostic {
+    observedAt: string;
+    evidence: Extract<AuthenticationEvidence, "login-url" | "login-surface">;
+}
 export interface AccountFile {
     schema: typeof ACCOUNT_SCHEMA;
     version: 1;
@@ -21,6 +27,7 @@ export interface AccountFile {
     /** Monotonic canonical snapshot version; legacy version-1 files normalize to 0. */
     revision: number;
     invalidatedAt?: string;
+    reauthDiagnostic?: ReauthDiagnostic;
     storageState: PortableStorageState;
 }
 export interface AccountInspection {
@@ -49,7 +56,13 @@ export declare class AccountStore {
      * stale full snapshot is discarded rather than unsafely merged.
      */
     writeReadyIfRevision(provider: WebProvider, expectedRevision: number, storageState: PortableStorageState, verifiedAt?: Date): AccountFile | undefined;
-    markReauthRequired(provider: WebProvider, invalidatedAt?: Date): AccountFile | undefined;
+    markReauthRequired(provider: WebProvider, invalidatedAt?: Date, reauthDiagnostic?: ReauthDiagnostic): AccountFile | undefined;
+    /**
+     * Invalidate only if the canonical account is still the bootstrapped
+     * revision. This prevents a stale or cancelled turn from overwriting a
+     * newer login or refreshed snapshot made through a different lease.
+     */
+    markReauthRequiredIfRevision(provider: WebProvider, expectedRevision: number, invalidatedAt?: Date, reauthDiagnostic?: ReauthDiagnostic): AccountFile | undefined;
     private nextRevision;
     private write;
 }

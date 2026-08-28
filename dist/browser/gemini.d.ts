@@ -1,4 +1,5 @@
 import type { Page } from "patchright-core";
+import { type AuthenticationAssessment } from "#internet/browser/authentication";
 import type { CompletionSnapshot } from "#internet/browser/completion";
 export declare const GEMINI_HOME_URL = "https://gemini.google.com/app";
 export declare const GEMINI_COMPOSER_SELECTOR = "rich-textarea [contenteditable=\"true\"]";
@@ -8,6 +9,10 @@ export declare const GEMINI_ACCOUNT_SELECTOR = "[aria-label^=\"Google Account\"]
 export declare const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-text message-content .markdown.markdown-main-panel";
 /** True when Gemini exposes both its composer and signed-in Google account control. */
 export declare function geminiIsAuthenticated(page: Page): Promise<boolean>;
+/** Assess Gemini auth without treating a missing composer as proof of logout. */
+export declare function geminiAuthenticationAssessment(page: Page): Promise<AuthenticationAssessment>;
+/** Wait for a conclusive Gemini auth surface and otherwise return the strongest observed state. */
+export declare function geminiWaitAuthenticationAssessment(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<AuthenticationAssessment>;
 /** Wait until Gemini is authenticated (composer visible), or return false. */
 export declare function geminiWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
 /** Fill the Gemini composer with the prompt and submit it. */

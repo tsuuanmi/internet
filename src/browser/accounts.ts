@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import type { BrowserContext } from "patchright-core";
+import type { AuthenticationEvidence } from "#internet/browser/authentication";
 import { providerLocations } from "#internet/browser/storage";
 import type { WebProvider } from "#internet/core/config";
 import { writePrivateJson } from "#internet/core/private-json";
@@ -18,6 +19,12 @@ export interface PortableStorageState {
 export const ACCOUNT_STATES = ["missing", "ready", "reauth-required", "invalid"] as const;
 export type AccountState = (typeof ACCOUNT_STATES)[number];
 
+/** Non-secret evidence retained when positive sign-out proof invalidates an account. */
+export interface ReauthDiagnostic {
+	observedAt: string;
+	evidence: Extract<AuthenticationEvidence, "login-url" | "login-surface">;
+}
+
 export interface AccountFile {
 	schema: typeof ACCOUNT_SCHEMA;
 	version: 1;
@@ -27,6 +34,7 @@ export interface AccountFile {
 	/** Monotonic canonical snapshot version; legacy version-1 files normalize to 0. */
 	revision: number;
 	invalidatedAt?: string;
+	reauthDiagnostic?: ReauthDiagnostic;
 	storageState: PortableStorageState;
 }
 
@@ -134,13 +142,42 @@ export class AccountStore {
 		return account;
 	}
 
-	markReauthRequired(provider: WebProvider, invalidatedAt = new Date()): AccountFile | undefined {
+	markReauthRequired(
+		provider: WebProvider,
+		invalidatedAt = new Date(),
+		reauthDiagnostic?: ReauthDiagnostic,
+	): AccountFile | undefined {
 		const inspection = this.inspect(provider);
 		if (inspection.account === undefined) return undefined;
 		const account: AccountFile = {
 			...inspection.account,
 			status: "reauth-required",
 			invalidatedAt: invalidatedAt.toISOString(),
+			reauthDiagnostic,
+			revision: inspection.account.revision + 1,
+		};
+		this.write(provider, account);
+		return account;
+	}
+
+	/**
+	 * Invalidate only if the canonical account is still the bootstrapped
+	 * revision. This prevents a stale or cancelled turn from overwriting a
+	 * newer login or refreshed snapshot made through a different lease.
+	 */
+	markReauthRequiredIfRevision(
+		provider: WebProvider,
+		expectedRevision: number,
+		invalidatedAt = new Date(),
+		reauthDiagnostic?: ReauthDiagnostic,
+	): AccountFile | undefined {
+		const inspection = this.inspect(provider);
+		if (inspection.account === undefined || inspection.account.revision !== expectedRevision) return undefined;
+		const account: AccountFile = {
+			...inspection.account,
+			status: "reauth-required",
+			invalidatedAt: invalidatedAt.toISOString(),
+			reauthDiagnostic,
 			revision: inspection.account.revision + 1,
 		};
 		this.write(provider, account);
@@ -169,11 +206,14 @@ export function parseAccountFile(value: unknown, provider: WebProvider): Account
 	) {
 		throw new Error("invalid account revision");
 	}
-	if (value.status === "ready" && value.invalidatedAt !== undefined) {
-		throw new Error("ready account must not have an invalidation timestamp");
+	if (value.status === "ready" && (value.invalidatedAt !== undefined || value.reauthDiagnostic !== undefined)) {
+		throw new Error("ready account must not have invalidation data");
 	}
 	if (value.status === "reauth-required" && !isTimestamp(value.invalidatedAt)) {
 		throw new Error("invalid account invalidation timestamp");
+	}
+	if (value.reauthDiagnostic !== undefined && !isReauthDiagnostic(value.reauthDiagnostic)) {
+		throw new Error("invalid account reauthentication diagnostic");
 	}
 	if (!isPortableStorageState(value.storageState)) throw new Error("invalid account storage state");
 	return { ...value, revision: value.revision ?? 0 } as unknown as AccountFile;
@@ -205,6 +245,11 @@ function isPortableStorageState(value: unknown): value is PortableStorageState {
 				(origin.indexedDB === undefined || Array.isArray(origin.indexedDB)),
 		)
 	);
+}
+
+function isReauthDiagnostic(value: unknown): value is ReauthDiagnostic {
+	if (!isRecord(value)) return false;
+	return isTimestamp(value.observedAt) && (value.evidence === "login-url" || value.evidence === "login-surface");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
