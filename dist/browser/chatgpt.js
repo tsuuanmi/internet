@@ -197,7 +197,14 @@ async function verifyChatGptThinkingLevel(control, level) {
             return;
         await sleep(100);
     }
-    throw new InternetError("provider_error", `ChatGPT did not confirm reasoning level ${expected}`);
+    const diagnostic = await control
+        .evaluate((element) => ({
+        text: (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim(),
+        ariaExpanded: element.getAttribute("aria-expanded"),
+        outerHtml: element.outerHTML.replace(/\s+/g, " ").slice(0, 2_000),
+    }))
+        .catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+    throw new InternetError("provider_error", `ChatGPT did not confirm reasoning level ${expected}; effort control diagnostic: ${JSON.stringify(diagnostic)}`);
 }
 /**
  * Select the ChatGPT reasoning-effort level before a turn. Opens the model

@@ -236,7 +236,17 @@ async function verifyChatGptThinkingLevel(control: Locator, level: ChatGptThinki
 		if ((await control.innerText().catch(() => "")).trim() === expected) return;
 		await sleep(100);
 	}
-	throw new InternetError("provider_error", `ChatGPT did not confirm reasoning level ${expected}`);
+	const diagnostic = await control
+		.evaluate((element) => ({
+			text: ((element as HTMLElement).innerText || element.textContent || "").replace(/\s+/g, " ").trim(),
+			ariaExpanded: element.getAttribute("aria-expanded"),
+			outerHtml: element.outerHTML.replace(/\s+/g, " ").slice(0, 2_000),
+		}))
+		.catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+	throw new InternetError(
+		"provider_error",
+		`ChatGPT did not confirm reasoning level ${expected}; effort control diagnostic: ${JSON.stringify(diagnostic)}`,
+	);
 }
 
 /**
