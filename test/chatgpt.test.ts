@@ -88,14 +88,12 @@ describe("chatgptSend", () => {
 			isEnabled: vi.fn(async () => true),
 			press,
 		};
-		const composerForm = { locator: () => sendButton };
-		const composer = {
-			fill,
-			focus,
-			locator: () => composerForm,
-		};
+		const composer = { fill, focus, innerText: vi.fn(async () => "hello") };
 		const page = {
-			locator: () => ({ filter: () => ({ first: () => composer }) }),
+			locator: (selector: string) =>
+				selector === CHATGPT_COMPOSER_SELECTOR
+					? { filter: () => ({ first: () => composer }) }
+					: { filter: () => ({ last: () => sendButton }) },
 			keyboard: { insertText },
 		} as unknown as Page;
 

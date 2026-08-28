@@ -7,7 +7,7 @@ export const CHATGPT_COMPOSER_SELECTOR = [
     "#prompt-textarea",
     '[contenteditable="true"][data-lexical-editor="true"]',
 ].join(", ");
-export const CHATGPT_SEND_BUTTON_SELECTOR = 'button[data-testid="send-button"]';
+export const CHATGPT_SEND_BUTTON_SELECTOR = "button.composer-submit-button-color";
 export const CHATGPT_STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';
 export const CHATGPT_ACCOUNT_SELECTOR = '[data-testid="accounts-profile-button"]';
 /** The reasoning-level composer pill in the current ChatGPT UI. */
@@ -59,13 +59,25 @@ export async function chatgptWaitAuthenticated(page, timeoutMs, signal) {
     }
     return false;
 }
-/** Fill the ChatGPT composer with the prompt and submit it. */
+async function assertChatgptPromptAttached(composer, prompt) {
+    const deadline = Date.now() + 10_000;
+    let observed = "";
+    while (Date.now() < deadline) {
+        observed = (await composer.innerText()).trimStart();
+        if (observed === prompt)
+            return;
+        await sleep(50);
+    }
+    throw new InternetError("provider_error", `ChatGPT composer did not preserve the complete prompt (expectedChars=${prompt.length}, actualChars=${observed.length})`);
+}
+/** Attach a verified prompt to the ChatGPT composer and submit it. */
 export async function chatgptSend(page, prompt) {
     const composer = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).first();
     await composer.fill("");
     await composer.focus();
     await page.keyboard.insertText(prompt);
-    const sendButton = composer.locator("xpath=ancestor::form[1]").locator(CHATGPT_SEND_BUTTON_SELECTOR);
+    await assertChatgptPromptAttached(composer, prompt);
+    const sendButton = page.locator(CHATGPT_SEND_BUTTON_SELECTOR).filter({ visible: true }).last();
     await waitForSendReady("ChatGPT", sendButton);
     // Keyboard-activate the semantic button. This avoids pointer stability and
     // overlay interception while preserving ChatGPT's submit behavior on follow-ups.

@@ -3,7 +3,7 @@ import type { CompletionSnapshot } from "#internet/browser/completion";
 import type { ChatGptThinkingLevel } from "#internet/core/config";
 export declare const CHATGPT_HOME_URL = "https://chatgpt.com/";
 export declare const CHATGPT_COMPOSER_SELECTOR: string;
-export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button[data-testid=\"send-button\"]";
+export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button.composer-submit-button-color";
 export declare const CHATGPT_STOP_BUTTON_SELECTOR = "[data-testid=\"stop-button\"]";
 export declare const CHATGPT_ACCOUNT_SELECTOR = "[data-testid=\"accounts-profile-button\"]";
 /** The reasoning-level composer pill in the current ChatGPT UI. */
@@ -23,7 +23,7 @@ export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
 export declare function chatgptIsAuthenticated(page: Page): Promise<boolean>;
 /** Wait until ChatGPT is authenticated (composer visible), or return false. */
 export declare function chatgptWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
-/** Fill the ChatGPT composer with the prompt and submit it. */
+/** Attach a verified prompt to the ChatGPT composer and submit it. */
 export declare function chatgptSend(page: Page, prompt: string): Promise<void>;
 /** Read the visible text of the current newest ChatGPT assistant turn (empty when none). */
 export declare function chatgptLastAssistantTurnText(page: Page): Promise<string>;
