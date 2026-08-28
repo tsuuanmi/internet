@@ -25,15 +25,13 @@ export const CHATGPT_EFFORT_MENU_SELECTOR = [
 export const CHATGPT_EFFORT_ITEM_SELECTOR = '[role="menuitemradio"]';
 /** The reasoning-effort slider control, when the account renders a slider. */
 export const CHATGPT_EFFORT_SLIDER_SELECTOR = '[data-model-reasoning-effort-slider] [role="slider"]';
-/** Upper bound on reasoning-effort options a slider may expose. */
-export const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 5;
-/** UI index of each thinking level in the ChatGPT model switcher. */
+/** ChatGPT exposes exactly three supported reasoning-effort options. */
+export const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 3;
+/** UI index of each supported thinking level in the ChatGPT model switcher. */
 export const CHATGPT_THINKING_LEVEL_INDEX = {
     instant: 0,
     medium: 1,
     high: 2,
-    "extra-high": 3,
-    pro: 4,
 };
 export const CHATGPT_ASSISTANT_TURN_SELECTOR = [
     '[data-testid^="conversation-turn-"][data-turn="assistant"]',
@@ -130,9 +128,8 @@ export function parseChatGptEffortSliderState(rawMin, rawMax, rawValue) {
  * already selected.
  */
 export async function chatgptSelectThinkingLevel(page, level) {
-    // Instant is the universal UI default, so it requires no picker interaction.
-    if (level === "instant")
-        return;
+    // Always open and semantically verify the picker: ChatGPT remembers the
+    // previous UI choice, so even Instant must never be assumed selected.
     const targetIndex = CHATGPT_THINKING_LEVEL_INDEX[level];
     const composer = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).first();
     const composerForm = composer.locator("xpath=ancestor::form[1]");

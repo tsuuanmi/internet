@@ -4,14 +4,8 @@ import S from "@deepseek-ai/schemastery";
 import { InternetError } from "#internet/core/errors";
 /** Known provider ids, used to validate tool arguments. */
 export const WEB_PROVIDERS = ["chatgpt-web", "gemini-web"];
-/** Known ChatGPT thinking levels, used to validate config and tool arguments. */
-export const CHATGPT_THINKING_LEVELS = [
-    "instant",
-    "medium",
-    "high",
-    "extra-high",
-    "pro",
-];
+/** Known ChatGPT thinking levels, used to validate plugin configuration. */
+export const CHATGPT_THINKING_LEVELS = ["instant", "medium", "high"];
 /** Resolve the DeepSeek Harness home (mirrors `resolveDshHome`: `$DSH_HOME` or `~/.dsh`). */
 function dshHome() {
     return process.env.DSH_HOME ?? join(homedir(), ".dsh");
@@ -32,7 +26,7 @@ export const DEFAULT_CONFIG = {
     teamSynthesis: true,
     enableChatgpt: true,
     enableGemini: true,
-    chatgptThinkingLevel: "instant",
+    chatgptThinkingLevel: "medium",
 };
 /**
  * Plugin `Config` export: a Schemastery object schema. DSH validates the

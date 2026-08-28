@@ -14,9 +14,9 @@ export declare const CHATGPT_EFFORT_MENU_SELECTOR: string;
 export declare const CHATGPT_EFFORT_ITEM_SELECTOR = "[role=\"menuitemradio\"]";
 /** The reasoning-effort slider control, when the account renders a slider. */
 export declare const CHATGPT_EFFORT_SLIDER_SELECTOR = "[data-model-reasoning-effort-slider] [role=\"slider\"]";
-/** Upper bound on reasoning-effort options a slider may expose. */
-export declare const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 5;
-/** UI index of each thinking level in the ChatGPT model switcher. */
+/** ChatGPT exposes exactly three supported reasoning-effort options. */
+export declare const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 3;
+/** UI index of each supported thinking level in the ChatGPT model switcher. */
 export declare const CHATGPT_THINKING_LEVEL_INDEX: Record<ChatGptThinkingLevel, number>;
 export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
 /** True when ChatGPT exposes both its composer and signed-in account control. */

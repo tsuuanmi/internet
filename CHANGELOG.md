@@ -4,10 +4,9 @@
 
 ### Added
 
-- **chatgpt**: Select the ChatGPT Web reasoning-effort level before each turn via the new
-  `chatgptThinkingLevel` config (default `instant`; paid levels are explicit opt-ins). Supports
-  `instant | medium | high | extra-high | pro`, and handles
-  both the menuitemradio list and the reasoning-effort slider surfaces.
+- **chatgpt**: Select and verify the ChatGPT Web reasoning level before each turn via
+  `chatgptThinkingLevel` (default `medium`). Supports `instant | medium | high` and handles both the
+  menuitemradio list and reasoning-effort slider surfaces.
 - **browser**: Migrate the automation backend from `playwright-core` to `patchright-core` (a drop-in,
   stealth-patched Playwright fork) and keep the ChatGPT inference browser open through a long idle TTL
   (`closeAfterMs` default `1800000`, 30 min) instead of closing it 10s after each turn.

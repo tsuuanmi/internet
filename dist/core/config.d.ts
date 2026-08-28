@@ -4,11 +4,11 @@ export type WebProvider = "chatgpt-web" | "gemini-web";
 export declare const WEB_PROVIDERS: readonly WebProvider[];
 /**
  * ChatGPT Web reasoning-effort levels, ordered by the UI index the model
- * switcher exposes (Instant=0 … Pro=4). "Medium" is the default so ChatGPT
- * turns reason at GPT-5.6-Sol Medium instead of Instant.
+ * switcher exposes (Instant=0, Medium=1, High=2). "Medium" is the default
+ * unless the profile explicitly overrides it.
  */
-export type ChatGptThinkingLevel = "instant" | "medium" | "high" | "extra-high" | "pro";
-/** Known ChatGPT thinking levels, used to validate config and tool arguments. */
+export type ChatGptThinkingLevel = "instant" | "medium" | "high";
+/** Known ChatGPT thinking levels, used to validate plugin configuration. */
 export declare const CHATGPT_THINKING_LEVELS: readonly ChatGptThinkingLevel[];
 /** Per-plugin resolved configuration. */
 export interface BrowserConfig {

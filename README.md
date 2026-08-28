@@ -62,8 +62,9 @@ model turn. A `ctx.llm` provider adapter can be layered on later reusing the sam
   text.
 - Completion is detected conservatively: a newly appended assistant turn must be present, generation
   must have stopped, and its text must stay unchanged for `stableMs` before it is returned.
-- Before each ChatGPT turn the driver selects the configured `chatgptThinkingLevel`. The default is
-  `instant`, which is available to every signed-in account; paid levels remain explicit opt-ins.
+- Before each ChatGPT turn the driver selects and verifies the configured `chatgptThinkingLevel`. The
+  default is `medium`; every level, including an explicit `instant` override, is checked so a prior
+  ChatGPT UI selection cannot carry over between turns.
 
 ## Install
 
@@ -114,7 +115,7 @@ The `/internet` command, model tool `browser_chat`, and lifecycle tool `internet
 | `teamSynthesis`  | `true`                     | Whether `browser_team` appends a final synthesis turn.           |
 | `enableChatgpt`  | `true`                     | Register the ChatGPT Web provider.                               |
 | `enableGemini`   | `true`                     | Register the Gemini Web provider.                                |
-| `chatgptThinkingLevel` | `instant`             | Default ChatGPT Web reasoning-effort level selected before each turn: `instant`, `medium`, `high`, `extra-high`, or `pro`. |
+| `chatgptThinkingLevel` | `medium`              | Default ChatGPT Web reasoning level selected and verified before each turn: `instant`, `medium`, or `high`. |
 
 When `includeTranscript` is true, the tool retains the newest debate content within
 `teamTranscriptMaxChars`. `transcriptTruncated: true` means older content was omitted;

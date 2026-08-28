@@ -70,17 +70,19 @@ describe("resolveBrowserConfig", () => {
 		expect(() => resolveBrowserConfig({ teamRounds: 3, teamMaxRounds: 2 })).toThrow(/must not exceed/);
 	});
 
-	it("defaults chatgptThinkingLevel to instant", () => {
-		expect(resolveBrowserConfig({}).chatgptThinkingLevel).toBe("instant");
+	it("defaults chatgptThinkingLevel to medium", () => {
+		expect(resolveBrowserConfig({}).chatgptThinkingLevel).toBe("medium");
 	});
 
-	it("honors an explicit chatgptThinkingLevel override", () => {
-		expect(resolveBrowserConfig({ chatgptThinkingLevel: "high" }).chatgptThinkingLevel).toBe("high");
+	it("honors the three supported chatgptThinkingLevel values", () => {
 		expect(resolveBrowserConfig({ chatgptThinkingLevel: "instant" }).chatgptThinkingLevel).toBe("instant");
-		expect(resolveBrowserConfig({ chatgptThinkingLevel: "pro" }).chatgptThinkingLevel).toBe("pro");
+		expect(resolveBrowserConfig({ chatgptThinkingLevel: "medium" }).chatgptThinkingLevel).toBe("medium");
+		expect(resolveBrowserConfig({ chatgptThinkingLevel: "high" }).chatgptThinkingLevel).toBe("high");
 	});
 
-	it("rejects an invalid chatgptThinkingLevel", () => {
+	it("rejects unsupported chatgptThinkingLevel values", () => {
+		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: "extra-high" })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: "pro" })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: "ultra" })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: 1 })).toThrow(InternetError);
 	});
