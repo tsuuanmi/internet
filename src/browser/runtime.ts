@@ -36,6 +36,7 @@ import {
 	geminiSnapshot,
 	geminiWaitAuthenticated,
 } from "#internet/browser/gemini";
+import { type ProviderLease, ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { ensureLoginProfileDirectory, type ProviderLocations, providerLocations } from "#internet/browser/storage";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
@@ -68,12 +69,12 @@ export interface ProviderStatus {
 	remoteLogin?: RemoteLoginStatus;
 }
 
-interface ManagedSession {
+interface ManagedBrowser {
 	browser: Browser;
-	context: BrowserContext;
 	headless: boolean;
 	visible: boolean;
 	displayKind: "headless" | "system" | "visible" | "virtual";
+	viewport: ReturnType<typeof browserViewport>;
 }
 
 function isTransientStorageCaptureError(error: unknown): boolean {
@@ -95,13 +96,14 @@ export class BrowserManager {
 	private readonly config: BrowserConfig;
 	private readonly configuredChromePath: string | undefined;
 	private resolvedChromePath: string | undefined;
-	private readonly sessions = new Map<WebProvider, ManagedSession>();
+	private readonly browsers = new Map<WebProvider, ManagedBrowser>();
+	private readonly browserLaunches = new Map<WebProvider, Promise<ManagedBrowser>>();
+	private readonly schedulers = new Map<WebProvider, ProviderScheduler>();
 	private readonly remoteLogins = new Map<WebProvider, RemoteLoginSession>();
 	private readonly accounts: AccountStore;
 	private readonly chatGptConversations: ChatGptConversationStore;
 	private readonly geminiConversations: GeminiConversationStore;
 	private readonly pendingCloses = new Map<WebProvider, NodeJS.Timeout>();
-	private readonly providerOperations = new Map<WebProvider, Promise<void>>();
 	private readonly display: BrowserDisplayManager;
 	private disposed = false;
 
@@ -127,22 +129,24 @@ export class BrowserManager {
 		return providerLocations(this.config.dataDir, provider);
 	}
 
-	private async serializeProvider<T>(provider: WebProvider, operation: () => Promise<T>): Promise<T> {
-		if (this.disposed) throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
-		const previous = this.providerOperations.get(provider) ?? Promise.resolve();
-		let release = (): void => {};
-		const current = new Promise<void>((resolve) => {
-			release = resolve;
-		});
-		const tail = previous.then(() => current);
-		this.providerOperations.set(provider, tail);
-		await previous;
-		try {
-			return await operation();
-		} finally {
-			release();
-			if (this.providerOperations.get(provider) === tail) this.providerOperations.delete(provider);
+	private scheduler(provider: WebProvider): ProviderScheduler {
+		let scheduler = this.schedulers.get(provider);
+		if (scheduler === undefined) {
+			scheduler = new ProviderScheduler(this.config.maxConcurrentTurnsPerProvider);
+			this.schedulers.set(provider, scheduler);
 		}
+		return scheduler;
+	}
+
+	private invalidateProvider(provider: WebProvider, message: string): void {
+		this.scheduler(provider).invalidate(new InternetError("aborted", message));
+	}
+
+	private async runProviderExclusive<T>(provider: WebProvider, operation: () => Promise<T>): Promise<T> {
+		if (this.disposed) throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
+		this.cancelPendingClose(provider);
+		this.invalidateProvider(provider, "provider lifecycle operation superseded queued browser turns");
+		return this.scheduler(provider).runExclusive(operation);
 	}
 
 	private homeUrl(provider: WebProvider): string {
@@ -399,19 +403,22 @@ export class BrowserManager {
 		throw new InternetError("login_failed", `${provider} portable account capture failed.`);
 	}
 
-	private async closeSession(provider: WebProvider): Promise<void> {
-		const session = this.sessions.get(provider);
-		if (session === undefined) return;
-		this.sessions.delete(provider);
-		await session.context.close().catch(() => {});
-		await session.browser.close().catch(() => {});
+	private async closeBrowser(provider: WebProvider): Promise<void> {
+		const managed = this.browsers.get(provider);
+		if (managed === undefined) return;
+		this.browsers.delete(provider);
+		await managed.browser.close().catch(() => {});
 	}
 
 	private async closeVirtualDisplaySessions(): Promise<void> {
-		const providers = [...this.sessions]
-			.filter(([, session]) => session.displayKind === "virtual")
+		const providers = [...this.browsers]
+			.filter(([, managed]) => managed.displayKind === "virtual")
 			.map(([provider]) => provider);
-		await Promise.all(providers.map((provider) => this.closeSession(provider)));
+		await Promise.all(
+			providers.map((provider) =>
+				this.runProviderExclusive(provider, () => this.closeBrowser(provider)).catch(() => {}),
+			),
+		);
 	}
 
 	/** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
@@ -422,9 +429,17 @@ export class BrowserManager {
 		this.pendingCloses.delete(provider);
 	}
 
-	/** Schedule closing a provider browser after its idle TTL. */
+	/** Schedule closing a provider browser after its scheduler becomes idle. */
+	private scheduleCloseWhenIdle(provider: WebProvider): void {
+		const scheduler = this.scheduler(provider);
+		void scheduler.waitForIdle().then(() => {
+			if (this.disposed || !scheduler.isIdle) return;
+			this.scheduleClose(provider);
+		});
+	}
+
 	private scheduleClose(provider: WebProvider): void {
-		if (this.disposed) return;
+		if (this.disposed || !this.scheduler(provider).isIdle) return;
 		this.cancelPendingClose(provider);
 		const timer = setTimeout(() => {
 			this.pendingCloses.delete(provider);
@@ -433,20 +448,7 @@ export class BrowserManager {
 		this.pendingCloses.set(provider, timer);
 	}
 
-	private async ensureContext(provider: WebProvider, headless: boolean, visible: boolean): Promise<BrowserContext> {
-		const existing = this.sessions.get(provider);
-		if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible) {
-			return existing.context;
-		}
-		await this.closeSession(provider);
-		const inspection = this.accounts.inspect(provider);
-		if (inspection.state === "invalid") {
-			throw new InternetError("provider_error", `${provider} account file is invalid: ${inspection.error}`);
-		}
-		if (inspection.state !== "ready" || inspection.account === undefined) {
-			throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
-		}
-
+	private async launchBrowser(provider: WebProvider, headless: boolean, visible: boolean): Promise<ManagedBrowser> {
 		const display = await this.display.prepare(headless, visible);
 		const browser = await chromium.launch({
 			executablePath: this.chromeExecutable(),
@@ -455,25 +457,61 @@ export class BrowserManager {
 			ignoreDefaultArgs: headless ? undefined : ["--no-sandbox"],
 			args: [...this.inferenceArgs(headless), ...(headless ? [] : headedWindowArgs(display))],
 		});
+		const managed: ManagedBrowser = {
+			browser,
+			headless,
+			visible,
+			displayKind: display.kind,
+			viewport: browserViewport(display),
+		};
+		browser.once("disconnected", () => {
+			if (this.browsers.get(provider)?.browser === browser) this.browsers.delete(provider);
+		});
+		return managed;
+	}
+
+	private async ensureBrowser(provider: WebProvider, headless: boolean, visible: boolean): Promise<ManagedBrowser> {
+		const existing = this.browsers.get(provider);
+		if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible)
+			return existing;
+		if (existing !== undefined) await this.closeBrowser(provider);
+
+		const pending = this.browserLaunches.get(provider);
+		if (pending !== undefined) return pending;
+		const launch = this.launchBrowser(provider, headless, visible);
+		this.browserLaunches.set(provider, launch);
 		try {
-			const context = await browser.newContext({
+			const managed = await launch;
+			this.browsers.set(provider, managed);
+			return managed;
+		} finally {
+			if (this.browserLaunches.get(provider) === launch) this.browserLaunches.delete(provider);
+		}
+	}
+
+	private async ensureContext(provider: WebProvider, headless: boolean, visible: boolean): Promise<BrowserContext> {
+		const inspection = this.accounts.inspect(provider);
+		if (inspection.state === "invalid") {
+			throw new InternetError("provider_error", `${provider} account file is invalid: ${inspection.error}`);
+		}
+		if (inspection.state !== "ready" || inspection.account === undefined) {
+			throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
+		}
+		const managed = await this.ensureBrowser(provider, headless, visible);
+		try {
+			return await managed.browser.newContext({
 				storageState: inspection.account.storageState,
-				viewport: browserViewport(display),
+				viewport: managed.viewport,
 			});
-			this.sessions.set(provider, { browser, context, headless, visible, displayKind: display.kind });
-			browser.once("disconnected", () => {
-				if (this.sessions.get(provider)?.browser === browser) this.sessions.delete(provider);
-			});
-			return context;
 		} catch (error) {
-			await browser.close().catch(() => {});
+			if (!managed.browser.isConnected()) this.browsers.delete(provider);
 			throw error;
 		}
 	}
 
 	/** Open local or SSH-forwarded normal Chrome for sign-in. */
 	async login(provider: WebProvider, options: LoginOptions = {}): Promise<ProviderStatus> {
-		return this.serializeProvider(provider, () => this.loginProvider(provider, options));
+		return this.runProviderExclusive(provider, () => this.loginProvider(provider, options));
 	}
 
 	private async loginProvider(provider: WebProvider, options: LoginOptions): Promise<ProviderStatus> {
@@ -485,7 +523,7 @@ export class BrowserManager {
 			this.remoteLogins.delete(provider);
 			await active.dispose();
 		}
-		await this.stopProvider(provider);
+		await this.closeProviderResources(provider);
 		ensureLoginProfileDirectory(this.config.dataDir, provider);
 		const remote = options.remote === true || !this.display.hasInteractiveDisplay();
 		if (!remote) {
@@ -513,7 +551,7 @@ export class BrowserManager {
 			timeoutMs: this.config.loginTimeoutMs,
 			port: this.config.remoteLoginPort + (provider === "gemini-web" ? 1 : 0),
 			finalize: () =>
-				this.serializeProvider(provider, async () => {
+				this.runProviderExclusive(provider, async () => {
 					if (this.remoteLogins.get(provider) !== session || session.status().state !== "finalizing") {
 						throw new InternetError("aborted", "Remote login was cancelled before finalization.");
 					}
@@ -551,10 +589,21 @@ export class BrowserManager {
 
 	/** Run one browser chat turn against the provider and return rendered markdown. */
 	async chat(provider: WebProvider, request: ChatRequest): Promise<ChatResult> {
-		return this.serializeProvider(provider, () => this.chatProvider(provider, request));
+		if (this.disposed) throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
+		this.cancelPendingClose(provider);
+		const scheduler = this.scheduler(provider);
+		try {
+			return request.visible === true
+				? await scheduler.runExclusive((lease) => this.chatProvider(provider, request, lease))
+				: await scheduler.runTurn(request.sessionId, request.signal, (lease) =>
+						this.chatProvider(provider, request, lease),
+					);
+		} finally {
+			this.scheduleCloseWhenIdle(provider);
+		}
 	}
 
-	private async chatProvider(provider: WebProvider, request: ChatRequest): Promise<ChatResult> {
+	private async chatProvider(provider: WebProvider, request: ChatRequest, lease: ProviderLease): Promise<ChatResult> {
 		const remoteState = this.remoteLogins.get(provider)?.status().state;
 		if (remoteState === "waiting" || remoteState === "finalizing") {
 			throw new InternetError(
@@ -587,12 +636,16 @@ export class BrowserManager {
 				await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
 			}
 			if (!(await this.isAuthenticated(provider, page, 30_000, request.signal))) {
-				this.accounts.markReauthRequired(provider);
-				await this.stopProvider(provider);
-				throw new InternetError(
+				const reason = new InternetError(
 					"login_required",
 					`Sign in to ${provider} first with the internet_browser login action.`,
 				);
+				this.accounts.markReauthRequired(provider);
+				this.scheduler(provider).invalidate(reason);
+				void this.scheduler(provider)
+					.runExclusive(() => this.closeBrowser(provider))
+					.catch(() => {});
+				throw reason;
 			}
 			if (binding !== undefined) {
 				let current: { id: string; url: string };
@@ -661,23 +714,24 @@ export class BrowserManager {
 				}
 				conversationId = binding.conversationId;
 			}
-			this.accounts.writeReady(provider, await capturePortableStorageState(context));
+			const storageState = await capturePortableStorageState(context);
+			if (this.scheduler(provider).isCurrent(lease)) this.accounts.writeReady(provider, storageState);
 			return {
 				text: text.slice(0, this.config.maxOutputChars),
 				url: page.url(),
 				...(conversationId === undefined ? {} : { conversationId }),
 			};
 		} finally {
-			this.scheduleClose(provider);
+			await context.close().catch(() => {});
 		}
 	}
 
 	/** Close the provider's managed inference browser, if one is open. */
 	async stop(provider: WebProvider): Promise<void> {
-		await this.serializeProvider(provider, () => this.stopProvider(provider));
+		await this.runProviderExclusive(provider, () => this.closeProviderResources(provider));
 	}
 
-	private async stopProvider(provider: WebProvider): Promise<void> {
+	private async closeProviderResources(provider: WebProvider): Promise<void> {
 		this.cancelPendingClose(provider);
 		const remote = this.remoteLogins.get(provider);
 		if (remote !== undefined) {
@@ -685,7 +739,7 @@ export class BrowserManager {
 			if (this.remoteLogins.get(provider) === remote) this.remoteLogins.delete(provider);
 			await remote.cancel();
 		}
-		await this.closeSession(provider);
+		await this.closeBrowser(provider);
 	}
 
 	/** Close every managed inference browser (no leaked Chrome processes). */
@@ -694,12 +748,14 @@ export class BrowserManager {
 		this.disposed = true;
 		for (const timer of this.pendingCloses.values()) clearTimeout(timer);
 		this.pendingCloses.clear();
+		const closed = new InternetError("aborted", "Browser manager has been disposed.");
+		for (const scheduler of this.schedulers.values()) scheduler.close(closed);
 		try {
-			await Promise.all(this.providerOperations.values());
+			await Promise.all([...this.schedulers.values()].map((scheduler) => scheduler.waitForIdle()));
 			const remoteLogins = [...this.remoteLogins.values()];
 			this.remoteLogins.clear();
 			await Promise.all(remoteLogins.map((session) => session.dispose()));
-			await Promise.all([...this.sessions.keys()].map((provider) => this.closeSession(provider)));
+			await Promise.all([...this.browsers.keys()].map((provider) => this.closeBrowser(provider)));
 		} finally {
 			await this.display.dispose();
 		}

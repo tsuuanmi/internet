@@ -9,6 +9,7 @@ import { waitForStableCompletion } from "#internet/browser/completion";
 import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import { GEMINI_HOME_URL, geminiIsAuthenticated, geminiLastResponseText, geminiSend, geminiSnapshot, geminiWaitAuthenticated, } from "#internet/browser/gemini";
+import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { ensureLoginProfileDirectory, providerLocations } from "#internet/browser/storage";
 import { InternetError } from "#internet/core/errors";
@@ -27,10 +28,11 @@ function isTransientStorageCaptureError(error) {
  */
 export class BrowserManager {
     constructor(config) {
-        this.sessions = new Map();
+        this.browsers = new Map();
+        this.browserLaunches = new Map();
+        this.schedulers = new Map();
         this.remoteLogins = new Map();
         this.pendingCloses = new Map();
-        this.providerOperations = new Map();
         this.disposed = false;
         this.config = config;
         this.display = new BrowserDisplayManager({
@@ -50,25 +52,23 @@ export class BrowserManager {
     locations(provider) {
         return providerLocations(this.config.dataDir, provider);
     }
-    async serializeProvider(provider, operation) {
+    scheduler(provider) {
+        let scheduler = this.schedulers.get(provider);
+        if (scheduler === undefined) {
+            scheduler = new ProviderScheduler(this.config.maxConcurrentTurnsPerProvider);
+            this.schedulers.set(provider, scheduler);
+        }
+        return scheduler;
+    }
+    invalidateProvider(provider, message) {
+        this.scheduler(provider).invalidate(new InternetError("aborted", message));
+    }
+    async runProviderExclusive(provider, operation) {
         if (this.disposed)
             throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
-        const previous = this.providerOperations.get(provider) ?? Promise.resolve();
-        let release = () => { };
-        const current = new Promise((resolve) => {
-            release = resolve;
-        });
-        const tail = previous.then(() => current);
-        this.providerOperations.set(provider, tail);
-        await previous;
-        try {
-            return await operation();
-        }
-        finally {
-            release();
-            if (this.providerOperations.get(provider) === tail)
-                this.providerOperations.delete(provider);
-        }
+        this.cancelPendingClose(provider);
+        this.invalidateProvider(provider, "provider lifecycle operation superseded queued browser turns");
+        return this.scheduler(provider).runExclusive(operation);
     }
     homeUrl(provider) {
         return provider === "chatgpt-web" ? CHATGPT_HOME_URL : GEMINI_HOME_URL;
@@ -282,19 +282,18 @@ export class BrowserManager {
         }
         throw new InternetError("login_failed", `${provider} portable account capture failed.`);
     }
-    async closeSession(provider) {
-        const session = this.sessions.get(provider);
-        if (session === undefined)
+    async closeBrowser(provider) {
+        const managed = this.browsers.get(provider);
+        if (managed === undefined)
             return;
-        this.sessions.delete(provider);
-        await session.context.close().catch(() => { });
-        await session.browser.close().catch(() => { });
+        this.browsers.delete(provider);
+        await managed.browser.close().catch(() => { });
     }
     async closeVirtualDisplaySessions() {
-        const providers = [...this.sessions]
-            .filter(([, session]) => session.displayKind === "virtual")
+        const providers = [...this.browsers]
+            .filter(([, managed]) => managed.displayKind === "virtual")
             .map(([provider]) => provider);
-        await Promise.all(providers.map((provider) => this.closeSession(provider)));
+        await Promise.all(providers.map((provider) => this.runProviderExclusive(provider, () => this.closeBrowser(provider)).catch(() => { })));
     }
     /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
     cancelPendingClose(provider) {
@@ -304,9 +303,17 @@ export class BrowserManager {
         clearTimeout(timer);
         this.pendingCloses.delete(provider);
     }
-    /** Schedule closing a provider browser after its idle TTL. */
+    /** Schedule closing a provider browser after its scheduler becomes idle. */
+    scheduleCloseWhenIdle(provider) {
+        const scheduler = this.scheduler(provider);
+        void scheduler.waitForIdle().then(() => {
+            if (this.disposed || !scheduler.isIdle)
+                return;
+            this.scheduleClose(provider);
+        });
+    }
     scheduleClose(provider) {
-        if (this.disposed)
+        if (this.disposed || !this.scheduler(provider).isIdle)
             return;
         this.cancelPendingClose(provider);
         const timer = setTimeout(() => {
@@ -315,19 +322,7 @@ export class BrowserManager {
         }, this.config.closeAfterMs);
         this.pendingCloses.set(provider, timer);
     }
-    async ensureContext(provider, headless, visible) {
-        const existing = this.sessions.get(provider);
-        if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible) {
-            return existing.context;
-        }
-        await this.closeSession(provider);
-        const inspection = this.accounts.inspect(provider);
-        if (inspection.state === "invalid") {
-            throw new InternetError("provider_error", `${provider} account file is invalid: ${inspection.error}`);
-        }
-        if (inspection.state !== "ready" || inspection.account === undefined) {
-            throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
-        }
+    async launchBrowser(provider, headless, visible) {
         const display = await this.display.prepare(headless, visible);
         const browser = await chromium.launch({
             executablePath: this.chromeExecutable(),
@@ -336,26 +331,64 @@ export class BrowserManager {
             ignoreDefaultArgs: headless ? undefined : ["--no-sandbox"],
             args: [...this.inferenceArgs(headless), ...(headless ? [] : headedWindowArgs(display))],
         });
+        const managed = {
+            browser,
+            headless,
+            visible,
+            displayKind: display.kind,
+            viewport: browserViewport(display),
+        };
+        browser.once("disconnected", () => {
+            if (this.browsers.get(provider)?.browser === browser)
+                this.browsers.delete(provider);
+        });
+        return managed;
+    }
+    async ensureBrowser(provider, headless, visible) {
+        const existing = this.browsers.get(provider);
+        if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible)
+            return existing;
+        if (existing !== undefined)
+            await this.closeBrowser(provider);
+        const pending = this.browserLaunches.get(provider);
+        if (pending !== undefined)
+            return pending;
+        const launch = this.launchBrowser(provider, headless, visible);
+        this.browserLaunches.set(provider, launch);
         try {
-            const context = await browser.newContext({
+            const managed = await launch;
+            this.browsers.set(provider, managed);
+            return managed;
+        }
+        finally {
+            if (this.browserLaunches.get(provider) === launch)
+                this.browserLaunches.delete(provider);
+        }
+    }
+    async ensureContext(provider, headless, visible) {
+        const inspection = this.accounts.inspect(provider);
+        if (inspection.state === "invalid") {
+            throw new InternetError("provider_error", `${provider} account file is invalid: ${inspection.error}`);
+        }
+        if (inspection.state !== "ready" || inspection.account === undefined) {
+            throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
+        }
+        const managed = await this.ensureBrowser(provider, headless, visible);
+        try {
+            return await managed.browser.newContext({
                 storageState: inspection.account.storageState,
-                viewport: browserViewport(display),
+                viewport: managed.viewport,
             });
-            this.sessions.set(provider, { browser, context, headless, visible, displayKind: display.kind });
-            browser.once("disconnected", () => {
-                if (this.sessions.get(provider)?.browser === browser)
-                    this.sessions.delete(provider);
-            });
-            return context;
         }
         catch (error) {
-            await browser.close().catch(() => { });
+            if (!managed.browser.isConnected())
+                this.browsers.delete(provider);
             throw error;
         }
     }
     /** Open local or SSH-forwarded normal Chrome for sign-in. */
     async login(provider, options = {}) {
-        return this.serializeProvider(provider, () => this.loginProvider(provider, options));
+        return this.runProviderExclusive(provider, () => this.loginProvider(provider, options));
     }
     async loginProvider(provider, options) {
         const active = this.remoteLogins.get(provider);
@@ -366,7 +399,7 @@ export class BrowserManager {
             this.remoteLogins.delete(provider);
             await active.dispose();
         }
-        await this.stopProvider(provider);
+        await this.closeProviderResources(provider);
         ensureLoginProfileDirectory(this.config.dataDir, provider);
         const remote = options.remote === true || !this.display.hasInteractiveDisplay();
         if (!remote) {
@@ -392,7 +425,7 @@ export class BrowserManager {
             homeUrl: this.homeUrl(provider),
             timeoutMs: this.config.loginTimeoutMs,
             port: this.config.remoteLoginPort + (provider === "gemini-web" ? 1 : 0),
-            finalize: () => this.serializeProvider(provider, async () => {
+            finalize: () => this.runProviderExclusive(provider, async () => {
                 if (this.remoteLogins.get(provider) !== session || session.status().state !== "finalizing") {
                     throw new InternetError("aborted", "Remote login was cancelled before finalization.");
                 }
@@ -427,9 +460,20 @@ export class BrowserManager {
     }
     /** Run one browser chat turn against the provider and return rendered markdown. */
     async chat(provider, request) {
-        return this.serializeProvider(provider, () => this.chatProvider(provider, request));
+        if (this.disposed)
+            throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
+        this.cancelPendingClose(provider);
+        const scheduler = this.scheduler(provider);
+        try {
+            return request.visible === true
+                ? await scheduler.runExclusive((lease) => this.chatProvider(provider, request, lease))
+                : await scheduler.runTurn(request.sessionId, request.signal, (lease) => this.chatProvider(provider, request, lease));
+        }
+        finally {
+            this.scheduleCloseWhenIdle(provider);
+        }
     }
-    async chatProvider(provider, request) {
+    async chatProvider(provider, request, lease) {
         const remoteState = this.remoteLogins.get(provider)?.status().state;
         if (remoteState === "waiting" || remoteState === "finalizing") {
             throw new InternetError("login_required", `${provider} remote login is ${remoteState}; save or stop it first.`);
@@ -457,9 +501,13 @@ export class BrowserManager {
                 await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
             }
             if (!(await this.isAuthenticated(provider, page, 30_000, request.signal))) {
+                const reason = new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`);
                 this.accounts.markReauthRequired(provider);
-                await this.stopProvider(provider);
-                throw new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`);
+                this.scheduler(provider).invalidate(reason);
+                void this.scheduler(provider)
+                    .runExclusive(() => this.closeBrowser(provider))
+                    .catch(() => { });
+                throw reason;
             }
             if (binding !== undefined) {
                 let current;
@@ -511,7 +559,9 @@ export class BrowserManager {
                 }
                 conversationId = binding.conversationId;
             }
-            this.accounts.writeReady(provider, await capturePortableStorageState(context));
+            const storageState = await capturePortableStorageState(context);
+            if (this.scheduler(provider).isCurrent(lease))
+                this.accounts.writeReady(provider, storageState);
             return {
                 text: text.slice(0, this.config.maxOutputChars),
                 url: page.url(),
@@ -519,14 +569,14 @@ export class BrowserManager {
             };
         }
         finally {
-            this.scheduleClose(provider);
+            await context.close().catch(() => { });
         }
     }
     /** Close the provider's managed inference browser, if one is open. */
     async stop(provider) {
-        await this.serializeProvider(provider, () => this.stopProvider(provider));
+        await this.runProviderExclusive(provider, () => this.closeProviderResources(provider));
     }
-    async stopProvider(provider) {
+    async closeProviderResources(provider) {
         this.cancelPendingClose(provider);
         const remote = this.remoteLogins.get(provider);
         if (remote !== undefined) {
@@ -535,7 +585,7 @@ export class BrowserManager {
                 this.remoteLogins.delete(provider);
             await remote.cancel();
         }
-        await this.closeSession(provider);
+        await this.closeBrowser(provider);
     }
     /** Close every managed inference browser (no leaked Chrome processes). */
     async dispose() {
@@ -545,12 +595,15 @@ export class BrowserManager {
         for (const timer of this.pendingCloses.values())
             clearTimeout(timer);
         this.pendingCloses.clear();
+        const closed = new InternetError("aborted", "Browser manager has been disposed.");
+        for (const scheduler of this.schedulers.values())
+            scheduler.close(closed);
         try {
-            await Promise.all(this.providerOperations.values());
+            await Promise.all([...this.schedulers.values()].map((scheduler) => scheduler.waitForIdle()));
             const remoteLogins = [...this.remoteLogins.values()];
             this.remoteLogins.clear();
             await Promise.all(remoteLogins.map((session) => session.dispose()));
-            await Promise.all([...this.sessions.keys()].map((provider) => this.closeSession(provider)));
+            await Promise.all([...this.browsers.keys()].map((provider) => this.closeBrowser(provider)));
         }
         finally {
             await this.display.dispose();

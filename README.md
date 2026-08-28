@@ -142,6 +142,7 @@ plugins:
       loginTimeoutMs: 600000
       remoteLoginPort: 39000
       turnTimeoutMs: 180000
+      maxConcurrentTurnsPerProvider: 1
       chatgptThinkingLevel: medium
       teamRounds: 2
       teamMaxRounds: 4
@@ -162,7 +163,8 @@ the new build. Starting a second web server does not update an already running D
 | `turnTimeoutMs` | `180000` | Maximum duration of one provider turn. |
 | `pollMs` | `200` | Response completion polling interval. |
 | `stableMs` | `1500` | Required unchanged, non-running response interval. |
-| `closeAfterMs` | `1800000` | Idle delay before closing a provider inference browser. |
+| `closeAfterMs` | `1800000` | Idle delay before closing an idle provider browser pool. |
+| `maxConcurrentTurnsPerProvider` | `1` | Maximum simultaneous hidden turns per provider from different DSH sessions; use values above one only after provider-policy and account-state acceptance testing. |
 | `maxOutputChars` | `200000` | Maximum returned response characters. |
 | `teamRounds` | `2` | Default debate rounds; every provider speaks once per round. |
 | `teamMaxRounds` | `4` | Maximum accepted per-call `rounds`. |
@@ -173,7 +175,9 @@ the new build. Starting a second web server does not update an already running D
 | `chatgptThinkingLevel` | `medium` | ChatGPT reasoning level: `instant`, `medium`, or `high`. |
 
 Invalid explicit values fail configuration loading. `teamRounds` cannot exceed `teamMaxRounds`, and
-`remoteLoginPort` must leave room for Gemini on the next TCP port.
+`remoteLoginPort` must leave room for Gemini on the next TCP port. Keep `maxConcurrentTurnsPerProvider` at
+its default until a controlled real-account acceptance test confirms that concurrent sessions are supported;
+it improves independent child-team throughput, not a single team's dependent rounds.
 
 ## Login
 
@@ -254,8 +258,11 @@ a fallback. `visible: true` bypasses managed Xvfb and requires a user-managed di
 `headless: true` only when native Chrome headless is explicitly desired; the plugin does not silently
 switch to native headless.
 
-Provider operations are serialized per provider, browser sessions are reused until `closeAfterMs`, and
-plugin disposal closes contexts, Chrome processes, remote logins, and managed displays.
+By default, one hidden turn runs per provider. `maxConcurrentTurnsPerProvider` can opt into bounded
+parallel hidden turns for different DSH sessions; turns in one session, visible calls, login, stop, and a
+single team's dependent rounds remain ordered. Each active turn uses an isolated non-persistent browser
+context restored from the same portable account. Plugin disposal closes contexts, Chrome processes, remote
+logins, and managed displays.
 
 ## Durable conversation storage
 

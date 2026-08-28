@@ -10,8 +10,9 @@ describe("resolveBrowserConfig", () => {
 		expect(config).toEqual(DEFAULT_CONFIG);
 	});
 
-	it("defaults closeAfterMs to a 30-minute idle TTL", () => {
+	it("defaults closeAfterMs to a 30-minute idle TTL and provider concurrency to one", () => {
 		expect(resolveBrowserConfig({}).closeAfterMs).toBe(1_800_000);
+		expect(resolveBrowserConfig({}).maxConcurrentTurnsPerProvider).toBe(1);
 	});
 
 	it("honors explicit overrides", () => {
@@ -23,6 +24,7 @@ describe("resolveBrowserConfig", () => {
 			loginTimeoutMs: 60_000,
 			remoteLoginPort: 40_000,
 			closeAfterMs: 5_000,
+			maxConcurrentTurnsPerProvider: 2,
 		});
 		expect(config.chromePath).toBe("/custom/chrome");
 		expect(config.headless).toBe(false);
@@ -31,6 +33,7 @@ describe("resolveBrowserConfig", () => {
 		expect(config.loginTimeoutMs).toBe(60_000);
 		expect(config.remoteLoginPort).toBe(40_000);
 		expect(config.closeAfterMs).toBe(5_000);
+		expect(config.maxConcurrentTurnsPerProvider).toBe(2);
 	});
 
 	it("ignores unknown fields and non-object input", () => {
@@ -47,6 +50,8 @@ describe("resolveBrowserConfig", () => {
 
 	it("rejects invalid positive-integer config", () => {
 		expect(() => resolveBrowserConfig({ turnTimeoutMs: -5 })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerProvider: 0 })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerProvider: Number.NaN })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ remoteLoginPort: 65_535 })).toThrow(/must not exceed 65534/);
 	});
 

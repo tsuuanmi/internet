@@ -4,16 +4,16 @@ import { join } from "node:path";
 import { chromium } from "patchright-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
-import { BrowserManager, type ProviderStatus } from "#internet/browser/runtime";
+import { BrowserManager, type ChatRequest, type ChatResult, type ProviderStatus } from "#internet/browser/runtime";
 import { ensureLoginProfileDirectory, providerLocations } from "#internet/browser/storage";
 import { resolveBrowserConfig, type WebProvider } from "#internet/core/config";
 
 const temporaryRoots: string[] = [];
 
-function manager(): BrowserManager {
+function manager(overrides: Record<string, unknown> = {}): BrowserManager {
 	const dataDir = mkdtempSync(join(tmpdir(), "internet-runtime-"));
 	temporaryRoots.push(dataDir);
-	return new BrowserManager(resolveBrowserConfig({ dataDir }));
+	return new BrowserManager(resolveBrowserConfig({ dataDir, ...overrides }));
 }
 
 afterEach(() => {
@@ -53,15 +53,83 @@ describe("BrowserManager provider serialization", () => {
 		const gate = new Promise<void>((resolve) => {
 			release = resolve;
 		});
-		const operation = (browser as any).serializeProvider("chatgpt-web", async () => {
+		const scheduler = (browser as any).scheduler("chatgpt-web");
+		const operation = scheduler.runTurn("session", undefined, async () => {
 			await gate;
 			(browser as any).scheduleClose("chatgpt-web");
 		});
-		await vi.waitFor(() => expect((browser as any).providerOperations.size).toBe(1));
+		await vi.waitFor(() => expect(scheduler.isIdle).toBe(false));
 		const disposal = browser.dispose();
 		release();
 		await Promise.all([operation, disposal]);
 		expect((browser as any).pendingCloses.size).toBe(0);
+	});
+});
+
+describe("BrowserManager shared-account turn scheduling", () => {
+	function request(sessionId: string, visible = false): ChatRequest {
+		return { prompt: "test", sessionId, ...(visible ? { visible: true } : {}) };
+	}
+
+	it("runs different hidden sessions up to configured capacity", async () => {
+		const browser = manager({ maxConcurrentTurnsPerProvider: 2 });
+		const releases: Array<() => void> = [];
+		let active = 0;
+		let maximum = 0;
+		(browser as any).chatProvider = vi.fn(async (): Promise<ChatResult> => {
+			active += 1;
+			maximum = Math.max(maximum, active);
+			await new Promise<void>((resolve) => releases.push(resolve));
+			active -= 1;
+			return { text: "ok", url: "https://example.com" };
+		});
+
+		const first = browser.chat("chatgpt-web", request("one"));
+		const second = browser.chat("chatgpt-web", request("two"));
+		const third = browser.chat("chatgpt-web", request("three"));
+		await vi.waitFor(() => expect((browser as any).chatProvider).toHaveBeenCalledTimes(2));
+		expect(maximum).toBe(2);
+		releases.shift()?.();
+		await vi.waitFor(() => expect((browser as any).chatProvider).toHaveBeenCalledTimes(3));
+		for (const release of releases.splice(0)) release();
+		await Promise.all([first, second, third]);
+		await browser.dispose();
+	});
+
+	it("serializes same-session hidden turns despite spare capacity", async () => {
+		const browser = manager({ maxConcurrentTurnsPerProvider: 2 });
+		const releases: Array<() => void> = [];
+		(browser as any).chatProvider = vi.fn(async (): Promise<ChatResult> => {
+			await new Promise<void>((resolve) => releases.push(resolve));
+			return { text: "ok", url: "https://example.com" };
+		});
+
+		const first = browser.chat("gemini-web", request("same"));
+		const second = browser.chat("gemini-web", request("same"));
+		await vi.waitFor(() => expect((browser as any).chatProvider).toHaveBeenCalledTimes(1));
+		releases.shift()?.();
+		await vi.waitFor(() => expect((browser as any).chatProvider).toHaveBeenCalledTimes(2));
+		releases.shift()?.();
+		await Promise.all([first, second]);
+		await browser.dispose();
+	});
+
+	it("makes a visible turn an exclusive barrier after hidden work", async () => {
+		const browser = manager({ maxConcurrentTurnsPerProvider: 2 });
+		const releases: Array<() => void> = [];
+		(browser as any).chatProvider = vi.fn(async (): Promise<ChatResult> => {
+			await new Promise<void>((resolve) => releases.push(resolve));
+			return { text: "ok", url: "https://example.com" };
+		});
+
+		const hidden = browser.chat("chatgpt-web", request("hidden"));
+		const visible = browser.chat("chatgpt-web", request("visible", true));
+		await vi.waitFor(() => expect((browser as any).chatProvider).toHaveBeenCalledTimes(1));
+		releases.shift()?.();
+		await vi.waitFor(() => expect((browser as any).chatProvider).toHaveBeenCalledTimes(2));
+		releases.shift()?.();
+		await Promise.all([hidden, visible]);
+		await browser.dispose();
 	});
 });
 

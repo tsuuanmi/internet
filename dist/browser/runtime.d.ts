@@ -35,19 +35,22 @@ export declare class BrowserManager {
     private readonly config;
     private readonly configuredChromePath;
     private resolvedChromePath;
-    private readonly sessions;
+    private readonly browsers;
+    private readonly browserLaunches;
+    private readonly schedulers;
     private readonly remoteLogins;
     private readonly accounts;
     private readonly chatGptConversations;
     private readonly geminiConversations;
     private readonly pendingCloses;
-    private readonly providerOperations;
     private readonly display;
     private disposed;
     constructor(config: BrowserConfig);
     private chromeExecutable;
     private locations;
-    private serializeProvider;
+    private scheduler;
+    private invalidateProvider;
+    private runProviderExclusive;
     private homeUrl;
     private activePage;
     private isAuthenticated;
@@ -62,12 +65,15 @@ export declare class BrowserManager {
     private captureLoginState;
     private inferenceArgs;
     private verifyStorageState;
-    private closeSession;
+    private closeBrowser;
     private closeVirtualDisplaySessions;
     /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
     private cancelPendingClose;
-    /** Schedule closing a provider browser after its idle TTL. */
+    /** Schedule closing a provider browser after its scheduler becomes idle. */
+    private scheduleCloseWhenIdle;
     private scheduleClose;
+    private launchBrowser;
+    private ensureBrowser;
     private ensureContext;
     /** Open local or SSH-forwarded normal Chrome for sign-in. */
     login(provider: WebProvider, options?: LoginOptions): Promise<ProviderStatus>;
@@ -82,7 +88,7 @@ export declare class BrowserManager {
     private chatProvider;
     /** Close the provider's managed inference browser, if one is open. */
     stop(provider: WebProvider): Promise<void>;
-    private stopProvider;
+    private closeProviderResources;
     /** Close every managed inference browser (no leaked Chrome processes). */
     dispose(): Promise<void>;
 }

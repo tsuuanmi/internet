@@ -167,8 +167,9 @@ The same `visible` flag is passed to every provider turn and synthesis turn. `vi
 separate orchestration path: it uses the same prompts and provider drivers on hidden browser displays.
 
 The orchestrator stops at the first provider failure and returns that provider plus all completed current-
-call turns. It does not silently continue with a missing teammate. Per-provider operations are serialized,
-and the DSH tool itself declares the team call non-concurrency-safe.
+call turns. It does not silently continue with a missing teammate. A team's own turns remain sequential and
+the DSH tool remains non-concurrency-safe; optional runtime concurrency applies only across independent
+hidden child-team session ids.
 
 ### Transcript projection
 
@@ -266,10 +267,18 @@ data. Unsupported targets skip private binaries and use system executables when 
 bypasses display discovery. The plugin does not silently convert a failed headed launch into native
 headless mode.
 
-Provider browser sessions are reused while their mode matches and close after `closeAfterMs` of idle time.
-Switching between visible and hidden modes replaces the incompatible provider session. Successful turns
-refresh portable account state. `BrowserManager.dispose()` closes contexts, Chrome, pending remote
-logins, timers, and the shared inference display.
+The default allows one hidden turn per provider. When the profile explicitly sets
+`maxConcurrentTurnsPerProvider` above one, different DSH session ids may lease isolated non-persistent
+contexts concurrently from the same portable account; repeated turns for one session remain FIFO. A
+visible call, login, remote-login finalization, stop, reauthentication, and display loss are provider-
+exclusive barriers. Contexts close after their turns; compatible browser processes close after
+`closeAfterMs` of pool-wide idleness.
+
+Successful current-generation turns serialize portable-account refreshes. Reauthentication invalidates the
+provider generation and prevents already-running older turns from restoring a `ready` snapshot. The stored
+account is a bootstrap cache, not a mergeable replica of arbitrary provider IndexedDB; use concurrent
+capacity only after provider-policy and real-account acceptance testing. `BrowserManager.dispose()` closes
+contexts, Chrome, pending remote logins, timers, and the shared inference display.
 
 ## Errors
 

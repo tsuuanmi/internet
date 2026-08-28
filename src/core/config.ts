@@ -39,6 +39,8 @@ export interface BrowserConfig {
 	stableMs: number;
 	/** Idle delay before an inference browser is closed after a turn (ms). */
 	closeAfterMs: number;
+	/** Maximum simultaneous hidden turns for one provider; same-session turns remain ordered. */
+	maxConcurrentTurnsPerProvider: number;
 	/** Upper bound on returned chat output characters. */
 	maxOutputChars: number;
 	/** Default debate rounds for the `browser_team` tool (each model speaks once per round). */
@@ -71,6 +73,7 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	pollMs: 200,
 	stableMs: 1_500,
 	closeAfterMs: 1_800_000,
+	maxConcurrentTurnsPerProvider: 1,
 	maxOutputChars: 200_000,
 	teamRounds: 2,
 	teamMaxRounds: 4,
@@ -95,6 +98,7 @@ export const Config = S.object({
 	pollMs: S.number().default(DEFAULT_CONFIG.pollMs),
 	stableMs: S.number().default(DEFAULT_CONFIG.stableMs),
 	closeAfterMs: S.number().default(DEFAULT_CONFIG.closeAfterMs),
+	maxConcurrentTurnsPerProvider: S.number().default(DEFAULT_CONFIG.maxConcurrentTurnsPerProvider),
 	maxOutputChars: S.number().default(DEFAULT_CONFIG.maxOutputChars),
 	teamRounds: S.number().default(DEFAULT_CONFIG.teamRounds),
 	teamMaxRounds: S.number().default(DEFAULT_CONFIG.teamMaxRounds),
@@ -166,6 +170,11 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 		pollMs: asPositiveInteger(input.pollMs, DEFAULT_CONFIG.pollMs, "pollMs"),
 		stableMs: asPositiveInteger(input.stableMs, DEFAULT_CONFIG.stableMs, "stableMs"),
 		closeAfterMs: asPositiveInteger(input.closeAfterMs, DEFAULT_CONFIG.closeAfterMs, "closeAfterMs"),
+		maxConcurrentTurnsPerProvider: asPositiveInteger(
+			input.maxConcurrentTurnsPerProvider,
+			DEFAULT_CONFIG.maxConcurrentTurnsPerProvider,
+			"maxConcurrentTurnsPerProvider",
+		),
 		maxOutputChars: asPositiveInteger(input.maxOutputChars, DEFAULT_CONFIG.maxOutputChars, "maxOutputChars"),
 		teamRounds,
 		teamMaxRounds,

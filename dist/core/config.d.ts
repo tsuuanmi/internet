@@ -30,6 +30,8 @@ export interface BrowserConfig {
     stableMs: number;
     /** Idle delay before an inference browser is closed after a turn (ms). */
     closeAfterMs: number;
+    /** Maximum simultaneous hidden turns for one provider; same-session turns remain ordered. */
+    maxConcurrentTurnsPerProvider: number;
     /** Upper bound on returned chat output characters. */
     maxOutputChars: number;
     /** Default debate rounds for the `browser_team` tool (each model speaks once per round). */
@@ -62,6 +64,7 @@ export declare const Config: import("@deepseek-ai/schemastery").Schema<{
     pollMs: number;
     stableMs: number;
     closeAfterMs: number;
+    maxConcurrentTurnsPerProvider: number;
     maxOutputChars: number;
     teamRounds: number;
     teamMaxRounds: number;
