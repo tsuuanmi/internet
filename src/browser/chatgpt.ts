@@ -80,25 +80,18 @@ async function attachedChatGptPromptText(composer: Locator): Promise<string> {
 }
 
 /**
- * ProseMirror represents indentation after an empty paragraph with non-breaking
- * spaces. Treat only that editor-level space substitution as equivalent while
- * keeping every other UTF-16 code unit and the complete block structure exact.
+ * ProseMirror serializes some ordinary spaces as non-breaking spaces. Its
+ * choice is context-sensitive (not limited to leading indentation), so compare
+ * the editor's two visually equivalent space encodings as the same character.
+ * Every non-space code unit and the complete block structure remain exact.
  */
-function isLeadingIndentation(text: string, index: number): boolean {
-	for (let cursor = index - 1; cursor >= 0 && text[cursor] !== "\n"; cursor -= 1) {
-		if (text[cursor] !== " " && text[cursor] !== "\u00a0") return false;
-	}
-	return true;
-}
-
 export function chatgptPromptTextMatches(prompt: string, observed: string): boolean {
 	if (prompt.length !== observed.length) return false;
 	for (let index = 0; index < prompt.length; index += 1) {
 		const expected = prompt[index];
 		const actual = observed[index];
 		if (expected === actual) continue;
-		const spaceSubstitution = (expected === " " && actual === "\u00a0") || (expected === "\u00a0" && actual === " ");
-		if (spaceSubstitution && isLeadingIndentation(prompt, index) && isLeadingIndentation(observed, index)) continue;
+		if ((expected === " " && actual === "\u00a0") || (expected === "\u00a0" && actual === " ")) continue;
 		return false;
 	}
 	return true;
