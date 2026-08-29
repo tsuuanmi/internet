@@ -39,7 +39,15 @@ export async function geminiStartResearchPlan(page) {
     try {
         await start.waitFor({ state: "visible", timeout: GEMINI_RESEARCH_PLAN_TIMEOUT_MS });
         await start.press("Enter");
-        await start.waitFor({ state: "hidden", timeout: 10_000 });
+        const deadline = Date.now() + 10_000;
+        while (Date.now() < deadline) {
+            if (!(await start.isVisible().catch(() => false)))
+                return;
+            if (await start.isDisabled().catch(() => false))
+                return;
+            await page.waitForTimeout(100);
+        }
+        throw new Error("Start research stayed enabled after activation");
     }
     catch (error) {
         throw new InternetError("provider_error", `Gemini Deep research did not expose a usable Start research confirmation within ${GEMINI_RESEARCH_PLAN_TIMEOUT_MS}ms${error instanceof Error ? ` (${error.message})` : ""}`);
