@@ -33,6 +33,8 @@ export interface BrowserConfig {
 	remoteLoginPort: number;
 	/** Max time for one browser chat turn to reach completion (ms). */
 	turnTimeoutMs: number;
+	/** Max time for one provider Deep Research run to reach completion (ms). */
+	researchTimeoutMs: number;
 	/** Completion-poll interval (ms). */
 	pollMs: number;
 	/** How long the rendered response must stay unchanged before it is "done" (ms). */
@@ -71,6 +73,7 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	remoteLoginPort: 39_000,
 	// Shared by ChatGPT and Gemini browser turns.
 	turnTimeoutMs: 300_000,
+	researchTimeoutMs: 1_800_000,
 	pollMs: 200,
 	stableMs: 1_500,
 	closeAfterMs: 1_800_000,
@@ -96,6 +99,7 @@ export const Config = S.object({
 	loginTimeoutMs: S.number().default(DEFAULT_CONFIG.loginTimeoutMs),
 	remoteLoginPort: S.number().default(DEFAULT_CONFIG.remoteLoginPort),
 	turnTimeoutMs: S.number().default(DEFAULT_CONFIG.turnTimeoutMs),
+	researchTimeoutMs: S.number().default(DEFAULT_CONFIG.researchTimeoutMs),
 	pollMs: S.number().default(DEFAULT_CONFIG.pollMs),
 	stableMs: S.number().default(DEFAULT_CONFIG.stableMs),
 	closeAfterMs: S.number().default(DEFAULT_CONFIG.closeAfterMs),
@@ -156,6 +160,11 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 	if (teamRounds > teamMaxRounds) {
 		throw new InternetError("config_error", "browser config teamRounds must not exceed teamMaxRounds");
 	}
+	const researchTimeoutMs = asPositiveInteger(
+		input.researchTimeoutMs,
+		DEFAULT_CONFIG.researchTimeoutMs,
+		"researchTimeoutMs",
+	);
 	return {
 		chromePath:
 			typeof input.chromePath === "string" && input.chromePath.length > 0 ? expandHome(input.chromePath) : undefined,
@@ -168,6 +177,7 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 		loginTimeoutMs: asPositiveInteger(input.loginTimeoutMs, DEFAULT_CONFIG.loginTimeoutMs, "loginTimeoutMs"),
 		remoteLoginPort,
 		turnTimeoutMs: asPositiveInteger(input.turnTimeoutMs, DEFAULT_CONFIG.turnTimeoutMs, "turnTimeoutMs"),
+		researchTimeoutMs,
 		pollMs: asPositiveInteger(input.pollMs, DEFAULT_CONFIG.pollMs, "pollMs"),
 		stableMs: asPositiveInteger(input.stableMs, DEFAULT_CONFIG.stableMs, "stableMs"),
 		closeAfterMs: asPositiveInteger(input.closeAfterMs, DEFAULT_CONFIG.closeAfterMs, "closeAfterMs"),

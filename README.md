@@ -10,6 +10,7 @@ conversations, and visible browser inspection without running a separate daemon.
 
 - **`browser_chat`** — ask ChatGPT or Gemini through the authenticated website.
 - **`browser_team`** — run an ordered ChatGPT/Gemini debate and optional final synthesis.
+- **`internet_research`** — run provider-native Deep Research in one or both providers.
 - **`internet_browser`** — sign in, inspect account state, or stop a provider browser.
 - **`/internet <question>`** — ask ChatGPT directly from the conversation UI without an agent model turn.
 - **Portable accounts** — copy only `~/.dsh/internet/accounts/` to move authenticated state.
@@ -46,6 +47,23 @@ ChatGPT turns select and verify `chatgptThinkingLevel` before every prompt. The 
 contains both a reasoning slider and nested model choices; the driver operates only the slider and never
 uses model radio items as reasoning levels. Prompt text is inserted through the live editor input path,
 read back exactly, and submitted only after the semantic **Send prompt** action replaces Start Voice.
+
+### `internet_research`
+
+```text
+internet_research {
+  query: string,
+  providers?: ["chatgpt-web", "gemini-web"],
+  name?: string,
+  visible?: boolean
+}
+```
+
+This enables the provider-native Deep Research mode before submitting the query. It may run for up to
+`researchTimeoutMs` (30 minutes by default) and returns one independent result per provider; one provider
+failure preserves the other as `partial_success`. Research threads use an isolated durable owner key based
+on `name`, so they never share a normal `browser_chat` conversation. Deep Research availability depends on
+the signed-in provider account; the tool fails explicitly rather than downgrading to ordinary chat.
 
 ### `browser_team`
 
@@ -143,6 +161,7 @@ plugins:
       loginTimeoutMs: 180000
       remoteLoginPort: 39000
       turnTimeoutMs: 300000
+      researchTimeoutMs: 1800000
       maxConcurrentTurnsPerProvider: 1
       chatgptThinkingLevel: medium
       teamRounds: 2
@@ -161,7 +180,8 @@ the new build. Starting a second web server does not update an already running D
 | `headless` | `false` | Use native Chrome headless when true. Otherwise use headed Chrome on managed Xvfb by default. |
 | `loginTimeoutMs` | `180000` | Interactive login expiry, in milliseconds (3 minutes). |
 | `remoteLoginPort` | `39000` | ChatGPT loopback noVNC port; Gemini uses the next port (`39001`). |
-| `turnTimeoutMs` | `300000` | Maximum duration of one ChatGPT or Gemini provider turn (5 minutes). |
+| `turnTimeoutMs` | `300000` | Maximum duration of one ordinary ChatGPT or Gemini provider turn (5 minutes). |
+| `researchTimeoutMs` | `1800000` | Maximum duration of one provider-native Deep Research run (30 minutes). |
 | `pollMs` | `200` | Response completion polling interval. |
 | `stableMs` | `1500` | Required unchanged, non-running response interval. |
 | `closeAfterMs` | `1800000` | Idle delay before closing an idle provider browser pool. |

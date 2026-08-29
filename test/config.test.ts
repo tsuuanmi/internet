@@ -13,6 +13,7 @@ describe("resolveBrowserConfig", () => {
 	it("defaults remote login to three minutes, provider turns to five minutes, and browser idling to 30 minutes", () => {
 		expect(resolveBrowserConfig({}).loginTimeoutMs).toBe(180_000);
 		expect(resolveBrowserConfig({}).turnTimeoutMs).toBe(300_000);
+		expect(resolveBrowserConfig({}).researchTimeoutMs).toBe(1_800_000);
 		expect(resolveBrowserConfig({}).closeAfterMs).toBe(1_800_000);
 		expect(resolveBrowserConfig({}).maxConcurrentTurnsPerProvider).toBe(1);
 	});
@@ -52,6 +53,7 @@ describe("resolveBrowserConfig", () => {
 
 	it("rejects invalid positive-integer config", () => {
 		expect(() => resolveBrowserConfig({ turnTimeoutMs: -5 })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ researchTimeoutMs: 0 })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerProvider: 0 })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerProvider: Number.NaN })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ remoteLoginPort: 65_535 })).toThrow(/must not exceed 65534/);

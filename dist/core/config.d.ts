@@ -24,6 +24,8 @@ export interface BrowserConfig {
     remoteLoginPort: number;
     /** Max time for one browser chat turn to reach completion (ms). */
     turnTimeoutMs: number;
+    /** Max time for one provider Deep Research run to reach completion (ms). */
+    researchTimeoutMs: number;
     /** Completion-poll interval (ms). */
     pollMs: number;
     /** How long the rendered response must stay unchanged before it is "done" (ms). */
@@ -61,6 +63,7 @@ export declare const Config: import("@deepseek-ai/schemastery").Schema<{
     loginTimeoutMs: number;
     remoteLoginPort: number;
     turnTimeoutMs: number;
+    researchTimeoutMs: number;
     pollMs: number;
     stableMs: number;
     closeAfterMs: number;

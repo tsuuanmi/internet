@@ -13,6 +13,8 @@ provider interaction contracts, durable conversations, and `browser_team` orches
   submission, assistant-turn snapshots, and completion state.
 - `src/browser/gemini.ts` — Gemini authentication, prompt submission, response snapshots, and completion
   state.
+- `src/browser/chatgpt-research.ts` and `gemini-research.ts` — provider-native Deep Research activation
+  contracts and verified composer-mode state.
 - `src/browser/accounts.ts` — versioned portable account inspection, private writes, and IndexedDB-aware
   storage-state capture.
 - `src/browser/conversations.ts` — private, hashed DSH-session-to-provider-conversation bindings.
@@ -23,7 +25,8 @@ provider interaction contracts, durable conversations, and `browser_team` orches
 - `src/browser/submission.ts` — semantic enabled-state waiting, including `aria-disabled`.
 - `src/team/orchestrator.ts` — provider ordering, debate prompts, team session isolation, transcript, and
   synthesis.
-- `src/tools/` — DSH definitions for `browser_chat`, `browser_team`, and `internet_browser`.
+- `src/tools/` — DSH definitions for `browser_chat`, `browser_team`, `internet_research`, and
+  `internet_browser`.
 - `src/commands/internet.ts` — human `/internet` command backed by ChatGPT.
 - `src/client.ts` — DSH-side command renderer.
 - `src/remote-login-client.ts` — isolated noVNC page with Save and Cancel controls; it is not part of the
@@ -74,6 +77,16 @@ browser_chat { model, prompt, visible? }
 `/internet <question>` enters the same ChatGPT path with
 `sessionId = String(invocation.agent.id)`, bypasses an agent model turn, and returns markdown to the DSH
 client command renderer.
+
+## Deep Research request flow
+
+`internet_research { query, providers?, name?, visible? }` derives a separate owner key:
+`<agent-id>:research:<name>`. It invokes selected providers concurrently, while each provider still holds
+its ordinary serialized browser lease. Before submission, each adapter enables and verifies its native Deep
+Research composer state. The normal five-minute turn deadline is replaced by `researchTimeoutMs` (30 minutes
+by default). Every provider result retains its own markdown and native URL; a completed provider is returned
+even when the other result fails (`partial_success`). The driver never retries after a verified Send action,
+avoiding duplicate costly research runs.
 
 ## ChatGPT turn contract
 

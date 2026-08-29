@@ -6,6 +6,7 @@ import { resolveBrowserConfig, type WebProvider } from "#internet/core/config";
 import { defineInternetBrowserTool } from "#internet/tools/browser";
 import { defineBrowserChatTool } from "#internet/tools/browser-chat";
 import { defineBrowserTeamTool } from "#internet/tools/browser-team";
+import { defineInternetResearchTool } from "#internet/tools/internet-research";
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = "internet";
@@ -20,6 +21,9 @@ const BROWSER_CHAT_GUIDANCE = [
 	"If a provider is missing or requires reauthentication, use internet_browser status and then login. On a desktop, the user signs in through dedicated normal Chrome and closes it completely. On a displayless server, or when remote: true is requested, relay the returned SSH port-forward command and complete tokenized noVNC URL; tell the user to sign in, press Save account, and check status until ready.",
 	"browser_chat cannot read local files or search the web by itself. Paste required material into the prompt and gather current sources with web_search or web_fetch first.",
 ].join(" ");
+
+const INTERNET_RESEARCH_GUIDANCE =
+	"Use internet_research for provider-native Deep Research rather than ordinary browser_chat when the user needs a sourced, long-running investigation. It can run for up to 30 minutes, isolates its durable provider conversations under a research name, and may return partial success when only one provider completes. Do not use it for ordinary questions or as a substitute for web_search; provider feature availability is entitlement-dependent.";
 
 const BROWSER_TEAM_GUIDANCE = [
 	"Use browser_team when multiple independent web-model perspectives should be debated and merged: design decisions, tradeoff analysis, brainstorming, code or document review, second opinions, and adversarial review.",
@@ -62,7 +66,13 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 	if (allowed.size === 0) return;
 
 	ctx.tools.register(defineBrowserChatTool(manager, config.turnTimeoutMs, allowed));
+	ctx.tools.register(defineInternetResearchTool(manager, config, allowed));
 	ctx.tools.register(defineInternetBrowserTool(manager, allowed));
+	ctx.systemPrompt?.section?.({
+		name: "tool:internet_research",
+		order: 119,
+		text: INTERNET_RESEARCH_GUIDANCE,
+	});
 	if (allowed.size >= 2) {
 		ctx.tools.register(defineBrowserTeamTool(manager, config, allowed));
 		ctx.systemPrompt?.section?.({
@@ -92,4 +102,4 @@ export type {
 } from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
 export type { TeamInput } from "#internet/tools/args";
-export { parseChatArgs, parseTeamArgs } from "#internet/tools/args";
+export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";

@@ -34,5 +34,5 @@ export { InternetError, isInternetError } from "#internet/core/errors";
 export type { OtherContribution, TeamFailure, TeamOptions, TeamResult, TeamSuccess, TeamTurn, } from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
 export type { TeamInput } from "#internet/tools/args";
-export { parseChatArgs, parseTeamArgs } from "#internet/tools/args";
+export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 //# sourceMappingURL=index.d.ts.map

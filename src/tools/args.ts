@@ -28,6 +28,50 @@ export function parseChatArgs(args: Record<string, unknown>): ChatInput {
 	return { provider: model as WebProvider, prompt, ...(visible === undefined ? {} : { visible }) };
 }
 
+/** Validated `internet_research` arguments. */
+export interface ResearchInput {
+	query: string;
+	name?: string;
+	providers?: WebProvider[];
+	visible?: boolean;
+}
+
+/** Validate research arguments without coupling the parser to DSH packages. */
+export function parseResearchArgs(args: Record<string, unknown>): ResearchInput {
+	const query = args.query;
+	if (typeof query !== "string" || query.trim().length === 0) {
+		throw new Error("internet_research query must be a non-empty string");
+	}
+	const name = args.name;
+	if (name !== undefined && (typeof name !== "string" || name.trim().length === 0)) {
+		throw new Error("internet_research name must be a non-empty string");
+	}
+	const visible = args.visible;
+	if (visible !== undefined && typeof visible !== "boolean") {
+		throw new Error("internet_research visible must be a boolean");
+	}
+	const providers = args.providers;
+	if (providers !== undefined) {
+		if (!Array.isArray(providers) || providers.length === 0) {
+			throw new Error("internet_research providers must be a non-empty array");
+		}
+		const seen = new Set<string>();
+		for (const value of providers) {
+			if (typeof value !== "string" || !(WEB_PROVIDERS as readonly string[]).includes(value)) {
+				throw new Error(`internet_research providers must be one of ${WEB_PROVIDERS.join(", ")}`);
+			}
+			if (seen.has(value)) throw new Error("internet_research providers must not contain duplicates");
+			seen.add(value);
+		}
+	}
+	return {
+		query,
+		...(name === undefined ? {} : { name }),
+		...(providers === undefined ? {} : { providers: providers as WebProvider[] }),
+		...(visible === undefined ? {} : { visible }),
+	};
+}
+
 /** Validated `browser_team` arguments. */
 export interface TeamInput {
 	task: string;

@@ -10,6 +10,15 @@ export interface ChatInput {
  * of any DeepSeek Harness import so it is unit-testable without DSH packages.
  */
 export declare function parseChatArgs(args: Record<string, unknown>): ChatInput;
+/** Validated `internet_research` arguments. */
+export interface ResearchInput {
+    query: string;
+    name?: string;
+    providers?: WebProvider[];
+    visible?: boolean;
+}
+/** Validate research arguments without coupling the parser to DSH packages. */
+export declare function parseResearchArgs(args: Record<string, unknown>): ResearchInput;
 /** Validated `browser_team` arguments. */
 export interface TeamInput {
     task: string;

@@ -20,6 +20,7 @@ import {
 	chatgptSnapshot,
 	chatgptWaitAuthenticationAssessment,
 } from "#internet/browser/chatgpt";
+import { chatgptEnableDeepResearch, chatgptSendDeepResearch } from "#internet/browser/chatgpt-research";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import {
@@ -38,6 +39,7 @@ import {
 	geminiSnapshot,
 	geminiWaitAuthenticationAssessment,
 } from "#internet/browser/gemini";
+import { geminiEnableDeepResearch } from "#internet/browser/gemini-research";
 import { type ProviderLease, ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { ensureLoginProfileDirectory, type ProviderLocations, providerLocations } from "#internet/browser/storage";
@@ -51,6 +53,10 @@ export interface ChatRequest {
 	sessionId: string;
 	/** Show automated Chrome on the user-managed display instead of managed Xvfb. */
 	visible?: boolean;
+	/** Enables provider Deep Research before this request is submitted. */
+	research?: boolean;
+	/** Override the normal-turn completion deadline for a long research run. */
+	timeoutMs?: number;
 	signal?: AbortSignal;
 }
 
@@ -711,6 +717,11 @@ export class BrowserManager {
 		};
 	}
 
+	/** Run one long provider Deep Research request in an isolated durable conversation. */
+	async research(provider: WebProvider, request: ChatRequest): Promise<ChatResult> {
+		return this.chat(provider, { ...request, research: true, timeoutMs: this.config.researchTimeoutMs });
+	}
+
 	/** Run one browser chat turn against the provider and return rendered markdown. */
 	async chat(provider: WebProvider, request: ChatRequest): Promise<ChatResult> {
 		if (this.disposed) throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
@@ -797,7 +808,7 @@ export class BrowserManager {
 			}
 
 			const waitOptions = {
-				timeoutMs: this.config.turnTimeoutMs,
+				timeoutMs: request.timeoutMs ?? this.config.turnTimeoutMs,
 				pollMs: this.config.pollMs,
 				stableMs: this.config.stableMs,
 				signal: lease.signal,
@@ -806,8 +817,13 @@ export class BrowserManager {
 			let conversationId: string | undefined;
 			if (provider === "chatgpt-web") {
 				const previousTurnText = await chatgptLastAssistantTurnText(page);
-				await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
-				await chatgptSend(page, request.prompt);
+				if (request.research === true) {
+					await chatgptEnableDeepResearch(page);
+					await chatgptSendDeepResearch(page, request.prompt);
+				} else {
+					await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
+					await chatgptSend(page, request.prompt);
+				}
 				text = await waitForStableCompletion(() => chatgptSnapshot(page!, previousTurnText), waitOptions);
 				const conversation = await this.waitForChatGptConversationUrl(
 					page,
@@ -825,6 +841,7 @@ export class BrowserManager {
 				conversationId = binding.conversationId;
 			} else {
 				const previousTurnText = await geminiLastResponseText(page);
+				if (request.research === true) await geminiEnableDeepResearch(page);
 				await geminiSend(page, request.prompt);
 				text = await waitForStableCompletion(() => geminiSnapshot(page!, previousTurnText), waitOptions);
 				const conversation = await this.waitForGeminiConversationUrl(

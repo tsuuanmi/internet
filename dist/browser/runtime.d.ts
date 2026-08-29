@@ -7,6 +7,10 @@ export interface ChatRequest {
     sessionId: string;
     /** Show automated Chrome on the user-managed display instead of managed Xvfb. */
     visible?: boolean;
+    /** Enables provider Deep Research before this request is submitted. */
+    research?: boolean;
+    /** Override the normal-turn completion deadline for a long research run. */
+    timeoutMs?: number;
     signal?: AbortSignal;
 }
 export interface ChatResult {
@@ -100,6 +104,8 @@ export declare class BrowserManager {
     /** Report persisted account and active remote-login state. */
     status(provider: WebProvider): Promise<ProviderStatus>;
     private providerStatus;
+    /** Run one long provider Deep Research request in an isolated durable conversation. */
+    research(provider: WebProvider, request: ChatRequest): Promise<ChatResult>;
     /** Run one browser chat turn against the provider and return rendered markdown. */
     chat(provider: WebProvider, request: ChatRequest): Promise<ChatResult>;
     private chatProvider;

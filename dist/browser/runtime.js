@@ -4,11 +4,13 @@ import { join } from "node:path";
 import { chromium } from "patchright-core";
 import { AccountStore, capturePortableStorageState, captureProfileBootstrapState, } from "#internet/browser/accounts";
 import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText, chatgptSelectThinkingLevel, chatgptSend, chatgptSnapshot, chatgptWaitAuthenticationAssessment, } from "#internet/browser/chatgpt";
+import { chatgptEnableDeepResearch, chatgptSendDeepResearch } from "#internet/browser/chatgpt-research";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import { GEMINI_HOME_URL, geminiIsAuthenticated, geminiLastResponseText, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
+import { geminiEnableDeepResearch } from "#internet/browser/gemini-research";
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { ensureLoginProfileDirectory, providerLocations } from "#internet/browser/storage";
@@ -553,6 +555,10 @@ export class BrowserManager {
             ...(remoteLogin === undefined ? {} : { remoteLogin }),
         };
     }
+    /** Run one long provider Deep Research request in an isolated durable conversation. */
+    async research(provider, request) {
+        return this.chat(provider, { ...request, research: true, timeoutMs: this.config.researchTimeoutMs });
+    }
     /** Run one browser chat turn against the provider and return rendered markdown. */
     async chat(provider, request) {
         if (this.disposed)
@@ -621,7 +627,7 @@ export class BrowserManager {
                 }
             }
             const waitOptions = {
-                timeoutMs: this.config.turnTimeoutMs,
+                timeoutMs: request.timeoutMs ?? this.config.turnTimeoutMs,
                 pollMs: this.config.pollMs,
                 stableMs: this.config.stableMs,
                 signal: lease.signal,
@@ -630,8 +636,14 @@ export class BrowserManager {
             let conversationId;
             if (provider === "chatgpt-web") {
                 const previousTurnText = await chatgptLastAssistantTurnText(page);
-                await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
-                await chatgptSend(page, request.prompt);
+                if (request.research === true) {
+                    await chatgptEnableDeepResearch(page);
+                    await chatgptSendDeepResearch(page, request.prompt);
+                }
+                else {
+                    await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
+                    await chatgptSend(page, request.prompt);
+                }
                 text = await waitForStableCompletion(() => chatgptSnapshot(page, previousTurnText), waitOptions);
                 const conversation = await this.waitForChatGptConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), lease.signal);
                 try {
@@ -644,6 +656,8 @@ export class BrowserManager {
             }
             else {
                 const previousTurnText = await geminiLastResponseText(page);
+                if (request.research === true)
+                    await geminiEnableDeepResearch(page);
                 await geminiSend(page, request.prompt);
                 text = await waitForStableCompletion(() => geminiSnapshot(page, previousTurnText), waitOptions);
                 const conversation = await this.waitForGeminiConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), lease.signal);
