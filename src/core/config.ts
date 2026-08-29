@@ -67,7 +67,7 @@ function dshHome(): string {
 export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	dataDir: join(dshHome(), "internet"),
 	headless: false,
-	loginTimeoutMs: 600_000,
+	loginTimeoutMs: 180_000,
 	remoteLoginPort: 39_000,
 	turnTimeoutMs: 180_000,
 	pollMs: 200,

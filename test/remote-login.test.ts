@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -76,6 +76,31 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 		}
 		expect(closed).toHaveBeenCalledTimes(1);
 		expect(readdirSync(join(files.dataDir, "remote-login"))).toEqual([]);
+	}, 20_000);
+
+	it("returns tunnel instructions before it launches Chrome", async () => {
+		const files = fixture();
+		const marker = join(files.dataDir, "chrome-started");
+		writeFileSync(
+			files.chromePath,
+			`#!/bin/sh\ntouch ${marker}\ntrap 'exit 0' TERM INT\nwhile :; do sleep 1; done\n`,
+		);
+		const session = await RemoteLoginSession.start({
+			provider: "chatgpt-web",
+			...files,
+			homeUrl: "https://chatgpt.com/",
+			timeoutMs: 10_000,
+			finalize: async () => {},
+			clientScript: "export {};",
+		});
+		try {
+			const status = session.status();
+			expect(status).toMatchObject({ state: "waiting", port: expect.any(Number), url: expect.any(String) });
+			expect(existsSync(marker)).toBe(false);
+			await vi.waitFor(() => expect(existsSync(marker)).toBe(true), { timeout: 10_000 });
+		} finally {
+			await session.dispose();
+		}
 	}, 20_000);
 
 	it("reports missing VNC candidates without crashing the host", async () => {

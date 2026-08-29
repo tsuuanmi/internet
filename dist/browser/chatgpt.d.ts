@@ -9,15 +9,18 @@ export declare const CHATGPT_STOP_BUTTON_SELECTOR = "[data-testid=\"stop-button\
 export declare const CHATGPT_ACCOUNT_SELECTOR = "[data-testid=\"accounts-profile-button\"]";
 /** The reasoning-level composer pill in the current ChatGPT UI. */
 export declare const CHATGPT_EFFORT_CONTROL_SELECTOR = "button.__composer-pill.__composer-pill--neutral[aria-haspopup=\"menu\"][data-tone=\"neutral\"]";
-/** The open model/effort menu (menuitemradio list or reasoning-effort slider). */
+/** The open model/effort menu, whose stable root is separate from its variable contents. */
 export declare const CHATGPT_EFFORT_MENU_SELECTOR: string;
+/** Payment-review dialog that can cover the ChatGPT composer after page load. */
+export declare const CHATGPT_SUBSCRIPTION_FAILURE_SELECTOR = "#modal-subscription-failure";
+export declare const CHATGPT_SUBSCRIPTION_FAILURE_CLOSE_SELECTOR = "button[data-testid=\"close-button\"][aria-label=\"Close\"]";
 /** One reasoning-effort choice in the menu (Instant, Medium, High, …). */
 export declare const CHATGPT_EFFORT_ITEM_SELECTOR = "[role=\"menuitemradio\"]";
 /** The reasoning-effort slider control, when the account renders a slider. */
 export declare const CHATGPT_EFFORT_SLIDER_SELECTOR = "[data-model-reasoning-effort-slider] [role=\"slider\"]";
-/** ChatGPT exposes exactly three supported reasoning-effort options. */
-export declare const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 3;
-/** UI index of each supported thinking level in the ChatGPT model switcher. */
+/** Bound the inspected provider slider range while allowing provider-only intermediate positions. */
+export declare const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 8;
+/** UI index of each supported thinking level in legacy three-choice menus. */
 export declare const CHATGPT_THINKING_LEVEL_INDEX: Record<ChatGptThinkingLevel, number>;
 export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
 /** True when ChatGPT exposes both its composer and signed-in account control. */

@@ -71,6 +71,8 @@ describe("internet_browser", () => {
 		expect(browser.login).toHaveBeenCalledWith("chatgpt-web", { remote: true });
 		expect(result).toMatchObject({ ok: true, state: "missing", remoteLogin });
 		expect((result as { message: string }).message).toContain("Save account");
+		const [{ text }] = tool.output.render({}, result as never) as [{ type: "text"; text: string }];
+		expect(text.indexOf("SSH:")).toBeLessThan(text.indexOf("URL:"));
 	});
 
 	it("rejects remote outside the login action", async () => {

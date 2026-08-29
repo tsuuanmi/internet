@@ -125,9 +125,9 @@ export class RemoteLoginSession {
             ...(this.httpPort === undefined
                 ? {}
                 : {
+                    sshCommand: `ssh -N -L ${this.httpPort}:${LOOPBACK}:${this.httpPort} <user>@<server>`,
                     url: `http://${LOOPBACK}:${this.httpPort}/${this.token}/`,
                     port: this.httpPort,
-                    sshCommand: `ssh -N -L ${this.httpPort}:${LOOPBACK}:${this.httpPort} <user>@<server>`,
                 }),
             ...(this.state === "waiting" ? { expiresAt: this.expiresAt } : {}),
         };
@@ -186,13 +186,28 @@ export class RemoteLoginSession {
             throw new Error("remote login requires a managed virtual display");
         await this.startVnc(display.env);
         await this.startServer();
-        await this.startChrome(display.env);
         this.expiresAt = new Date(Date.now() + this.options.timeoutMs).toISOString();
-        this.message = "Remote desktop ready. Sign in, then press Save account.";
+        this.message =
+            "Remote desktop ready. Establish the SSH tunnel, open the URL, then sign in and press Save account.";
         this.timeout = setTimeout(() => {
             void this.fail("Remote login timed out before the account was saved.");
         }, this.options.timeoutMs);
         this.timeout.unref();
+        // Yield the ready tunnel details to the tool caller before Chrome begins drawing into noVNC.
+        this.scheduleChromeStart(display.env);
+    }
+    scheduleChromeStart(env) {
+        this.chromeStartTimer = setImmediate(() => {
+            this.chromeStartTimer = undefined;
+            if (this.state !== "waiting")
+                return;
+            void this.startChrome(env).catch((error) => {
+                if (this.state !== "waiting")
+                    return;
+                const detail = error instanceof Error ? error.message : String(error);
+                void this.fail(`Login Chrome failed: ${detail}`);
+            });
+        });
     }
     async startVnc(displayEnv) {
         const display = displayEnv.DISPLAY;
@@ -406,6 +421,9 @@ export class RemoteLoginSession {
     }
     async closeDesktopOnce() {
         this.intentionalExit = true;
+        if (this.chromeStartTimer !== undefined)
+            clearImmediate(this.chromeStartTimer);
+        this.chromeStartTimer = undefined;
         await this.terminate(this.chrome);
         await this.terminate(this.vnc);
         this.chrome = undefined;

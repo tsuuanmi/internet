@@ -8,6 +8,7 @@ import {
 	CHATGPT_EFFORT_MENU_SELECTOR,
 	CHATGPT_EFFORT_SLIDER_SELECTOR,
 	CHATGPT_STOP_BUTTON_SELECTOR,
+	CHATGPT_SUBSCRIPTION_FAILURE_SELECTOR,
 	CHATGPT_THINKING_LEVEL_INDEX,
 	chatgptAuthenticationAssessment,
 	chatgptLastAssistantTurnText,
@@ -106,6 +107,9 @@ function fakeThinkingPickerPage(initialLevel: "Instant" | "Medium" | "High" = "I
 		locator(selector: string) {
 			if (selector === CHATGPT_COMPOSER_SELECTOR) return { filter: () => ({ first: () => composer }) };
 			if (selector === CHATGPT_EFFORT_MENU_SELECTOR) return { last: () => effortMenu };
+			if (selector === CHATGPT_SUBSCRIPTION_FAILURE_SELECTOR) {
+				return { filter: () => ({ last: () => ({ isVisible: async () => false }) }) };
+			}
 			if (selector === CHATGPT_EFFORT_SLIDER_SELECTOR) {
 				return { filter: () => ({ last: () => ({ waitFor: () => new Promise<never>(() => {}) }) }) };
 			}
@@ -325,15 +329,67 @@ describe("chatgptSelectThinkingLevel", () => {
 		expect(closePicker).toHaveBeenCalledWith("Escape");
 	});
 
-	it("uses the reasoning slider instead of nested model radio items", async () => {
+	it("closes the payment-review modal before opening the picker", async () => {
+		const closeModal = vi.fn(async () => {});
+		const modalWaitFor = vi.fn(async () => {});
+		const modal = {
+			isVisible: vi.fn(async () => true),
+			locator: vi.fn(() => ({ last: () => ({ press: closeModal }) })),
+			waitFor: modalWaitFor,
+		};
+		const effortChoice = { press: vi.fn(async () => {}) };
+		const effortMenu = {
+			isVisible: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
+			waitFor: vi.fn(async () => {}),
+			locator: vi.fn((selector: string) => {
+				if (selector === CHATGPT_EFFORT_SLIDER_SELECTOR) {
+					return { last: () => ({ waitFor: async () => Promise.reject(new Error("no slider")) }) };
+				}
+				if (selector === CHATGPT_EFFORT_ITEM_SELECTOR) {
+					return { nth: () => effortChoice, allInnerTexts: async () => ["Instant", "Medium", "High"] };
+				}
+				throw new Error(`unexpected effort-menu selector ${selector}`);
+			}),
+		};
+		const effortControl = {
+			waitFor: vi.fn(async () => {}),
+			getAttribute: vi.fn(async () => "false"),
+			click: vi.fn(async () => {}),
+			innerText: vi.fn(async () => "Medium"),
+		};
+		const composer = {
+			locator: vi.fn(() => ({ locator: vi.fn(() => ({ last: () => effortControl })) })),
+		};
+		const page = {
+			locator(selector: string) {
+				if (selector === CHATGPT_COMPOSER_SELECTOR) return { filter: () => ({ first: () => composer }) };
+				if (selector === CHATGPT_EFFORT_MENU_SELECTOR) return { last: () => effortMenu };
+				if (selector === CHATGPT_SUBSCRIPTION_FAILURE_SELECTOR) return { filter: () => ({ last: () => modal }) };
+				throw new Error(`unexpected selector ${selector}`);
+			},
+			keyboard: { press: vi.fn(async () => {}) },
+		} as unknown as Page;
+
+		await chatgptSelectThinkingLevel(page, "medium");
+
+		expect(closeModal).toHaveBeenCalledWith("Enter");
+		expect(modalWaitFor).toHaveBeenCalledWith({ state: "hidden", timeout: 10_000 });
+		expect(effortControl.click).toHaveBeenCalledOnce();
+	});
+
+	it("discovers High through a four-position reasoning slider instead of model radio items", async () => {
+		const labels = ["Instant", "Medium", "High", "Extra"];
+		let sliderValue = 1;
 		const modelChoiceIndex = vi.fn(() => ({ press: vi.fn(async () => {}) }));
-		const sliderControlPress = vi.fn(async () => {});
+		const sliderControlPress = vi.fn(async (key: "ArrowLeft" | "ArrowRight") => {
+			sliderValue += key === "ArrowRight" ? 1 : -1;
+		});
 		const effortSlider = {
 			waitFor: vi.fn(async () => {}),
 			getAttribute: vi.fn(async (name: string) => {
 				if (name === "aria-valuemin") return "0";
-				if (name === "aria-valuemax") return "2";
-				if (name === "aria-valuenow") return "1";
+				if (name === "aria-valuemax") return "3";
+				if (name === "aria-valuenow") return String(sliderValue);
 				return null;
 			}),
 			locator: vi.fn(() => ({ press: sliderControlPress })),
@@ -354,7 +410,8 @@ describe("chatgptSelectThinkingLevel", () => {
 		const effortControl = {
 			waitFor: vi.fn(async () => {}),
 			getAttribute: vi.fn(async () => "false"),
-			innerText: vi.fn(async () => "Medium"),
+			innerText: vi.fn(async () => labels[sliderValue] ?? ""),
+			click: vi.fn(async () => {}),
 			press: vi.fn(async () => {}),
 		};
 		const composer = {
@@ -365,17 +422,22 @@ describe("chatgptSelectThinkingLevel", () => {
 			locator(selector: string) {
 				if (selector === CHATGPT_COMPOSER_SELECTOR) return { filter: () => ({ first: () => composer }) };
 				if (selector === CHATGPT_EFFORT_MENU_SELECTOR) return { last: () => effortMenu };
+				if (selector === CHATGPT_SUBSCRIPTION_FAILURE_SELECTOR) {
+					return { filter: () => ({ last: () => ({ isVisible: async () => false }) }) };
+				}
 				throw new Error(`unexpected selector ${selector}`);
 			},
 			keyboard: { press: closePicker },
 		} as unknown as Page;
 
-		await chatgptSelectThinkingLevel(page, "medium");
+		await chatgptSelectThinkingLevel(page, "high");
 
 		expect(effortSlider.getAttribute).toHaveBeenCalledWith("aria-valuenow");
 		expect(modelChoiceIndex).not.toHaveBeenCalled();
 		expect(modelChoices.allInnerTexts).not.toHaveBeenCalled();
-		expect(sliderControlPress).not.toHaveBeenCalled();
+		expect(sliderControlPress).toHaveBeenNthCalledWith(1, "ArrowLeft");
+		expect(sliderControlPress).toHaveBeenNthCalledWith(2, "ArrowRight");
+		expect(sliderControlPress).toHaveBeenNthCalledWith(3, "ArrowRight");
 		expect(closePicker).toHaveBeenCalledWith("Escape");
 	});
 
@@ -405,7 +467,11 @@ describe("parseChatGptEffortSliderState", () => {
 		expect(parseChatGptEffortSliderState("0", "4", "-1")).toBeUndefined();
 	});
 
-	it("returns undefined when the slider exposes unsupported levels", () => {
-		expect(parseChatGptEffortSliderState("0", "3", "1")).toBeUndefined();
+	it("accepts provider sliders with intermediate positions", () => {
+		expect(parseChatGptEffortSliderState("0", "3", "1")).toEqual({ min: 0, max: 3, value: 1 });
+	});
+
+	it("returns undefined when the slider exposes too many positions", () => {
+		expect(parseChatGptEffortSliderState("0", "8", "1")).toBeUndefined();
 	});
 });

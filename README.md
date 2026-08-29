@@ -100,7 +100,8 @@ internet_browser {
 ```
 
 - **`login`** opens dedicated normal Chrome on an interactive desktop. On displayless Linux, or when
-  `remote: true`, it starts an SSH-forwarded noVNC login and returns a loopback URL and SSH command.
+  `remote: true`, it first returns the SSH-forwarding command and tokenized loopback URL, then starts the
+  noVNC Chrome session.
 - **`status`** reports the local account state and any active remote-login state.
 - **`stop`** closes the provider's inference browser and cancels a waiting remote login.
 
@@ -139,7 +140,7 @@ plugins:
     config:
       dataDir: "~/.dsh/internet"
       headless: false
-      loginTimeoutMs: 600000
+      loginTimeoutMs: 180000
       remoteLoginPort: 39000
       turnTimeoutMs: 180000
       maxConcurrentTurnsPerProvider: 1
@@ -158,7 +159,7 @@ the new build. Starting a second web server does not update an already running D
 | `chromePath` | auto-discovered | Explicit Google Chrome executable path. |
 | `dataDir` | `~/.dsh/internet` | Accounts, local login recovery profiles, conversations, and remote-login state. |
 | `headless` | `false` | Use native Chrome headless when true. Otherwise use headed Chrome on managed Xvfb by default. |
-| `loginTimeoutMs` | `600000` | Interactive login expiry, in milliseconds. |
+| `loginTimeoutMs` | `180000` | Interactive login expiry, in milliseconds (3 minutes). |
 | `remoteLoginPort` | `39000` | ChatGPT loopback noVNC port; Gemini uses the next port (`39001`). |
 | `turnTimeoutMs` | `180000` | Maximum duration of one provider turn. |
 | `pollMs` | `200` | Response completion polling interval. |

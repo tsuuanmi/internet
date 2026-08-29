@@ -57,9 +57,9 @@ export function defineInternetBrowserTool(manager, allowed) {
                         properties: {
                             state: { type: "string", required: true },
                             message: { type: "string", required: true },
+                            sshCommand: { type: "string" },
                             url: { type: "string" },
                             port: { type: "number" },
-                            sshCommand: { type: "string" },
                             expiresAt: { type: "string" },
                         },
                     },
@@ -74,10 +74,11 @@ export function defineInternetBrowserTool(manager, allowed) {
                 if (v.remoteLogin?.state !== undefined)
                     summary.push(`remote=${String(v.remoteLogin.state)}`);
                 const lines = [summary.join(" · ")];
-                if (v.remoteLogin?.url !== undefined)
-                    lines.push(`URL: ${String(v.remoteLogin.url)}`);
+                // The tunnel must exist before the loopback URL can be opened locally.
                 if (v.remoteLogin?.sshCommand !== undefined)
                     lines.push(`SSH: ${String(v.remoteLogin.sshCommand)}`);
+                if (v.remoteLogin?.url !== undefined)
+                    lines.push(`URL: ${String(v.remoteLogin.url)}`);
                 if (v.message !== undefined)
                     lines.push(String(v.message));
                 return [{ type: "text", text: lines.join("\n") }];
@@ -117,7 +118,7 @@ export function defineInternetBrowserTool(manager, allowed) {
                         ...(status.account === undefined ? {} : { account: status.account }),
                         ...(remoteLogin === undefined ? {} : { remoteLogin }),
                         message: remoteLogin?.state === "waiting"
-                            ? `Run ${remoteLogin.sshCommand}, open ${remoteLogin.url}, sign in, then press Save account.`
+                            ? `First run ${remoteLogin.sshCommand}, then open ${remoteLogin.url}, sign in, and press Save account. This login expires at ${remoteLogin.expiresAt}.`
                             : (remoteLogin?.message ?? `${provider} portable account is verified and ready.`),
                     };
                 }

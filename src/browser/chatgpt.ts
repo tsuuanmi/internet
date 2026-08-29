@@ -22,11 +22,15 @@ export const CHATGPT_ACCOUNT_SELECTOR = '[data-testid="accounts-profile-button"]
 export const CHATGPT_EFFORT_CONTROL_SELECTOR =
 	'button.__composer-pill.__composer-pill--neutral[aria-haspopup="menu"][data-tone="neutral"]';
 
-/** The open model/effort menu (menuitemradio list or reasoning-effort slider). */
+/** The open model/effort menu, whose stable root is separate from its variable contents. */
 export const CHATGPT_EFFORT_MENU_SELECTOR = [
-	'[data-testid="composer-intelligence-picker-content"]:has([role="menuitemradio"], [data-model-reasoning-effort-slider])',
-	'[role="menu"]:has([role="menuitemradio"], [data-model-reasoning-effort-slider])',
+	'[data-testid="composer-intelligence-picker-content"]',
+	'[role="menu"]',
 ].join(", ");
+
+/** Payment-review dialog that can cover the ChatGPT composer after page load. */
+export const CHATGPT_SUBSCRIPTION_FAILURE_SELECTOR = "#modal-subscription-failure";
+export const CHATGPT_SUBSCRIPTION_FAILURE_CLOSE_SELECTOR = 'button[data-testid="close-button"][aria-label="Close"]';
 
 /** One reasoning-effort choice in the menu (Instant, Medium, High, …). */
 export const CHATGPT_EFFORT_ITEM_SELECTOR = '[role="menuitemradio"]';
@@ -34,10 +38,10 @@ export const CHATGPT_EFFORT_ITEM_SELECTOR = '[role="menuitemradio"]';
 /** The reasoning-effort slider control, when the account renders a slider. */
 export const CHATGPT_EFFORT_SLIDER_SELECTOR = '[data-model-reasoning-effort-slider] [role="slider"]';
 
-/** ChatGPT exposes exactly three supported reasoning-effort options. */
-export const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 3;
+/** Bound the inspected provider slider range while allowing provider-only intermediate positions. */
+export const CHATGPT_EFFORT_SLIDER_MAX_OPTIONS = 8;
 
-/** UI index of each supported thinking level in the ChatGPT model switcher. */
+/** UI index of each supported thinking level in legacy three-choice menus. */
 export const CHATGPT_THINKING_LEVEL_INDEX: Record<ChatGptThinkingLevel, number> = {
 	instant: 0,
 	medium: 1,
@@ -245,6 +249,84 @@ export function parseChatGptEffortSliderState(
 	return { min, max, value };
 }
 
+async function dismissChatGptSubscriptionFailure(page: Page): Promise<boolean> {
+	const modal = page.locator(CHATGPT_SUBSCRIPTION_FAILURE_SELECTOR).filter({ visible: true }).last();
+	if (!(await modal.isVisible().catch(() => false))) return false;
+	const close = modal.locator(CHATGPT_SUBSCRIPTION_FAILURE_CLOSE_SELECTOR).last();
+	try {
+		await close.press("Enter");
+		await modal.waitFor({ state: "hidden", timeout: 10_000 });
+		return true;
+	} catch (error) {
+		const diagnostic = await modal
+			.evaluate((element) => ({
+				text: ((element as HTMLElement).innerText || element.textContent || "").replace(/\s+/g, " ").trim(),
+				outerHtml: element.outerHTML.replace(/\s+/g, " ").slice(0, 2_000),
+			}))
+			.catch((diagnosticError) => ({
+				error: diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError),
+			}));
+		throw new InternetError(
+			"provider_error",
+			`ChatGPT payment-review modal blocked the composer and could not be dismissed: ${JSON.stringify(diagnostic)}` +
+				(error instanceof Error ? ` (${error.message})` : ""),
+		);
+	}
+}
+
+async function readChatGptThinkingLevel(control: Locator): Promise<string> {
+	return (await control.innerText().catch(() => "")).trim();
+}
+
+async function readChatGptEffortSliderLabel(control: Locator, sliderControl: Locator): Promise<string> {
+	const controlLabel = await readChatGptThinkingLevel(control);
+	if ((Object.values(CHATGPT_THINKING_LEVEL_LABEL) as string[]).includes(controlLabel)) return controlLabel;
+	const describedLabel = await sliderControl
+		.evaluate((element) =>
+			(element.getAttribute("aria-describedby") ?? "")
+				.split(/\s+/)
+				.map((id) => document.getElementById(id)?.textContent ?? "")
+				.join(" "),
+		)
+		.catch(() => "");
+	const knownLabel = Object.values(CHATGPT_THINKING_LEVEL_LABEL).find((label) =>
+		new RegExp(`(?:^|\\s)${label}(?:,|\\s|$)`).test(describedLabel),
+	);
+	return knownLabel ?? controlLabel;
+}
+
+async function readChatGptEffortSliderState(slider: Locator): Promise<ChatGptEffortSliderState> {
+	const state = parseChatGptEffortSliderState(
+		await slider.getAttribute("aria-valuemin"),
+		await slider.getAttribute("aria-valuemax"),
+		await slider.getAttribute("aria-valuenow"),
+	);
+	if (!state) throw new InternetError("provider_error", "ChatGPT effort slider exposed an invalid ARIA range");
+	return state;
+}
+
+async function moveChatGptEffortSlider(
+	slider: Locator,
+	control: Locator,
+	key: "ArrowLeft" | "ArrowRight",
+): Promise<ChatGptEffortSliderState> {
+	const before = await readChatGptEffortSliderState(slider);
+	await control.press(key);
+	const expected = before.value + (key === "ArrowRight" ? 1 : -1);
+	const deadline = Date.now() + 5_000;
+	do {
+		const after = await readChatGptEffortSliderState(slider);
+		if (after.value === expected) return after;
+		await sleep(50);
+	} while (Date.now() < deadline);
+	const after = await readChatGptEffortSliderState(slider);
+	throw new InternetError(
+		"provider_error",
+		`ChatGPT effort slider did not move exactly one step with ${key}` +
+			` (before=${before.value}; after=${after.value})`,
+	);
+}
+
 async function verifyChatGptThinkingLevel(control: Locator, level: ChatGptThinkingLevel): Promise<void> {
 	const expected = CHATGPT_THINKING_LEVEL_LABEL[level];
 	const deadline = Date.now() + 40_000;
@@ -290,12 +372,24 @@ export async function chatgptSelectThinkingLevel(page: Page, level: ChatGptThink
 	const effortMenu = page.locator(CHATGPT_EFFORT_MENU_SELECTOR).last();
 	const menuVisible = await effortMenu.isVisible().catch(() => false);
 	const menuExpanded = await effortControl.getAttribute("aria-expanded").catch(() => null);
-	if (!menuVisible && menuExpanded !== "true") {
-		await effortControl.press("Enter");
+	if (!menuVisible || menuExpanded !== "true") {
+		await dismissChatGptSubscriptionFailure(page);
+		try {
+			await effortControl.click({ timeout: 10_000 });
+		} catch (error) {
+			// The payment-review dialog can appear while the pill is becoming actionable.
+			if (!(await dismissChatGptSubscriptionFailure(page))) {
+				throw new InternetError(
+					"provider_error",
+					`ChatGPT model/effort control could not be clicked${error instanceof Error ? ` (${error.message})` : ""}`,
+				);
+			}
+			await effortControl.click({ timeout: 10_000 });
+		}
 	}
 
 	try {
-		await effortMenu.waitFor({ state: "visible", timeout: 70_000 });
+		await effortMenu.waitFor({ state: "visible", timeout: 10_000 });
 	} catch (error) {
 		throw new InternetError(
 			"provider_error",
@@ -326,46 +420,27 @@ export async function chatgptSelectThinkingLevel(page: Page, level: ChatGptThink
 	}
 
 	if (ready === "slider") {
-		let sliderState = parseChatGptEffortSliderState(
-			await effortSlider.getAttribute("aria-valuemin"),
-			await effortSlider.getAttribute("aria-valuemax"),
-			await effortSlider.getAttribute("aria-valuenow"),
-		);
-		if (!sliderState) {
-			throw new InternetError("provider_error", "ChatGPT effort slider exposed an invalid ARIA range");
-		}
-		const targetValue = sliderState.min + targetIndex;
-		if (targetValue > sliderState.max) {
-			throw new InternetError(
-				"provider_error",
-				`ChatGPT effort slider does not expose item index ${targetIndex} (min=${sliderState.min}; max=${sliderState.max})`,
-			);
-		}
+		let sliderState = await readChatGptEffortSliderState(effortSlider);
 		const sliderControl = effortSlider.locator("xpath=ancestor::*[@role='menuitem'][1]");
-		while (sliderState.value !== targetValue) {
-			const direction = targetValue > sliderState.value ? 1 : -1;
-			const key = direction > 0 ? "ArrowRight" : "ArrowLeft";
-			const previousValue = sliderState.value;
-			await sliderControl.press(key);
-			const changeDeadline = Date.now() + 5_000;
-			do {
-				sliderState = parseChatGptEffortSliderState(
-					await effortSlider.getAttribute("aria-valuemin"),
-					await effortSlider.getAttribute("aria-valuemax"),
-					await effortSlider.getAttribute("aria-valuenow"),
-				);
-				if (!sliderState)
-					throw new InternetError("provider_error", "ChatGPT effort slider lost its semantic ARIA state");
-				if (sliderState.value !== previousValue) break;
-				await sleep(50);
-			} while (Date.now() < changeDeadline);
-			if (sliderState.value !== previousValue + direction) {
+		const observed = new Map<number, string>();
+
+		// Provider sliders can expose intermediate positions. Find the configured
+		// semantic label rather than assuming it has a fixed numeric index.
+		while (sliderState.value > sliderState.min) {
+			sliderState = await moveChatGptEffortSlider(effortSlider, sliderControl, "ArrowLeft");
+		}
+		for (;;) {
+			const label = await readChatGptEffortSliderLabel(effortControl, sliderControl);
+			observed.set(sliderState.value, label);
+			if (label === CHATGPT_THINKING_LEVEL_LABEL[level]) break;
+			if (sliderState.value === sliderState.max) {
 				throw new InternetError(
 					"provider_error",
-					`ChatGPT effort slider did not move exactly one step with ${key}` +
-						` (before=${previousValue}; after=${sliderState.value})`,
+					`ChatGPT effort slider did not expose reasoning level ${CHATGPT_THINKING_LEVEL_LABEL[level]}` +
+						` (positions: ${JSON.stringify(Object.fromEntries(observed))})`,
 				);
 			}
+			sliderState = await moveChatGptEffortSlider(effortSlider, sliderControl, "ArrowRight");
 		}
 		await page.keyboard.press("Escape");
 		await verifyChatGptThinkingLevel(effortControl, level);

@@ -4,9 +4,10 @@ export type RemoteLoginState = "waiting" | "finalizing" | "complete" | "failed";
 export interface RemoteLoginStatus {
     state: RemoteLoginState;
     message: string;
+    /** Run this port-forwarding command before opening the loopback URL. */
+    sshCommand?: string;
     url?: string;
     port?: number;
-    sshCommand?: string;
     expiresAt?: string;
 }
 export interface RemoteLoginOptions {
@@ -42,6 +43,7 @@ export declare class RemoteLoginSession {
     private server;
     private websocket;
     private timeout;
+    private chromeStartTimer;
     private closeTimer;
     private desktopCleanup;
     private finalization;
@@ -56,6 +58,7 @@ export declare class RemoteLoginSession {
     cancel(message?: string): Promise<void>;
     dispose(): Promise<void>;
     private initialize;
+    private scheduleChromeStart;
     private startVnc;
     private startServer;
     private startChrome;
