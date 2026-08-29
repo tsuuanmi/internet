@@ -824,7 +824,8 @@ export class BrowserManager {
 					await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
 					await chatgptSend(page, request.prompt);
 				}
-				text = await waitForStableCompletion(() => chatgptSnapshot(page!, previousTurnText), waitOptions);
+				// Persist the native URL immediately after Send so a long-running
+				// Deep Research can be inspected or recovered if observation is cancelled.
 				const conversation = await this.waitForChatGptConversationUrl(
 					page,
 					Math.min(this.config.turnTimeoutMs, 30_000),
@@ -839,12 +840,13 @@ export class BrowserManager {
 					);
 				}
 				conversationId = binding.conversationId;
+				text = await waitForStableCompletion(() => chatgptSnapshot(page!, previousTurnText), waitOptions);
 			} else {
 				const previousTurnText = await geminiLastResponseText(page);
 				if (request.research === true) await geminiEnableDeepResearch(page);
 				await geminiSend(page, request.prompt);
-				if (request.research === true) await geminiStartResearchPlan(page);
-				text = await waitForStableCompletion(() => geminiSnapshot(page!, previousTurnText), waitOptions);
+				// Persist the native URL immediately after Send so a long-running
+				// Deep Research can be inspected or recovered if observation is cancelled.
 				const conversation = await this.waitForGeminiConversationUrl(
 					page,
 					Math.min(this.config.turnTimeoutMs, 30_000),
@@ -859,6 +861,8 @@ export class BrowserManager {
 					);
 				}
 				conversationId = binding.conversationId;
+				if (request.research === true) await geminiStartResearchPlan(page);
+				text = await waitForStableCompletion(() => geminiSnapshot(page!, previousTurnText), waitOptions);
 			}
 			const storageState = await capturePortableStorageState(context);
 			await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);
