@@ -65,18 +65,26 @@ export async function chatgptDeepResearchSnapshot(
 	page: Page,
 	previousReportText?: string,
 ): Promise<CompletionSnapshot> {
-	const reportFrame = page.frames().find((frame) => frame.url() === "about:blank");
-	if (!reportFrame) return { responsePresent: false, text: "", html: "", running: true };
-	const body = reportFrame.locator("body");
-	const [text, html, complete] = await Promise.all([
-		body.innerText().catch(() => ""),
-		body.innerHTML().catch(() => ""),
-		reportFrame
+	let text = "";
+	let html = "";
+	let complete = false;
+	// ChatGPT creates more than one blank child frame. Locate the one that owns
+	// the report's semantic Export action rather than assuming frame position.
+	for (const frame of page.frames()) {
+		if (frame.url() !== "about:blank") continue;
+		const exportCount = await frame
 			.locator(CHATGPT_DEEP_RESEARCH_EXPORT)
-			.filter({ visible: true })
 			.count()
-			.then((count) => count > 0),
-	]);
+			.catch(() => 0);
+		if (exportCount === 0) continue;
+		const body = frame.locator("body");
+		text = await body.innerText().catch(() => "");
+		// The frame HTML includes provider bootstrap data and can be megabytes.
+		// Return rendered report text rather than converting opaque internals.
+		html = "";
+		complete = true;
+		break;
+	}
 	const trimmed = text.trim();
 	const present =
 		trimmed.length > 0 &&
