@@ -5,6 +5,7 @@ import {
 	CHATGPT_SUBSCRIPTION_FAILURE_CLOSE_SELECTOR,
 	CHATGPT_SUBSCRIPTION_FAILURE_SELECTOR,
 } from "#internet/browser/chatgpt";
+import type { CompletionSnapshot } from "#internet/browser/completion";
 import { waitForSendReady } from "#internet/browser/submission";
 import { InternetError } from "#internet/core/errors";
 
@@ -13,6 +14,7 @@ const CHATGPT_DEEP_RESEARCH_OPTION =
 	'[data-composer-plugin-impression-id="connector_openai_deep_research"] > [tabindex="0"]';
 const CHATGPT_DEEP_RESEARCH_PILL =
 	'[data-inline-selection-pill][data-id="plugin:connector_openai_deep_research"][data-system-hint-type="plugin:connector_openai_deep_research"]';
+const CHATGPT_DEEP_RESEARCH_EXPORT = 'button[aria-label="Export"]';
 
 /** Enable ChatGPT Deep Research and verify its provider-owned composer pill. */
 export async function chatgptEnableDeepResearch(page: Page): Promise<void> {
@@ -52,4 +54,32 @@ export async function chatgptSendDeepResearch(page: Page, prompt: string): Promi
 	const send = composer.locator("xpath=ancestor::form[1]").locator(CHATGPT_SEND_BUTTON_SELECTOR).last();
 	await waitForSendReady("ChatGPT", send);
 	await send.press("Enter");
+}
+
+/**
+ * Read the nested report frame. ChatGPT renders Deep Research outside the
+ * normal assistant-turn surface, and its Export control exists only once a
+ * report is published; it is the provider-owned completion affordance.
+ */
+export async function chatgptDeepResearchSnapshot(
+	page: Page,
+	previousReportText?: string,
+): Promise<CompletionSnapshot> {
+	const reportFrame = page.frames().find((frame) => frame.url() === "about:blank");
+	if (!reportFrame) return { responsePresent: false, text: "", html: "", running: true };
+	const body = reportFrame.locator("body");
+	const [text, html, complete] = await Promise.all([
+		body.innerText().catch(() => ""),
+		body.innerHTML().catch(() => ""),
+		reportFrame
+			.locator(CHATGPT_DEEP_RESEARCH_EXPORT)
+			.filter({ visible: true })
+			.count()
+			.then((count) => count > 0),
+	]);
+	const trimmed = text.trim();
+	const present =
+		trimmed.length > 0 &&
+		(previousReportText === undefined || previousReportText === "" || trimmed !== previousReportText);
+	return { responsePresent: complete && present, text: trimmed, html, running: !complete };
 }

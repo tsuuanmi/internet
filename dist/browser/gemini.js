@@ -6,8 +6,8 @@ export const GEMINI_SEND_BUTTON_SELECTOR = 'input-area-v2 button[aria-label="Sen
 export const GEMINI_STOP_BUTTON_SELECTOR = 'button[aria-label="Stop response"]';
 export const GEMINI_ACCOUNT_SELECTOR = '[aria-label^="Google Account"], [aria-label*="Google Account:"]';
 export const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-text message-content .markdown.markdown-main-panel";
-/** Native Deep Research terminal status emitted after Gemini finishes its report. */
-export const GEMINI_RESEARCH_COMPLETE_TEXT = "I've completed your research.";
+export const GEMINI_DEEP_RESEARCH_REPORT_SELECTOR = 'response-container structured-content-container[data-test-id="message-content"] message-content #extended-response-markdown-content';
+export const GEMINI_DEEP_RESEARCH_SOURCES_SELECTOR = "response-container deep-research-source-lists";
 /** True when Gemini exposes both its composer and signed-in Google account control. */
 export async function geminiIsAuthenticated(page) {
     const composers = page.locator(GEMINI_COMPOSER_SELECTOR).filter({ visible: true });
@@ -107,9 +107,37 @@ export async function geminiSnapshot(page, previousTurnText) {
     ]);
     const trimmed = text.trim();
     const present = previousTurnText === undefined || previousTurnText === "" ? trimmed.length > 0 : trimmed !== previousTurnText;
-    // Deep Research appends a terminal status response. It is authoritative even
-    // if a stale, unrelated Stop response control remains mounted elsewhere.
-    const researchComplete = trimmed.includes(GEMINI_RESEARCH_COMPLETE_TEXT);
-    return { responsePresent: present, text: trimmed, html, running: researchComplete ? false : running };
+    return { responsePresent: present, text: trimmed, html, running };
+}
+/** Read the previous completed Gemini Deep Research report, if any. */
+export async function geminiLastDeepResearchReportText(page) {
+    const reports = page.locator(GEMINI_DEEP_RESEARCH_REPORT_SELECTOR).filter({ visible: true });
+    const count = await reports.count();
+    if (count === 0)
+        return "";
+    return (await reports.last().innerText()).trim();
+}
+/**
+ * Gemini publishes a final report in an extended response surface rather than
+ * its normal model-response stream. A non-busy report with the report's own
+ * visible sources panel is the provider-owned completion contract.
+ */
+export async function geminiDeepResearchSnapshot(page, previousReportText) {
+    const reports = page.locator(GEMINI_DEEP_RESEARCH_REPORT_SELECTOR).filter({ visible: true });
+    const count = await reports.count();
+    if (count === 0)
+        return { responsePresent: false, text: "", html: "", running: true };
+    const report = reports.last();
+    const [text, html, busy, sources] = await Promise.all([
+        report.innerText(),
+        report.innerHTML(),
+        report.getAttribute("aria-busy"),
+        page.locator(GEMINI_DEEP_RESEARCH_SOURCES_SELECTOR).filter({ visible: true }).count(),
+    ]);
+    const trimmed = text.trim();
+    const present = trimmed.length > 0 &&
+        (previousReportText === undefined || previousReportText === "" || trimmed !== previousReportText);
+    const complete = busy === "false" && sources > 0;
+    return { responsePresent: present && complete, text: trimmed, html, running: !complete };
 }
 //# sourceMappingURL=gemini.js.map

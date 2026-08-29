@@ -51,6 +51,8 @@ Observed on 2026-08-29:
 
 The menu entry is a focusable `div`, not an ARIA menuitem. An inspection that searches only `[role="menuitem"]` will miss it.
 
+Completion is rendered outside the ordinary assistant turn: ChatGPT mounts the report in an internal nested `about:blank` frame. A visible **Export** control in that report frame is the provider-owned report-published affordance; collect the frame body only after it is present and stable. Do not use the absence of a top-level Stop button or a localized completion sentence.
+
 ### Gemini Deep research
 
 Observed on 2026-08-29:
@@ -58,7 +60,7 @@ Observed on 2026-08-29:
 1. Click visible `button[aria-label="Upload & tools"]`.
 2. Locate the enabled `button[role="menuitemcheckbox"]` whose visible label is **Deep research**.
 3. Activate it and require `aria-checked="true"` before the menu closes, then require the active composer button named **Deselect Deep research** after it closes.
-4. After the report completes, Gemini appends a terminal assistant status containing **I've completed your research.** Treat that status plus a stable response as completion; do not infer completion solely from an absent Stop control.
+4. Completion is provider-semantic, not a fixed status sentence: require a new visible `#extended-response-markdown-content` within `structured-content-container[data-test-id="message-content"]`, with `aria-busy="false"`, and the sibling `deep-research-source-lists` report source panel. Do not infer completion solely from an absent Stop control or localized assistant text.
 
 ## Selector-drift handling
 

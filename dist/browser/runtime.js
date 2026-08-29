@@ -4,12 +4,12 @@ import { join } from "node:path";
 import { chromium } from "patchright-core";
 import { AccountStore, capturePortableStorageState, captureProfileBootstrapState, } from "#internet/browser/accounts";
 import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText, chatgptSelectThinkingLevel, chatgptSend, chatgptSnapshot, chatgptWaitAuthenticationAssessment, } from "#internet/browser/chatgpt";
-import { chatgptEnableDeepResearch, chatgptSendDeepResearch } from "#internet/browser/chatgpt-research";
+import { chatgptDeepResearchSnapshot, chatgptEnableDeepResearch, chatgptSendDeepResearch, } from "#internet/browser/chatgpt-research";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
-import { GEMINI_HOME_URL, geminiIsAuthenticated, geminiLastResponseText, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
+import { GEMINI_HOME_URL, geminiDeepResearchSnapshot, geminiIsAuthenticated, geminiLastDeepResearchReportText, geminiLastResponseText, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
 import { geminiEnableDeepResearch, geminiStartResearchPlan } from "#internet/browser/gemini-research";
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
@@ -636,6 +636,7 @@ export class BrowserManager {
             let conversationId;
             if (provider === "chatgpt-web") {
                 const previousTurnText = await chatgptLastAssistantTurnText(page);
+                const previousResearchText = request.research === true ? (await chatgptDeepResearchSnapshot(page)).text : undefined;
                 if (request.research === true) {
                     await chatgptEnableDeepResearch(page);
                     await chatgptSendDeepResearch(page, request.prompt);
@@ -654,10 +655,13 @@ export class BrowserManager {
                     throw new InternetError("provider_error", error instanceof Error ? error.message : "Failed to persist the ChatGPT conversation binding.");
                 }
                 conversationId = binding.conversationId;
-                text = await waitForStableCompletion(() => chatgptSnapshot(page, previousTurnText), waitOptions);
+                text = await waitForStableCompletion(() => request.research === true
+                    ? chatgptDeepResearchSnapshot(page, previousResearchText)
+                    : chatgptSnapshot(page, previousTurnText), waitOptions);
             }
             else {
                 const previousTurnText = await geminiLastResponseText(page);
+                const previousResearchText = request.research === true ? await geminiLastDeepResearchReportText(page) : undefined;
                 if (request.research === true)
                     await geminiEnableDeepResearch(page);
                 await geminiSend(page, request.prompt);
@@ -673,7 +677,9 @@ export class BrowserManager {
                 conversationId = binding.conversationId;
                 if (request.research === true)
                     await geminiStartResearchPlan(page);
-                text = await waitForStableCompletion(() => geminiSnapshot(page, previousTurnText), waitOptions);
+                text = await waitForStableCompletion(() => request.research === true
+                    ? geminiDeepResearchSnapshot(page, previousResearchText)
+                    : geminiSnapshot(page, previousTurnText), waitOptions);
             }
             const storageState = await capturePortableStorageState(context);
             await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);

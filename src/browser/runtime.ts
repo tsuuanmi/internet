@@ -20,7 +20,11 @@ import {
 	chatgptSnapshot,
 	chatgptWaitAuthenticationAssessment,
 } from "#internet/browser/chatgpt";
-import { chatgptEnableDeepResearch, chatgptSendDeepResearch } from "#internet/browser/chatgpt-research";
+import {
+	chatgptDeepResearchSnapshot,
+	chatgptEnableDeepResearch,
+	chatgptSendDeepResearch,
+} from "#internet/browser/chatgpt-research";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import {
@@ -33,7 +37,9 @@ import {
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import {
 	GEMINI_HOME_URL,
+	geminiDeepResearchSnapshot,
 	geminiIsAuthenticated,
+	geminiLastDeepResearchReportText,
 	geminiLastResponseText,
 	geminiSend,
 	geminiSnapshot,
@@ -817,6 +823,8 @@ export class BrowserManager {
 			let conversationId: string | undefined;
 			if (provider === "chatgpt-web") {
 				const previousTurnText = await chatgptLastAssistantTurnText(page);
+				const previousResearchText =
+					request.research === true ? (await chatgptDeepResearchSnapshot(page)).text : undefined;
 				if (request.research === true) {
 					await chatgptEnableDeepResearch(page);
 					await chatgptSendDeepResearch(page, request.prompt);
@@ -840,9 +848,17 @@ export class BrowserManager {
 					);
 				}
 				conversationId = binding.conversationId;
-				text = await waitForStableCompletion(() => chatgptSnapshot(page!, previousTurnText), waitOptions);
+				text = await waitForStableCompletion(
+					() =>
+						request.research === true
+							? chatgptDeepResearchSnapshot(page!, previousResearchText)
+							: chatgptSnapshot(page!, previousTurnText),
+					waitOptions,
+				);
 			} else {
 				const previousTurnText = await geminiLastResponseText(page);
+				const previousResearchText =
+					request.research === true ? await geminiLastDeepResearchReportText(page) : undefined;
 				if (request.research === true) await geminiEnableDeepResearch(page);
 				await geminiSend(page, request.prompt);
 				// Persist the native URL immediately after Send so a long-running
@@ -862,7 +878,13 @@ export class BrowserManager {
 				}
 				conversationId = binding.conversationId;
 				if (request.research === true) await geminiStartResearchPlan(page);
-				text = await waitForStableCompletion(() => geminiSnapshot(page!, previousTurnText), waitOptions);
+				text = await waitForStableCompletion(
+					() =>
+						request.research === true
+							? geminiDeepResearchSnapshot(page!, previousResearchText)
+							: geminiSnapshot(page!, previousTurnText),
+					waitOptions,
+				);
 			}
 			const storageState = await capturePortableStorageState(context);
 			await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);

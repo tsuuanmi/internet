@@ -7,8 +7,8 @@ export declare const GEMINI_SEND_BUTTON_SELECTOR = "input-area-v2 button[aria-la
 export declare const GEMINI_STOP_BUTTON_SELECTOR = "button[aria-label=\"Stop response\"]";
 export declare const GEMINI_ACCOUNT_SELECTOR = "[aria-label^=\"Google Account\"], [aria-label*=\"Google Account:\"]";
 export declare const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-text message-content .markdown.markdown-main-panel";
-/** Native Deep Research terminal status emitted after Gemini finishes its report. */
-export declare const GEMINI_RESEARCH_COMPLETE_TEXT = "I've completed your research.";
+export declare const GEMINI_DEEP_RESEARCH_REPORT_SELECTOR = "response-container structured-content-container[data-test-id=\"message-content\"] message-content #extended-response-markdown-content";
+export declare const GEMINI_DEEP_RESEARCH_SOURCES_SELECTOR = "response-container deep-research-source-lists";
 /** True when Gemini exposes both its composer and signed-in Google account control. */
 export declare function geminiIsAuthenticated(page: Page): Promise<boolean>;
 /** Assess Gemini auth without treating a missing composer as proof of logout. */
@@ -28,4 +28,12 @@ export declare function geminiLastResponseText(page: Page): Promise<string>;
  * durable conversation where the previous turn is already visible on the page.
  */
 export declare function geminiSnapshot(page: Page, previousTurnText?: string): Promise<CompletionSnapshot>;
+/** Read the previous completed Gemini Deep Research report, if any. */
+export declare function geminiLastDeepResearchReportText(page: Page): Promise<string>;
+/**
+ * Gemini publishes a final report in an extended response surface rather than
+ * its normal model-response stream. A non-busy report with the report's own
+ * visible sources panel is the provider-owned completion contract.
+ */
+export declare function geminiDeepResearchSnapshot(page: Page, previousReportText?: string): Promise<CompletionSnapshot>;
 //# sourceMappingURL=gemini.d.ts.map
