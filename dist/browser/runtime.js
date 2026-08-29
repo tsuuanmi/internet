@@ -10,7 +10,7 @@ import { waitForStableCompletion } from "#internet/browser/completion";
 import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import { GEMINI_HOME_URL, geminiIsAuthenticated, geminiLastResponseText, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
-import { geminiEnableDeepResearch } from "#internet/browser/gemini-research";
+import { geminiEnableDeepResearch, geminiStartResearchPlan } from "#internet/browser/gemini-research";
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { ensureLoginProfileDirectory, providerLocations } from "#internet/browser/storage";
@@ -659,6 +659,8 @@ export class BrowserManager {
                 if (request.research === true)
                     await geminiEnableDeepResearch(page);
                 await geminiSend(page, request.prompt);
+                if (request.research === true)
+                    await geminiStartResearchPlan(page);
                 text = await waitForStableCompletion(() => geminiSnapshot(page, previousTurnText), waitOptions);
                 const conversation = await this.waitForGeminiConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), lease.signal);
                 try {

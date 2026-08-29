@@ -39,7 +39,7 @@ import {
 	geminiSnapshot,
 	geminiWaitAuthenticationAssessment,
 } from "#internet/browser/gemini";
-import { geminiEnableDeepResearch } from "#internet/browser/gemini-research";
+import { geminiEnableDeepResearch, geminiStartResearchPlan } from "#internet/browser/gemini-research";
 import { type ProviderLease, ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { ensureLoginProfileDirectory, type ProviderLocations, providerLocations } from "#internet/browser/storage";
@@ -843,6 +843,7 @@ export class BrowserManager {
 				const previousTurnText = await geminiLastResponseText(page);
 				if (request.research === true) await geminiEnableDeepResearch(page);
 				await geminiSend(page, request.prompt);
+				if (request.research === true) await geminiStartResearchPlan(page);
 				text = await waitForStableCompletion(() => geminiSnapshot(page!, previousTurnText), waitOptions);
 				const conversation = await this.waitForGeminiConversationUrl(
 					page,

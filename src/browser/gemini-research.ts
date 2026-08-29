@@ -5,6 +5,8 @@ import { InternetError } from "#internet/core/errors";
 const GEMINI_TOOLS_TRIGGER = 'button[aria-label="Upload & tools"]';
 const GEMINI_DEEP_RESEARCH_OPTION = 'button[role="menuitemcheckbox"]';
 const GEMINI_DEEP_RESEARCH_ACTIVE = 'button[aria-label="Deselect Deep research"]';
+const GEMINI_START_RESEARCH = 'button[aria-label="Start research"]';
+const GEMINI_RESEARCH_PLAN_TIMEOUT_MS = 180_000;
 
 /** Enable Gemini Deep research and verify its active composer-mode button. */
 export async function geminiEnableDeepResearch(page: Page): Promise<void> {
@@ -29,6 +31,24 @@ export async function geminiEnableDeepResearch(page: Page): Promise<void> {
 		throw new InternetError(
 			"provider_error",
 			`Gemini Deep research is unavailable or its tools-menu contract changed${error instanceof Error ? ` (${error.message})` : ""}`,
+		);
+	}
+}
+
+/**
+ * Gemini first generates a plan in Deep research mode. Confirm it using the
+ * semantic Start research action before waiting for the final report.
+ */
+export async function geminiStartResearchPlan(page: Page): Promise<void> {
+	const start = page.locator(GEMINI_START_RESEARCH).filter({ visible: true }).last();
+	try {
+		await start.waitFor({ state: "visible", timeout: GEMINI_RESEARCH_PLAN_TIMEOUT_MS });
+		await start.press("Enter");
+		await start.waitFor({ state: "hidden", timeout: 10_000 });
+	} catch (error) {
+		throw new InternetError(
+			"provider_error",
+			`Gemini Deep research did not expose a usable Start research confirmation within ${GEMINI_RESEARCH_PLAN_TIMEOUT_MS}ms${error instanceof Error ? ` (${error.message})` : ""}`,
 		);
 	}
 }
