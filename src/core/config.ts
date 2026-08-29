@@ -69,7 +69,8 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	headless: false,
 	loginTimeoutMs: 180_000,
 	remoteLoginPort: 39_000,
-	turnTimeoutMs: 180_000,
+	// Shared by ChatGPT and Gemini browser turns.
+	turnTimeoutMs: 300_000,
 	pollMs: 200,
 	stableMs: 1_500,
 	closeAfterMs: 1_800_000,

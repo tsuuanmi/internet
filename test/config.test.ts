@@ -10,8 +10,9 @@ describe("resolveBrowserConfig", () => {
 		expect(config).toEqual(DEFAULT_CONFIG);
 	});
 
-	it("defaults remote login to a three-minute expiry, a 30-minute idle TTL, and serial provider turns", () => {
+	it("defaults remote login to three minutes, provider turns to five minutes, and browser idling to 30 minutes", () => {
 		expect(resolveBrowserConfig({}).loginTimeoutMs).toBe(180_000);
+		expect(resolveBrowserConfig({}).turnTimeoutMs).toBe(300_000);
 		expect(resolveBrowserConfig({}).closeAfterMs).toBe(1_800_000);
 		expect(resolveBrowserConfig({}).maxConcurrentTurnsPerProvider).toBe(1);
 	});

@@ -142,7 +142,7 @@ plugins:
       headless: false
       loginTimeoutMs: 180000
       remoteLoginPort: 39000
-      turnTimeoutMs: 180000
+      turnTimeoutMs: 300000
       maxConcurrentTurnsPerProvider: 1
       chatgptThinkingLevel: medium
       teamRounds: 2
@@ -161,7 +161,7 @@ the new build. Starting a second web server does not update an already running D
 | `headless` | `false` | Use native Chrome headless when true. Otherwise use headed Chrome on managed Xvfb by default. |
 | `loginTimeoutMs` | `180000` | Interactive login expiry, in milliseconds (3 minutes). |
 | `remoteLoginPort` | `39000` | ChatGPT loopback noVNC port; Gemini uses the next port (`39001`). |
-| `turnTimeoutMs` | `180000` | Maximum duration of one provider turn. |
+| `turnTimeoutMs` | `300000` | Maximum duration of one ChatGPT or Gemini provider turn (5 minutes). |
 | `pollMs` | `200` | Response completion polling interval. |
 | `stableMs` | `1500` | Required unchanged, non-running response interval. |
 | `closeAfterMs` | `1800000` | Idle delay before closing an idle provider browser pool. |
