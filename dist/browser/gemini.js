@@ -6,6 +6,8 @@ export const GEMINI_SEND_BUTTON_SELECTOR = 'input-area-v2 button[aria-label="Sen
 export const GEMINI_STOP_BUTTON_SELECTOR = 'button[aria-label="Stop response"]';
 export const GEMINI_ACCOUNT_SELECTOR = '[aria-label^="Google Account"], [aria-label*="Google Account:"]';
 export const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-text message-content .markdown.markdown-main-panel";
+/** Native Deep Research terminal status emitted after Gemini finishes its report. */
+export const GEMINI_RESEARCH_COMPLETE_TEXT = "I've completed your research.";
 /** True when Gemini exposes both its composer and signed-in Google account control. */
 export async function geminiIsAuthenticated(page) {
     const composers = page.locator(GEMINI_COMPOSER_SELECTOR).filter({ visible: true });
@@ -105,6 +107,9 @@ export async function geminiSnapshot(page, previousTurnText) {
     ]);
     const trimmed = text.trim();
     const present = previousTurnText === undefined || previousTurnText === "" ? trimmed.length > 0 : trimmed !== previousTurnText;
-    return { responsePresent: present, text: trimmed, html, running };
+    // Deep Research appends a terminal status response. It is authoritative even
+    // if a stale, unrelated Stop response control remains mounted elsewhere.
+    const researchComplete = trimmed.includes(GEMINI_RESEARCH_COMPLETE_TEXT);
+    return { responsePresent: present, text: trimmed, html, running: researchComplete ? false : running };
 }
 //# sourceMappingURL=gemini.js.map

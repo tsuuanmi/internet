@@ -58,6 +58,7 @@ Observed on 2026-08-29:
 1. Click visible `button[aria-label="Upload & tools"]`.
 2. Locate the enabled `button[role="menuitemcheckbox"]` whose visible label is **Deep research**.
 3. Activate it and require `aria-checked="true"` before the menu closes, then require the active composer button named **Deselect Deep research** after it closes.
+4. After the report completes, Gemini appends a terminal assistant status containing **I've completed your research.** Treat that status plus a stable response as completion; do not infer completion solely from an absent Stop control.
 
 ## Selector-drift handling
 

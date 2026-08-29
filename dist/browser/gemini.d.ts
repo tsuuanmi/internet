@@ -7,6 +7,8 @@ export declare const GEMINI_SEND_BUTTON_SELECTOR = "input-area-v2 button[aria-la
 export declare const GEMINI_STOP_BUTTON_SELECTOR = "button[aria-label=\"Stop response\"]";
 export declare const GEMINI_ACCOUNT_SELECTOR = "[aria-label^=\"Google Account\"], [aria-label*=\"Google Account:\"]";
 export declare const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-text message-content .markdown.markdown-main-panel";
+/** Native Deep Research terminal status emitted after Gemini finishes its report. */
+export declare const GEMINI_RESEARCH_COMPLETE_TEXT = "I've completed your research.";
 /** True when Gemini exposes both its composer and signed-in Google account control. */
 export declare function geminiIsAuthenticated(page: Page): Promise<boolean>;
 /** Assess Gemini auth without treating a missing composer as proof of logout. */
