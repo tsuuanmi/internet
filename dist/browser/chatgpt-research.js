@@ -17,6 +17,12 @@ export async function chatgptEnableDeepResearch(page) {
     const trigger = composer.locator("xpath=ancestor::form[1]").locator(CHATGPT_DEEP_RESEARCH_TRIGGER).last();
     try {
         await trigger.click({ timeout: 10_000 });
+        const expandedDeadline = Date.now() + 3_000;
+        while (Date.now() < expandedDeadline) {
+            if ((await trigger.getAttribute("aria-expanded")) === "true")
+                break;
+            await page.waitForTimeout(50);
+        }
         if ((await trigger.getAttribute("aria-expanded")) !== "true") {
             throw new Error("trigger did not expose aria-expanded=true");
         }
