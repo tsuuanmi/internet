@@ -30,10 +30,14 @@ describe("internet-team system guidance", () => {
 		expect(team?.text).toContain("maxConcurrentTurnsPerProvider");
 		expect(team?.text).toContain("same-session turns, visible calls, login");
 		expect(team?.text).toContain("call internet_team directly");
-		expect(tools).toEqual(
-			expect.arrayContaining(["internet_chat", "internet_team", "internet_research", "internet_browser"]),
-		);
-		expect(tools).not.toEqual(expect.arrayContaining(["browser_chat", "browser_team"]));
+		expect(tools).toEqual(["internet_chat", "internet_research", "internet_browser", "internet_team"]);
 		expect(research?.text).toContain("30 minutes");
+	});
+
+	it("omits internet_team when only one provider is enabled", () => {
+		const { context, tools } = fakeContext();
+		apply(context, { enableGemini: false });
+
+		expect(tools).toEqual(["internet_chat", "internet_research", "internet_browser"]);
 	});
 });
