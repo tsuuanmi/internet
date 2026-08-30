@@ -69,7 +69,7 @@ internet_chat { model, prompt, visible? }
   -> perform provider-specific prompt selection/submission
   -> wait for a changed, stopped, stable response
   -> bind or refresh the canonical conversation URL
-  -> recapture cookies, local storage, and IndexedDB
+  -> recapture cookies, local storage, and IndexedDB when safely serializable
   -> atomically refresh the portable account
   -> return markdown, URL, and conversation id
 ```
@@ -246,7 +246,9 @@ After Chrome releases the login profile lock:
 
 1. Patchright opens the persistent profile and captures bootstrap cookies/local storage.
 2. A fresh non-persistent context verifies the authenticated provider surface.
-3. The context captures current IndexedDB in addition to cookies and local storage.
+3. The context captures IndexedDB in addition to cookies and local storage when Patchright can safely
+   serialize it. If an oversized IndexedDB value prevents capture, the cookie/local-storage snapshot must
+   restore an authenticated fresh context before it can replace the account.
 4. The plugin atomically writes `dataDir/accounts/<provider>.json` with mode `0600`.
 
 A failed, cancelled, expired, or unverified login never replaces an existing ready account.
@@ -290,7 +292,8 @@ after `closeAfterMs` of pool-wide idleness.
 Successful current-generation turns serialize portable-account refreshes. Every context remembers the
 canonical account revision used to bootstrap it; a commit advances that revision, and later completions
 from the older revision are discarded. The stored account is a bootstrap cache, not a mergeable replica of
-arbitrary provider cookies or IndexedDB. Only affirmative sign-out proof marks reauth-required; a
+arbitrary provider state. An IndexedDB-free fallback refresh retains the current account's IndexedDB while
+updating its cookies and local storage. Only affirmative sign-out proof marks reauth-required; a
 challenge or unconfirmed surface preserves the ready snapshot. Reauthentication invalidates the provider
 generation, aborts active leases, and prevents older turns from restoring a `ready` snapshot.
 `BrowserManager.dispose()` closes contexts, Chrome, pending remote logins, timers, and the shared

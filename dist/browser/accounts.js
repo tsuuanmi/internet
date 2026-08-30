@@ -1,16 +1,59 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { providerLocations } from "#internet/browser/storage";
+import { InternetError } from "#internet/core/errors";
 import { writePrivateJson } from "#internet/core/private-json";
 const ACCOUNT_SCHEMA = "@tsuuanmi/internet-account";
 export const ACCOUNT_STATES = ["missing", "ready", "reauth-required", "invalid"];
-/** Capture complete portable state from a non-persistent inference context. */
+function isOversizedIndexedDbCaptureError(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return /Unable to serialize IndexedDB:\s*Failed to read large IndexedDB value/i.test(message);
+}
+/**
+ * Capture portable state from a non-persistent inference context. Patchright
+ * can reject an oversized IndexedDB value, so retain authenticated cookies and
+ * local storage without exposing the rejected payload.
+ */
 export async function capturePortableStorageState(context) {
-    return (await context.storageState({ indexedDB: true }));
+    try {
+        return {
+            storageState: (await context.storageState({ indexedDB: true })),
+            indexedDbCaptured: true,
+        };
+    }
+    catch (error) {
+        if (!isOversizedIndexedDbCaptureError(error))
+            throw error;
+    }
+    try {
+        return {
+            storageState: (await context.storageState()),
+            indexedDbCaptured: false,
+        };
+    }
+    catch {
+        throw new InternetError("provider_error", "Browser account state could not be captured without IndexedDB.");
+    }
+}
+/** Preserve prior IndexedDB data when a fallback snapshot omits it. */
+export function preserveIndexedDb(storageState, previousStorageState) {
+    const previousByOrigin = new Map(previousStorageState.origins
+        .filter((origin) => origin.indexedDB !== undefined)
+        .map((origin) => [origin.origin, origin]));
+    const origins = storageState.origins.map((origin) => {
+        const previous = previousByOrigin.get(origin.origin);
+        if (previous?.indexedDB === undefined)
+            return origin;
+        previousByOrigin.delete(origin.origin);
+        return { ...origin, indexedDB: previous.indexedDB };
+    });
+    for (const previous of previousByOrigin.values())
+        origins.push({ ...previous });
+    return { ...storageState, origins };
 }
 /**
  * Capture the profile state needed to bootstrap a portable context. Patchright
  * cannot call storageState() on a native-keyring persistent Chrome profile, so
- * the verified fresh context performs the authoritative IndexedDB capture.
+ * the verified fresh context performs the authoritative portable-state capture.
  */
 export async function captureProfileBootstrapState(context) {
     const cookies = await context.cookies();

@@ -3,6 +3,7 @@ import type { BrowserContext } from "patchright-core";
 import type { AuthenticationEvidence } from "#internet/browser/authentication";
 import { providerLocations } from "#internet/browser/storage";
 import type { WebProvider } from "#internet/core/config";
+import { InternetError } from "#internet/core/errors";
 import { writePrivateJson } from "#internet/core/private-json";
 
 const ACCOUNT_SCHEMA = "@tsuuanmi/internet-account";
@@ -45,15 +46,64 @@ export interface AccountInspection {
 	error?: string;
 }
 
-/** Capture complete portable state from a non-persistent inference context. */
-export async function capturePortableStorageState(context: BrowserContext): Promise<PortableStorageState> {
-	return (await context.storageState({ indexedDB: true })) as PortableStorageState;
+export interface PortableStorageCapture {
+	storageState: PortableStorageState;
+	indexedDbCaptured: boolean;
+}
+
+function isOversizedIndexedDbCaptureError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return /Unable to serialize IndexedDB:\s*Failed to read large IndexedDB value/i.test(message);
+}
+
+/**
+ * Capture portable state from a non-persistent inference context. Patchright
+ * can reject an oversized IndexedDB value, so retain authenticated cookies and
+ * local storage without exposing the rejected payload.
+ */
+export async function capturePortableStorageState(context: BrowserContext): Promise<PortableStorageCapture> {
+	try {
+		return {
+			storageState: (await context.storageState({ indexedDB: true })) as PortableStorageState,
+			indexedDbCaptured: true,
+		};
+	} catch (error) {
+		if (!isOversizedIndexedDbCaptureError(error)) throw error;
+	}
+	try {
+		return {
+			storageState: (await context.storageState()) as PortableStorageState,
+			indexedDbCaptured: false,
+		};
+	} catch {
+		throw new InternetError("provider_error", "Browser account state could not be captured without IndexedDB.");
+	}
+}
+
+/** Preserve prior IndexedDB data when a fallback snapshot omits it. */
+export function preserveIndexedDb(
+	storageState: PortableStorageState,
+	previousStorageState: PortableStorageState,
+): PortableStorageState {
+	const previousByOrigin = new Map(
+		previousStorageState.origins
+			.filter((origin) => origin.indexedDB !== undefined)
+			.map((origin) => [origin.origin, origin] as const),
+	);
+	const origins = storageState.origins.map((origin) => {
+		const previous = previousByOrigin.get(origin.origin);
+		if (previous?.indexedDB === undefined) return origin;
+		previousByOrigin.delete(origin.origin);
+		return { ...origin, indexedDB: previous.indexedDB };
+	});
+	for (const previous of previousByOrigin.values()) origins.push({ ...previous });
+	return { ...storageState, origins };
 }
 
 /**
  * Capture the profile state needed to bootstrap a portable context. Patchright
  * cannot call storageState() on a native-keyring persistent Chrome profile, so
- * the verified fresh context performs the authoritative IndexedDB capture.
+ * the verified fresh context performs the authoritative portable-state capture.
  */
 export async function captureProfileBootstrapState(context: BrowserContext): Promise<PortableStorageState> {
 	const cookies = await context.cookies();

@@ -77,6 +77,8 @@ export declare class BrowserManager {
     private captureLoginState;
     private inferenceArgs;
     private verifyStorageState;
+    /** Verify the IndexedDB-free fallback before it replaces a portable account. */
+    private verifyFallbackStorageState;
     private closeBrowser;
     private closeVirtualDisplaySessions;
     /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
@@ -88,6 +90,7 @@ export declare class BrowserManager {
     private ensureBrowser;
     private ensureContext;
     private trackContext;
+    private captureAccountSnapshot;
     private commitAccountSnapshot;
     /** Preserve a provider-rotated session after a recoverable failed turn. */
     private recoverAuthenticatedSnapshot;

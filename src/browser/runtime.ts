@@ -8,6 +8,7 @@ import {
 	capturePortableStorageState,
 	captureProfileBootstrapState,
 	type PortableStorageState,
+	preserveIndexedDb,
 	type ReauthDiagnostic,
 } from "#internet/browser/accounts";
 import type { AuthenticationAssessment } from "#internet/browser/authentication";
@@ -99,6 +100,7 @@ interface ManagedBrowser {
 interface ContextBootstrap {
 	context: BrowserContext;
 	accountRevision: number;
+	storageState: PortableStorageState;
 }
 
 function isTransientStorageCaptureError(error: unknown): boolean {
@@ -425,7 +427,16 @@ export class BrowserManager {
 							`${provider} login state could not be restored in the configured inference browser.`,
 						);
 					}
-					return await capturePortableStorageState(context);
+					const capture = await capturePortableStorageState(context);
+					if (!capture.indexedDbCaptured) {
+						await this.verifyFallbackStorageState(
+							provider,
+							browser,
+							capture.storageState,
+							browserViewport(display),
+						);
+					}
+					return capture.storageState;
 				} finally {
 					await context.close().catch(() => {});
 				}
@@ -436,6 +447,25 @@ export class BrowserManager {
 			}
 		}
 		throw new InternetError("login_failed", `${provider} portable account capture failed.`);
+	}
+
+	/** Verify the IndexedDB-free fallback before it replaces a portable account. */
+	private async verifyFallbackStorageState(
+		provider: WebProvider,
+		browser: Browser,
+		storageState: PortableStorageState,
+		viewport: ReturnType<typeof browserViewport>,
+	): Promise<void> {
+		const context = await browser.newContext({ storageState, viewport });
+		try {
+			const page = await context.newPage();
+			await page.goto(this.homeUrl(provider), { waitUntil: "domcontentloaded", timeout: 60_000 });
+			if (!(await this.isAuthenticated(provider, page, Math.min(this.config.loginTimeoutMs, 60_000)))) {
+				throw new InternetError("login_failed", `${provider} login state could not be restored without IndexedDB.`);
+			}
+		} finally {
+			await context.close().catch(() => {});
+		}
 	}
 
 	private async closeBrowser(provider: WebProvider): Promise<void> {
@@ -538,7 +568,11 @@ export class BrowserManager {
 				storageState: inspection.account.storageState,
 				viewport: managed.viewport,
 			});
-			return { context, accountRevision: inspection.account.revision };
+			return {
+				context,
+				accountRevision: inspection.account.revision,
+				storageState: inspection.account.storageState,
+			};
 		} catch (error) {
 			if (!managed.browser.isConnected()) this.browsers.delete(provider);
 			throw error;
@@ -564,6 +598,16 @@ export class BrowserManager {
 			current.delete(lease.signal);
 			if (current.size === 0) this.activeContexts.delete(provider);
 		};
+	}
+
+	private async captureAccountSnapshot(
+		context: BrowserContext,
+		previousStorageState: PortableStorageState,
+	): Promise<PortableStorageState> {
+		const capture = await capturePortableStorageState(context);
+		return capture.indexedDbCaptured
+			? capture.storageState
+			: preserveIndexedDb(capture.storageState, previousStorageState);
 	}
 
 	private async commitAccountSnapshot(
@@ -594,6 +638,7 @@ export class BrowserManager {
 		context: BrowserContext,
 		lease: ProviderLease,
 		accountRevision: number,
+		previousStorageState: PortableStorageState,
 	): Promise<void> {
 		try {
 			if (!this.scheduler(provider).isCurrent(lease)) return;
@@ -603,7 +648,7 @@ export class BrowserManager {
 				return;
 			}
 			if (assessment.state !== "authenticated" || !this.scheduler(provider).isCurrent(lease)) return;
-			const storageState = await capturePortableStorageState(context);
+			const storageState = await this.captureAccountSnapshot(context, previousStorageState);
 			await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);
 		} catch {
 			// Keep the original turn error; recovery is an opportunistic state refresh.
@@ -755,7 +800,11 @@ export class BrowserManager {
 		this.cancelPendingClose(provider);
 		const visible = request.visible === true;
 		const headless = visible ? false : this.config.headless;
-		const { context, accountRevision } = await this.ensureContext(provider, headless, visible);
+		const {
+			context,
+			accountRevision,
+			storageState: previousStorageState,
+		} = await this.ensureContext(provider, headless, visible);
 		const untrackContext = this.trackContext(provider, lease, context);
 		let page: Page | undefined;
 		try {
@@ -886,7 +935,7 @@ export class BrowserManager {
 					waitOptions,
 				);
 			}
-			const storageState = await capturePortableStorageState(context);
+			const storageState = await this.captureAccountSnapshot(context, previousStorageState);
 			await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);
 			return {
 				text: text.slice(0, this.config.maxOutputChars),
@@ -895,7 +944,14 @@ export class BrowserManager {
 			};
 		} catch (error) {
 			if (page !== undefined) {
-				await this.recoverAuthenticatedSnapshot(provider, page, context, lease, accountRevision);
+				await this.recoverAuthenticatedSnapshot(
+					provider,
+					page,
+					context,
+					lease,
+					accountRevision,
+					previousStorageState,
+				);
 			}
 			throw error;
 		} finally {

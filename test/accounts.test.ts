@@ -1,13 +1,14 @@
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	AccountStore,
 	capturePortableStorageState,
 	captureProfileBootstrapState,
 	type PortableStorageState,
 	parseAccountFile,
+	preserveIndexedDb,
 } from "#internet/browser/accounts";
 import { providerLocations } from "#internet/browser/storage";
 
@@ -184,7 +185,68 @@ describe("browser state capture", () => {
 				return expected;
 			},
 		};
-		await expect(capturePortableStorageState(context as never)).resolves.toEqual(expected);
+		await expect(capturePortableStorageState(context as never)).resolves.toEqual({
+			storageState: expected,
+			indexedDbCaptured: true,
+		});
+	});
+
+	it("falls back to cookies and local storage for the known oversized IndexedDB failure", async () => {
+		const fallback = storageState();
+		const context = {
+			storageState: vi
+				.fn()
+				.mockRejectedValueOnce(new Error("Unable to serialize IndexedDB: Failed to read large IndexedDB value"))
+				.mockResolvedValueOnce(fallback),
+		};
+
+		await expect(capturePortableStorageState(context as never)).resolves.toEqual({
+			storageState: fallback,
+			indexedDbCaptured: false,
+		});
+		expect(context.storageState).toHaveBeenNthCalledWith(1, { indexedDB: true });
+		expect(context.storageState).toHaveBeenNthCalledWith(2);
+	});
+
+	it("does not fall back for unrelated storage capture failures", async () => {
+		const failure = new Error("unexpected storage failure");
+		const context = { storageState: vi.fn(async () => Promise.reject(failure)) };
+
+		await expect(capturePortableStorageState(context as never)).rejects.toBe(failure);
+		expect(context.storageState).toHaveBeenCalledTimes(1);
+	});
+
+	it("redacts a failed IndexedDB-free fallback", async () => {
+		const context = {
+			storageState: vi
+				.fn()
+				.mockRejectedValueOnce(new Error("Unable to serialize IndexedDB: Failed to read large IndexedDB value"))
+				.mockRejectedValueOnce(new Error("cookie=secret")),
+		};
+
+		await expect(capturePortableStorageState(context as never)).rejects.toMatchObject({
+			kind: "provider_error",
+			message: "Browser account state could not be captured without IndexedDB.",
+		});
+	});
+
+	it("preserves previous IndexedDB when a fallback snapshot omits it", () => {
+		const previous = storageState([{ name: "auth", version: 1, stores: [] }]);
+		const fallback: PortableStorageState = {
+			cookies: [{ ...previous.cookies[0]!, value: "rotated" }],
+			origins: [{ origin: "https://example.com", localStorage: [{ name: "account", value: "two" }] }],
+		};
+
+		expect(preserveIndexedDb(fallback, previous)).toEqual({
+			cookies: [{ ...previous.cookies[0]!, value: "rotated" }],
+			origins: [
+				{
+					origin: "https://example.com",
+					localStorage: [{ name: "account", value: "two" }],
+					indexedDB: [{ name: "auth", version: 1, stores: [] }],
+				},
+			],
+		});
 	});
 
 	it("captures bootstrap cookies and local storage from a persistent profile", async () => {

@@ -6,6 +6,8 @@
 
 - **tools**: Rename the public model-tool IDs `browser_chat` and `browser_team` to `internet_chat` and
   `internet_team`. Update saved prompts and callers; legacy IDs are no longer registered.
+- **accounts**: Preserve authenticated cookie and local-storage state when Patchright cannot serialize an
+  oversized IndexedDB value, while retaining the previous current IndexedDB snapshot during refresh.
 
 ### Added
 

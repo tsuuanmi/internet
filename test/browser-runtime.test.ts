@@ -282,6 +282,7 @@ describe("BrowserManager authentication assessment", () => {
 			{ storageState: vi.fn(async () => refreshed) },
 			lease,
 			revision,
+			original,
 		);
 		expect((browser as any).accounts.inspect("chatgpt-web").account.storageState).toEqual(refreshed);
 		await browser.dispose();
@@ -316,7 +317,10 @@ describe("BrowserManager authentication assessment", () => {
 		}));
 		(browser as any).closeBrowser = vi.fn(async () => {});
 
-		await (browser as any).recoverAuthenticatedSnapshot("chatgpt-web", page, context, lease, revision);
+		await (browser as any).recoverAuthenticatedSnapshot("chatgpt-web", page, context, lease, revision, {
+			cookies: [],
+			origins: [],
+		});
 		expect((browser as any).accounts.inspect("chatgpt-web").state).toBe("reauth-required");
 		expect((browser as any).scheduler("chatgpt-web").currentGeneration()).toBe(1);
 		await browser.dispose();
@@ -468,6 +472,41 @@ describe("BrowserManager remote login", () => {
 });
 
 describe("BrowserManager portable-state verification", () => {
+	it("round-trips an IndexedDB-free fallback before accepting a login snapshot", async () => {
+		const browser = manager();
+		const fallback = { cookies: [], origins: [{ origin: "https://chatgpt.com", localStorage: [] }] };
+		const firstPage = { goto: vi.fn(async () => {}) };
+		const fallbackPage = { goto: vi.fn(async () => {}) };
+		const initialContext = {
+			newPage: vi.fn(async () => firstPage),
+			storageState: vi
+				.fn()
+				.mockRejectedValueOnce(new Error("Unable to serialize IndexedDB: Failed to read large IndexedDB value"))
+				.mockResolvedValueOnce(fallback),
+			close: vi.fn(async () => {}),
+		};
+		const fallbackContext = {
+			newPage: vi.fn(async () => fallbackPage),
+			close: vi.fn(async () => {}),
+		};
+		const launched = {
+			newContext: vi.fn().mockResolvedValueOnce(initialContext).mockResolvedValueOnce(fallbackContext),
+			close: vi.fn(async () => {}),
+		};
+		vi.spyOn(chromium, "launch").mockResolvedValue(launched as any);
+		(browser as any).display.prepare = vi.fn(async () => ({ kind: "headless" }));
+		(browser as any).isAuthenticated = vi.fn(async () => true);
+
+		await expect((browser as any).verifyStorageState("chatgpt-web", fallback)).resolves.toEqual(fallback);
+		const viewport = { width: 1280, height: 900 };
+		expect(launched.newContext).toHaveBeenNthCalledWith(1, { storageState: fallback, viewport });
+		expect(launched.newContext).toHaveBeenNthCalledWith(2, { storageState: fallback, viewport });
+		expect(initialContext.storageState).toHaveBeenNthCalledWith(1, { indexedDB: true });
+		expect(initialContext.storageState).toHaveBeenNthCalledWith(2);
+		expect(fallbackContext.close).toHaveBeenCalledTimes(1);
+		await browser.dispose();
+	});
+
 	it("retries a transient browser-context protocol failure once", async () => {
 		const browser = manager();
 		const verified = { cookies: [], origins: [{ origin: "https://example.com", localStorage: [] }] };

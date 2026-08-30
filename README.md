@@ -248,8 +248,10 @@ The portable boundary is exactly:
   gemini-web.json
 ```
 
-Each versioned JSON file contains cookies, local storage, and IndexedDB. It is a plaintext bearer secret
-equivalent to an authenticated browser session.
+Each versioned JSON file contains cookies, local storage, and, when Patchright can safely serialize it,
+IndexedDB. During login, an oversized IndexedDB value is omitted only after cookie/local-storage state is
+independently verified in a fresh browser context. It is a plaintext bearer secret equivalent to an
+authenticated browser session.
 
 To move accounts:
 
@@ -273,7 +275,7 @@ portable account file.
 
 Inference never shares the persistent login profile. It launches an isolated, non-persistent Patchright
 context restored from the portable account. Successful turns refresh the account snapshot, including
-IndexedDB.
+IndexedDB when it can be captured safely.
 
 With `headless: false` on Linux, hidden inference starts one plugin-managed Xvfb display. Supported Linux
 x64/glibc systems use the bundled Xvfb runtime first, then system `Xvfb`, then an inherited `$DISPLAY` as
@@ -286,10 +288,11 @@ confirming provider policy and account-state acceptance. Different DSH sessions 
 parallel; turns in one session, visible calls, login, stop, and a single team's dependent rounds remain
 ordered. A queued lifecycle operation forms a fence, so later turns wait until it completes. Each active
 turn uses an isolated non-persistent browser context restored from the same portable account. Snapshot
-commits use the bootstrap account revision: the first current snapshot commits, and stale full snapshots
-are discarded rather than unsafely merging cookies or IndexedDB. Recoverable failed turns also attempt a
-short authenticated state refresh, so provider token rotation is less likely to be lost. Plugin disposal
-closes contexts, Chrome processes, remote logins, and managed displays.
+commits use the bootstrap account revision: the first current snapshot commits, and stale snapshots are
+discarded rather than unsafely merging account state. When an IndexedDB-free fallback refreshes the current
+account, its prior IndexedDB is retained while cookies and local storage update. Recoverable failed turns
+also attempt a short authenticated state refresh, so provider token rotation is less likely to be lost.
+Plugin disposal closes contexts, Chrome processes, remote logins, and managed displays.
 
 ## Durable conversation storage
 

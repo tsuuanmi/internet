@@ -36,12 +36,22 @@ export interface AccountInspection {
     account?: AccountFile;
     error?: string;
 }
-/** Capture complete portable state from a non-persistent inference context. */
-export declare function capturePortableStorageState(context: BrowserContext): Promise<PortableStorageState>;
+export interface PortableStorageCapture {
+    storageState: PortableStorageState;
+    indexedDbCaptured: boolean;
+}
+/**
+ * Capture portable state from a non-persistent inference context. Patchright
+ * can reject an oversized IndexedDB value, so retain authenticated cookies and
+ * local storage without exposing the rejected payload.
+ */
+export declare function capturePortableStorageState(context: BrowserContext): Promise<PortableStorageCapture>;
+/** Preserve prior IndexedDB data when a fallback snapshot omits it. */
+export declare function preserveIndexedDb(storageState: PortableStorageState, previousStorageState: PortableStorageState): PortableStorageState;
 /**
  * Capture the profile state needed to bootstrap a portable context. Patchright
  * cannot call storageState() on a native-keyring persistent Chrome profile, so
- * the verified fresh context performs the authoritative IndexedDB capture.
+ * the verified fresh context performs the authoritative portable-state capture.
  */
 export declare function captureProfileBootstrapState(context: BrowserContext): Promise<PortableStorageState>;
 /** Owns the canonical portable account files for all configured providers. */
