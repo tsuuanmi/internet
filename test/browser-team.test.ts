@@ -212,7 +212,7 @@ describe("defineBrowserTeamTool", () => {
 		const result = await tool.execute({ task: "T", rounds: 3 }, exec);
 		expect(result).toEqual({
 			isError: true,
-			error: "browser_team rounds must not exceed the configured maximum of 2.",
+			error: "internet_team rounds must not exceed the configured maximum of 2.",
 		});
 		expect(calls).toEqual([]);
 	});

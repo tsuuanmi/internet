@@ -1,7 +1,7 @@
 /**
  * Plugin-specific error taxonomy. Browser-backed web providers fail in a small
  * number of user-actionable ways (not logged in, browser unavailable,
- * timed out, or the provider refused a response), so the `browser_chat` tool
+ * timed out, or the provider refused a response), so the `internet_chat` tool
  * reports a structured kind back to the model and UI rather than a bare
  * message.
  */

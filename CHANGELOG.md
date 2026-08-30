@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- **tools**: Rename the public model-tool IDs `browser_chat` and `browser_team` to `internet_chat` and
+  `internet_team`. Update saved prompts and callers; legacy IDs are no longer registered.
+
 ### Added
 
 - **chatgpt**: Select and verify the ChatGPT Web reasoning level before each turn via
@@ -19,7 +24,7 @@
   target; Save account runs the existing portable-account verification pipeline, while status, stop,
   timeout, and plugin disposal report or clean the complete Chrome/VNC/Xvfb/web lifecycle. Copyable
   login output uses stable ports `39000` (ChatGPT) and `39001` (Gemini) by default.
-- **tools**: Add an optional `visible` flag to `browser_chat` and `browser_team`; hidden managed-browser
+- **tools**: Add an optional `visible` flag to `internet_chat` and `internet_team`; hidden managed-browser
   operation remains the default.
 - **accounts**: Store each provider in one canonical, versioned portable account file under
   `~/.dsh/internet/accounts/`. Fresh-context verification captures cookies, local storage, and

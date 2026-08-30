@@ -1,12 +1,12 @@
 import type { WebProvider } from "#internet/core/config";
-/** Validated `browser_chat` arguments. */
+/** Validated `internet_chat` arguments. */
 export interface ChatInput {
     provider: WebProvider;
     prompt: string;
     visible?: boolean;
 }
 /**
- * Validate and normalize the model-facing `browser_chat` arguments. Kept free
+ * Validate and normalize the model-facing `internet_chat` arguments. Kept free
  * of any DeepSeek Harness import so it is unit-testable without DSH packages.
  */
 export declare function parseChatArgs(args: Record<string, unknown>): ChatInput;
@@ -19,7 +19,7 @@ export interface ResearchInput {
 }
 /** Validate research arguments without coupling the parser to DSH packages. */
 export declare function parseResearchArgs(args: Record<string, unknown>): ResearchInput;
-/** Validated `browser_team` arguments. */
+/** Validated `internet_team` arguments. */
 export interface TeamInput {
     task: string;
     team?: string;
@@ -30,7 +30,7 @@ export interface TeamInput {
     visible?: boolean;
 }
 /**
- * Validate and normalize the model-facing `browser_team` arguments. Kept free
+ * Validate and normalize the model-facing `internet_team` arguments. Kept free
  * of any DeepSeek Harness import so it is unit-testable without DSH packages.
  */
 export declare function parseTeamArgs(args: Record<string, unknown>): TeamInput;

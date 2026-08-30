@@ -7,7 +7,7 @@ type BrowserTeamManager = Pick<BrowserManager, "chat">;
 /** Render opt-in transcript data into model-visible tool content, not only UI metadata. */
 export declare function renderBrowserTeamResult(value: unknown): string;
 /**
- * Define the `browser_team` model tool: run a multi-model debate between the
+ * Define the `internet_team` model tool: run a multi-model debate between the
  * configured web providers on a task and return the final "best of both"
  * answer, optionally accompanied by a bounded current-call transcript. The DSH
  * agent is the team lead and does not participate in the debate.

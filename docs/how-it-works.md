@@ -1,7 +1,7 @@
 # How `@tsuuanmi/internet` works
 
 This document describes the server-side plugin architecture, authentication boundary, browser lifecycle,
-provider interaction contracts, durable conversations, and `browser_team` orchestration.
+provider interaction contracts, durable conversations, and `internet_team` orchestration.
 
 ## Package layout
 
@@ -25,7 +25,7 @@ provider interaction contracts, durable conversations, and `browser_team` orches
 - `src/browser/submission.ts` — semantic enabled-state waiting, including `aria-disabled`.
 - `src/team/orchestrator.ts` — provider ordering, debate prompts, team session isolation, transcript, and
   synthesis.
-- `src/tools/` — DSH definitions for `browser_chat`, `browser_team`, `internet_research`, and
+- `src/tools/` — DSH definitions for `internet_chat`, `internet_team`, `internet_research`, and
   `internet_browser`.
 - `src/commands/internet.ts` — human `/internet` command backed by ChatGPT.
 - `src/client.ts` — DSH-side command renderer.
@@ -42,9 +42,9 @@ Cordis disposal effect. Chrome is discovered lazily on first browser operation.
 
 Registration depends on enabled providers:
 
-- `browser_chat` and `internet_browser` are available when at least one provider is enabled.
+- `internet_chat` and `internet_browser` are available when at least one provider is enabled.
 - `/internet` is available only when ChatGPT is enabled.
-- `browser_team` is available only when at least two providers are enabled.
+- `internet_team` is available only when at least two providers are enabled.
 
 The plugin also contributes tool-selection guidance through `ctx.systemPrompt`. Updating the installed
 package requires restarting the existing DSH host so its server-side module is reloaded.
@@ -52,7 +52,7 @@ package requires restarting the existing DSH host so its server-side module is r
 ## Direct request flow
 
 ```text
-browser_chat { model, prompt, visible? }
+internet_chat { model, prompt, visible? }
   -> validate model, prompt, and visible
   -> read String(exec.agent.id) as the durable owner
   -> BrowserManager.chat(provider, request)
@@ -146,15 +146,15 @@ the newest response container through the same stable-completion policy.
 ChatGPT and Gemini use different durable conversation files and can share a DSH session without sharing
 native provider history.
 
-## `browser_team` flow
+## `internet_team` flow
 
-`browser_team` derives a durable team owner:
+`internet_team` derives a durable team owner:
 
 ```text
 <dsh-session-id>:team:<team-name-or-default>
 ```
 
-This isolates team conversations from direct `browser_chat` conversations. All calls using the same DSH
+This isolates team conversations from direct `internet_chat` conversations. All calls using the same DSH
 session and team name resume the same ChatGPT and Gemini team threads.
 
 For each round, providers speak sequentially in the requested order:
@@ -308,5 +308,5 @@ Expected failures use `InternetError`:
 - `provider_error` — provider DOM/state violated the interaction contract.
 - `config_error` — explicit plugin configuration is invalid.
 
-Tools convert these into structured error results. `browser_team` additionally reports the provider whose
+Tools convert these into structured error results. `internet_team` additionally reports the provider whose
 turn failed and can return already completed transcript turns when transcript output was requested.

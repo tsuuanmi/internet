@@ -67,7 +67,7 @@ function projectTranscript(transcript: readonly TeamTurn[], maxChars: number): T
 }
 
 /**
- * Define the `browser_team` model tool: run a multi-model debate between the
+ * Define the `internet_team` model tool: run a multi-model debate between the
  * configured web providers on a task and return the final "best of both"
  * answer, optionally accompanied by a bounded current-call transcript. The DSH
  * agent is the team lead and does not participate in the debate.
@@ -78,7 +78,7 @@ export function defineBrowserTeamTool(
 	allowed: ReadonlySet<WebProvider>,
 ): ReturnType<typeof defineTool> {
 	return defineTool({
-		name: "browser_team",
+		name: "internet_team",
 		description:
 			"Run a multi-model debate between configured web providers. Provider browsers are hidden by default; set visible=true to show them on the user-managed display. Returns only the final answer unless includeTranscript is requested.",
 		parameters: {
@@ -150,7 +150,7 @@ export function defineBrowserTeamTool(
 			if (rounds > config.teamMaxRounds) {
 				return {
 					isError: true,
-					error: `browser_team rounds must not exceed the configured maximum of ${config.teamMaxRounds}.`,
+					error: `internet_team rounds must not exceed the configured maximum of ${config.teamMaxRounds}.`,
 				};
 			}
 			if (input.providers !== undefined) {
@@ -158,7 +158,7 @@ export function defineBrowserTeamTool(
 				if (disabled.length > 0) {
 					return {
 						isError: true,
-						error: `browser_team providers ${disabled.join(", ")} are disabled in the internet plugin config.`,
+						error: `internet_team providers ${disabled.join(", ")} are disabled in the internet plugin config.`,
 					};
 				}
 			}
@@ -166,7 +166,7 @@ export function defineBrowserTeamTool(
 			if (sessionId === undefined) {
 				return {
 					isError: true,
-					error: "browser_team requires an agent-backed DSH session to own the durable team conversations.",
+					error: "internet_team requires an agent-backed DSH session to own the durable team conversations.",
 				};
 			}
 			try {
@@ -197,14 +197,14 @@ export function defineBrowserTeamTool(
 				};
 			} catch (error) {
 				if (isInternetError(error)) {
-					return { isError: true, error: `browser_team failed (${error.kind}): ${error.message}` };
+					return { isError: true, error: `internet_team failed (${error.kind}): ${error.message}` };
 				}
 				throw error;
 			}
 		},
 		presentCall: (args) => ({
 			card: "generic",
-			title: `browser_team · ${String(args.task).slice(0, 80)}`,
+			title: `internet_team · ${String(args.task).slice(0, 80)}`,
 			kind: "other",
 			rawInput: String(args.task),
 		}),

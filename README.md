@@ -8,8 +8,8 @@ conversations, and visible browser inspection without running a separate daemon.
 
 ## Features
 
-- **`browser_chat`** — ask ChatGPT or Gemini through the authenticated website.
-- **`browser_team`** — run an ordered ChatGPT/Gemini debate and optional final synthesis.
+- **`internet_chat`** — ask ChatGPT or Gemini through the authenticated website.
+- **`internet_team`** — run an ordered ChatGPT/Gemini debate and optional final synthesis.
 - **`internet_research`** — run provider-native Deep Research in one or both providers.
 - **`internet_browser`** — sign in, inspect account state, or stop a provider browser.
 - **`/internet <question>`** — ask ChatGPT directly from the conversation UI without an agent model turn.
@@ -25,10 +25,10 @@ and does not replace DSH's existing `web_search` or `web_fetch` tools.
 
 ## Tools
 
-### `browser_chat`
+### `internet_chat`
 
 ```text
-browser_chat {
+internet_chat {
   model: "chatgpt-web" | "gemini-web",
   prompt: string,
   visible?: boolean
@@ -62,13 +62,13 @@ internet_research {
 This enables the provider-native Deep Research mode before submitting the query. It may run for up to
 `researchTimeoutMs` (30 minutes by default) and returns one independent result per provider; one provider
 failure preserves the other as `partial_success`. Research threads use an isolated durable owner key based
-on `name`, so they never share a normal `browser_chat` conversation. Deep Research availability depends on
+on `name`, so they never share a normal `internet_chat` conversation. Deep Research availability depends on
 the signed-in provider account; the tool fails explicitly rather than downgrading to ordinary chat.
 
-### `browser_team`
+### `internet_team`
 
 ```text
-browser_team {
+internet_team {
   task: string,
   team?: string,
   rounds?: number,
@@ -79,7 +79,7 @@ browser_team {
 }
 ```
 
-`browser_team` is registered only when at least two providers are enabled. Defaults:
+`internet_team` is registered only when at least two providers are enabled. Defaults:
 
 - providers: `chatgpt-web`, then `gemini-web`
 - rounds: `2`
@@ -93,7 +93,7 @@ full current-call transcript and produces the final answer. The DSH agent coordi
 does not add its own debate turn.
 
 A team uses a derived session namespace (`<session>:team:<name>`), so team conversations are isolated
-from direct `browser_chat` conversations while remaining durable across repeated calls with the same
+from direct `internet_chat` conversations while remaining durable across repeated calls with the same
 team name. Different `team` values create separate native threads.
 
 By default the tool returns only `finalAnswer` and `finalProvider`. `includeTranscript: true` adds the
@@ -134,7 +134,7 @@ accept the next request.
 ```
 
 The command asks ChatGPT directly and renders its markdown response without first invoking the agent's
-configured model. It shares the current DSH session's durable ChatGPT conversation with `browser_chat`.
+configured model. It shares the current DSH session's durable ChatGPT conversation with `internet_chat`.
 The command is available when `enableChatgpt` is true.
 
 ## Install
@@ -308,23 +308,23 @@ native conversation.
 
 ```text
 # Hidden direct call (default)
-browser_chat { model: "chatgpt-web", prompt: "Remember codeword cobalt." }
+internet_chat { model: "chatgpt-web", prompt: "Remember codeword cobalt." }
 
 # Visible follow-up in the same native conversation
-browser_chat {
+internet_chat {
   model: "chatgpt-web",
   prompt: "What codeword did I give you?",
   visible: true
 }
 
 # Gemini owns a separate durable thread
-browser_chat { model: "gemini-web", prompt: "Summarize this design tradeoff: ..." }
+internet_chat { model: "gemini-web", prompt: "Summarize this design tradeoff: ..." }
 
 # Default hidden two-provider debate with synthesis
-browser_team { task: "Design a resilient retry strategy for a payment API." }
+internet_team { task: "Design a resilient retry strategy for a payment API." }
 
 # Visible one-round review using a named durable team
-browser_team {
+internet_team {
   task: "Review this API design and identify the three highest risks: ...",
   team: "api-review",
   rounds: 1,
@@ -332,7 +332,7 @@ browser_team {
 }
 
 # Ordered providers and bounded current-call transcript
-browser_team {
+internet_team {
   task: "Compare these migration plans: ...",
   providers: ["gemini-web", "chatgpt-web"],
   rounds: 3,
@@ -340,7 +340,7 @@ browser_team {
 }
 ```
 
-`browser_chat` and `browser_team` cannot independently read local files or call DSH web-search tools.
+`internet_chat` and `internet_team` cannot independently read local files or call DSH web-search tools.
 Paste required source material into the prompt/task. Use DSH `web_search` or `web_fetch` first when the
 debate requires current information.
 
@@ -369,7 +369,7 @@ npm test        # run Vitest
 
 Commit generated `dist/` artifacts with source changes. Real-provider acceptance requires authenticated
 accounts and should cover visible direct chat, visible follow-up, hidden managed-Xvfb chat, and both
-visible and hidden `browser_team` execution.
+visible and hidden `internet_team` execution.
 
 See [`docs/how-it-works.md`](docs/how-it-works.md) for internal request flows and security boundaries.
 

@@ -36,13 +36,13 @@ export interface BrowserConfig {
     maxConcurrentTurnsPerProvider: number;
     /** Upper bound on returned chat output characters. */
     maxOutputChars: number;
-    /** Default debate rounds for the `browser_team` tool (each model speaks once per round). */
+    /** Default debate rounds for the `internet_team` tool (each model speaks once per round). */
     teamRounds: number;
-    /** Maximum per-call debate rounds accepted by `browser_team`. */
+    /** Maximum per-call debate rounds accepted by `internet_team`. */
     teamMaxRounds: number;
     /** Maximum aggregate Unicode code points returned by an opt-in team transcript. */
     teamTranscriptMaxChars: number;
-    /** Whether the `browser_team` tool appends a final synthesis turn. */
+    /** Whether the `internet_team` tool appends a final synthesis turn. */
     teamSynthesis: boolean;
     /** Register the ChatGPT Web provider. */
     enableChatgpt: boolean;

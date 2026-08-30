@@ -69,7 +69,7 @@ export function composeSynthesisPrompt(task, transcript) {
  * seeing every other model's latest message, then (optionally) the last
  * speaker synthesizes a single final answer from the full transcript. The team
  * uses a derived session key so its conversations are isolated from the
- * agent's own direct `browser_chat` threads yet durable across repeated calls.
+ * agent's own direct `internet_chat` threads yet durable across repeated calls.
  */
 export async function runTeam(chat, options) {
     const rounds = options.rounds ?? DEFAULT_ROUNDS;

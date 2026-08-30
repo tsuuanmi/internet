@@ -1,7 +1,7 @@
 {
 	"name": "@tsuuanmi/internet",
 	"version": "0.0.1",
-	"description": "Browser-backed ChatGPT Web and Gemini Web tools for DeepSeek Harness: browser_chat, browser_team, and portable-account internet_browser login.",
+	"description": "Browser-backed ChatGPT Web and Gemini Web tools for DeepSeek Harness: internet_chat, internet_team, and portable-account internet_browser login.",
 	"type": "module",
 	"license": "MIT",
 	"repository": {

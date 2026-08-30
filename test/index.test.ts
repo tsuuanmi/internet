@@ -17,11 +17,11 @@ function fakeContext(): {
 	return { context, sections, tools };
 }
 
-describe("browser-team system guidance", () => {
-	it("prefers focused background subagents while documenting isolation and bounded concurrency", () => {
+describe("internet-team system guidance", () => {
+	it("registers only canonical tool IDs and documents team isolation", () => {
 		const { context, sections, tools } = fakeContext();
 		apply(context, {});
-		const team = sections.find((section) => section.name === "tool:browser_team");
+		const team = sections.find((section) => section.name === "tool:internet_team");
 		const research = sections.find((section) => section.name === "tool:internet_research");
 
 		expect(team?.text).toContain("focused background subagent");
@@ -29,8 +29,11 @@ describe("browser-team system guidance", () => {
 		expect(team?.text).toContain("rather than recursively delegating");
 		expect(team?.text).toContain("maxConcurrentTurnsPerProvider");
 		expect(team?.text).toContain("same-session turns, visible calls, login");
-		expect(team?.text).toContain("call browser_team directly");
-		expect(tools).toContain("internet_research");
+		expect(team?.text).toContain("call internet_team directly");
+		expect(tools).toEqual(
+			expect.arrayContaining(["internet_chat", "internet_team", "internet_research", "internet_browser"]),
+		);
+		expect(tools).not.toEqual(expect.arrayContaining(["browser_chat", "browser_team"]));
 		expect(research?.text).toContain("30 minutes");
 	});
 });

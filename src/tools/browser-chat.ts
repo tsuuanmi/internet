@@ -9,7 +9,7 @@ export type { ChatInput } from "#internet/tools/args";
 export { parseChatArgs } from "#internet/tools/args";
 
 /**
- * Define the `browser_chat` model tool: ask ChatGPT Web or Gemini Web a
+ * Define the `internet_chat` model tool: ask ChatGPT Web or Gemini Web a
  * question through a real logged-in browser and return the rendered answer as
  * markdown. This is the MVP entry point that DSH agents call; a provider-model
  * adapter on `ctx.llm` can be layered on later reusing the same
@@ -21,7 +21,7 @@ export function defineBrowserChatTool(
 	allowed: ReadonlySet<WebProvider>,
 ): ReturnType<typeof defineTool> {
 	return defineTool({
-		name: "browser_chat",
+		name: "internet_chat",
 		description:
 			"Ask ChatGPT or Gemini through a logged-in browser. Both providers durably resume one native conversation per current DSH session. The browser is hidden by default; set visible=true to show it on the user-managed display.",
 		parameters: {
@@ -62,7 +62,7 @@ export function defineBrowserChatTool(
 			const { provider, prompt, visible } = parseChatArgs(args);
 			if (!allowed.has(provider)) {
 				return {
-					answer: `browser_chat provider ${provider} is disabled in the internet plugin config.`,
+					answer: `internet_chat provider ${provider} is disabled in the internet plugin config.`,
 					provider,
 					isError: true,
 				};
@@ -70,7 +70,7 @@ export function defineBrowserChatTool(
 			const sessionId = exec.agent?.id;
 			if (sessionId === undefined) {
 				return {
-					answer: "browser_chat requires an agent-backed DSH session to own the durable web conversation.",
+					answer: "internet_chat requires an agent-backed DSH session to own the durable web conversation.",
 					provider,
 					isError: true,
 				};
@@ -91,7 +91,7 @@ export function defineBrowserChatTool(
 			} catch (error) {
 				if (isInternetError(error)) {
 					return {
-						answer: `browser_chat failed (${error.kind}): ${error.message}`,
+						answer: `internet_chat failed (${error.kind}): ${error.message}`,
 						provider,
 						isError: true,
 					};
