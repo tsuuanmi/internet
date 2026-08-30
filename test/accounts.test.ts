@@ -249,6 +249,31 @@ describe("browser state capture", () => {
 		});
 	});
 
+	it("does not restore IndexedDB for an origin absent from a fallback snapshot", () => {
+		const previous: PortableStorageState = {
+			cookies: [],
+			origins: [
+				{ origin: "https://current.example", localStorage: [], indexedDB: [{ name: "current" }] },
+				{ origin: "https://stale.example", localStorage: [], indexedDB: [{ name: "stale" }] },
+			],
+		};
+		const fallback: PortableStorageState = {
+			cookies: [],
+			origins: [{ origin: "https://current.example", localStorage: [{ name: "account", value: "two" }] }],
+		};
+
+		expect(preserveIndexedDb(fallback, previous)).toEqual({
+			cookies: [],
+			origins: [
+				{
+					origin: "https://current.example",
+					localStorage: [{ name: "account", value: "two" }],
+					indexedDB: [{ name: "current" }],
+				},
+			],
+		});
+	});
+
 	it("captures bootstrap cookies and local storage from a persistent profile", async () => {
 		const cookies = storageState().cookies;
 		const page = {

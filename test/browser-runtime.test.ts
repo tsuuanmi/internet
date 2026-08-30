@@ -264,10 +264,16 @@ describe("BrowserManager authentication assessment", () => {
 		await browser.dispose();
 	});
 
-	it("commits an authenticated snapshot after a recoverable failed turn", async () => {
+	it("commits an IndexedDB-preserving fallback snapshot after a recoverable failed turn", async () => {
 		const browser = manager();
-		const original = { cookies: [], origins: [] };
-		const refreshed = { cookies: [], origins: [{ origin: "https://chatgpt.com", localStorage: [] }] };
+		const original = {
+			cookies: [],
+			origins: [{ origin: "https://chatgpt.com", localStorage: [], indexedDB: [{ name: "auth" }] }],
+		};
+		const refreshed = {
+			cookies: [],
+			origins: [{ origin: "https://chatgpt.com", localStorage: [{ name: "session", value: "rotated" }] }],
+		};
 		(browser as any).accounts.writeReady("chatgpt-web", original);
 		const revision = (browser as any).accounts.inspect("chatgpt-web").account.revision;
 		(browser as any).assessAuthentication = vi.fn(async () => ({
@@ -276,15 +282,58 @@ describe("BrowserManager authentication assessment", () => {
 		}));
 		const lease = { generation: 0, signal: new AbortController().signal };
 
+		const storageState = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("Unable to serialize IndexedDB: Failed to read large IndexedDB value"))
+			.mockResolvedValueOnce(refreshed);
 		await (browser as any).recoverAuthenticatedSnapshot(
 			"chatgpt-web",
 			{},
-			{ storageState: vi.fn(async () => refreshed) },
+			{ storageState },
 			lease,
 			revision,
 			original,
 		);
-		expect((browser as any).accounts.inspect("chatgpt-web").account.storageState).toEqual(refreshed);
+		expect((browser as any).accounts.inspect("chatgpt-web").account.storageState).toEqual({
+			cookies: [],
+			origins: [
+				{
+					origin: "https://chatgpt.com",
+					localStorage: [{ name: "session", value: "rotated" }],
+					indexedDB: [{ name: "auth" }],
+				},
+			],
+		});
+		await browser.dispose();
+	});
+
+	it("prepares an IndexedDB-preserving fallback snapshot for a normal turn", async () => {
+		const browser = manager();
+		const previous = {
+			cookies: [],
+			origins: [{ origin: "https://chatgpt.com", localStorage: [], indexedDB: [{ name: "auth" }] }],
+		};
+		const refreshed = {
+			cookies: [],
+			origins: [{ origin: "https://chatgpt.com", localStorage: [{ name: "session", value: "rotated" }] }],
+		};
+		const storageState = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("Unable to serialize IndexedDB: Failed to read large IndexedDB value"))
+			.mockResolvedValueOnce(refreshed);
+
+		await expect((browser as any).captureAccountSnapshot({ storageState }, previous)).resolves.toEqual({
+			cookies: [],
+			origins: [
+				{
+					origin: "https://chatgpt.com",
+					localStorage: [{ name: "session", value: "rotated" }],
+					indexedDB: [{ name: "auth" }],
+				},
+			],
+		});
+		expect(storageState).toHaveBeenNthCalledWith(1, { indexedDB: true });
+		expect(storageState).toHaveBeenNthCalledWith(2);
 		await browser.dispose();
 	});
 

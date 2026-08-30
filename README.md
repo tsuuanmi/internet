@@ -290,7 +290,7 @@ ordered. A queued lifecycle operation forms a fence, so later turns wait until i
 turn uses an isolated non-persistent browser context restored from the same portable account. Snapshot
 commits use the bootstrap account revision: the first current snapshot commits, and stale snapshots are
 discarded rather than unsafely merging account state. When an IndexedDB-free fallback refreshes the current
-account, its prior IndexedDB is retained while cookies and local storage update. Recoverable failed turns
+account, same-origin IndexedDB is retained while cookies and local storage update. Recoverable failed turns
 also attempt a short authenticated state refresh, so provider token rotation is less likely to be lost.
 Plugin disposal closes contexts, Chrome processes, remote logins, and managed displays.
 

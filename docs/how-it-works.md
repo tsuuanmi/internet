@@ -292,9 +292,9 @@ after `closeAfterMs` of pool-wide idleness.
 Successful current-generation turns serialize portable-account refreshes. Every context remembers the
 canonical account revision used to bootstrap it; a commit advances that revision, and later completions
 from the older revision are discarded. The stored account is a bootstrap cache, not a mergeable replica of
-arbitrary provider state. An IndexedDB-free fallback refresh retains the current account's IndexedDB while
-updating its cookies and local storage. Only affirmative sign-out proof marks reauth-required; a
-challenge or unconfirmed surface preserves the ready snapshot. Reauthentication invalidates the provider
+arbitrary provider state. An IndexedDB-free fallback refresh retains IndexedDB only for origins present in
+the fresh snapshot while updating cookies and local storage. Only affirmative sign-out proof marks
+reauth-required; a challenge or unconfirmed surface preserves the ready snapshot. Reauthentication invalidates the provider
 generation, aborts active leases, and prevents older turns from restoring a `ready` snapshot.
 `BrowserManager.dispose()` closes contexts, Chrome, pending remote logins, timers, and the shared
 inference display.

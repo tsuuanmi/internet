@@ -39,16 +39,13 @@ export function preserveIndexedDb(storageState, previousStorageState) {
     const previousByOrigin = new Map(previousStorageState.origins
         .filter((origin) => origin.indexedDB !== undefined)
         .map((origin) => [origin.origin, origin]));
-    const origins = storageState.origins.map((origin) => {
-        const previous = previousByOrigin.get(origin.origin);
-        if (previous?.indexedDB === undefined)
-            return origin;
-        previousByOrigin.delete(origin.origin);
-        return { ...origin, indexedDB: previous.indexedDB };
-    });
-    for (const previous of previousByOrigin.values())
-        origins.push({ ...previous });
-    return { ...storageState, origins };
+    return {
+        ...storageState,
+        origins: storageState.origins.map((origin) => {
+            const previous = previousByOrigin.get(origin.origin);
+            return previous?.indexedDB === undefined ? origin : { ...origin, indexedDB: previous.indexedDB };
+        }),
+    };
 }
 /**
  * Capture the profile state needed to bootstrap a portable context. Patchright
