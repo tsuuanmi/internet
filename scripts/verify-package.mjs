@@ -47,6 +47,12 @@ try {
 			sections: ["tool:internet_research", "tool:internet_chat"],
 		},
 		{
+			config: { enableGemini: false },
+			tools: ["internet_chat", "internet_research", "internet_browser"],
+			commands: ["internet"],
+			sections: ["tool:internet_research", "tool:internet_chat"],
+		},
+		{
 			config: { enableChatgpt: false, enableGemini: false },
 			tools: [],
 			commands: [],
