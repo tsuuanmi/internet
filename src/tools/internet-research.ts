@@ -3,6 +3,7 @@ import type { BrowserManager } from "#internet/browser/runtime";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 import { WEB_PROVIDERS } from "#internet/core/config";
 import { isInternetError } from "#internet/core/errors";
+import { parseResearchArgs, type ResearchInput } from "#internet/tools/args";
 
 type ResearchProviderResult = {
 	provider: WebProvider;
@@ -79,34 +80,25 @@ export function defineInternetResearchTool(
 			state: "completed" | "partial_success" | "failed";
 			results: ResearchProviderResult[];
 		}> {
-			if (typeof args.query !== "string" || args.query.trim().length === 0) {
+			let input: ResearchInput;
+			try {
+				input = parseResearchArgs(args);
+			} catch {
 				return { state: "failed", results: [] };
 			}
-			const selected = args.providers === undefined ? [...allowed] : args.providers;
-			if (!Array.isArray(selected) || selected.length === 0 || selected.some((value) => typeof value !== "string")) {
+			const providers = input.providers ?? [...allowed];
+			if (providers.some((provider) => !allowed.has(provider))) {
 				return { state: "failed", results: [] };
 			}
-			const providers = [...new Set(selected)] as WebProvider[];
-			if (
-				providers.some(
-					(provider) => !(WEB_PROVIDERS as readonly string[]).includes(provider) || !allowed.has(provider),
-				)
-			) {
-				return { state: "failed", results: [] };
-			}
-			if (args.name !== undefined && (typeof args.name !== "string" || args.name.trim().length === 0)) {
-				return { state: "failed", results: [] };
-			}
-			if (args.visible !== undefined && typeof args.visible !== "boolean") return { state: "failed", results: [] };
 			if (exec.agent?.id === undefined) return { state: "failed", results: [] };
-			const sessionId = `${String(exec.agent.id)}:research:${typeof args.name === "string" ? args.name : "default"}`;
+			const sessionId = `${String(exec.agent.id)}:research:${input.name ?? "default"}`;
 			const results = await Promise.all(
 				providers.map(async (provider): Promise<ResearchProviderResult> => {
 					try {
 						const result = await manager.research(provider, {
-							prompt: args.query,
+							prompt: input.query,
 							sessionId,
-							visible: args.visible === true,
+							visible: input.visible === true,
 							signal: exec.signal,
 						});
 						return {

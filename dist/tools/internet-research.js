@@ -1,6 +1,7 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { WEB_PROVIDERS } from "#internet/core/config";
 import { isInternetError } from "#internet/core/errors";
+import { parseResearchArgs } from "#internet/tools/args";
 /** Run provider-native Deep Research with isolated durable conversations. */
 export function defineInternetResearchTool(manager, config, allowed) {
     return defineTool({
@@ -56,31 +57,26 @@ export function defineInternetResearchTool(manager, config, allowed) {
         timeoutMs: config.researchTimeoutMs,
         isConcurrencySafe: () => false,
         async execute(args, exec) {
-            if (typeof args.query !== "string" || args.query.trim().length === 0) {
+            let input;
+            try {
+                input = parseResearchArgs(args);
+            }
+            catch {
                 return { state: "failed", results: [] };
             }
-            const selected = args.providers === undefined ? [...allowed] : args.providers;
-            if (!Array.isArray(selected) || selected.length === 0 || selected.some((value) => typeof value !== "string")) {
+            const providers = input.providers ?? [...allowed];
+            if (providers.some((provider) => !allowed.has(provider))) {
                 return { state: "failed", results: [] };
             }
-            const providers = [...new Set(selected)];
-            if (providers.some((provider) => !WEB_PROVIDERS.includes(provider) || !allowed.has(provider))) {
-                return { state: "failed", results: [] };
-            }
-            if (args.name !== undefined && (typeof args.name !== "string" || args.name.trim().length === 0)) {
-                return { state: "failed", results: [] };
-            }
-            if (args.visible !== undefined && typeof args.visible !== "boolean")
-                return { state: "failed", results: [] };
             if (exec.agent?.id === undefined)
                 return { state: "failed", results: [] };
-            const sessionId = `${String(exec.agent.id)}:research:${typeof args.name === "string" ? args.name : "default"}`;
+            const sessionId = `${String(exec.agent.id)}:research:${input.name ?? "default"}`;
             const results = await Promise.all(providers.map(async (provider) => {
                 try {
                     const result = await manager.research(provider, {
-                        prompt: args.query,
+                        prompt: input.query,
                         sessionId,
-                        visible: args.visible === true,
+                        visible: input.visible === true,
                         signal: exec.signal,
                     });
                     return {

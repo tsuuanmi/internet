@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,8 +32,47 @@ try {
 	for (const artifact of ["dist/index.js", "dist/client.js", "dist/remote-login-client.js", "cordis.patch.yml"]) {
 		if (!existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact missing: ${artifact}`);
 	}
-	await import(pathToFileURL(join(installed, "dist/index.js")).href);
-	console.log("verified isolated packed root consumer import and browser client artifacts");
+	const plugin = await import(pathToFileURL(join(installed, "dist/index.js")).href);
+	const scenarios = [
+		{
+			config: {},
+			tools: ["internet_chat", "internet_research", "internet_browser", "internet_team"],
+			commands: ["internet"],
+			sections: ["tool:internet_research", "tool:internet_team", "tool:internet_chat"],
+		},
+		{
+			config: { enableChatgpt: false },
+			tools: ["internet_chat", "internet_research", "internet_browser"],
+			commands: [],
+			sections: ["tool:internet_research", "tool:internet_chat"],
+		},
+		{
+			config: { enableChatgpt: false, enableGemini: false },
+			tools: [],
+			commands: [],
+			sections: [],
+		},
+	];
+	for (const scenario of scenarios) {
+		const tools = [];
+		const commands = [];
+		const sections = [];
+		const cleanups = [];
+		plugin.apply(
+			{
+				tools: { register: (tool) => tools.push(tool.name) },
+				commands: { register: (command) => commands.push(command.name) },
+				systemPrompt: { section: (section) => sections.push(section.name) },
+				effect: (effect) => cleanups.push(effect()),
+			},
+			scenario.config,
+		);
+		assert.deepEqual(tools, scenario.tools);
+		assert.deepEqual(commands, scenario.commands);
+		assert.deepEqual(sections, scenario.sections);
+		await Promise.all(cleanups.map((cleanup) => cleanup?.()));
+	}
+	console.log("verified isolated packed plugin registration and browser client artifacts");
 } finally {
 	if (tarball !== undefined) rmSync(tarball, { force: true });
 	rmSync(temporaryRoot, { recursive: true, force: true });
