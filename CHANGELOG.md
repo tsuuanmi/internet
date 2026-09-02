@@ -11,6 +11,7 @@
 
 ### Added
 
+- **commands**: Add `/workflow <objective>`, which resolves the current session's Git upstream and queues a seven-phase, independently reviewed implementation workflow. It requires both web providers so each required review can use `internet_team`.
 - **chatgpt**: Select and verify the ChatGPT Web reasoning level before each turn via
   `chatgptThinkingLevel` (default `medium`). Supports `instant | medium | high` and handles both the
   menuitemradio list and reasoning-effort slider surfaces.

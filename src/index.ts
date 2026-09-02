@@ -2,6 +2,7 @@ import type { CommandDefinition } from "@deepseek-ai/dsh-commands";
 import type { defineTool } from "@deepseek-ai/dsh-tools";
 import { BrowserManager } from "#internet/browser/runtime";
 import { defineInternetCommand } from "#internet/commands/internet";
+import { defineWorkflowCommand } from "#internet/commands/workflow";
 import { resolveBrowserConfig, type WebProvider } from "#internet/core/config";
 import { defineInternetBrowserTool } from "#internet/tools/browser";
 import { defineBrowserChatTool } from "#internet/tools/browser-chat";
@@ -74,6 +75,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		text: INTERNET_RESEARCH_GUIDANCE,
 	});
 	if (allowed.size >= 2) {
+		ctx.commands.register(defineWorkflowCommand());
 		ctx.tools.register(defineBrowserTeamTool(manager, config, allowed));
 		ctx.systemPrompt?.section?.({
 			name: "tool:internet_team",

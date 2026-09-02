@@ -28,6 +28,7 @@ provider interaction contracts, durable conversations, and `internet_team` orche
 - `src/tools/` — DSH definitions for `internet_chat`, `internet_team`, `internet_research`, and
   `internet_browser`.
 - `src/commands/internet.ts` — human `/internet` command backed by ChatGPT.
+- `src/commands/workflow.ts` — human `/workflow` command that resolves the session Git upstream and queues the reviewed implementation workflow.
 - `src/client.ts` — DSH-side command renderer.
 - `src/remote-login-client.ts` — isolated noVNC page with Save and Cancel controls; it is not part of the
   DSH application shell.
@@ -44,7 +45,7 @@ Registration depends on enabled providers:
 
 - `internet_chat` and `internet_browser` are available when at least one provider is enabled.
 - `/internet` is available only when ChatGPT is enabled.
-- `internet_team` is available only when at least two providers are enabled.
+- `internet_team` and `/workflow` are available only when at least two providers are enabled.
 
 The plugin also contributes tool-selection guidance through `ctx.systemPrompt`. Updating the installed
 package requires restarting the existing DSH host so its server-side module is reloaded.
@@ -77,6 +78,14 @@ internet_chat { model, prompt, visible? }
 `/internet <question>` enters the same ChatGPT path with
 `sessionId = String(invocation.agent.id)`, bypasses an agent model turn, and returns markdown to the DSH
 client command renderer.
+
+`/workflow <objective>` is a command-plane admission step, not a direct browser request. It reads only the
+receiving session's `header.cwd`, invokes Git with argument vectors (never a shell), selects the branch
+tracking remote, `origin`, or one unambiguous remote, and converts supported public SSH/HTTPS remote forms
+to a credential-free HTTPS URL. It verifies the worktree and `HEAD` first. On any failure it returns a direct
+command error and never queues a message. On success it follows up with the objective, selected upstream,
+and complete seven-phase workflow; the normal agent loop then owns the asynchronous subagent handoffs,
+scope gates, implementation, push, reviews, and final report.
 
 ## Deep Research request flow
 

@@ -8,7 +8,11 @@
 
 declare module "@deepseek-ai/dsh-commands" {
 	export interface CommandInvocation {
-		readonly agent: { readonly id: string };
+		readonly agent: {
+			readonly id: string;
+			readonly session: { readonly header: { readonly cwd?: string } };
+			followup(message: unknown): void;
+		};
 		readonly rawInput: string;
 		readonly signal: AbortSignal;
 	}

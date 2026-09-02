@@ -1,5 +1,6 @@
 import { BrowserManager } from "#internet/browser/runtime";
 import { defineInternetCommand } from "#internet/commands/internet";
+import { defineWorkflowCommand } from "#internet/commands/workflow";
 import { resolveBrowserConfig } from "#internet/core/config";
 import { defineInternetBrowserTool } from "#internet/tools/browser";
 import { defineBrowserChatTool } from "#internet/tools/browser-chat";
@@ -55,6 +56,7 @@ export function apply(ctx, rawConfig) {
         text: INTERNET_RESEARCH_GUIDANCE,
     });
     if (allowed.size >= 2) {
+        ctx.commands.register(defineWorkflowCommand());
         ctx.tools.register(defineBrowserTeamTool(manager, config, allowed));
         ctx.systemPrompt?.section?.({
             name: "tool:internet_team",

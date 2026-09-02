@@ -5,21 +5,23 @@ function fakeContext(): {
 	context: PluginContext;
 	sections: Array<{ name: string; order: number; text: string }>;
 	tools: string[];
+	commands: string[];
 } {
 	const sections: Array<{ name: string; order: number; text: string }> = [];
 	const tools: string[] = [];
+	const commands: string[] = [];
 	const context: PluginContext = {
 		tools: { register: (tool) => tools.push(tool.name) },
-		commands: { register: () => {} },
+		commands: { register: (command) => commands.push(command.name) },
 		systemPrompt: { section: (options) => sections.push(options) },
 		effect: () => {},
 	};
-	return { context, sections, tools };
+	return { context, sections, tools, commands };
 }
 
 describe("internet-team system guidance", () => {
 	it("registers only canonical tool IDs and documents team isolation", () => {
-		const { context, sections, tools } = fakeContext();
+		const { context, sections, tools, commands } = fakeContext();
 		apply(context, {});
 		const team = sections.find((section) => section.name === "tool:internet_team");
 		const research = sections.find((section) => section.name === "tool:internet_research");
@@ -31,13 +33,15 @@ describe("internet-team system guidance", () => {
 		expect(team?.text).toContain("same-session turns, visible calls, login");
 		expect(team?.text).toContain("call internet_team directly");
 		expect(tools).toEqual(["internet_chat", "internet_research", "internet_browser", "internet_team"]);
+		expect(commands).toEqual(["internet", "workflow"]);
 		expect(research?.text).toContain("30 minutes");
 	});
 
 	it("omits internet_team when only one provider is enabled", () => {
-		const { context, tools } = fakeContext();
+		const { context, tools, commands } = fakeContext();
 		apply(context, { enableGemini: false });
 
 		expect(tools).toEqual(["internet_chat", "internet_research", "internet_browser"]);
+		expect(commands).toEqual(["internet"]);
 	});
 });

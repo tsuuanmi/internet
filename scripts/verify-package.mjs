@@ -37,7 +37,7 @@ try {
 		{
 			config: {},
 			tools: ["internet_chat", "internet_research", "internet_browser", "internet_team"],
-			commands: ["internet"],
+			commands: ["internet", "workflow"],
 			sections: ["tool:internet_research", "tool:internet_team", "tool:internet_chat"],
 		},
 		{

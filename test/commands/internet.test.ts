@@ -4,7 +4,11 @@ import { InternetError } from "#internet/core/errors";
 
 function invocation(rawInput: string) {
 	return {
-		agent: { id: "1-1" },
+		agent: {
+			id: "1-1",
+			session: { header: { cwd: "/repo" } },
+			followup: () => {},
+		},
 		rawInput,
 		signal: new AbortController().signal,
 	};

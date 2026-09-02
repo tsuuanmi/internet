@@ -13,6 +13,7 @@ conversations, and visible browser inspection without running a separate daemon.
 - **`internet_research`** — run provider-native Deep Research in one or both providers.
 - **`internet_browser`** — sign in, inspect account state, or stop a provider browser.
 - **`/internet <question>`** — ask ChatGPT directly from the conversation UI without an agent model turn.
+- **`/workflow <objective>`** — queue a Git-aware, reviewed implementation workflow for the current session.
 - **Portable accounts** — copy only `~/.dsh/internet/accounts/` to move authenticated state.
 - **Durable conversations** — each DSH session resumes one native conversation per provider.
 - **Visible or hidden automation** — hidden managed Xvfb by default; opt into a user-visible window per call.
@@ -136,6 +137,25 @@ accept the next request.
 The command asks ChatGPT directly and renders its markdown response without first invoking the agent's
 configured model. It shares the current DSH session's durable ChatGPT conversation with `internet_chat`.
 The command is available when `enableChatgpt` is true.
+
+### `/workflow`
+
+```text
+/workflow Correct the login redirect after a cancelled sign-in.
+```
+
+`/workflow` reads the current DSH session's Git worktree and selects its upstream remote in this order:
+the checked-out branch's configured remote, `origin`, then the only configured remote. Standard SSH and
+HTTPS remotes are converted to a credential-free HTTPS repository URL. A missing session directory,
+non-Git worktree, ambiguous remote, or local/private-network remote returns a direct error and queues
+nothing.
+
+On success, the command queues a model-visible seven-phase workflow with your objective, the selected
+repository URL, and the checked-out commit. The workflow requires independent upstream review, main-agent
+verification and a risk-based approval gate, implementation and validation, push, independent post-commit
+review, remediation, and a final report. It requires both browser providers because its independent reviews
+use `internet_team`; it is not registered when either provider is disabled. The command schedules the agent
+work rather than performing browser work synchronously.
 
 ## Install
 
