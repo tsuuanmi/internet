@@ -61,6 +61,12 @@ describe("defineWorkflowCommand", () => {
 		expect(text).toContain("Phase 1 — Independent Research and Review");
 		expect(text).toContain("Phase 7 — Final Report");
 		expect(text).toContain("`internet_team`");
+		expect(text).toContain("MUST include this exact repository handoff in every subagent prompt");
+		expect(text).toContain(
+			"Repository URL: https://github.com/example/signal\nTarget revision: 0123456789abcdef0123456789abcdef01234567",
+		);
+		expect(text).toContain("MUST include this exact repository handoff in every reviewer prompt");
+		expect(text).toContain("Commit to review: <exact pushed SHA>");
 		expect(text).not.toContain("git@github.com");
 	});
 

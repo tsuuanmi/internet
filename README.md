@@ -153,9 +153,11 @@ nothing.
 On success, the command queues a model-visible seven-phase workflow with your objective, the selected
 repository URL, and the checked-out commit. The workflow requires independent upstream review, main-agent
 verification and a risk-based approval gate, implementation and validation, push, independent post-commit
-review, remediation, and a final report. It requires both browser providers because its independent reviews
-use `internet_team`; it is not registered when either provider is disabled. The command schedules the agent
-work rather than performing browser work synchronously.
+review, remediation, and a final report. Every research and post-commit reviewer prompt—and every
+reviewer's `internet_team` task—must explicitly repeat the selected repository URL and the relevant revision;
+subagents must not rely on inherited conversation context. It requires both browser providers because its
+independent reviews use `internet_team`; it is not registered when either provider is disabled. The command
+schedules the agent work rather than performing browser work synchronously.
 
 ## Install
 
