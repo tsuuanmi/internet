@@ -29,7 +29,7 @@ try {
 		{ cwd: consumer, stdio: "pipe" },
 	);
 	const installed = join(consumer, "node_modules", "@tsuuanmi", "internet");
-	for (const artifact of ["dist/index.js", "dist/client.js", "dist/remote-login-client.js", "cordis.patch.yml"]) {
+	for (const artifact of ["dist/index.js", "dist/client.js", "dist/client.d.ts", "dist/remote-login-client.js", "cordis.patch.yml"]) {
 		if (!existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact missing: ${artifact}`);
 	}
 	for (const artifact of [

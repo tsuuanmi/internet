@@ -23,6 +23,7 @@ describe("DSH package contract", () => {
 		await Promise.all([
 			access(new URL("../dist/index.js", import.meta.url), constants.R_OK),
 			access(new URL("../dist/client.js", import.meta.url), constants.R_OK),
+			access(new URL("../dist/client.d.ts", import.meta.url), constants.R_OK),
 			access(new URL("../dist/remote-login-client.js", import.meta.url), constants.R_OK),
 			expect(access(new URL("../dist/client.js.map", import.meta.url), constants.R_OK)).rejects.toMatchObject({
 				code: "ENOENT",
