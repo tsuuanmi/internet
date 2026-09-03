@@ -3,8 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	GEMINI_ACCOUNT_SELECTOR,
 	GEMINI_COMPOSER_SELECTOR,
-	GEMINI_DEFAULT_EXTENDED_LABEL,
-	GEMINI_DEFAULT_FLASH_LABEL,
 	GEMINI_MODE_MENU_ITEM_SELECTOR,
 	GEMINI_MODE_PICKER_SELECTOR,
 	GEMINI_STOP_BUTTON_SELECTOR,
@@ -113,48 +111,60 @@ describe("geminiWaitAuthenticationAssessment", () => {
 	});
 });
 
-function modePickerPage(flashDisabled = false): {
+function modePickerPage(options: { delayedOpen?: boolean; duplicateFlash?: boolean; flashDisabled?: boolean } = {}): {
 	page: Page;
 	triggerClick: ReturnType<typeof vi.fn>;
 	flashClick: ReturnType<typeof vi.fn>;
+	flashLiteClick: ReturnType<typeof vi.fn>;
 	extendedClick: ReturnType<typeof vi.fn>;
-	menuItemFilter: ReturnType<typeof vi.fn>;
+	nth: ReturnType<typeof vi.fn>;
 } {
 	let expanded = false;
+	let pickerClicked = false;
+	let delayedReads = 0;
 	let indicator = "Open mode picker, currently Flash";
 	const triggerClick = vi.fn(async () => {
-		expanded = true;
+		pickerClicked = true;
+		expanded = !options.delayedOpen;
 	});
 	const flashClick = vi.fn(async () => {
 		expanded = false;
+		pickerClicked = false;
 		indicator = "Open mode picker, currently Flash";
 	});
+	const flashLiteClick = vi.fn(async () => {});
 	const extendedClick = vi.fn(async () => {
 		expanded = false;
+		pickerClicked = false;
 		indicator = "Open mode picker, currently Flash Extended";
 	});
+	const labels = options.duplicateFlash
+		? ["3.8 Flash All-around help", "3.8 Flash All-around help", "Extended thinking Complex problem solving"]
+		: ["3.8 Flash All-around help", "3.8 Flash-Lite Fastest answers", "Extended thinking Complex problem solving"];
 	const action = (click: ReturnType<typeof vi.fn>, disabled = false) => ({
 		waitFor: vi.fn(async () => {}),
 		getAttribute: vi.fn(async (name: string) => (name === "aria-disabled" && disabled ? "true" : null)),
 		click,
 	});
-	const menuItemFilter = vi.fn((options: { hasText?: string }) => ({
-		last: () =>
-			options.hasText === GEMINI_DEFAULT_FLASH_LABEL ? action(flashClick, flashDisabled) : action(extendedClick),
-	}));
+	const actions = [action(flashClick, options.flashDisabled), action(flashLiteClick), action(extendedClick)];
+	const nth = vi.fn((index: number) => actions[index]);
 	const menu = {
 		waitFor: vi.fn(async () => {}),
 		getAttribute: vi.fn(async (name: string) => (name === "role" ? "menu" : null)),
 		locator: vi.fn((selector: string) => {
 			if (selector !== GEMINI_MODE_MENU_ITEM_SELECTOR) throw new Error(`unexpected menu selector ${selector}`);
-			return { filter: menuItemFilter };
+			return { allInnerTexts: async () => labels, nth };
 		}),
 	};
 	const trigger = {
 		waitFor: vi.fn(async () => {}),
 		click: triggerClick,
+		evaluate: vi.fn(async () => ({})),
 		getAttribute: vi.fn(async (name: string) => {
-			if (name === "aria-expanded") return expanded ? "true" : "false";
+			if (name === "aria-expanded") {
+				if (pickerClicked && options.delayedOpen && ++delayedReads >= 2) expanded = true;
+				return expanded ? "true" : "false";
+			}
 			if (name === "aria-controls") return "ng-menu-1";
 			if (name === "aria-label") return indicator;
 			return null;
@@ -162,6 +172,7 @@ function modePickerPage(flashDisabled = false): {
 	};
 	const composer = { waitFor: vi.fn(async () => {}) };
 	const page = {
+		url: () => "https://gemini.google.com/app",
 		locator(selector: string) {
 			if (selector === GEMINI_COMPOSER_SELECTOR) return { filter: () => ({ first: () => composer }) };
 			if (selector === GEMINI_MODE_PICKER_SELECTOR) return { filter: () => ({ last: () => trigger }) };
@@ -169,26 +180,38 @@ function modePickerPage(flashDisabled = false): {
 			throw new Error(`unexpected page selector ${selector}`);
 		},
 	} as unknown as Page;
-	return { page, triggerClick, flashClick, extendedClick, menuItemFilter };
+	return { page, triggerClick, flashClick, flashLiteClick, extendedClick, nth };
 }
 
 describe("geminiSelectDefaultMode", () => {
-	it("selects and confirms the current Flash plus Extended default before a turn", async () => {
-		const { page, triggerClick, flashClick, extendedClick, menuItemFilter } = modePickerPage();
+	it("selects exact 3.8 Flash plus Extended without using Flash-Lite", async () => {
+		const { page, triggerClick, flashClick, flashLiteClick, extendedClick, nth } = modePickerPage();
 
 		await geminiSelectDefaultMode(page);
 
 		expect(triggerClick).toHaveBeenCalledTimes(2);
-		expect(menuItemFilter).toHaveBeenNthCalledWith(1, { hasText: GEMINI_DEFAULT_FLASH_LABEL });
-		expect(menuItemFilter).toHaveBeenNthCalledWith(2, { hasText: GEMINI_DEFAULT_EXTENDED_LABEL });
+		expect(nth).toHaveBeenNthCalledWith(1, 0);
+		expect(nth).toHaveBeenNthCalledWith(2, 2);
 		expect(flashClick).toHaveBeenCalledOnce();
+		expect(flashLiteClick).not.toHaveBeenCalled();
 		expect(extendedClick).toHaveBeenCalledOnce();
 	});
 
-	it("fails explicitly rather than choosing another model when Flash is disabled", async () => {
-		const { page, flashClick, extendedClick } = modePickerPage(true);
+	it("waits for the asynchronous picker expansion", async () => {
+		const { page } = modePickerPage({ delayedOpen: true });
+		await expect(geminiSelectDefaultMode(page)).resolves.toBeUndefined();
+	});
 
+	it("fails explicitly rather than choosing another model when Flash is disabled", async () => {
+		const { page, flashClick, extendedClick } = modePickerPage({ flashDisabled: true });
 		await expect(geminiSelectDefaultMode(page)).rejects.toThrow("3.8 Flash is disabled");
+		expect(flashClick).not.toHaveBeenCalled();
+		expect(extendedClick).not.toHaveBeenCalled();
+	});
+
+	it("fails closed when the exact Flash model is ambiguous", async () => {
+		const { page, flashClick, extendedClick } = modePickerPage({ duplicateFlash: true });
+		await expect(geminiSelectDefaultMode(page)).rejects.toThrow("expected exactly one");
 		expect(flashClick).not.toHaveBeenCalled();
 		expect(extendedClick).not.toHaveBeenCalled();
 	});

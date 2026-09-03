@@ -13,6 +13,8 @@ export const GEMINI_MODE_PICKER_SELECTOR = 'button[data-test-id="bard-mode-menu-
 export const GEMINI_MODE_MENU_ITEM_SELECTOR = '[role="menuitem"]';
 export const GEMINI_DEFAULT_FLASH_LABEL = "3.8 Flash";
 export const GEMINI_DEFAULT_EXTENDED_LABEL = "Extended thinking";
+const GEMINI_DEFAULT_FLASH_MENU_TEXT = "3.8 Flash All-around help";
+const GEMINI_DEFAULT_EXTENDED_MENU_TEXT = "Extended thinking Complex problem solving";
 const GEMINI_DEFAULT_FLASH_INDICATOR = "Open mode picker, currently Flash";
 const GEMINI_DEFAULT_FLASH_EXTENDED_INDICATOR = "Open mode picker, currently Flash Extended";
 export const GEMINI_DEEP_RESEARCH_REPORT_SELECTOR = 'response-container structured-content-container[data-test-id="message-content"] message-content #extended-response-markdown-content';
@@ -74,6 +76,42 @@ export async function geminiWaitAuthenticationAssessment(page, timeoutMs, signal
 export async function geminiWaitAuthenticated(page, timeoutMs, signal) {
     return (await geminiWaitAuthenticationAssessment(page, timeoutMs, signal)).state === "authenticated";
 }
+function normalizeGeminiMenuText(value) {
+    return value.replace(/\s+/g, " ").trim();
+}
+async function geminiModeDiagnostic(page) {
+    let originPath;
+    try {
+        const url = new URL(page.url());
+        originPath = `${url.origin}${url.pathname}`;
+    }
+    catch {
+        // Navigation can replace the provider document while a diagnostic is collected.
+    }
+    const trigger = page.locator(GEMINI_MODE_PICKER_SELECTOR).filter({ visible: true }).last();
+    const picker = await trigger
+        .evaluate((element) => ({
+        ariaExpanded: element.getAttribute("aria-expanded"),
+        ariaLabel: element.getAttribute("aria-label"),
+        ariaControls: element.getAttribute("aria-controls"),
+        outerHtml: element.outerHTML.replace(/\s+/g, " ").slice(0, 1_000),
+    }))
+        .catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+    return { ...(originPath === undefined ? {} : { originPath }), picker };
+}
+async function geminiProviderError(page, message, error) {
+    const diagnostic = await geminiModeDiagnostic(page);
+    return new InternetError("provider_error", `${message}${error instanceof Error ? ` (${error.message})` : ""}; diagnostic: ${JSON.stringify(diagnostic)}`);
+}
+async function geminiWaitForAttribute(control, attribute, expected) {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+        if ((await control.getAttribute(attribute).catch(() => null)) === expected)
+            return;
+        await sleep(100);
+    }
+    throw new Error(`${attribute} did not become ${JSON.stringify(expected)}`);
+}
 /**
  * Open Gemini's provider-owned mode picker and return its current menu. The
  * generated menu id is read from the trigger rather than treated as a selector.
@@ -86,9 +124,7 @@ async function geminiOpenModePicker(page) {
         await trigger.waitFor({ state: "visible", timeout: 60_000 });
         if ((await trigger.getAttribute("aria-expanded")) !== "true")
             await trigger.click({ timeout: 10_000 });
-        if ((await trigger.getAttribute("aria-expanded")) !== "true") {
-            throw new Error("mode picker did not report aria-expanded=true");
-        }
+        await geminiWaitForAttribute(trigger, "aria-expanded", "true");
         const menuId = await trigger.getAttribute("aria-controls");
         if (menuId === null || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(menuId)) {
             throw new Error("mode picker exposed no safe aria-controls menu id");
@@ -100,30 +136,34 @@ async function geminiOpenModePicker(page) {
         return { trigger, menu };
     }
     catch (error) {
-        throw new InternetError("provider_error", `Gemini mode picker is unavailable or its contract changed${error instanceof Error ? ` (${error.message})` : ""}`);
+        throw await geminiProviderError(page, "Gemini mode picker is unavailable or its contract changed", error);
     }
 }
-async function geminiSelectModeAction(menu, label) {
-    const action = menu.locator(GEMINI_MODE_MENU_ITEM_SELECTOR).filter({ hasText: label }).last();
+async function geminiSelectModeAction(page, menu, label, exactMenuText) {
+    const actions = menu.locator(GEMINI_MODE_MENU_ITEM_SELECTOR);
     try {
+        const labels = (await actions.allInnerTexts()).map(normalizeGeminiMenuText);
+        const matches = labels.flatMap((text, index) => (text === exactMenuText ? [index] : []));
+        if (matches.length !== 1) {
+            throw new Error(`expected exactly one ${JSON.stringify(exactMenuText)} action (observed: ${JSON.stringify(labels.slice(0, 12))})`);
+        }
+        const action = actions.nth(matches[0] ?? -1);
         await action.waitFor({ state: "visible", timeout: 10_000 });
         if ((await action.getAttribute("aria-disabled")) === "true")
             throw new Error(`${label} is disabled`);
         await action.click({ timeout: 10_000 });
     }
     catch (error) {
-        throw new InternetError("provider_error", `Gemini mode ${label} is unavailable or its picker contract changed${error instanceof Error ? ` (${error.message})` : ""}`);
+        throw await geminiProviderError(page, `Gemini mode ${label} is unavailable or its picker contract changed`, error);
     }
 }
-async function geminiWaitForModeIndicator(trigger, expected) {
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-        if ((await trigger.getAttribute("aria-label").catch(() => null)) === expected)
-            return;
-        await sleep(100);
+async function geminiWaitForModeIndicator(page, trigger, expected) {
+    try {
+        await geminiWaitForAttribute(trigger, "aria-label", expected);
     }
-    const observed = await trigger.getAttribute("aria-label").catch(() => null);
-    throw new InternetError("provider_error", `Gemini did not confirm mode ${expected} (mode-picker aria-label: ${JSON.stringify(observed)})`);
+    catch (error) {
+        throw await geminiProviderError(page, `Gemini did not confirm mode ${expected}`, error);
+    }
 }
 /**
  * Select the observed Gemini default before every ordinary turn: the latest
@@ -132,11 +172,11 @@ async function geminiWaitForModeIndicator(trigger, expected) {
  */
 export async function geminiSelectDefaultMode(page) {
     const flash = await geminiOpenModePicker(page);
-    await geminiSelectModeAction(flash.menu, GEMINI_DEFAULT_FLASH_LABEL);
-    await geminiWaitForModeIndicator(flash.trigger, GEMINI_DEFAULT_FLASH_INDICATOR);
+    await geminiSelectModeAction(page, flash.menu, GEMINI_DEFAULT_FLASH_LABEL, GEMINI_DEFAULT_FLASH_MENU_TEXT);
+    await geminiWaitForModeIndicator(page, flash.trigger, GEMINI_DEFAULT_FLASH_INDICATOR);
     const extended = await geminiOpenModePicker(page);
-    await geminiSelectModeAction(extended.menu, GEMINI_DEFAULT_EXTENDED_LABEL);
-    await geminiWaitForModeIndicator(extended.trigger, GEMINI_DEFAULT_FLASH_EXTENDED_INDICATOR);
+    await geminiSelectModeAction(page, extended.menu, GEMINI_DEFAULT_EXTENDED_LABEL, GEMINI_DEFAULT_EXTENDED_MENU_TEXT);
+    await geminiWaitForModeIndicator(page, extended.trigger, GEMINI_DEFAULT_FLASH_EXTENDED_INDICATOR);
 }
 /** Fill the Gemini composer with the prompt and submit it. */
 export async function geminiSend(page, prompt) {
