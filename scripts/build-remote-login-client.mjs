@@ -1,5 +1,4 @@
 import { build } from "esbuild";
-import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,5 +14,4 @@ await build({
 	legalComments: "linked",
 	outfile,
 });
-rmSync(`${outfile}.map`, { force: true });
 console.log(`built ${outfile}`);

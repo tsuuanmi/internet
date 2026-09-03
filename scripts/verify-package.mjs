@@ -32,6 +32,14 @@ try {
 	for (const artifact of ["dist/index.js", "dist/client.js", "dist/remote-login-client.js", "cordis.patch.yml"]) {
 		if (!existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact missing: ${artifact}`);
 	}
+	for (const artifact of [
+		"dist/client.js.map",
+		"dist/remote-login-client.js.map",
+		"dist/remote-login-client.d.ts",
+		"dist/remote-login-client.d.ts.map",
+	]) {
+		if (existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact must not contain: ${artifact}`);
+	}
 	const plugin = await import(pathToFileURL(join(installed, "dist/index.js")).href);
 	const scenarios = [
 		{

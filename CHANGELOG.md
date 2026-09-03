@@ -35,6 +35,7 @@
 
 ### Fixed
 
+- **build**: Give browser entrypoints one final JavaScript producer: `tsgo` emits the public client declaration only, while esbuild owns the DSH classic-script and remote-login browser bundles. The build no longer relies on deleting overwritten TypeScript source maps or ships an unexported remote-login declaration.
 - **login**: Handle account-verification rejection immediately so a failed remote Save cannot trigger
   an unhandled-rejection shutdown. Retry one transient Patchright browser-context protocol failure,
   and allow ten minutes for human interactive sign-in by default.

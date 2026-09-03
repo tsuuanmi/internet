@@ -86,7 +86,7 @@
 	},
 	"scripts": {
 		"clean": "shx rm -rf dist",
-		"build": "npm run clean && tsgo -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-remote-login-client.mjs",
+		"build": "npm run clean && tsgo -p tsconfig.build.json && tsgo -p tsconfig.client.json && node scripts/build-client.mjs && node scripts/build-remote-login-client.mjs",
 		"check": "node scripts/verify-browser-vendor.mjs && biome check src test scripts && tsgo -p tsconfig.json",
 		"test": "vitest --run",
 		"verify-package": "node scripts/verify-package.mjs"

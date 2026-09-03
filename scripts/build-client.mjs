@@ -11,13 +11,12 @@
 // runtime's require table) and wraps the CommonJS output in the load call the
 // harness expects.
 import { build } from "esbuild";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const outfile = join(root, "..", "dist", "client.js");
-const sourceMap = `${outfile}.map`;
 
 const result = await build({
 	entryPoints: [join(root, "..", "src", "client.ts")],
@@ -48,8 +47,5 @@ ${body}
 
 mkdirSync(dirname(outfile), { recursive: true });
 writeFileSync(outfile, bundle);
-// The preceding tsgo emit leaves an ES-module sourcemap that no longer matches
-// the bundle; drop it rather than serve misleading debug sources.
-rmSync(sourceMap, { force: true });
 
 console.log(`built ${outfile} (${bundle.length} bytes)`);

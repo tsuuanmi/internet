@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -77,6 +78,30 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 		expect(closed).toHaveBeenCalledTimes(1);
 		expect(readdirSync(join(files.dataDir, "remote-login"))).toEqual([]);
 	}, 20_000);
+
+	it("serves the generated remote-login client by default", async () => {
+		const files = fixture();
+		const { RemoteLoginSession: BuiltRemoteLoginSession } = await import(
+			new URL("../dist/browser/remote-login.js", import.meta.url).href
+		);
+		const session = await BuiltRemoteLoginSession.start({
+			provider: "chatgpt-web",
+			...files,
+			homeUrl: "https://chatgpt.com/",
+			timeoutMs: 10_000,
+			finalize: async () => {},
+		});
+		try {
+			const url = new URL(session.status().url!);
+			const response = await fetch(new URL("client.js", url));
+			expect(response.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+			expect(await response.text()).toBe(
+				await readFile(new URL("../dist/remote-login-client.js", import.meta.url), "utf8"),
+			);
+		} finally {
+			await session.dispose();
+		}
+	});
 
 	it("returns tunnel instructions before it launches Chrome", async () => {
 		const files = fixture();
