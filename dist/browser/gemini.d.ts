@@ -7,6 +7,11 @@ export declare const GEMINI_SEND_BUTTON_SELECTOR = "input-area-v2 button[aria-la
 export declare const GEMINI_STOP_BUTTON_SELECTOR = "button[aria-label=\"Stop response\"]";
 export declare const GEMINI_ACCOUNT_SELECTOR = "[aria-label^=\"Google Account\"], [aria-label*=\"Google Account:\"]";
 export declare const GEMINI_RESPONSE_SELECTOR = "model-response .model-response-text message-content .markdown.markdown-main-panel";
+/** Gemini's current provider-owned mode-picker trigger. */
+export declare const GEMINI_MODE_PICKER_SELECTOR = "button[data-test-id=\"bard-mode-menu-button\"]";
+export declare const GEMINI_MODE_MENU_ITEM_SELECTOR = "[role=\"menuitem\"]";
+export declare const GEMINI_DEFAULT_FLASH_LABEL = "3.8 Flash";
+export declare const GEMINI_DEFAULT_EXTENDED_LABEL = "Extended thinking";
 export declare const GEMINI_DEEP_RESEARCH_REPORT_SELECTOR = "response-container structured-content-container[data-test-id=\"message-content\"] message-content #extended-response-markdown-content";
 export declare const GEMINI_DEEP_RESEARCH_SOURCES_SELECTOR = "response-container deep-research-source-lists";
 /** True when Gemini exposes both its composer and signed-in Google account control. */
@@ -17,6 +22,12 @@ export declare function geminiAuthenticationAssessment(page: Page): Promise<Auth
 export declare function geminiWaitAuthenticationAssessment(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<AuthenticationAssessment>;
 /** Wait until Gemini is authenticated (composer visible), or return false. */
 export declare function geminiWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
+/**
+ * Select the observed Gemini default before every ordinary turn: the latest
+ * Flash model and Extended thinking. Gemini's UI renders a provider-owned
+ * composer indicator after each action; do not assume a prior thread's mode.
+ */
+export declare function geminiSelectDefaultMode(page: Page): Promise<void>;
 /** Fill the Gemini composer with the prompt and submit it. */
 export declare function geminiSend(page: Page, prompt: string): Promise<void>;
 /** Read the visible text of the current newest Gemini response (empty when none). */

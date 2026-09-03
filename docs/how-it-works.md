@@ -148,9 +148,17 @@ not running, and text remains unchanged for `stableMs`.
 
 ## Gemini turn contract
 
-Gemini uses its visible `rich-textarea` editor. The driver clears and fills the prompt, waits for the
-semantic send button to be visible and enabled (including ARIA state), keyboard-activates it, and polls
-the newest response container through the same stable-completion policy.
+Before every ordinary Gemini turn, the driver opens the provider-owned mode picker, selects the observed
+latest **3.8 Flash** action, then selects **Extended thinking**. It verifies the collapsed picker indicator
+changes first to **Flash** and then to **Flash Extended** before filling the composer. The picker is reopened
+even when a prior native thread displays a mode, so provider UI state cannot leak across calls. If Gemini no
+longer exposes the entitled controls or either confirmation, the turn fails with `provider_error`; it never
+substitutes a different model. Provider-native Deep Research uses its own composer mode and does not combine
+with Flash + Extended.
+
+Gemini then uses its visible `rich-textarea` editor. The driver clears and fills the prompt, waits for the
+semantic send button to be visible and enabled (including ARIA state), keyboard-activates it, and polls the
+newest response container through the same stable-completion policy.
 
 ChatGPT and Gemini use different durable conversation files and can share a DSH session without sharing
 native provider history.

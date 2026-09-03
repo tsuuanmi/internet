@@ -20,6 +20,7 @@ conversations, and visible browser inspection without running a separate daemon.
 - **Zero-install remote login on supported Linux x64/glibc systems** — bundled Xvfb, x11vnc, and noVNC,
   exposed only through a tokenized loopback URL intended for SSH forwarding.
 - **Explicit ChatGPT reasoning control** — `instant`, `medium`, or `high`, with `medium` as the default.
+- **Explicit Gemini mode control** — the observed latest Flash model with Extended thinking before every ordinary turn.
 
 This is a standalone DSH-native plugin. It does not wrap `@tsuuanmi/pi-internet`, does not require Bun,
 and does not replace DSH's existing `web_search` or `web_fetch` tools.
@@ -46,8 +47,11 @@ ChatGPT and Gemini bindings are independent.
 
 ChatGPT turns select and verify `chatgptThinkingLevel` before every prompt. The current ChatGPT picker
 contains both a reasoning slider and nested model choices; the driver operates only the slider and never
-uses model radio items as reasoning levels. Prompt text is inserted through the live editor input path,
-read back exactly, and submitted only after the semantic **Send prompt** action replaces Start Voice.
+uses model radio items as reasoning levels. Ordinary Gemini turns select and verify the observed latest
+Flash model plus Extended thinking before every prompt; provider-native Deep Research uses its own mode
+instead. A missing Gemini entitlement or a changed picker fails explicitly rather than choosing a different
+model. For ChatGPT, prompt text is inserted through the live editor input path, read back exactly, and
+submitted only after the semantic **Send prompt** action replaces Start Voice.
 
 ### `internet_research`
 

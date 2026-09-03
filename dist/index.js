@@ -13,7 +13,7 @@ export const inject = ["tools", "systemPrompt", "commands"];
 const BROWSER_CHAT_GUIDANCE = [
     "Use internet_chat for one answer or a durable multi-turn exchange with ChatGPT Web or Gemini Web through the authenticated provider website.",
     "Each provider resumes one native conversation for the current DSH session. The automated browser is hidden by default on the managed display; set visible: true only when the user asks to watch or when live UI inspection is needed.",
-    "ChatGPT selects and verifies the configured reasoning level before every turn (Medium by default). Prompt submission is accepted only after complete editor read-back and the semantic Send action becomes ready.",
+    "ChatGPT selects and verifies the configured reasoning level before every turn (Medium by default). Gemini selects and verifies the observed latest Flash model with Extended thinking before every ordinary turn; provider-native Deep Research uses its own mode. Prompt submission is accepted only after complete editor read-back and the semantic Send action becomes ready.",
     "If a provider is missing or requires reauthentication, use internet_browser status and then login. On a desktop, the user signs in through dedicated normal Chrome and closes it completely. On a displayless server, or when remote: true is requested, relay the returned SSH port-forward command and complete tokenized noVNC URL; tell the user to sign in, press Save account, and check status until ready.",
     "internet_chat cannot read local files or search the web by itself. Paste required material into the prompt and gather current sources with web_search or web_fetch first.",
 ].join(" ");

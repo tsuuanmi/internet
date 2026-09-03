@@ -42,6 +42,7 @@ import {
 	geminiIsAuthenticated,
 	geminiLastDeepResearchReportText,
 	geminiLastResponseText,
+	geminiSelectDefaultMode,
 	geminiSend,
 	geminiSnapshot,
 	geminiWaitAuthenticationAssessment,
@@ -909,6 +910,7 @@ export class BrowserManager {
 				const previousResearchText =
 					request.research === true ? await geminiLastDeepResearchReportText(page) : undefined;
 				if (request.research === true) await geminiEnableDeepResearch(page);
+				else await geminiSelectDefaultMode(page);
 				await geminiSend(page, request.prompt);
 				// Persist the native URL immediately after Send so a long-running
 				// Deep Research can be inspected or recovered if observation is cancelled.

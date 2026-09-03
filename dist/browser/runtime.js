@@ -9,7 +9,7 @@ import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
-import { GEMINI_HOME_URL, geminiDeepResearchSnapshot, geminiIsAuthenticated, geminiLastDeepResearchReportText, geminiLastResponseText, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
+import { GEMINI_HOME_URL, geminiDeepResearchSnapshot, geminiIsAuthenticated, geminiLastDeepResearchReportText, geminiLastResponseText, geminiSelectDefaultMode, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
 import { geminiEnableDeepResearch, geminiStartResearchPlan } from "#internet/browser/gemini-research";
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
@@ -692,6 +692,8 @@ export class BrowserManager {
                 const previousResearchText = request.research === true ? await geminiLastDeepResearchReportText(page) : undefined;
                 if (request.research === true)
                     await geminiEnableDeepResearch(page);
+                else
+                    await geminiSelectDefaultMode(page);
                 await geminiSend(page, request.prompt);
                 // Persist the native URL immediately after Send so a long-running
                 // Deep Research can be inspected or recovered if observation is cancelled.

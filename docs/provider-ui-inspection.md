@@ -24,6 +24,41 @@ Browser-backed provider UIs change frequently. This guide defines the only suppo
 6. Restore the original mode and confirm the post-action indicator disappears. Do not leave inspection state in a portable account snapshot.
 7. Add the observed contract, observation date, entitlement constraints, fallback selector, and bounded diagnostic data to a provider fixture/test before relying on it in production.
 
+### What to record
+
+Record the complete transition, not only the action selector:
+
+- **Precondition:** authenticated provider surface and the visible composer/control that owns the state.
+- **Trigger:** canonical selector, accessible name, expected closed state, and the state that proves it opened.
+- **Action:** semantic role, stable visible label, enabled state, and whether the provider closes or retains the menu.
+- **Confirmation:** a provider-owned composer indicator that proves the requested state after the action. A click alone, styling, or a remembered thread state is not confirmation.
+- **Restoration:** the exact action and indicator that return the context to its original state. Close the context without persisting its storage state.
+- **Failure diagnostics:** current origin/path, title, control labels, and the relevant control subtree only. Never include account controls, conversation history, prompt text, cookies, or storage.
+
+## Current observed provider UI contracts
+
+These contracts are entitlement- and locale-sensitive observations, not universal provider APIs. Production code must fail with `provider_error` when a required control or confirmation is absent; it must not use text-clicking or a standard-chat fallback.
+
+### Gemini Flash + Extended default
+
+Observed on 2026-09-03 in a fresh, non-persistent authenticated Gemini context. The account exposed **3.8 Flash** as the latest Flash choice and **Extended thinking** as a separate mode action. The implementation applies this contract before every ordinary Gemini turn so an existing native thread cannot silently supply a different mode. Provider-native Deep Research is intentionally excluded because it owns a different composer mode.
+
+1. Wait for the visible composer, then locate the trigger:
+
+   ```css
+   button[data-test-id="bard-mode-menu-button"]
+   ```
+
+   Its accessible name is **Open mode picker, currently ...**. Require `aria-expanded="true"` after activation.
+2. Read the generated menu id from the trigger's `aria-controls`; require that exact visible `[id="<aria-controls>"]` element to have `role="menu"`. Do not make a generated `ng-menu-*` id a static selector.
+3. Within that menu, select the enabled `[role="menuitem"]` whose visible label contains **3.8 Flash**. Dynamic `data-test-id="bard-mode-option-*"` values are diagnostic only and are not canonical selectors.
+4. Require the closed composer trigger to report **Open mode picker, currently Flash**. This is the provider-owned confirmation of the Flash family; the collapsed control does not repeat the minor model version.
+5. Reopen the same picker and select the enabled `[role="menuitem"]` whose visible label is **Extended thinking**.
+6. Require the closed trigger to report **Open mode picker, currently Flash Extended**. Its visible text is **Flash** and **Extended**. This is the authoritative combined-mode indicator.
+7. During discovery, reload the provider home page and require the original Flash-only indicator before closing the non-persistent context. The current picker does not expose a separate deactivation action for Extended thinking. Production intentionally leaves Flash + Extended selected for the pending turn.
+
+The observed menu labels were **3.5 Flash-Lite** (Fastest answers), **3.8 Flash** (All-around help), **3.1 Pro** (Advanced reasoning), and **Extended thinking** (Complex problem solving). Flash-Lite is an observed non-default alternative and is never used as a fallback. Availability is account-dependent. If the latest Flash label, enabled state, menu role, or either confirmation changes, stop rather than selecting a different model.
+
 ## Current observed research-mode contracts
 
 ### ChatGPT Deep Research

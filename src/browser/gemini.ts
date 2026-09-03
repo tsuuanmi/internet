@@ -1,7 +1,9 @@
-import type { Page } from "patchright-core";
+import type { Locator, Page } from "patchright-core";
 import { type AuthenticationAssessment, waitAuthenticationAssessment } from "#internet/browser/authentication";
 import type { CompletionSnapshot } from "#internet/browser/completion";
 import { waitForSendReady } from "#internet/browser/submission";
+import { InternetError } from "#internet/core/errors";
+import { sleep } from "#internet/core/sleep";
 
 export const GEMINI_HOME_URL = "https://gemini.google.com/app";
 
@@ -11,6 +13,14 @@ export const GEMINI_STOP_BUTTON_SELECTOR = 'button[aria-label="Stop response"]';
 export const GEMINI_ACCOUNT_SELECTOR = '[aria-label^="Google Account"], [aria-label*="Google Account:"]';
 export const GEMINI_RESPONSE_SELECTOR =
 	"model-response .model-response-text message-content .markdown.markdown-main-panel";
+
+/** Gemini's current provider-owned mode-picker trigger. */
+export const GEMINI_MODE_PICKER_SELECTOR = 'button[data-test-id="bard-mode-menu-button"]';
+export const GEMINI_MODE_MENU_ITEM_SELECTOR = '[role="menuitem"]';
+export const GEMINI_DEFAULT_FLASH_LABEL = "3.8 Flash";
+export const GEMINI_DEFAULT_EXTENDED_LABEL = "Extended thinking";
+const GEMINI_DEFAULT_FLASH_INDICATOR = "Open mode picker, currently Flash";
+const GEMINI_DEFAULT_FLASH_EXTENDED_INDICATOR = "Open mode picker, currently Flash Extended";
 export const GEMINI_DEEP_RESEARCH_REPORT_SELECTOR =
 	'response-container structured-content-container[data-test-id="message-content"] message-content #extended-response-markdown-content';
 export const GEMINI_DEEP_RESEARCH_SOURCES_SELECTOR = "response-container deep-research-source-lists";
@@ -77,6 +87,78 @@ export async function geminiWaitAuthenticationAssessment(
 /** Wait until Gemini is authenticated (composer visible), or return false. */
 export async function geminiWaitAuthenticated(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
 	return (await geminiWaitAuthenticationAssessment(page, timeoutMs, signal)).state === "authenticated";
+}
+
+/**
+ * Open Gemini's provider-owned mode picker and return its current menu. The
+ * generated menu id is read from the trigger rather than treated as a selector.
+ */
+async function geminiOpenModePicker(page: Page): Promise<{ trigger: Locator; menu: Locator }> {
+	const composer = page.locator(GEMINI_COMPOSER_SELECTOR).filter({ visible: true }).first();
+	const trigger = page.locator(GEMINI_MODE_PICKER_SELECTOR).filter({ visible: true }).last();
+	try {
+		await composer.waitFor({ state: "visible", timeout: 60_000 });
+		await trigger.waitFor({ state: "visible", timeout: 60_000 });
+		if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click({ timeout: 10_000 });
+		if ((await trigger.getAttribute("aria-expanded")) !== "true") {
+			throw new Error("mode picker did not report aria-expanded=true");
+		}
+		const menuId = await trigger.getAttribute("aria-controls");
+		if (menuId === null || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(menuId)) {
+			throw new Error("mode picker exposed no safe aria-controls menu id");
+		}
+		const menu = page.locator(`[id="${menuId}"]`);
+		await menu.waitFor({ state: "visible", timeout: 10_000 });
+		if ((await menu.getAttribute("role")) !== "menu") throw new Error("mode picker menu did not expose role=menu");
+		return { trigger, menu };
+	} catch (error) {
+		throw new InternetError(
+			"provider_error",
+			`Gemini mode picker is unavailable or its contract changed${error instanceof Error ? ` (${error.message})` : ""}`,
+		);
+	}
+}
+
+async function geminiSelectModeAction(menu: Locator, label: string): Promise<void> {
+	const action = menu.locator(GEMINI_MODE_MENU_ITEM_SELECTOR).filter({ hasText: label }).last();
+	try {
+		await action.waitFor({ state: "visible", timeout: 10_000 });
+		if ((await action.getAttribute("aria-disabled")) === "true") throw new Error(`${label} is disabled`);
+		await action.click({ timeout: 10_000 });
+	} catch (error) {
+		throw new InternetError(
+			"provider_error",
+			`Gemini mode ${label} is unavailable or its picker contract changed${error instanceof Error ? ` (${error.message})` : ""}`,
+		);
+	}
+}
+
+async function geminiWaitForModeIndicator(trigger: Locator, expected: string): Promise<void> {
+	const deadline = Date.now() + 10_000;
+	while (Date.now() < deadline) {
+		if ((await trigger.getAttribute("aria-label").catch(() => null)) === expected) return;
+		await sleep(100);
+	}
+	const observed = await trigger.getAttribute("aria-label").catch(() => null);
+	throw new InternetError(
+		"provider_error",
+		`Gemini did not confirm mode ${expected} (mode-picker aria-label: ${JSON.stringify(observed)})`,
+	);
+}
+
+/**
+ * Select the observed Gemini default before every ordinary turn: the latest
+ * Flash model and Extended thinking. Gemini's UI renders a provider-owned
+ * composer indicator after each action; do not assume a prior thread's mode.
+ */
+export async function geminiSelectDefaultMode(page: Page): Promise<void> {
+	const flash = await geminiOpenModePicker(page);
+	await geminiSelectModeAction(flash.menu, GEMINI_DEFAULT_FLASH_LABEL);
+	await geminiWaitForModeIndicator(flash.trigger, GEMINI_DEFAULT_FLASH_INDICATOR);
+
+	const extended = await geminiOpenModePicker(page);
+	await geminiSelectModeAction(extended.menu, GEMINI_DEFAULT_EXTENDED_LABEL);
+	await geminiWaitForModeIndicator(extended.trigger, GEMINI_DEFAULT_FLASH_EXTENDED_INDICATOR);
 }
 
 /** Fill the Gemini composer with the prompt and submit it. */
