@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 const BUNDLED_TARGET = "linux-x64-gnu";
-const MINIMUM_GLIBC = [2, 35];
+const MINIMUM_GLIBC = [2, 31];
 function runtimeGlibcVersion() {
     const report = process.report?.getReport();
     const version = report?.header?.glibcVersionRuntime;

@@ -32,6 +32,10 @@ Files: common/*lzo*
 Copyright: 1996-2010, Markus Franz Xaver Johannes Oberhumer
 License: GPL-2+
 
+Files: common/md5.*
+Copyright: 1995-2005, The Free Software Foundation
+License: LGPL-2.1+
+
 Files: common/sha.h common/sha-private.h common/sha1.c
 Copyright: 2011, Internet Engineering Task Force
 License: BSD-3
@@ -113,6 +117,23 @@ License: AT&T
  This software is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+License: LGPL-2.1+
+ libgdamm is free software: you can redistribute it and/or modify it
+ under the terms of the GNU Lesser General Public License as published
+ by the Free Software Foundation, either version 2.1 of the License,
+ or (at your option) any later version.
+ .
+ libgdamm is distributed in the hope that it will be useful, but
+ WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ See the GNU Lesser General Public License for more details.
+ .
+ You should have received a copy of the GNU Lesser General Public License
+ along with this library.  If not, see <http://www.gnu.org/licenses/>.
+ .
+ On Debian systems, the complete text of the GNU Lesser General Public
+ License version 2.1 can be found in "/usr/share/common-licenses/LGPL-2.1".
 
 License: BSD-3
  Redistribution and use in source and binary forms, with or without

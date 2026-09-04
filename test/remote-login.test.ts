@@ -9,7 +9,7 @@ const roots: string[] = [];
 const report = process.report?.getReport() as { header?: { glibcVersionRuntime?: string } } | undefined;
 const [glibcMajor, glibcMinor] = (report?.header?.glibcVersionRuntime ?? "").split(".").map(Number);
 const supported =
-	process.platform === "linux" && process.arch === "x64" && (glibcMajor > 2 || (glibcMajor === 2 && glibcMinor >= 35));
+	process.platform === "linux" && process.arch === "x64" && (glibcMajor > 2 || (glibcMajor === 2 && glibcMinor >= 31));
 
 function fixture(): { dataDir: string; chromePath: string; profileDir: string } {
 	const dataDir = mkdtempSync(join(tmpdir(), "internet-remote-login-"));

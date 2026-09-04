@@ -6,7 +6,7 @@ describe("discoverVncCandidates", () => {
 	it("prefers the bundled executable on supported glibc Linux x64", () => {
 		const candidates = discoverVncCandidates(
 			{ PATH: "/usr/bin", MARKER: "yes" },
-			{ platform: "linux", arch: "x64", glibcVersion: "2.35" },
+			{ platform: "linux", arch: "x64", glibcVersion: "2.31" },
 		);
 		expect(candidates).toHaveLength(2);
 		expect(candidates[0]).toMatchObject({ source: "bundled", env: { MARKER: "yes" } });

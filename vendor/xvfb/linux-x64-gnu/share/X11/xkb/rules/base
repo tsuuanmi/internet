@@ -7,14 +7,14 @@
 //  2002 Modifier: Ivan Pascal      The XFree86 Project
 //
 
-// If you want non-latin layouts to implicitly include the en_US layout,
-// then uncomment the following lines:
-//! $nonlatin = af am ara bd bg bt by eg et ge gn gr id il in ir \
-//              jp jv kg kh kr kz la lk ma me mk mm mn mv my \
-//              pk rs ru sy th tj tz ua uz
+// If you want non-latin layouts implicitly include the en_US layout
+// uncomment lines below
+//! $nonlatin = am ara ben bd bg bt by cs deva ge gh gr guj guru il \
+//              in ir iku jp kan kh kr la lao lk mk mm mn mv mal olck \
+//              ori pk ru scc sy syr tel th tj tam ua uz
 
 // PC models
-! $pcmodels = pc86 pc101 pc102 pc104 pc104alt pc105
+! $pcmodels = pc101 pc102 pc104 pc105
 
 // Jolla devices and keyboards
 ! $jollamodels = jollasbj
@@ -24,6 +24,9 @@
 
 // Nokia devices and keyboards
 ! $nokiamodels = nokiasu8w nokiarx44 nokiarx51
+
+// PC geometries - they have special geometry but symbols are mostly pc105
+! $pcgeometries = latitude
 
 // TypeMatrix geometries
 ! $tmgeometries = tm2020 tm2030PS2 tm2030USB tm2030USB-102 tm2030USB-106
@@ -38,31 +41,29 @@
 
 ! $macvendorlayouts = ch de dk fi fr gb is it latam nl no pt se us
 
-// The countries that predominantly have AZERTY or QWERTZ layouts:
 ! $azerty = be fr
-! $qwertz = al ch cz de hr hu ro si sk
+! $qwertz = al cz de hr hu ro si sk 
 
 
-// All layouts with 3rd and 4th levels:
-! $threelevellayouts = af al az \
-              bd be bg br bt \
-              ca ch cm cn cz \
-              de dk dz \
-              ee es eu \
+// all layouts with 3rd and 4th groups
+! $threelevellayouts = al az \
+              be br bt \
+              ca ch cs cz \
+              de dk \
+              ee es \
               fi fo fr \
-              gb ge gh gr \
-              hr hu \
-              ie il in ir is it \
-              kh kz \
+              gb gr \
+              hu \
+              ie ir is it \
               latam \
-              lk lt lv \
-              ml mm mn mt \
-              ng nl no \
-              ph pk pl pt \
-              ro rs \
-              se si sk sn sy \
-              tg tm tr tw \
-              ua us \
+              lk lt \
+              mn mt \
+              nl no \
+              pl pt \
+              ro \
+              se sk \
+              tr \
+              us \
               vn \
               za
 
@@ -155,6 +156,7 @@
  $applealu	=	macintosh(alukbd)
   macintosh_hhk	=	macintosh(hhk)
   macintosh_old	=	macintosh(old)
+ $macbooks	=	macintosh+macintosh(goodmap)
  $macs   	=	macintosh
   thinkpadz60	=	xfree86(thinkpadz60)
   *		=	xfree86
@@ -170,6 +172,8 @@
   *             =       +aliases(qwerty)
 
 ! option	=	keycodes
+  apple:badmap	=	+macintosh(badmap)
+  apple:goodmap	=	+macintosh(goodmap)
 
 ! model		layout	=	geometry
   thinkpad     us              =       thinkpad(us)
@@ -187,6 +191,7 @@
   omnikey101	=	northgate(omnikey101)
   sanwaskbkg3	=	sanwa(sanwaskbkg3)
  $pcmodels	=	pc(%m)
+ $pcgeometries	=	pc(%m)
   everex	=	everex(STEPnote)
   thinkpad	=	thinkpad(intl)
   thinkpad60	=	thinkpad(60)
@@ -1050,27 +1055,22 @@
 ! layout	option	=	symbols
   $threelevellayouts	grp:alts_toggle = +level3(ralt_switch_for_alts_toggle)
   *			misc:typo 	= +typo(base)
-  *			misc:apl	= +apl(level3)
 
 ! layout[1]	option	=	symbols
   $threelevellayouts	grp:alts_toggle = +level3(ralt_switch_for_alts_toggle):1
   *			misc:typo 	= +typo(base):1
-  *			misc:apl	= +apl(level3):1
 
 ! layout[2]	option	=	symbols
   $threelevellayouts	grp:alts_toggle = +level3(ralt_switch_for_alts_toggle):2
   *			misc:typo 	= +typo(base):2
-  *			misc:apl	= +apl(level3):2
 
 ! layout[3]	option	=	symbols
   $threelevellayouts	grp:alts_toggle = +level3(ralt_switch_for_alts_toggle):3
   *			misc:typo 	= +typo(base):3
-  *			misc:apl	= +apl(level3):3
 
 ! layout[4]	option	=	symbols
   $threelevellayouts	grp:alts_toggle = +level3(ralt_switch_for_alts_toggle):4
   *			misc:typo 	= +typo(base):4
-  *			misc:apl	= +apl(level3):4
 
 ! option	=	symbols
   grp:shift_toggle	=	+group(shifts_toggle)
@@ -1079,7 +1079,6 @@
   altwin:meta_alt	=	+altwin(meta_alt)
   altwin:alt_win	=	+altwin(alt_win)
   altwin:ctrl_win	=	+altwin(ctrl_win)
-  altwin:ctrl_rwin	=	+altwin(ctrl_rwin)
   altwin:ctrl_alt_win	=	+altwin(ctrl_alt_win)
   altwin:meta_win	=	+altwin(meta_win)
   altwin:left_meta_win	=	+altwin(left_meta_win)
@@ -1211,14 +1210,6 @@
   nbsp:level4           =	+nbsp(level4)
   nbsp:level4n          =	+nbsp(level4n)
   nbsp:level4nl         =	+nbsp(level4nl)
-  nbsp:zwnj2            =	+nbsp(zwnj2)
-  nbsp:zwnj2zwj3        =	+nbsp(zwnj2zwj3)
-  nbsp:zwnj2zwj3nb4     =	+nbsp(zwnj2zwj3nb4)
-  nbsp:zwnj2nb3         =	+nbsp(zwnj2nb3)
-  nbsp:zwnj2nb3s        =	+nbsp(zwnj2nb3s)
-  nbsp:zwnj2nb3zwj4     =	+nbsp(zwnj2nb3zwj4)
-  nbsp:zwnj2nb3nnb4     =	+nbsp(zwnj2nb3nnb4)
-  nbsp:zwnj3zwj4        =	+nbsp(zwnj3zwj4)
   japan:nicola_f_bs     =	+jp(nicola_f_bs)
   japan:hztg_escape     =	+jp(hztg_escape)
   korean:ralt_hangul	=	+kr(ralt_hangul)
@@ -1250,7 +1241,6 @@
   shift:lshift_both_shiftlock        =       +shift(lshift_both_shiftlock)
   shift:rshift_both_shiftlock        =       +shift(rshift_both_shiftlock)
   solaris:sun_compat				 =		 +sun_vndr/solaris(sun_compat)
-  lv2:lsgt_switch                    =       +level2(lsgt_switch)
   lv3:caps_switch                    =       +level3(caps_switch)
   lv3:bksl_switch                    =       +level3(bksl_switch)
   lv3:lsgt_switch                    =       +level3(lsgt_switch)

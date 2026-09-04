@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -39,6 +39,16 @@ try {
 		"dist/remote-login-client.d.ts.map",
 	]) {
 		if (existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact must not contain: ${artifact}`);
+	}
+	if (process.platform === "linux" && process.arch === "x64") {
+		const runtime = join(installed, "vendor", "xvfb", "linux-x64-gnu");
+		for (const executable of ["Xvfb", "x11vnc", "xkbcomp"]) {
+			accessSync(join(runtime, "bin", executable), constants.X_OK);
+		}
+		execFileSync(join(runtime, "bin", "x11vnc"), ["-version"], {
+			env: { ...process.env, LD_LIBRARY_PATH: join(runtime, "lib"), XKB_CONFIG_ROOT: join(runtime, "share", "X11", "xkb") },
+			stdio: "pipe",
+		});
 	}
 	const plugin = await import(pathToFileURL(join(installed, "dist/index.js")).href);
 	const scenarios = [

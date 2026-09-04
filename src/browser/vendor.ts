@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const BUNDLED_TARGET = "linux-x64-gnu";
-const MINIMUM_GLIBC = [2, 35] as const;
+const MINIMUM_GLIBC = [2, 31] as const;
 
 export interface BrowserVendorOptions {
 	platform?: NodeJS.Platform;

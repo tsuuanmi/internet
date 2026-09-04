@@ -17,7 +17,7 @@ conversations, and visible browser inspection without running a separate daemon.
 - **Portable accounts** — copy only `~/.dsh/internet/accounts/` to move authenticated state.
 - **Durable conversations** — each DSH session resumes one native conversation per provider.
 - **Visible or hidden automation** — hidden managed Xvfb by default; opt into a user-visible window per call.
-- **Zero-install remote login on supported Linux x64/glibc systems** — bundled Xvfb, x11vnc, and noVNC,
+- **Zero-install remote login on Linux x64/glibc 2.31+** — bundled Xvfb, x11vnc, and noVNC,
   exposed only through a tokenized loopback URL intended for SSH forwarding.
 - **Explicit ChatGPT reasoning control** — `instant`, `medium`, or `high`, with `medium` as the default.
 - **Explicit Gemini mode control** — the observed latest Flash model with Extended thinking before every ordinary turn.
@@ -304,7 +304,7 @@ context restored from the portable account. Successful turns refresh the account
 IndexedDB when it can be captured safely.
 
 With `headless: false` on Linux, hidden inference starts one plugin-managed Xvfb display. Supported Linux
-x64/glibc systems use the bundled Xvfb runtime first, then system `Xvfb`, then an inherited `$DISPLAY` as
+x64/glibc 2.31+ systems (including Ubuntu 20.04) use the bundled Xvfb runtime first, then system `Xvfb`, then an inherited `$DISPLAY` as
 a fallback. `visible: true` bypasses managed Xvfb and requires a user-managed display. Set
 `headless: true` only when native Chrome headless is explicitly desired; the plugin does not silently
 switch to native headless.

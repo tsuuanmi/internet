@@ -5,11 +5,11 @@ This directory is the self-contained Xvfb and x11vnc runtime used by
 data; no consumer `postinstall` script, root access, or system package-manager
 mutation is used.
 
-The runtime is based on Ubuntu 22.04 (Jammy) Xvfb
-`2:21.1.4-2ubuntu1.7~22.04.16` and x11vnc `0.9.16-8`.
-`PROVENANCE.json` records source package versions and SHA-256 hashes for every
-bundled file. Component license notices are under `licenses/`.
+The runtime is based on Ubuntu 20.04 (Focal) Xvfb
+`2:1.20.13-1ubuntu1~20.04.20` and x11vnc `0.9.16-3`. It supports Linux x64
+with glibc 2.31 or newer, including Ubuntu 20.04. `PROVENANCE.json` records
+component versions and SHA-256 hashes for every bundled file. Component license
+notices are under `licenses/`.
 
-Runtime support is intentionally limited to Linux x64 with glibc 2.35 or newer.
-The plugin falls back to a system `Xvfb` executable on other Linux targets or
-when the bundled candidate fails, then to an inherited `DISPLAY`.
+On unsupported operating systems, architectures, or C libraries, the plugin
+falls back to a system Xvfb/x11vnc executable or an inherited display.

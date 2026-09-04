@@ -1,41 +1,41 @@
-Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: libglvnd
 Source: https://gitlab.freedesktop.org/glvnd/libglvnd
 
 Files:		*
 Copyright:	2013-2017 NVIDIA Corporation
- 		2007-2013 VMware, Inc
- 		2010 Intel Corporation
- 		2010 Francisco Jerez
- 		2007-2012 The Khronos Group Inc
- 		1999-2006 Brian Paul
- 		2010 LunarG Inc
- 		2009 Dave Gamble
+		2007-2013 VMware, Inc
+		2010 Intel Corporation
+		2010 Francisco Jerez
+		2007-2012 The Khronos Group Inc
+		1999-2006 Brian Paul
+		2010 LunarG Inc
+		2009 Dave Gamble
 License:	MIT
 
 Files:		include/GLES/egl.h
- 		include/GLES/glplatform.h
- 		include/GLES2/gl2platform.h
- 		include/GLES3/gl3platform.h
- 		src/generate/xml/gl.xml
- 		src/generate/xml/glx.xml
+		include/GLES/glplatform.h
+		include/GLES2/gl2platform.h
+		include/GLES3/gl3platform.h
+		src/generate/xml/gl.xml
+		src/generate/xml/glx.xml
 Copyright:	2008-2018 The Khronos Group Inc.
 License:	Apache-2.0
 
 Files:		m4/ax_check_enable_debug.m4
 Copyright:	2011 Rhys Ulerich
- 		2014-2015 Philip Withnall
+		2014-2015 Philip Withnall
 License:	public-domain
  Public Domain.
 
 Files:		m4/ax_check_link_flag.m4
 Copyright:	2008 Guido U. Draheim
- 		2011 Maarten Bosmans
+		2011 Maarten Bosmans
 License:	GPL-3+
 
 Files:		m4/ax_pthread.m4
 Copyright:	2008 Steven G. Johnson
- 		2011 Daniel Richard G.
+		2011 Daniel Richard G.
 License:	GPL-3+
 
 Files:		src/util/uthash/*
@@ -44,7 +44,7 @@ License:	BSD-1-clause
 
 Files:		src/util/uthash/doc/userguide.html
 Copyright:	2006 Troy D. Hanson
- 		2006-2009 Stuart Rackham
+		2006-2009 Stuart Rackham
 License:	GPL
 
 Files:		debian/*
