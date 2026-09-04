@@ -10,5 +10,5 @@ export { parseChatArgs } from "#internet/tools/args";
  * adapter on `ctx.llm` can be layered on later reusing the same
  * {@link BrowserManager}.
  */
-export declare function defineBrowserChatTool(manager: BrowserManager, timeoutMs: number, allowed: ReadonlySet<WebProvider>): ReturnType<typeof defineTool>;
-//# sourceMappingURL=browser-chat.d.ts.map
+export declare function defineInternetChatTool(manager: BrowserManager, timeoutMs: number, allowed: ReadonlySet<WebProvider>): ReturnType<typeof defineTool>;
+//# sourceMappingURL=internet-chat.d.ts.map

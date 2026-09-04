@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import { resolveBrowserConfig } from "#internet/core/config";
 import { parseTeamArgs } from "#internet/tools/args";
-import { defineBrowserTeamTool, renderBrowserTeamResult } from "#internet/tools/browser-team";
+import { defineInternetTeamTool, renderInternetTeamResult } from "#internet/tools/internet-team";
 
 function fakeManager(script: Array<string | Error>) {
 	const calls: Array<{ provider: string; request: ChatRequest }> = [];
@@ -93,10 +93,10 @@ describe("parseTeamArgs", () => {
 	});
 });
 
-describe("renderBrowserTeamResult", () => {
+describe("renderInternetTeamResult", () => {
 	it("keeps an opted-in transcript in model-visible content", () => {
 		expect(
-			renderBrowserTeamResult({
+			renderInternetTeamResult({
 				finalAnswer: "Final",
 				transcript: [
 					{ round: 1, provider: "chatgpt-web", text: "Alpha" },
@@ -111,14 +111,14 @@ describe("renderBrowserTeamResult", () => {
 	});
 
 	it("leaves the default final-answer presentation concise", () => {
-		expect(renderBrowserTeamResult({ finalAnswer: "Final" })).toBe("Final");
+		expect(renderInternetTeamResult({ finalAnswer: "Final" })).toBe("Final");
 	});
 });
 
-describe("defineBrowserTeamTool", () => {
+describe("defineInternetTeamTool", () => {
 	it("omits the transcript and hides provider browsers by default", async () => {
 		const { manager, calls } = fakeManager(["A1", "B1"]);
-		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false }, exec);
 		expect(result).toEqual({ finalAnswer: "B1", finalProvider: "gemini-web" });
 		expect(calls.map(({ request }) => request.visible)).toEqual([undefined, undefined]);
@@ -126,14 +126,14 @@ describe("defineBrowserTeamTool", () => {
 
 	it("propagates an explicit visible-browser request", async () => {
 		const { manager, calls } = fakeManager(["A1", "B1"]);
-		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
 		await tool.execute({ task: "T", rounds: 1, synthesize: false, visible: true }, exec);
 		expect(calls.map(({ request }) => request.visible)).toEqual([true, true]);
 	});
 
 	it("returns an ordered complete transcript when it fits the budget", async () => {
 		const { manager } = fakeManager(["A1", "B1"]);
-		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({ teamTranscriptMaxChars: 4 }), allowed);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({ teamTranscriptMaxChars: 4 }), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false, includeTranscript: true }, exec);
 		expect(result).toEqual({
 			finalAnswer: "B1",
@@ -154,7 +154,7 @@ describe("defineBrowserTeamTool", () => {
 
 	it("marks a retained boundary turn whose prefix was clipped", async () => {
 		const { manager } = fakeManager(["ABCDE", "FGH"]);
-		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({ teamTranscriptMaxChars: 7 }), allowed);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({ teamTranscriptMaxChars: 7 }), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false, includeTranscript: true }, exec);
 		expect(result).toEqual({
 			finalAnswer: "FGH",
@@ -169,7 +169,7 @@ describe("defineBrowserTeamTool", () => {
 
 	it("clips by Unicode code points without splitting an emoji", async () => {
 		const { manager } = fakeManager(["X", "A😀B"]);
-		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({ teamTranscriptMaxChars: 2 }), allowed);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({ teamTranscriptMaxChars: 2 }), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false, includeTranscript: true }, exec);
 		expect(result).toEqual({
 			finalAnswer: "A😀B",
@@ -181,7 +181,7 @@ describe("defineBrowserTeamTool", () => {
 
 	it("does not include the final synthesis response in the transcript", async () => {
 		const { manager } = fakeManager(["A1", "B1", "FINAL"]);
-		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, includeTranscript: true }, exec);
 		expect(result).toEqual({
 			finalAnswer: "FINAL",
@@ -196,7 +196,7 @@ describe("defineBrowserTeamTool", () => {
 
 	it("returns completed transcript turns on an opted-in provider failure", async () => {
 		const { manager } = fakeManager(["A1", new Error("boom")]);
-		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({}), allowed);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, includeTranscript: true }, exec);
 		expect(result).toEqual({
 			isError: true,
@@ -208,7 +208,7 @@ describe("defineBrowserTeamTool", () => {
 
 	it("rejects rounds above the configured maximum without calling a provider", async () => {
 		const { manager, calls } = fakeManager([]);
-		const tool = defineBrowserTeamTool(manager, resolveBrowserConfig({ teamMaxRounds: 2 }), allowed);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({ teamMaxRounds: 2 }), allowed);
 		const result = await tool.execute({ task: "T", rounds: 3 }, exec);
 		expect(result).toEqual({
 			isError: true,
@@ -219,7 +219,7 @@ describe("defineBrowserTeamTool", () => {
 
 	it("declares a timeout covering the configured maximum and synthesis", () => {
 		const { manager } = fakeManager([]);
-		const tool = defineBrowserTeamTool(
+		const tool = defineInternetTeamTool(
 			manager,
 			resolveBrowserConfig({ turnTimeoutMs: 100, teamMaxRounds: 4 }),
 			allowed,

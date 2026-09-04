@@ -2,7 +2,7 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { ACCOUNT_STATES } from "#internet/browser/accounts";
 import { WEB_PROVIDERS } from "#internet/core/config";
 import { isInternetError } from "#internet/core/errors";
-const BROWSER_ACTIONS = ["login", "status", "stop"];
+const INTERNET_BROWSER_ACTIONS = ["login", "status", "stop"];
 /** Define the `internet_browser` lifecycle tool (login / status / stop). */
 export function defineInternetBrowserTool(manager, allowed) {
     return defineTool({
@@ -12,7 +12,7 @@ export function defineInternetBrowserTool(manager, allowed) {
             action: {
                 type: "string",
                 required: true,
-                enum: [...BROWSER_ACTIONS],
+                enum: [...INTERNET_BROWSER_ACTIONS],
                 description: "Which lifecycle action to run.",
             },
             model: {
@@ -92,7 +92,7 @@ export function defineInternetBrowserTool(manager, allowed) {
                 return { ok: false, provider: String(model), message: `unknown provider ${String(model)}` };
             }
             const action = args.action;
-            if (typeof action !== "string" || !BROWSER_ACTIONS.includes(action)) {
+            if (typeof action !== "string" || !INTERNET_BROWSER_ACTIONS.includes(action)) {
                 return { ok: false, provider: model, message: `unknown action ${String(action)}` };
             }
             const remote = args.remote;
@@ -158,4 +158,4 @@ export function defineInternetBrowserTool(manager, allowed) {
         }),
     });
 }
-//# sourceMappingURL=browser.js.map
+//# sourceMappingURL=internet-browser.js.map

@@ -5,9 +5,9 @@ import type { WebProvider } from "#internet/core/config";
 import { WEB_PROVIDERS } from "#internet/core/config";
 import { isInternetError } from "#internet/core/errors";
 
-export type BrowserAction = "login" | "status" | "stop";
+export type InternetBrowserAction = "login" | "status" | "stop";
 
-const BROWSER_ACTIONS: readonly BrowserAction[] = ["login", "status", "stop"];
+const INTERNET_BROWSER_ACTIONS: readonly InternetBrowserAction[] = ["login", "status", "stop"];
 
 /** Define the `internet_browser` lifecycle tool (login / status / stop). */
 export function defineInternetBrowserTool(
@@ -22,7 +22,7 @@ export function defineInternetBrowserTool(
 			action: {
 				type: "string",
 				required: true,
-				enum: [...BROWSER_ACTIONS],
+				enum: [...INTERNET_BROWSER_ACTIONS],
 				description: "Which lifecycle action to run.",
 			},
 			model: {
@@ -103,7 +103,7 @@ export function defineInternetBrowserTool(
 				return { ok: false, provider: String(model), message: `unknown provider ${String(model)}` };
 			}
 			const action = args.action;
-			if (typeof action !== "string" || !(BROWSER_ACTIONS as readonly string[]).includes(action)) {
+			if (typeof action !== "string" || !(INTERNET_BROWSER_ACTIONS as readonly string[]).includes(action)) {
 				return { ok: false, provider: model, message: `unknown action ${String(action)}` };
 			}
 			const remote = args.remote;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ProviderStatus } from "#internet/browser/runtime";
-import { defineInternetBrowserTool } from "#internet/tools/browser";
+import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
 
 const allowed = new Set(["chatgpt-web", "gemini-web"] as const);
 

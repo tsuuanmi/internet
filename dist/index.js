@@ -2,15 +2,15 @@ import { BrowserManager } from "#internet/browser/runtime";
 import { defineInternetCommand } from "#internet/commands/internet";
 import { defineWorkflowCommand } from "#internet/commands/workflow";
 import { resolveBrowserConfig } from "#internet/core/config";
-import { defineInternetBrowserTool } from "#internet/tools/browser";
-import { defineBrowserChatTool } from "#internet/tools/browser-chat";
-import { defineBrowserTeamTool } from "#internet/tools/browser-team";
+import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
+import { defineInternetChatTool } from "#internet/tools/internet-chat";
 import { defineInternetResearchTool } from "#internet/tools/internet-research";
+import { defineInternetTeamTool } from "#internet/tools/internet-team";
 /** Cordis plugin name used by loader diagnostics. */
 export const name = "internet";
 /** Services required by this plugin. */
 export const inject = ["tools", "systemPrompt", "commands"];
-const BROWSER_CHAT_GUIDANCE = [
+const INTERNET_CHAT_GUIDANCE = [
     "Use internet_chat for one answer or a durable multi-turn exchange with ChatGPT Web or Gemini Web through the authenticated provider website.",
     "Each provider resumes one native conversation for the current DSH session. The automated browser is hidden by default on the managed display; set visible: true only when the user asks to watch or when live UI inspection is needed.",
     "ChatGPT selects and verifies the configured reasoning level before every turn (Medium by default). Gemini selects and verifies the observed latest Flash model with Extended thinking before every ordinary turn; provider-native Deep Research uses its own mode. Prompt submission is accepted only after complete editor read-back and the semantic Send action becomes ready.",
@@ -18,7 +18,7 @@ const BROWSER_CHAT_GUIDANCE = [
     "internet_chat cannot read local files or search the web by itself. Paste required material into the prompt and gather current sources with web_search or web_fetch first.",
 ].join(" ");
 const INTERNET_RESEARCH_GUIDANCE = "Use internet_research for provider-native Deep Research rather than ordinary internet_chat when the user needs a sourced, long-running investigation. It can run for up to 30 minutes, isolates its durable provider conversations under a research name, and may return partial success when only one provider completes. Do not use it for ordinary questions or as a substitute for web_search; provider feature availability is entitlement-dependent.";
-const BROWSER_TEAM_GUIDANCE = [
+const INTERNET_TEAM_GUIDANCE = [
     "Use internet_team when multiple independent web-model perspectives should be debated and merged: design decisions, tradeoff analysis, brainstorming, code or document review, second opinions, and adversarial review.",
     "For several independent aspects, prefer one focused background subagent (or context-inheriting subagent_fork) per aspect. Assign each worker an internet_team debate, continue useful parent work while they run, then combine their returned findings when needed; do not busy-poll.",
     "Each child agent has a unique DSH agent id, so its internet_team uses distinct durable provider threads under <child-agent-id>:team:<name>, isolated from the parent's direct and team conversations. A subagent explicitly assigned an internet_team debate should call internet_team itself rather than recursively delegating it.",
@@ -47,7 +47,7 @@ export function apply(ctx, rawConfig) {
         allowed.add("gemini-web");
     if (allowed.size === 0)
         return;
-    ctx.tools.register(defineBrowserChatTool(manager, config.turnTimeoutMs, allowed));
+    ctx.tools.register(defineInternetChatTool(manager, config.turnTimeoutMs, allowed));
     ctx.tools.register(defineInternetResearchTool(manager, config, allowed));
     ctx.tools.register(defineInternetBrowserTool(manager, allowed));
     ctx.systemPrompt?.section?.({
@@ -57,17 +57,17 @@ export function apply(ctx, rawConfig) {
     });
     if (allowed.size >= 2) {
         ctx.commands.register(defineWorkflowCommand());
-        ctx.tools.register(defineBrowserTeamTool(manager, config, allowed));
+        ctx.tools.register(defineInternetTeamTool(manager, config, allowed));
         ctx.systemPrompt?.section?.({
             name: "tool:internet_team",
             order: 121,
-            text: BROWSER_TEAM_GUIDANCE,
+            text: INTERNET_TEAM_GUIDANCE,
         });
     }
     ctx.systemPrompt?.section?.({
         name: "tool:internet_chat",
         order: 120,
-        text: BROWSER_CHAT_GUIDANCE,
+        text: INTERNET_CHAT_GUIDANCE,
     });
 }
 export { BrowserManager } from "#internet/browser/runtime";

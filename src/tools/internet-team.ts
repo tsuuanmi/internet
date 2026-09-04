@@ -9,7 +9,7 @@ import { parseTeamArgs } from "#internet/tools/args";
 export type { TeamInput } from "#internet/tools/args";
 export { parseTeamArgs } from "#internet/tools/args";
 
-type BrowserTeamManager = Pick<BrowserManager, "chat">;
+type InternetTeamManager = Pick<BrowserManager, "chat">;
 
 interface ProjectedTeamTurn extends TeamTurn {
 	/** The original text's omitted portion, if this retained turn was clipped. */
@@ -21,7 +21,7 @@ interface TranscriptProjection {
 	transcriptTruncated: boolean;
 }
 
-type BrowserTeamOutput = {
+type InternetTeamOutput = {
 	finalAnswer?: unknown;
 	error?: unknown;
 	transcript?: ProjectedTeamTurn[];
@@ -29,8 +29,8 @@ type BrowserTeamOutput = {
 };
 
 /** Render opt-in transcript data into model-visible tool content, not only UI metadata. */
-export function renderBrowserTeamResult(value: unknown): string {
-	const output = value as BrowserTeamOutput;
+export function renderInternetTeamResult(value: unknown): string {
+	const output = value as InternetTeamOutput;
 	const answer = output.finalAnswer !== undefined ? String(output.finalAnswer) : String(output.error ?? value);
 	if (output.transcript === undefined) return answer;
 	const turns = output.transcript
@@ -72,8 +72,8 @@ function projectTranscript(transcript: readonly TeamTurn[], maxChars: number): T
  * answer, optionally accompanied by a bounded current-call transcript. The DSH
  * agent is the team lead and does not participate in the debate.
  */
-export function defineBrowserTeamTool(
-	manager: BrowserTeamManager,
+export function defineInternetTeamTool(
+	manager: InternetTeamManager,
 	config: BrowserConfig,
 	allowed: ReadonlySet<WebProvider>,
 ): ReturnType<typeof defineTool> {
@@ -139,7 +139,7 @@ export function defineBrowserTeamTool(
 					error: { type: "string" },
 				},
 			},
-			render: (_args, value) => [{ type: "text", text: renderBrowserTeamResult(value) }],
+			render: (_args, value) => [{ type: "text", text: renderInternetTeamResult(value) }],
 			presentationMeta: (_args, value) => value,
 		},
 		timeoutMs: config.turnTimeoutMs * (config.teamMaxRounds * allowed.size + 1),

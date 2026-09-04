@@ -5,7 +5,7 @@ import { runTeam } from "#internet/team/orchestrator";
 import { parseTeamArgs } from "#internet/tools/args";
 export { parseTeamArgs } from "#internet/tools/args";
 /** Render opt-in transcript data into model-visible tool content, not only UI metadata. */
-export function renderBrowserTeamResult(value) {
+export function renderInternetTeamResult(value) {
     const output = value;
     const answer = output.finalAnswer !== undefined ? String(output.finalAnswer) : String(output.error ?? value);
     if (output.transcript === undefined)
@@ -48,7 +48,7 @@ function projectTranscript(transcript, maxChars) {
  * answer, optionally accompanied by a bounded current-call transcript. The DSH
  * agent is the team lead and does not participate in the debate.
  */
-export function defineBrowserTeamTool(manager, config, allowed) {
+export function defineInternetTeamTool(manager, config, allowed) {
     return defineTool({
         name: "internet_team",
         description: "Run a multi-model debate between configured web providers. Provider browsers are hidden by default; set visible=true to show them on the user-managed display. Returns only the final answer unless includeTranscript is requested.",
@@ -109,7 +109,7 @@ export function defineBrowserTeamTool(manager, config, allowed) {
                     error: { type: "string" },
                 },
             },
-            render: (_args, value) => [{ type: "text", text: renderBrowserTeamResult(value) }],
+            render: (_args, value) => [{ type: "text", text: renderInternetTeamResult(value) }],
             presentationMeta: (_args, value) => value,
         },
         timeoutMs: config.turnTimeoutMs * (config.teamMaxRounds * allowed.size + 1),
@@ -181,4 +181,4 @@ export function defineBrowserTeamTool(manager, config, allowed) {
         }),
     });
 }
-//# sourceMappingURL=browser-team.js.map
+//# sourceMappingURL=internet-team.js.map

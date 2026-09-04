@@ -25,6 +25,14 @@ describe("DSH package contract", () => {
 			access(new URL("../dist/client.js", import.meta.url), constants.R_OK),
 			access(new URL("../dist/client.d.ts", import.meta.url), constants.R_OK),
 			access(new URL("../dist/remote-login-client.js", import.meta.url), constants.R_OK),
+			...[
+				"internet-browser.js",
+				"internet-browser.d.ts",
+				"internet-chat.js",
+				"internet-chat.d.ts",
+				"internet-team.js",
+				"internet-team.d.ts",
+			].map((artifact) => access(new URL(`../dist/tools/${artifact}`, import.meta.url), constants.R_OK)),
 			expect(access(new URL("../dist/client.js.map", import.meta.url), constants.R_OK)).rejects.toMatchObject({
 				code: "ENOENT",
 			}),
@@ -34,6 +42,26 @@ describe("DSH package contract", () => {
 			expect(
 				access(new URL("../dist/remote-login-client.d.ts", import.meta.url), constants.R_OK),
 			).rejects.toMatchObject({ code: "ENOENT" }),
+			...[
+				"browser.js",
+				"browser.js.map",
+				"browser.d.ts",
+				"browser.d.ts.map",
+				"browser-chat.js",
+				"browser-chat.js.map",
+				"browser-chat.d.ts",
+				"browser-chat.d.ts.map",
+				"browser-team.js",
+				"browser-team.js.map",
+				"browser-team.d.ts",
+				"browser-team.d.ts.map",
+			].map((artifact) =>
+				expect(access(new URL(`../dist/tools/${artifact}`, import.meta.url), constants.R_OK)).rejects.toMatchObject(
+					{
+						code: "ENOENT",
+					},
+				),
+			),
 			access(new URL("../vendor/xvfb/linux-x64-gnu/bin/Xvfb", import.meta.url), constants.X_OK),
 			access(new URL("../vendor/xvfb/linux-x64-gnu/bin/x11vnc", import.meta.url), constants.X_OK),
 		]);

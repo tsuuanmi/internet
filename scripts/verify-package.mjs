@@ -37,8 +37,30 @@ try {
 		"dist/remote-login-client.js.map",
 		"dist/remote-login-client.d.ts",
 		"dist/remote-login-client.d.ts.map",
+		"dist/tools/browser.js",
+		"dist/tools/browser.js.map",
+		"dist/tools/browser.d.ts",
+		"dist/tools/browser.d.ts.map",
+		"dist/tools/browser-chat.js",
+		"dist/tools/browser-chat.js.map",
+		"dist/tools/browser-chat.d.ts",
+		"dist/tools/browser-chat.d.ts.map",
+		"dist/tools/browser-team.js",
+		"dist/tools/browser-team.js.map",
+		"dist/tools/browser-team.d.ts",
+		"dist/tools/browser-team.d.ts.map",
 	]) {
 		if (existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact must not contain: ${artifact}`);
+	}
+	for (const artifact of [
+		"dist/tools/internet-browser.js",
+		"dist/tools/internet-browser.d.ts",
+		"dist/tools/internet-chat.js",
+		"dist/tools/internet-chat.d.ts",
+		"dist/tools/internet-team.js",
+		"dist/tools/internet-team.d.ts",
+	]) {
+		if (!existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact missing: ${artifact}`);
 	}
 	if (process.platform === "linux" && process.arch === "x64") {
 		const runtime = join(installed, "vendor", "xvfb", "linux-x64-gnu");

@@ -10,7 +10,7 @@ export { parseChatArgs } from "#internet/tools/args";
  * adapter on `ctx.llm` can be layered on later reusing the same
  * {@link BrowserManager}.
  */
-export function defineBrowserChatTool(manager, timeoutMs, allowed) {
+export function defineInternetChatTool(manager, timeoutMs, allowed) {
     return defineTool({
         name: "internet_chat",
         description: "Ask ChatGPT or Gemini through a logged-in browser. Both providers durably resume one native conversation per current DSH session. The browser is hidden by default; set visible=true to show it on the user-managed display.",
@@ -98,4 +98,4 @@ export function defineBrowserChatTool(manager, timeoutMs, allowed) {
         }),
     });
 }
-//# sourceMappingURL=browser-chat.js.map
+//# sourceMappingURL=internet-chat.js.map

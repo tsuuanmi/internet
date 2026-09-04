@@ -15,7 +15,7 @@ export { parseChatArgs } from "#internet/tools/args";
  * adapter on `ctx.llm` can be layered on later reusing the same
  * {@link BrowserManager}.
  */
-export function defineBrowserChatTool(
+export function defineInternetChatTool(
 	manager: BrowserManager,
 	timeoutMs: number,
 	allowed: ReadonlySet<WebProvider>,
