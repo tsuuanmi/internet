@@ -192,7 +192,7 @@
     }
   ],
   "files": {
-    "README.md": "70795e23f960fa10aa9f946ebc7c86c07e53e2fa7480730225d9516ada97353d",
+    "README.md": "edca6c098baab620b714710a0d01f12e957aaea066c6bc4a4cd78a33928cb681",
     "bin/Xvfb": "d341ff11d9235f85edfd481c884517a80af0ca862350a432f3b22cea624c55a4",
     "bin/x11vnc": "ba9042d3a291291ba4d45d303ab3db2cd6a07460e6fb18af947891ddd08f65f6",
     "bin/xkbcomp": "42a5bdca24802ec75b8d7845737a4f8cfd5fcb2e773c0cf08e1ff980a6dc52ca",

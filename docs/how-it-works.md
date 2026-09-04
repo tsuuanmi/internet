@@ -287,7 +287,7 @@ singleton locks.
 
 For `headless: false`, hidden Linux inference asks `BrowserDisplayManager` for one shared managed Xvfb:
 
-1. bundled Linux x64/glibc 2.31+ runtime closure (including Ubuntu 20.04),
+1. bundled Linux x64/glibc 2.35+ Xvfb runtime closure,
 2. system `Xvfb`,
 3. inherited `$DISPLAY` fallback.
 

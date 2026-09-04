@@ -26,7 +26,8 @@ export function discoverXvfbCandidates(
 	options: XvfbDiscoveryOptions = {},
 ): XvfbCandidate[] {
 	const candidates: XvfbCandidate[] = [];
-	const root = bundledBrowserRuntime(options);
+	// Focal's Xvfb relies on the host XKB compiler path; retain the established Jammy floor for it.
+	const root = bundledBrowserRuntime(options, [2, 35]);
 	if (root !== undefined) {
 		const executable = join(root, "bin", "Xvfb");
 		if (executableExists(executable)) {

@@ -6,7 +6,7 @@ describe("discoverXvfbCandidates", () => {
 	it("prefers the executable bundled with the package on supported glibc Linux x64", () => {
 		const candidates = discoverXvfbCandidates(
 			{ PATH: "/usr/bin", MARKER: "yes" },
-			{ platform: "linux", arch: "x64", glibcVersion: "2.31" },
+			{ platform: "linux", arch: "x64", glibcVersion: "2.35" },
 		);
 		expect(candidates).toHaveLength(2);
 		expect(candidates[0]).toMatchObject({ source: "bundled" });
@@ -30,7 +30,7 @@ describe("discoverXvfbCandidates", () => {
 	});
 
 	it("rejects glibc versions older than the bundled runtime", () => {
-		expect(discoverXvfbCandidates({}, { platform: "linux", arch: "x64", glibcVersion: "2.30" })).toEqual([
+		expect(discoverXvfbCandidates({}, { platform: "linux", arch: "x64", glibcVersion: "2.34" })).toEqual([
 			{ executable: "Xvfb", source: "system", env: {} },
 		]);
 	});

@@ -8,7 +8,7 @@ function runtimeGlibcVersion() {
     return typeof version === "string" ? version : undefined;
 }
 /** Resolve the bundled browser runtime when this host is ABI-compatible. */
-export function bundledBrowserRuntime(options = {}) {
+export function bundledBrowserRuntime(options = {}, minimumGlibc = MINIMUM_GLIBC) {
     const platform = options.platform ?? process.platform;
     const arch = options.arch ?? process.arch;
     const glibcVersion = options.glibcVersion ?? runtimeGlibcVersion();
@@ -17,8 +17,8 @@ export function bundledBrowserRuntime(options = {}) {
     const [major, minor] = glibcVersion.split(".").map(Number);
     if (!Number.isInteger(major) ||
         !Number.isInteger(minor) ||
-        major < MINIMUM_GLIBC[0] ||
-        (major === MINIMUM_GLIBC[0] && minor < MINIMUM_GLIBC[1])) {
+        major < minimumGlibc[0] ||
+        (major === minimumGlibc[0] && minor < minimumGlibc[1])) {
         return undefined;
     }
     return options.bundleRoot ?? fileURLToPath(new URL(`../../vendor/xvfb/${BUNDLED_TARGET}/`, import.meta.url));

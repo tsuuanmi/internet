@@ -18,7 +18,10 @@ function runtimeGlibcVersion(): string | undefined {
 }
 
 /** Resolve the bundled browser runtime when this host is ABI-compatible. */
-export function bundledBrowserRuntime(options: BrowserVendorOptions = {}): string | undefined {
+export function bundledBrowserRuntime(
+	options: BrowserVendorOptions = {},
+	minimumGlibc: readonly [number, number] = MINIMUM_GLIBC,
+): string | undefined {
 	const platform = options.platform ?? process.platform;
 	const arch = options.arch ?? process.arch;
 	const glibcVersion = options.glibcVersion ?? runtimeGlibcVersion();
@@ -27,8 +30,8 @@ export function bundledBrowserRuntime(options: BrowserVendorOptions = {}): strin
 	if (
 		!Number.isInteger(major) ||
 		!Number.isInteger(minor) ||
-		major < MINIMUM_GLIBC[0] ||
-		(major === MINIMUM_GLIBC[0] && minor < MINIMUM_GLIBC[1])
+		major < minimumGlibc[0] ||
+		(major === minimumGlibc[0] && minor < minimumGlibc[1])
 	) {
 		return undefined;
 	}
