@@ -5,7 +5,7 @@ export interface BrowserVendorOptions {
     bundleRoot?: string;
 }
 /** Resolve the bundled browser runtime when this host is ABI-compatible. */
-export declare function bundledBrowserRuntime(options?: BrowserVendorOptions): string | undefined;
+export declare function bundledBrowserRuntime(options?: BrowserVendorOptions, minimumGlibc?: readonly [number, number]): string | undefined;
 /** Environment that loads executables and libraries from the bundled runtime. */
 export declare function bundledBrowserEnv(root: string, baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
 //# sourceMappingURL=vendor.d.ts.map
