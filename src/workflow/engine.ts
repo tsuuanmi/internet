@@ -45,7 +45,11 @@ function withState(current: WorkflowJob, state: WorkflowState): WorkflowJob {
  * writer, review, approval, and event controllers to this class.
  */
 export class WorkflowEngine {
-	constructor(private readonly jobs: WorkflowJobStore) {}
+	private readonly jobs: WorkflowJobStore;
+
+	constructor(jobs: WorkflowJobStore) {
+		this.jobs = jobs;
+	}
 
 	start(input: StartWorkflowInput): WorkflowJob {
 		const objective = input.objective.trim();
