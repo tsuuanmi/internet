@@ -61,7 +61,7 @@ jobs:
           });
 
           edit('docs/UPDATE.md', (text) => {
-            text = mustReplace(text, '### 6. ChatGPT is the default team synthesizer\n\nThe current team implementation synthesizes with the provider that spoke last.\n\nTarget behavior is explicit synthesis routing to the ChatGPT thinker account, independent of debate speaking order.\n\n### 7. ChatGPT browser default reasoning changes to High\n\nCurrent implementation defaults ordinary ChatGPT turns to `medium`.\n\nTarget default is `high`, unless explicitly overridden.', '### 6. ChatGPT is the default team synthesizer\n\nImplemented: team synthesis is routed through an explicit configured provider instead of whichever provider spoke last. The default is `chatgpt-web`, preserving provider speaking order independently from synthesis ownership.\n\n### 7. ChatGPT browser default reasoning is High\n\nImplemented: ordinary ChatGPT browser turns default to `high` unless explicitly overridden.', 'UPDATE P0 status');
+            text = mustReplace(text, '- ChatGPT thinker is the explicit default team synthesizer;\n- ChatGPT browser default should become `high`;', '- team synthesis is explicitly routed through a configured provider; ChatGPT is the default synthesizer;\n- ChatGPT browser default is `high`;', 'UPDATE P0 status');
             return text;
           });
 
