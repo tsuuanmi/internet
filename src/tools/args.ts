@@ -1,21 +1,17 @@
-import type { WebProvider } from "#internet/core/config";
-import { WEB_PROVIDERS } from "#internet/core/config";
+import { ACCOUNT_IDS, type AccountId, isAccountId } from "#internet/core/accounts";
 
 /** Validated `internet_chat` arguments. */
 export interface ChatInput {
-	provider: WebProvider;
+	accountId: AccountId;
 	prompt: string;
 	visible?: boolean;
 }
 
-/**
- * Validate and normalize the model-facing `internet_chat` arguments. Kept free
- * of any DeepSeek Harness import so it is unit-testable without DSH packages.
- */
+/** Validate and normalize model-facing `internet_chat` arguments. */
 export function parseChatArgs(args: Record<string, unknown>): ChatInput {
-	const model = args.model;
-	if (typeof model !== "string" || !(WEB_PROVIDERS as readonly string[]).includes(model)) {
-		throw new Error(`internet_chat model must be one of ${WEB_PROVIDERS.join(", ")}`);
+	const account = args.account;
+	if (!isAccountId(account)) {
+		throw new Error(`internet_chat account must be one of ${ACCOUNT_IDS.join(", ")}`);
 	}
 	const prompt = args.prompt;
 	if (typeof prompt !== "string" || prompt.trim().length === 0) {
@@ -25,14 +21,14 @@ export function parseChatArgs(args: Record<string, unknown>): ChatInput {
 	if (visible !== undefined && typeof visible !== "boolean") {
 		throw new Error("internet_chat visible must be a boolean");
 	}
-	return { provider: model as WebProvider, prompt, ...(visible === undefined ? {} : { visible }) };
+	return { accountId: account, prompt, ...(visible === undefined ? {} : { visible }) };
 }
 
 /** Validated `internet_research` arguments. */
 export interface ResearchInput {
 	query: string;
 	name?: string;
-	providers?: WebProvider[];
+	accounts?: AccountId[];
 	visible?: boolean;
 }
 
@@ -50,24 +46,11 @@ export function parseResearchArgs(args: Record<string, unknown>): ResearchInput 
 	if (visible !== undefined && typeof visible !== "boolean") {
 		throw new Error("internet_research visible must be a boolean");
 	}
-	const providers = args.providers;
-	if (providers !== undefined) {
-		if (!Array.isArray(providers) || providers.length === 0) {
-			throw new Error("internet_research providers must be a non-empty array");
-		}
-		const seen = new Set<string>();
-		for (const value of providers) {
-			if (typeof value !== "string" || !(WEB_PROVIDERS as readonly string[]).includes(value)) {
-				throw new Error(`internet_research providers must be one of ${WEB_PROVIDERS.join(", ")}`);
-			}
-			if (seen.has(value)) throw new Error("internet_research providers must not contain duplicates");
-			seen.add(value);
-		}
-	}
+	const accounts = parseOptionalAccountArray(args.accounts, "internet_research", 1);
 	return {
 		query,
 		...(name === undefined ? {} : { name }),
-		...(providers === undefined ? {} : { providers: providers as WebProvider[] }),
+		...(accounts === undefined ? {} : { accounts }),
 		...(visible === undefined ? {} : { visible }),
 	};
 }
@@ -79,14 +62,11 @@ export interface TeamInput {
 	rounds?: number;
 	synthesize?: boolean;
 	includeTranscript?: boolean;
-	providers?: WebProvider[];
+	accounts?: AccountId[];
 	visible?: boolean;
 }
 
-/**
- * Validate and normalize the model-facing `internet_team` arguments. Kept free
- * of any DeepSeek Harness import so it is unit-testable without DSH packages.
- */
+/** Validate and normalize the model-facing `internet_team` arguments. */
 export function parseTeamArgs(args: Record<string, unknown>): TeamInput {
 	const task = args.task;
 	if (typeof task !== "string" || task.trim().length === 0) {
@@ -112,29 +92,32 @@ export function parseTeamArgs(args: Record<string, unknown>): TeamInput {
 	if (visible !== undefined && typeof visible !== "boolean") {
 		throw new Error("internet_team visible must be a boolean");
 	}
-	const providers = args.providers;
-	if (providers !== undefined) {
-		if (!Array.isArray(providers) || providers.length < 2) {
-			throw new Error("internet_team providers must be an array of at least two providers");
-		}
-		const seen = new Set<string>();
-		for (const value of providers) {
-			if (typeof value !== "string" || !(WEB_PROVIDERS as readonly string[]).includes(value)) {
-				throw new Error(`internet_team providers must be one of ${WEB_PROVIDERS.join(", ")}`);
-			}
-			if (seen.has(value)) {
-				throw new Error("internet_team providers must not contain duplicates");
-			}
-			seen.add(value);
-		}
-	}
+	const accounts = parseOptionalAccountArray(args.accounts, "internet_team", 2);
 	return {
 		task,
 		...(team === undefined ? {} : { team }),
 		...(rounds === undefined ? {} : { rounds }),
 		...(synthesize === undefined ? {} : { synthesize }),
 		...(includeTranscript === undefined ? {} : { includeTranscript }),
-		...(providers === undefined ? {} : { providers: providers as WebProvider[] }),
+		...(accounts === undefined ? {} : { accounts }),
 		...(visible === undefined ? {} : { visible }),
 	};
+}
+
+function parseOptionalAccountArray(value: unknown, toolName: string, minimumLength: number): AccountId[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) || value.length < minimumLength) {
+		throw new Error(`${toolName} accounts must be an array of at least ${minimumLength} account(s)`);
+	}
+	const seen = new Set<AccountId>();
+	const accounts: AccountId[] = [];
+	for (const account of value) {
+		if (!isAccountId(account)) {
+			throw new Error(`${toolName} accounts must be one of ${ACCOUNT_IDS.join(", ")}`);
+		}
+		if (seen.has(account)) throw new Error(`${toolName} accounts must not contain duplicates`);
+		seen.add(account);
+		accounts.push(account);
+	}
+	return accounts;
 }
