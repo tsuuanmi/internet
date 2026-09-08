@@ -49,7 +49,7 @@ export class WorkflowTeamPromptBuilder {
 			"",
 			laneFocus("review", lane),
 			"",
-			"Review the actual PR at the exact head SHA above. Treat earlier review cycles only as context; findings must be valid for this head. Return one final reviewer result with material findings ordered by severity, concrete evidence/location, required remediation, and an explicit PASS when no material issue remains. Do not rely on another agent to summarize your result.",
+			'Review the actual PR at the exact head SHA above. Treat earlier review cycles only as context; findings must be valid for this head. Return exactly one JSON object and no markdown or surrounding prose. Use {"verdict":"PASS","summary":"concise evidence-based summary"} when no material issue remains. Otherwise use {"verdict":"CHANGES_REQUIRED","findings":[{"severity":"high|medium|low","location":"file/area","issue":"concrete problem","remediation":"required fix"}]}. The complete JSON object is the reviewer payload delivered verbatim to the writer; do not rely on another agent to summarize it.',
 		].join("\n");
 	}
 }

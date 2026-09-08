@@ -1,5 +1,6 @@
 import type { AccountId } from "#internet/core/accounts";
 import type { WebProvider } from "#internet/core/config";
+import type { WorkflowReviewVerdict } from "#internet/workflow/review-result";
 
 export const WORKFLOW_STATES = [
 	"CREATED",
@@ -32,6 +33,7 @@ export interface WorkflowTeamResult {
 	readonly finalProvider: WebProvider;
 	readonly completedAt: string;
 	readonly reviewedHeadSha?: string;
+	readonly reviewVerdict?: WorkflowReviewVerdict;
 }
 
 export interface WorkflowTeamRun {
