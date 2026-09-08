@@ -97,8 +97,11 @@ export {
 	ACCOUNT_IDS,
 	ACCOUNT_ROLES,
 	ACCOUNTS,
+	DEFAULT_ACCOUNT_BY_PROVIDER,
 	accountHasCapability,
+	accountsForProvider,
 	accountsWithCapabilities,
+	defaultAccountIdForProvider,
 	getAccountDefinition,
 	isAccountId,
 } from "#internet/core/accounts";
