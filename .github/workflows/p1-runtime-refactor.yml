@@ -19,17 +19,17 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: python3 scripts/p1-account-runtime-refactor.py
-      - run: npx biome check --write src/browser/runtime.ts src/core/config.ts src/browser/accounts.ts src/browser/storage.ts src/browser/conversations.ts
+      - run: python3 scripts/p1-runtime-fix.py
+      - run: npx biome check --write src/browser/runtime.ts
       - name: Commit refactor
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/browser/runtime.ts src/core/config.ts src/browser/accounts.ts src/browser/storage.ts src/browser/conversations.ts
+          git add src/browser/runtime.ts
           if git diff --cached --quiet; then
             echo 'no changes'
             exit 0
           fi
-          git commit -m 'feat: make browser runtime account-aware'
+          git commit -m 'fix: complete account-aware browser lifecycle'
           git push
