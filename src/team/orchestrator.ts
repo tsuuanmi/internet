@@ -40,10 +40,8 @@ export type TeamResult = TeamSuccess | TeamFailure;
 /** Options for {@link runTeam}. */
 export interface TeamOptions {
 	task: string;
-	/** Durable owner key: the current DSH agent/session ID. */
+	/** Exact durable conversation owner key used for every account in this team lane. */
 	sessionId: string;
-	/** Optional team namespace; teams with different names get separate threads. */
-	teamName?: string;
 	/** Number of debate rounds (each account speaks once per round). */
 	rounds?: number;
 	/** Whether to append a final synthesis turn. */
@@ -127,27 +125,20 @@ export function composeSynthesisPrompt(task: string, transcript: readonly TeamTu
 }
 
 /**
- * Run a multi-model debate using explicit authenticated accounts. Each account
- * has its own durable browser state, conversation namespace, and scheduler.
+ * Run a multi-model debate using an exact durable conversation-session key.
+ * Callers own namespace construction; this primitive does not append hidden
+ * provider/tool-specific suffixes.
  */
 export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamResult> {
 	const rounds = options.rounds ?? DEFAULT_ROUNDS;
 	const synthesize = options.synthesize ?? true;
 	const synthesizer = options.synthesizer ?? DEFAULT_SYNTHESIZER;
 	const accounts = options.accounts ?? DEFAULT_ACCOUNTS;
-	if (!Number.isInteger(rounds) || rounds <= 0) {
-		throw new Error("team debate rounds must be a positive integer");
-	}
-	if (accounts.length < 2) {
-		throw new Error("team debate requires at least two accounts");
-	}
-	if (new Set(accounts).size !== accounts.length) {
-		throw new Error("team debate accounts must not contain duplicates");
-	}
-	if (synthesize && !accounts.includes(synthesizer)) {
-		throw new Error("team synthesizer must be one of the selected accounts");
-	}
-	const teamSessionId = `${options.sessionId}:team:${options.teamName ?? "default"}`;
+	if (!Number.isInteger(rounds) || rounds <= 0) throw new Error("team debate rounds must be a positive integer");
+	if (accounts.length < 2) throw new Error("team debate requires at least two accounts");
+	if (new Set(accounts).size !== accounts.length) throw new Error("team debate accounts must not contain duplicates");
+	if (synthesize && !accounts.includes(synthesizer)) throw new Error("team synthesizer must be one of the selected accounts");
+	if (options.sessionId.trim() === "") throw new Error("team debate sessionId must not be empty");
 
 	const transcript: TeamTurn[] = [];
 	const lastByAccount = new Map<AccountId, string>();
@@ -170,7 +161,7 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 				const prompt = composeTurnPrompt(options.task, accountId, others, round);
 				const result = await chat(accountId, {
 					prompt,
-					sessionId: teamSessionId,
+					sessionId: options.sessionId,
 					visible: options.visible,
 					signal: options.signal,
 				});
@@ -190,7 +181,7 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 			const prompt = composeSynthesisPrompt(options.task, transcript);
 			const result = await chat(synthesizer, {
 				prompt,
-				sessionId: teamSessionId,
+				sessionId: options.sessionId,
 				visible: options.visible,
 				signal: options.signal,
 			});
