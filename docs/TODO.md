@@ -223,24 +223,38 @@ No control instruction is prepended/appended to a verbatim team/reviewer payload
 
 ## P5 — Writer and PR path
 
-### 19. Add persistent `chatgpt-writer` conversation routing
+**Status:** implemented for initial implementation and PR creation. P7 reuses the same writer conversation for review remediation.
 
-Writer receives Team A final, Team B final, then separate `START_IMPLEMENTATION`.
+### 19. ✅ Add persistent `chatgpt-writer` conversation routing
 
-The same writer conversation is reused across implementation, PR creation/update, and remediation for one workflow job so the executor retains the context it built while reading and modifying the repository.
+Research A and Research B are delivered verbatim, in deterministic order, to the job's single dedicated writer conversation:
 
-### 20. Define writer control contract
+```text
+<local>:workflow:<job>:writer
+```
 
-Writer must:
+Only after both exact handoffs have durable delivery receipts does the engine send a separate `START_IMPLEMENTATION` control. The same conversation identity is retained for later PR remediation so the executor keeps the tactical context it built while reading and modifying the repository.
 
-- confirm target repo/base;
-- inspect current repository;
+Acknowledged research handoffs are not resent when a transient writer-control failure is retried from `WRITER_RUNNING`.
+
+### 20. ✅ Define writer control contract
+
+`BrowserWorkflowWriterRunner` routes exclusively through `chatgpt-writer`. The trusted implementation control requires the writer to:
+
+- confirm target repo/base revision;
+- inspect the current repository;
 - implement without needless redesign;
-- create/update one PR;
-- return `BLOCKED` on authority conflict;
-- expose compact PR receipt.
+- validate the change;
+- create/update exactly one PR;
+- never merge in this phase;
+- return `BLOCKED` on authority conflict or unsafe completion;
+- otherwise return exactly one strict JSON `PR_OPEN` result.
 
-### 21. Persist PR receipt
+Research payloads remain data-plane messages and are never wrapped with control instructions.
+
+### 21. ✅ Persist PR receipt
+
+Successful writer output is parsed and persisted as:
 
 ```text
 repository
@@ -250,7 +264,7 @@ base/head
 head SHA
 ```
 
-Use it for retries, review, remediation, and merge binding.
+The job transitions to `PR_OPEN` and emits a compact progress event. Malformed writer output is rejected; `BLOCKED` creates an action-required state without fabricating a PR receipt. The persisted receipt becomes the authority input for review, remediation, and later merge binding.
 
 ## P6 — Scoped approval controller
 

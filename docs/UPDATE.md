@@ -27,7 +27,7 @@ The user starts the coding workflow explicitly with:
 /workflow <task>
 ```
 
-But the command must evolve from the current giant-prompt prototype into a thin adapter over `internet_workflow.start(...)` and a durable `WorkflowEngine`.
+The giant-prompt prototype has now been replaced by a thin adapter over a durable `WorkflowEngine`: `/workflow` resolves repository authority and exact `HEAD`, creates a job, and returns the job ID.
 
 ### 2. Local is not the state machine
 
@@ -54,9 +54,9 @@ Local remains able to inspect details on exception, but code-owned workflow stat
 
 ### 3. Workflow-owned teams should run directly
 
-The current prompt asks Local to spawn free-form DSH subagents which then call `internet_team`. That preserves useful background execution, but introduces an avoidable transformation layer because a child agent may inspect code itself or summarize the team result before returning.
+Workflow-owned research now bypasses the old free-form DSH child intermediary and calls the lower-level team runtime directly. This removes an avoidable transformation layer while retaining deterministic independent team lanes.
 
-Target behavior:
+Implemented behavior:
 
 ```text
 WorkflowEngine
@@ -137,6 +137,24 @@ gemini-thinker/login-profile
 ```
 
 `BrowserManager` browser pools, launches, schedulers, remote logins, active contexts, delayed closes, and account commit queues are keyed by `accountId`. `chatgpt-thinker` and `chatgpt-writer` therefore have independent authentication state and independent scheduler locks even though both use the ChatGPT Web implementation.
+
+## Writer and PR path implemented
+
+P5 TODO #19–#21 now connects the exact research data plane to the separate Website writer account:
+
+```text
+Research A exact final
+  -> chatgpt-writer conversation
+Research B exact final
+  -> same chatgpt-writer conversation
+START_IMPLEMENTATION
+  -> same conversation
+Writer verifies repo/base, implements, validates
+  -> create/update exactly one PR
+  -> strict PR_OPEN receipt or BLOCKED
+```
+
+The writer conversation is stable for the workflow job and is intended to continue through later remediation. Durable delivery receipts prevent acknowledged Research A/B handoffs from being resent when a transient writer-control call is retried. Successful output persists repository, PR number/URL, base/head, and exact head SHA in the job before review begins. Merge remains explicitly outside this phase.
 
 ## Existing architecture points retained
 
