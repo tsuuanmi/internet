@@ -1,0 +1,37 @@
+import type { BrowserManager } from "#internet/browser/runtime";
+import type { WorkflowControlMessage } from "#internet/workflow/control";
+import type { WorkflowJob, WorkflowPullRequestReceipt } from "#internet/workflow/types";
+export interface WorkflowWriterRunner {
+    deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void>;
+    runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult>;
+}
+export interface WorkflowWriterDeliveryRequest {
+    readonly sessionId: string;
+    /** Exact data-plane payload. This value must be submitted without wrapping or normalization. */
+    readonly payload: string;
+    readonly signal?: AbortSignal;
+}
+export interface WorkflowWriterControlRequest {
+    readonly sessionId: string;
+    readonly job: WorkflowJob;
+    readonly control: WorkflowControlMessage;
+    readonly signal?: AbortSignal;
+}
+export type WorkflowWriterResult = {
+    readonly status: "PR_OPEN";
+    readonly pullRequest: WorkflowPullRequestReceipt;
+} | {
+    readonly status: "BLOCKED";
+    readonly message: string;
+};
+export declare function parseWorkflowWriterResult(text: string): WorkflowWriterResult;
+type WriterBrowser = Pick<BrowserManager, "chat">;
+/** Persistent ChatGPT Website writer bound to the workflow's dedicated writer conversation. */
+export declare class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
+    private readonly manager;
+    constructor(manager: WriterBrowser);
+    deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void>;
+    runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult>;
+}
+export {};
+//# sourceMappingURL=writer-runner.d.ts.map

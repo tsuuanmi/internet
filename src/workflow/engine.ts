@@ -4,7 +4,6 @@ import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/h
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import { type WorkflowTeamLane, WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import type { WorkflowTeamRunner, WorkflowTeamRunResult } from "#internet/workflow/team-runner";
-import type { WorkflowWriterRunner } from "#internet/workflow/writer-runner";
 import {
 	type StartWorkflowInput,
 	TERMINAL_WORKFLOW_STATES,
@@ -14,6 +13,7 @@ import {
 	type WorkflowState,
 	type WorkflowTeamRun,
 } from "#internet/workflow/types";
+import type { WorkflowWriterRunner } from "#internet/workflow/writer-runner";
 
 export class WorkflowEngineError extends Error {
 	constructor(message: string) {
@@ -130,12 +130,32 @@ export class WorkflowEngine {
 			state: "CREATED",
 			teamRuns: {
 				research: [
-					{ lane: "A", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "research", "A") },
-					{ lane: "B", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "research", "B") },
+					{
+						lane: "A",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "research", "A"),
+					},
+					{
+						lane: "B",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "research", "B"),
+					},
 				],
 				review: [
-					{ lane: "A", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "review", "A") },
-					{ lane: "B", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "review", "B") },
+					{
+						lane: "A",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "review", "A"),
+					},
+					{
+						lane: "B",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "review", "B"),
+					},
 				],
 			},
 			accountRouting: {
@@ -172,7 +192,12 @@ export class WorkflowEngine {
 		const running = this.jobs.update(jobId, (current) => {
 			let research = current.teamRuns.research;
 			for (const lane of lanes) {
-				research = replaceLane(research, lane, (run) => ({ ...run, status: "running", attempts: run.attempts + 1, error: undefined }));
+				research = replaceLane(research, lane, (run) => ({
+					...run,
+					status: "running",
+					attempts: run.attempts + 1,
+					error: undefined,
+				}));
 			}
 			return {
 				...withState(current, "RESEARCH_RUNNING"),
@@ -214,7 +239,9 @@ export class WorkflowEngine {
 					type: completed ? "RESEARCH_COMPLETED" : "RESEARCH_RETRY_REQUIRED",
 					class: completed ? "INTERNAL" : "ACTION_REQUIRED",
 					at: now(),
-					...(completed ? {} : { message: "One or more research lanes failed; retry runs only incomplete lanes." }),
+					...(completed
+						? {}
+						: { message: "One or more research lanes failed; retry runs only incomplete lanes." }),
 				},
 			};
 		});
@@ -226,7 +253,8 @@ export class WorkflowEngine {
 		if (job.state !== "RESEARCH_HANDOFFS_DELIVERING") {
 			throw new WorkflowEngineError(`workflow job ${jobId} cannot prepare research handoffs from ${job.state}`);
 		}
-		if (!allCompleted(job.teamRuns.research)) throw new WorkflowEngineError("all research lanes must complete before handoff creation");
+		if (!allCompleted(job.teamRuns.research))
+			throw new WorkflowEngineError("all research lanes must complete before handoff creation");
 		const handoffs = job.teamRuns.research.map((run, index) => {
 			if (run.result === undefined) throw new WorkflowEngineError(`research lane ${run.lane} has no final result`);
 			return this.handoffs!.create({
@@ -273,12 +301,13 @@ export class WorkflowEngine {
 		if (receipts.length !== 2 || !receipts.every((item) => item.status === "delivered")) {
 			throw new WorkflowEngineError("writer cannot start until both research handoffs are delivered");
 		}
-		const job = current.state === "WRITER_RUNNING"
-			? current
-			: this.jobs.update(jobId, (state) => ({
-					...withState(state, "WRITER_RUNNING"),
-					lastEvent: { type: "START_IMPLEMENTATION_READY", class: "INTERNAL", at: now() },
-				}));
+		const job =
+			current.state === "WRITER_RUNNING"
+				? current
+				: this.jobs.update(jobId, (state) => ({
+						...withState(state, "WRITER_RUNNING"),
+						lastEvent: { type: "START_IMPLEMENTATION_READY", class: "INTERNAL", at: now() },
+					}));
 		return { job, control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId) };
 	}
 
@@ -291,12 +320,18 @@ export class WorkflowEngine {
 			throw new WorkflowEngineError(`workflow job ${jobId} cannot run writer implementation from ${job.state}`);
 		}
 
-		const handoffs = this.prepareResearchHandoffs(jobId).slice().sort((a, b) => a.sequence - b.sequence);
+		const handoffs = this.prepareResearchHandoffs(jobId)
+			.slice()
+			.sort((a, b) => a.sequence - b.sequence);
 		job = this.status(jobId);
 		for (const handoff of handoffs) {
 			const currentReceipt = job.handoffReceipts.find((item) => item.handoffId === handoff.handoffId);
 			if (currentReceipt?.status === "delivered") continue;
-			await this.writer.deliverExact({ sessionId: job.writerConversation.sessionId, payload: handoff.payload, signal });
+			await this.writer.deliverExact({
+				sessionId: job.writerConversation.sessionId,
+				payload: handoff.payload,
+				signal,
+			});
 			job = this.markHandoffDelivered(jobId, handoff.handoffId, handoff.payloadHash);
 		}
 
@@ -341,7 +376,9 @@ export class WorkflowEngine {
 								finalAccountId: result.finalAccountId,
 								finalProvider: result.finalProvider,
 								completedAt: now(),
-								...(phase === "review" && current.pullRequest !== undefined ? { reviewedHeadSha: current.pullRequest.headSha } : {}),
+								...(phase === "review" && current.pullRequest !== undefined
+									? { reviewedHeadSha: current.pullRequest.headSha }
+									: {}),
 							},
 						}
 					: { ...run, status: "failed", error: result.error, result: undefined },
@@ -357,7 +394,8 @@ export class WorkflowEngine {
 
 	cancel(jobId: string): WorkflowJob {
 		return this.jobs.update(jobId, (current) => {
-			if (TERMINAL_WORKFLOW_STATES.has(current.state)) throw new WorkflowEngineError(`workflow job ${jobId} is already terminal (${current.state})`);
+			if (TERMINAL_WORKFLOW_STATES.has(current.state))
+				throw new WorkflowEngineError(`workflow job ${jobId} is already terminal (${current.state})`);
 			return withState(current, "CANCELLED");
 		});
 	}
@@ -373,10 +411,16 @@ export class WorkflowEngine {
 
 	approve(input: WorkflowDecisionInput): WorkflowJob {
 		return this.jobs.update(input.jobId, (current) => {
-			if (current.state !== "AWAITING_MERGE_AUTHORIZATION" || current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED") {
+			if (
+				current.state !== "AWAITING_MERGE_AUTHORIZATION" ||
+				current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED"
+			) {
 				throw new WorkflowEngineError(`workflow job ${input.jobId} is not awaiting merge authorization`);
 			}
-			if (current.pendingAction.expectedHeadSha !== undefined && input.expectedHeadSha !== current.pendingAction.expectedHeadSha) {
+			if (
+				current.pendingAction.expectedHeadSha !== undefined &&
+				input.expectedHeadSha !== current.pendingAction.expectedHeadSha
+			) {
 				throw new WorkflowEngineError("merge authorization head SHA does not match the pending action");
 			}
 			return { ...withState(current, "READY_FOR_MERGE_AUTHORIZATION"), pendingAction: undefined };
@@ -385,7 +429,8 @@ export class WorkflowEngine {
 
 	reject(input: WorkflowDecisionInput): WorkflowJob {
 		return this.jobs.update(input.jobId, (current) => {
-			if (current.pendingAction === undefined) throw new WorkflowEngineError(`workflow job ${input.jobId} has no pending action to reject`);
+			if (current.pendingAction === undefined)
+				throw new WorkflowEngineError(`workflow job ${input.jobId} has no pending action to reject`);
 			return { ...withState(current, "BLOCKED"), pendingAction: undefined };
 		});
 	}

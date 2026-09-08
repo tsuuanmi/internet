@@ -13,6 +13,7 @@ import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
+import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
 export const name = "internet";
 export const inject = ["tools", "systemPrompt", "commands"];
 const INTERNET_CHAT_GUIDANCE = [
@@ -38,7 +39,8 @@ const INTERNET_WORKFLOW_GUIDANCE = [
     "Workflow state, account routing, team lane identities, writer conversation identity, handoff receipts, PR receipt, review cycle, pending action, and compact last event are persisted outside model context.",
     "Workflow-owned team execution calls the lower-level team runtime directly with deterministic prompts and per-job lanes; no free-form child agent is needed merely to call internet_team.",
     "Research finals are materialized as exact SHA-256-bound durable handoffs. Data-plane payloads are separate from trusted control messages, and START_IMPLEMENTATION is gated on delivery of both research handoffs.",
-    "Writer/PR execution, approval classification, review-loop driving, Local events, and merge binding remain later workflow phases.",
+    "The workflow writer is the separate chatgpt-writer account. It receives both research finals verbatim in one persistent per-job conversation, then a separate trusted START_IMPLEMENTATION control. The writer must open/update one PR and return a compact machine-validated PR receipt; merge is never part of this phase.",
+    "Approval classification, review-loop driving, Local events, and merge binding remain later workflow phases.",
 ].join(" ");
 function enabledAccounts(config) {
     return new Set(ACCOUNT_IDS.filter((accountId) => {
@@ -63,8 +65,8 @@ export function apply(ctx, rawConfig) {
         ctx.systemPrompt?.section?.({ name: "tool:internet_research", order: 119, text: INTERNET_RESEARCH_GUIDANCE });
         ctx.systemPrompt?.section?.({ name: "tool:internet_chat", order: 120, text: INTERNET_CHAT_GUIDANCE });
     }
-    if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker")) {
-        const workflowEngine = new WorkflowEngine(new WorkflowJobStore(config.dataDir), new BrowserWorkflowTeamRunner(manager, config), new WorkflowTeamPromptBuilder(), new WorkflowHandoffStore(config.dataDir));
+    if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker") && accounts.has("chatgpt-writer")) {
+        const workflowEngine = new WorkflowEngine(new WorkflowJobStore(config.dataDir), new BrowserWorkflowTeamRunner(manager, config), new WorkflowTeamPromptBuilder(), new WorkflowHandoffStore(config.dataDir), new BrowserWorkflowWriterRunner(manager));
         ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine }));
         ctx.tools.register(defineInternetWorkflowTool(workflowEngine));
         ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
@@ -86,4 +88,5 @@ export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#inte
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 export { TERMINAL_WORKFLOW_STATES, WORKFLOW_STATES, WORKFLOW_TEAM_STATUSES } from "#internet/workflow/types";
+export { BrowserWorkflowWriterRunner, parseWorkflowWriterResult } from "#internet/workflow/writer-runner";
 //# sourceMappingURL=index.js.map
