@@ -28,7 +28,9 @@
 **ROI:** very high  
 **Risk:** low-medium
 
-### 3. Define first-class `accountId`
+### 3. ✅ Define first-class `accountId`
+
+**Status:** implemented as the semantic account catalog and capability-routing contract. Browser/storage isolation follows in P1.
 
 Minimal contract:
 
@@ -60,7 +62,8 @@ Requirements:
 
 - separate portable state for two ChatGPT accounts;
 - private permissions retained;
-- migration/compatibility for existing account files;
+- account-scoped canonical paths only;
+- no implicit provider-to-account fallback;
 - no cross-account stale snapshot overwrite.
 
 ### 5. Refactor BrowserManager maps to account identity

@@ -125,8 +125,9 @@ This decision affects at least:
 
 ## Migration principles
 
-- Existing single-account configs should keep working through generated default account aliases.
-- Existing portable account files should be migrated or read through compatibility logic rather than silently discarded.
+- Prefer a clean break to account-scoped state instead of carrying legacy/provider-keyed compatibility code by default.
+- Do not introduce implicit provider-to-account aliases; authenticated identity boundaries should require an explicit `accountId`.
+- Do not add fallback reads, legacy state import, or automatic migration unless a concrete deployment requirement proves it necessary.
 - Account files remain private and must never be mixed across aliases.
 - A stale snapshot from one account must never overwrite another account's canonical state.
 
@@ -138,11 +139,13 @@ This decision affects at least:
 - Multiple accounts from the same provider become possible.
 - Future account pools and role-specific accounts become straightforward.
 - Routing can be based on capability rather than provider name.
+- The implementation avoids long-lived compatibility branches that obscure account authority.
 
 ### Cost
 
 - This is a cross-cutting storage/runtime refactor.
-- Tests must cover account isolation, migration, scheduler isolation, login, and conversation persistence.
+- Existing provider-keyed local account state may need to be recreated manually when the account-scoped runtime lands.
+- Tests must cover account isolation, scheduler isolation, login, and conversation persistence.
 
 ## Invariant
 
