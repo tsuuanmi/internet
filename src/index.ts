@@ -3,7 +3,8 @@ import type { defineTool } from "@deepseek-ai/dsh-tools";
 import { BrowserManager } from "#internet/browser/runtime";
 import { defineInternetCommand } from "#internet/commands/internet";
 import { defineWorkflowCommand } from "#internet/commands/workflow";
-import { resolveBrowserConfig, type WebProvider } from "#internet/core/config";
+import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/core/accounts";
+import { resolveBrowserConfig } from "#internet/core/config";
 import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
 import { defineInternetChatTool } from "#internet/tools/internet-chat";
 import { defineInternetResearchTool } from "#internet/tools/internet-research";
@@ -16,25 +17,24 @@ export const name = "internet";
 export const inject = ["tools", "systemPrompt", "commands"] as const;
 
 const INTERNET_CHAT_GUIDANCE = [
-	"Use internet_chat for one answer or a durable multi-turn exchange with ChatGPT Web or Gemini Web through the authenticated provider website.",
-	"Each provider resumes one native conversation for the current DSH session. The automated browser is hidden by default on the managed display; set visible: true only when the user asks to watch or when live UI inspection is needed.",
-	"ChatGPT selects and verifies the configured reasoning level before every turn (High by default). Gemini selects and verifies the observed latest Flash model with Extended thinking before every ordinary turn; provider-native Deep Research uses its own mode. Prompt submission is accepted only after complete editor read-back and the semantic Send action becomes ready.",
-	"If a provider is missing or requires reauthentication, use internet_browser status and then login. On a desktop, the user signs in through dedicated normal Chrome and closes it completely. On a displayless server, or when remote: true is requested, relay the returned SSH port-forward command and complete tokenized noVNC URL; tell the user to sign in, press Save account, and check status until ready.",
+	"Use internet_chat for one answer or a durable multi-turn exchange through an explicitly selected thinker account: chatgpt-thinker or gemini-thinker.",
+	"Each account resumes one native conversation for the current DSH session. The automated browser is hidden by default on the managed display; set visible: true only when the user asks to watch or when live UI inspection is needed.",
+	"ChatGPT selects and verifies the configured reasoning level before every turn (High by default). Gemini selects and verifies the observed latest Flash model with Extended thinking before every ordinary turn; provider-native Deep Research uses its own mode.",
+	"If an account is missing or requires reauthentication, use internet_browser status and then login with that exact account ID. chatgpt-thinker and chatgpt-writer have separate login state and must never share credentials or browser storage.",
 	"internet_chat cannot read local files or search the web by itself. Paste required material into the prompt and gather current sources with web_search or web_fetch first.",
 ].join(" ");
 
 const INTERNET_RESEARCH_GUIDANCE =
-	"Use internet_research for provider-native Deep Research rather than ordinary internet_chat when the user needs a sourced, long-running investigation. It can run for up to 30 minutes, isolates its durable provider conversations under a research name, and may return partial success when only one provider completes. Do not use it for ordinary questions or as a substitute for web_search; provider feature availability is entitlement-dependent.";
+	"Use internet_research for provider-native Deep Research rather than ordinary internet_chat when the user needs a sourced, long-running investigation. It runs through explicitly selected thinker accounts, isolates durable conversations per account under a research name, and may return partial success when only one account completes.";
 
 const INTERNET_TEAM_GUIDANCE = [
 	"Use internet_team when multiple independent web-model perspectives should be debated and merged: design decisions, tradeoff analysis, brainstorming, code or document review, second opinions, and adversarial review.",
-	"For several independent aspects, prefer one focused background subagent (or context-inheriting subagent_fork) per aspect. Assign each worker an internet_team debate, continue useful parent work while they run, then combine their returned findings when needed; do not busy-poll.",
-	"Each child agent has a unique DSH agent id, so its internet_team uses distinct durable provider threads under <child-agent-id>:team:<name>, isolated from the parent's direct and team conversations. A subagent explicitly assigned an internet_team debate should call internet_team itself rather than recursively delegating it.",
-	"The default profile serializes hidden turns per provider to protect portable account state. Set maxConcurrentTurnsPerProvider above one only after confirming provider policy and account-state acceptance; same-session turns, visible calls, login, and one team's dependent rounds remain ordered.",
-	"For one simple debate, call internet_team directly. Providers speak sequentially in the configured order once per round (default 2, maximum 4). When synthesis is enabled, the configured team synthesizer produces the final answer independently of speaking order; ChatGPT is the default synthesizer.",
-	"Named teams have durable provider conversations isolated from direct internet_chat threads. Provider browsers are hidden by default; set visible: true only when the user asks to watch both browsers or requests live acceptance testing.",
-	"The tool returns only the final answer by default. includeTranscript: true adds a bounded current-call transcript with truncation metadata and uses more agent context.",
-	"Every selected provider needs a ready portable account. A model refusal is provider output, while login, timeout, and DOM failures are orchestration errors that should be reported distinctly.",
+	"Each child agent has a unique DSH agent id, so its internet_team uses distinct durable account threads under <child-agent-id>:team:<name>, isolated from the parent's direct and team conversations.",
+	"The default profile serializes hidden turns per authenticated account to protect portable account state. Set maxConcurrentTurnsPerAccount above one only after confirming account-state acceptance; different accounts have independent schedulers.",
+	"For one simple debate, call internet_team directly. Thinker accounts speak sequentially in the configured order once per round (default 2, maximum 4). When synthesis is enabled, chatgpt-thinker is the default explicit synthesizer.",
+	"Named teams have durable conversations isolated by account and team. Account browsers are hidden by default; set visible: true only when the user asks to watch them or requests live acceptance testing.",
+	"The tool returns only the final answer by default. includeTranscript: true adds a bounded current-call transcript with account identity and truncation metadata.",
+	"Every selected account needs its own ready portable account state. A model refusal is model output, while login, timeout, and DOM failures are orchestration errors that should be reported distinctly.",
 	"internet_team cannot search the web or read files. Paste all source material into task, and use web_search or web_fetch before the debate when current information is required.",
 ].join(" ");
 
@@ -48,46 +48,53 @@ export interface PluginContext {
 	effect(fn: () => (() => void | Promise<void>) | void): void;
 }
 
-/**
- * Register the browser-backed web tools. The {@link BrowserManager} is created
- * lazily (Chrome is only discovered on first use) and disposed through a
- * Cordis effect so no browser process outlives the plugin.
- */
+function enabledAccounts(config: ReturnType<typeof resolveBrowserConfig>): Set<AccountId> {
+	return new Set(
+		ACCOUNT_IDS.filter((accountId) => {
+			const provider = getAccountDefinition(accountId).provider;
+			return provider === "chatgpt-web" ? config.enableChatgpt : config.enableGemini;
+		}),
+	);
+}
+
+/** Register browser-backed tools over explicit semantic account identities. */
 export function apply(ctx: PluginContext, rawConfig: unknown): void {
 	const config = resolveBrowserConfig(rawConfig);
 	const manager = new BrowserManager(config);
 	ctx.effect(() => () => manager.dispose());
 
-	const allowed = new Set<WebProvider>();
-	if (config.enableChatgpt) {
-		allowed.add("chatgpt-web");
-		ctx.commands.register(defineInternetCommand(manager));
-	}
-	if (config.enableGemini) allowed.add("gemini-web");
-	if (allowed.size === 0) return;
+	const accounts = enabledAccounts(config);
+	if (accounts.size === 0) return;
+	const thinkers = new Set(
+		[...accounts].filter((accountId) => getAccountDefinition(accountId).role === "thinker"),
+	);
 
-	ctx.tools.register(defineInternetChatTool(manager, config.turnTimeoutMs, allowed));
-	ctx.tools.register(defineInternetResearchTool(manager, config, allowed));
-	ctx.tools.register(defineInternetBrowserTool(manager, allowed));
-	ctx.systemPrompt?.section?.({
-		name: "tool:internet_research",
-		order: 119,
-		text: INTERNET_RESEARCH_GUIDANCE,
-	});
-	if (allowed.size >= 2) {
+	if (accounts.has("chatgpt-thinker")) ctx.commands.register(defineInternetCommand(manager));
+
+	ctx.tools.register(defineInternetBrowserTool(manager, accounts));
+	if (thinkers.size > 0) {
+		ctx.tools.register(defineInternetChatTool(manager, config.turnTimeoutMs, thinkers));
+		ctx.tools.register(defineInternetResearchTool(manager, config, thinkers));
+		ctx.systemPrompt?.section?.({
+			name: "tool:internet_research",
+			order: 119,
+			text: INTERNET_RESEARCH_GUIDANCE,
+		});
+		ctx.systemPrompt?.section?.({
+			name: "tool:internet_chat",
+			order: 120,
+			text: INTERNET_CHAT_GUIDANCE,
+		});
+	}
+	if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker")) {
 		ctx.commands.register(defineWorkflowCommand());
-		ctx.tools.register(defineInternetTeamTool(manager, config, allowed));
+		ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
 		ctx.systemPrompt?.section?.({
 			name: "tool:internet_team",
 			order: 121,
 			text: INTERNET_TEAM_GUIDANCE,
 		});
 	}
-	ctx.systemPrompt?.section?.({
-		name: "tool:internet_chat",
-		order: 120,
-		text: INTERNET_CHAT_GUIDANCE,
-	});
 }
 
 export { BrowserManager } from "#internet/browser/runtime";
@@ -115,5 +122,5 @@ export type {
 	TeamTurn,
 } from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
-export type { TeamInput } from "#internet/tools/args";
+export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
