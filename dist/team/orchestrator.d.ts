@@ -36,10 +36,8 @@ export type TeamResult = TeamSuccess | TeamFailure;
 /** Options for {@link runTeam}. */
 export interface TeamOptions {
     task: string;
-    /** Durable owner key: the current DSH agent/session ID. */
+    /** Exact durable conversation owner key used for every account in this team lane. */
     sessionId: string;
-    /** Optional team namespace; teams with different names get separate threads. */
-    teamName?: string;
     /** Number of debate rounds (each account speaks once per round). */
     rounds?: number;
     /** Whether to append a final synthesis turn. */
@@ -61,8 +59,9 @@ export declare function composeTurnPrompt(task: string, accountId: AccountId, ot
 /** Compose the final synthesis prompt from the full debate transcript. */
 export declare function composeSynthesisPrompt(task: string, transcript: readonly TeamTurn[]): string;
 /**
- * Run a multi-model debate using explicit authenticated accounts. Each account
- * has its own durable browser state, conversation namespace, and scheduler.
+ * Run a multi-model debate using an exact durable conversation-session key.
+ * Callers own namespace construction; this primitive does not append hidden
+ * provider/tool-specific suffixes.
  */
 export declare function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamResult>;
 //# sourceMappingURL=orchestrator.d.ts.map

@@ -137,7 +137,8 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 	if (!Number.isInteger(rounds) || rounds <= 0) throw new Error("team debate rounds must be a positive integer");
 	if (accounts.length < 2) throw new Error("team debate requires at least two accounts");
 	if (new Set(accounts).size !== accounts.length) throw new Error("team debate accounts must not contain duplicates");
-	if (synthesize && !accounts.includes(synthesizer)) throw new Error("team synthesizer must be one of the selected accounts");
+	if (synthesize && !accounts.includes(synthesizer))
+		throw new Error("team synthesizer must be one of the selected accounts");
 	if (options.sessionId.trim() === "") throw new Error("team debate sessionId must not be empty");
 
 	const transcript: TeamTurn[] = [];

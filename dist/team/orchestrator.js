@@ -61,27 +61,25 @@ export function composeSynthesisPrompt(task, transcript) {
     return lines.join("\n");
 }
 /**
- * Run a multi-model debate using explicit authenticated accounts. Each account
- * has its own durable browser state, conversation namespace, and scheduler.
+ * Run a multi-model debate using an exact durable conversation-session key.
+ * Callers own namespace construction; this primitive does not append hidden
+ * provider/tool-specific suffixes.
  */
 export async function runTeam(chat, options) {
     const rounds = options.rounds ?? DEFAULT_ROUNDS;
     const synthesize = options.synthesize ?? true;
     const synthesizer = options.synthesizer ?? DEFAULT_SYNTHESIZER;
     const accounts = options.accounts ?? DEFAULT_ACCOUNTS;
-    if (!Number.isInteger(rounds) || rounds <= 0) {
+    if (!Number.isInteger(rounds) || rounds <= 0)
         throw new Error("team debate rounds must be a positive integer");
-    }
-    if (accounts.length < 2) {
+    if (accounts.length < 2)
         throw new Error("team debate requires at least two accounts");
-    }
-    if (new Set(accounts).size !== accounts.length) {
+    if (new Set(accounts).size !== accounts.length)
         throw new Error("team debate accounts must not contain duplicates");
-    }
-    if (synthesize && !accounts.includes(synthesizer)) {
+    if (synthesize && !accounts.includes(synthesizer))
         throw new Error("team synthesizer must be one of the selected accounts");
-    }
-    const teamSessionId = `${options.sessionId}:team:${options.teamName ?? "default"}`;
+    if (options.sessionId.trim() === "")
+        throw new Error("team debate sessionId must not be empty");
     const transcript = [];
     const lastByAccount = new Map();
     let activeAccountId = accounts[0];
@@ -102,7 +100,7 @@ export async function runTeam(chat, options) {
                 const prompt = composeTurnPrompt(options.task, accountId, others, round);
                 const result = await chat(accountId, {
                     prompt,
-                    sessionId: teamSessionId,
+                    sessionId: options.sessionId,
                     visible: options.visible,
                     signal: options.signal,
                 });
@@ -121,7 +119,7 @@ export async function runTeam(chat, options) {
             const prompt = composeSynthesisPrompt(options.task, transcript);
             const result = await chat(synthesizer, {
                 prompt,
-                sessionId: teamSessionId,
+                sessionId: options.sessionId,
                 visible: options.visible,
                 signal: options.signal,
             });
