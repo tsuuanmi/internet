@@ -9,27 +9,24 @@
 ### 1. Default ChatGPT browser reasoning to High
 
 - Change `DEFAULT_CONFIG.chatgptThinkingLevel` from `medium` to `high`.
-- Update comments and system guidance that currently say Medium is the default.
-- Update tests/config examples.
+- Update comments/system guidance/tests/config examples.
 
 **ROI:** very high  
-**Risk:** low  
-**Dependency:** none
+**Risk:** low
 
 ### 2. Make the team synthesizer explicit and default to ChatGPT thinker
 
-- Add explicit synthesizer selection to team options/config.
-- Stop using `lastProvider` as the synthesis destination.
-- Preserve worker speaking order independently from synthesizer identity.
+- Add explicit synthesizer selection.
+- Stop using `lastProvider` as synthesis destination.
+- Preserve speaking order independently from synthesizer identity.
 - Add tests where Gemini speaks last but ChatGPT synthesizes.
 
 **ROI:** very high  
-**Risk:** low-medium  
-**Dependency:** none for provider-level version; later migrate to accountId
+**Risk:** low-medium
 
-### 3. Design first-class `accountId`
+### 3. Define first-class `accountId`
 
-Create the minimal type/config contract before touching storage:
+Minimal contract:
 
 ```text
 accountId
@@ -38,7 +35,7 @@ role
 capabilities
 ```
 
-Recommended initial IDs:
+Initial IDs:
 
 ```text
 chatgpt-thinker
@@ -47,28 +44,24 @@ gemini-thinker
 ```
 
 **ROI:** critical  
-**Risk:** medium  
-**Dependency:** architecture docs
+**Risk:** medium
 
 ## P1 — Multi-account foundation
 
 ### 4. Refactor account storage from provider-keyed to account-keyed
 
-Affected areas include:
-
-- `src/browser/accounts.ts`
-- `src/browser/storage.ts`
+Affected areas include `src/browser/accounts.ts` and `src/browser/storage.ts`.
 
 Requirements:
 
 - separate portable state for two ChatGPT accounts;
 - private permissions retained;
-- migration/compatibility for existing `accounts/chatgpt-web.json`;
+- migration/compatibility for existing account files;
 - no cross-account stale snapshot overwrite.
 
 ### 5. Refactor BrowserManager maps to account identity
 
-Current provider-keyed resources that need review:
+Review provider-keyed:
 
 - browsers;
 - browser launches;
@@ -80,11 +73,7 @@ Current provider-keyed resources that need review:
 
 ### 6. Make conversation stores account-aware
 
-Current ChatGPT store uses one `chatgpt-web/conversations` root.
-
-Target should isolate by account alias.
-
-Example:
+Target isolation:
 
 ```text
 chatgpt-thinker/conversations
@@ -94,29 +83,93 @@ gemini-thinker/conversations
 
 ### 7. Make scheduler serialization account-aware
 
-Two ChatGPT accounts should not serialize against the same provider lock unless a higher-level policy intentionally requires it.
+Same-account dependent turns remain ordered. Different authenticated accounts should not share a provider lock unless intentionally configured.
 
-Same-account dependent turns must remain ordered.
+## P2 — Replace prompt-only `/workflow`
 
-## P2 — Routing and handoffs
+### 8. Add `internet_workflow` service/tool contract
 
-### 8. Add account role/capability routing
-
-Capabilities should include at least conceptual support for:
+Initial operations:
 
 ```text
-website.chat
-github.read
-github.write
-github.pull_request
-github.merge
+start
+status
+approve
+reject
+cancel
+continue
 ```
 
-Do not infer merge authorization from `github.merge` capability.
+### 9. Introduce `WorkflowEngine` + `WorkflowJobStore`
 
-### 9. Add a durable verbatim handoff primitive
+Minimum durable job fields:
 
-Implement:
+```text
+job_id
+objective
+repository
+base revision
+state
+team-run status
+account routing
+handoff receipts
+writer conversation
+PR receipt
+review cycle
+pending action
+last event
+```
+
+### 10. Convert `/workflow` into a thin adapter
+
+Keep UX:
+
+```text
+/workflow <task>
+```
+
+But change implementation to:
+
+```text
+resolve repo/revision
+-> internet_workflow.start
+-> return job_id
+```
+
+Remove the giant multi-phase follow-up prompt once engine behavior is available.
+
+## P3 — Direct team runtime
+
+### 11. Add workflow-owned TeamRunner
+
+Call the lower-level team runtime directly instead of spawning a free-form DSH child agent merely to call `internet_team`.
+
+### 12. Add deterministic TeamPromptBuilder
+
+Automatically construct research/review tasks from authoritative workflow state.
+
+### 13. Generate deterministic team session identities
+
+Example:
+
+```text
+<local>:workflow:<job>:research:A
+<local>:workflow:<job>:research:B
+<local>:workflow:<job>:review:<cycle>:A
+<local>:workflow:<job>:review:<cycle>:B
+```
+
+### 14. Support two concurrent logical team runs
+
+Team A and B may be active simultaneously even if underlying same-account browser turns are serialized by the scheduler.
+
+### 15. Persist team completion and retry state
+
+A failed B should be retryable without restarting completed A or asking Local to reconstruct state.
+
+## P4 — Verbatim handoffs
+
+### 16. Add durable handoff primitive
 
 ```text
 handoff_id
@@ -129,87 +182,43 @@ payload_hash
 delivery status
 ```
 
-Tests must prove payload fidelity.
-
-### 10. Separate data messages from control messages
+### 17. Separate data messages from control messages
 
 Data:
 
 - team final result;
-- review result;
+- review final result;
 - evidence packet.
 
 Control:
 
 - START_IMPLEMENTATION;
 - APPLY_REVIEWS;
-- STOP;
 - RETRY;
 - MERGE_AUTHORIZED.
 
-### 11. Add all-handoffs-delivered gate
+### 18. Add all-handoffs-delivered gates
 
-Writer must not begin implementation/remediation until the configured required handoffs are delivered.
+Writer cannot begin implementation/remediation before required handoffs are delivered.
 
-## P3 — Durable coding jobs
+## P5 — Writer and PR path
 
-### 12. Introduce persistent coding job model
+### 19. Add persistent `chatgpt-writer` conversation routing
 
-Minimum fields:
+Writer receives Team A final, Team B final, then separate `START_IMPLEMENTATION`.
 
-```text
-job_id
-objective
-repository
-base revision
-teams
-account routing
-state
-handoff receipts
-writer conversation
-PR receipt
-review cycle
-pending approval
-```
-
-### 13. Add workflow states/events
-
-Start with the states from `WORKFLOW.md` / ADR-0005 rather than designing a generic BPM engine.
-
-### 14. Integrate with DSH background-agent completion injection
-
-Prefer host-native completion/event injection if available.
-
-Avoid making long blocking waits the core architecture.
-
-### 15. Add optional `wait(job_id)` convenience tool
-
-This is a client convenience layer, not the underlying workflow mechanism.
-
-## P4 — Writer path
-
-### 16. Add persistent `chatgpt-writer` conversation routing
-
-The writer must receive:
-
-1. Team A exact final output;
-2. Team B exact final output;
-3. separate start control message.
-
-### 17. Define writer control prompt contract
+### 20. Define writer control contract
 
 Writer must:
 
 - confirm target repo/base;
 - inspect current repository;
 - implement without needless redesign;
-- create/update PR;
-- return BLOCKED on authority conflicts;
-- return compact PR receipt.
+- create/update one PR;
+- return `BLOCKED` on authority conflict;
+- expose compact PR receipt.
 
-### 18. Persist PR receipt
-
-Store:
+### 21. Persist PR receipt
 
 ```text
 repository
@@ -219,90 +228,125 @@ base/head
 head SHA
 ```
 
-Use this for retries and post-review.
+Use it for retries, review, remediation, and merge binding.
 
-## P5 — Post-review loop
+## P6 — Scoped approval controller
 
-### 19. Spawn two independent PR review teams
+### 22. Detect and classify Website confirmation UI
 
-Review the actual PR, not Local-pasted source.
+Do not auto-click based only on visible `Allow` text.
 
-### 20. Deliver review finals verbatim to writer
+### 23. Auto-confirm recognized in-scope implementation/PR actions
 
-No Local summarization in the normal path.
+Require exact match against:
 
-### 21. Add separate APPLY_REVIEWS control step
+```text
+active job
+writer session
+repository
+workflow state
+action allowlist
+branch/PR identity when applicable
+```
 
-Do not embed Local paraphrase into reviewer payloads.
+### 24. Add fail-closed `UNKNOWN_CONFIRMATION`
 
-### 22. Re-review updated PR
+Ambiguous/unrecognized confirmation pauses and notifies Local.
 
-Support configured maximum remediation cycles and fresh auditor option.
+### 25. Explicitly exclude merge from auto-authorization
 
-## P6 — Permissions and merge
+Merge confirmation can only be executed after user merge authorization.
 
-### 23. Validate GitHub `Allow all actions` behavior end-to-end
+## P7 — PR review/remediation
 
-Test with the writer account:
+### 26. Run two independent PR review teams directly
 
-- read;
-- write/update file;
-- create PR;
-- update PR;
-- merge.
+Review the actual PR through workflow-owned TeamRunner.
 
-Record which operations, if any, still show a mandatory approval checkpoint.
+### 27. Deliver review finals verbatim to writer
 
-### 24. Add `AWAITING_EXTERNAL_APPROVAL`
+No Local summarization.
 
-If a platform confirmation appears, pause durably and resume rather than failing.
+### 28. Add separate APPLY_REVIEWS control step
 
-### 25. Add explicit merge authorization state
+### 29. Re-review updated PR
 
-Merge must be impossible before workflow state reaches authorized status.
+Initial recommended default:
 
-### 26. Verify expected head SHA before merge
+```text
+max_review_cycles = 3
+```
 
-Prevent merging an unreviewed head if the PR changed after review.
+Escalate material conflict, writer `BLOCKED`, or exhausted review limit.
 
-## P7 — Hardening
+## P8 — Events and Local integration
 
-### 27. Account isolation test suite
+### 30. Add INTERNAL / PROGRESS / ACTION_REQUIRED events
 
-Test cookie/storage/profile/conversation/scheduler isolation between `chatgpt-thinker` and `chatgpt-writer`.
+Do not inject raw team/reviewer outputs into Local by default.
 
-### 28. Handoff idempotency tests
+### 31. Integrate with host-native DSH completion/event injection
 
-Retry must not duplicate payload delivery.
+Preserve the useful current behavior where background work can notify the parent when finished, but inject compact workflow events rather than transformed reasoning payloads.
 
-### 29. PR creation idempotency
+### 32. Add workflow status/debug surface
 
-A retry after PR creation should reuse the known PR rather than create another.
-
-### 30. Durable job recovery
-
-Recover useful state after process/plugin restart where feasible.
-
-### 31. Workflow observability
-
-Add compact status/debug output:
+Show:
 
 ```text
 job state
-active team steps
+team runs
 handoffs
 writer state
 PR
 review cycle
-pending approval
+pending action
 last error
 ```
 
+### 33. Optional wait convenience
+
+`wait(job_id)` may exist, but never as the core orchestration model.
+
+## P9 — Merge gate
+
+### 34. Add READY/AWAITING merge authorization states
+
+### 35. Present concrete merge request to Local/user
+
+Include PR URL, review state, CI state if known, and expected head SHA.
+
+### 36. Bind user authorization to exact PR head
+
+### 37. Revalidate head immediately before merge
+
+Changed head invalidates stale authorization.
+
+### 38. Execute writer merge and Website Allow only after authorization
+
+Record merged SHA and executor.
+
+## P10 — Hardening
+
+### 39. Account isolation tests
+
+### 40. Workflow transition tests
+
+### 41. Handoff fidelity/idempotency tests
+
+### 42. Approval classification tests
+
+### 43. PR creation idempotency
+
+### 44. Durable restart recovery
+
+### 45. Audit/retention/cleanup policy
+
 ## Defer until needed
 
+- automatic task detection instead of explicit `/workflow`;
 - generic arbitrary DAG workflow language;
 - many writer accounts / automatic account pooling;
 - sophisticated artifact database;
 - autonomous production deployment;
-- generic multi-service action executor;
-- broad generalization before the coding path is reliable.
+- broad generalization before coding path is reliable.

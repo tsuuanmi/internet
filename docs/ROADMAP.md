@@ -3,11 +3,11 @@
 - **Status:** Planning
 - **Date:** 2026-09-08
 
-This roadmap orders implementation by dependency and expected ROI. It intentionally separates foundational runtime changes from later workflow automation.
+This roadmap orders implementation by dependency and expected ROI. It separates low-risk behavior fixes, identity/routing foundations, and the real `/workflow` runtime.
 
 ## Phase 0 — Documentation split and architecture lock
 
-Goal: stop growing one giant architecture document and establish stable contracts before cross-cutting code changes.
+Goal: establish focused contracts before cross-cutting code changes.
 
 Deliverables:
 
@@ -15,6 +15,7 @@ Deliverables:
 - SRS;
 - ADRs;
 - coding workflow spec;
+- workflow-engine design;
 - prioritized TODO;
 - concise architecture overview;
 - explicit distinction between current implementation and target design.
@@ -22,7 +23,7 @@ Deliverables:
 Exit criteria:
 
 - core design choices have explicit documents and stable names;
-- future implementation PRs can cite requirements/ADRs instead of repeating architecture rationale.
+- future implementation PRs can cite requirements/ADRs instead of repeating rationale.
 
 ## Phase 1 — Low-risk behavior fixes
 
@@ -34,12 +35,6 @@ Work:
 - update configuration docs/tests/system guidance;
 - make ChatGPT thinker the explicit default final team synthesizer instead of using `lastProvider`;
 - keep speaking order independent from synthesizer selection.
-
-Why first:
-
-- small surface area;
-- immediately improves team result quality/consistency;
-- removes one known architectural mismatch before larger refactors.
 
 Exit criteria:
 
@@ -77,77 +72,100 @@ Exit criteria:
 
 ## Phase 3 — Account roles and capability routing
 
-Goal: route workflow steps by required capability.
+Goal: route steps by required capability.
 
 Work:
 
-- model account role/capabilities;
-- add routing rules for thinker/reviewer/writer;
+- model account roles/capabilities;
+- add thinker/reviewer/writer routing;
 - expose explicit account targeting internally where necessary;
 - enforce authoritative repository/base target before writer mutation;
-- keep GitHub permission level separate from workflow authorization.
+- keep technical GitHub capability separate from workflow authority.
 
 Exit criteria:
 
 - reasoning steps select thinker accounts;
 - code mutation selects writer account;
-- no provider-name-only assumption determines the security boundary.
+- provider name alone no longer determines the security boundary.
 
-## Phase 4 — Handoff primitive
+## Phase 4 — Workflow service skeleton
+
+Goal: make `/workflow <task>` start deterministic code instead of injecting one giant prompt.
+
+Work:
+
+- introduce `internet_workflow` service/tool surface;
+- add `WorkflowEngine` and `WorkflowJobStore` interfaces;
+- convert `/workflow` into a thin adapter that resolves repo/revision and calls `start`;
+- return `job_id` and initial state;
+- keep current prompt-only implementation behind a temporary compatibility path only if needed during migration.
+
+Exit criteria:
+
+```text
+/workflow <task>
+  -> internet_workflow.start
+  -> persisted job
+```
+
+without relying on Local to simulate the workflow protocol.
+
+## Phase 5 — Direct team execution
+
+Goal: preserve the useful background-team behavior without free-form DSH subagent mediation.
+
+Work:
+
+- add workflow-owned `TeamRunner` over the lower-level team runtime;
+- add deterministic `TeamPromptBuilder`;
+- generate distinct durable session identities per job/team/cycle;
+- run two logical thinking teams concurrently;
+- make ChatGPT thinker the explicit synthesizer;
+- persist team-run status/results;
+- retry failed team runs according to job policy.
+
+Exit criteria:
+
+```text
+WorkflowEngine
+  -> Team A + Team B
+  -> exact final results
+```
+
+works without a child agent summarizing those results back to Local.
+
+## Phase 6 — Handoff primitive
 
 Goal: remove Local summarization from the agent-to-agent data path.
 
 Work:
 
-- define durable handoff record;
-- preserve final output verbatim;
-- attach sequence/source/hash metadata outside payload;
-- support deterministic delivery ordering;
-- add delivery receipt/idempotency key;
+- durable handoff record;
+- exact payload preservation;
+- source/sequence/hash metadata outside payload;
+- deterministic delivery ordering;
+- delivery receipt/idempotency key;
 - separate `DATA` handoffs from `CONTROL` messages.
 
 Exit criteria:
 
-- Team A/B outputs can reach writer unchanged;
-- Local can trigger writer start without reading or rewriting the payload;
-- replay/retry does not duplicate a handoff unexpectedly.
+- Team A/B outputs reach writer unchanged;
+- Local does not receive full payload by default;
+- replay/retry does not unexpectedly duplicate delivery.
 
-## Phase 5 — Coding job state machine
+## Phase 7 — Terminal writer integration
 
-Goal: make long-running workflows independent from one Local tool call.
-
-Work:
-
-- persistent `job_id`;
-- job state store;
-- state transitions/events;
-- background team execution;
-- handoff gates;
-- writer start gate;
-- external approval wait state;
-- PR receipt state;
-- failure/retry/cancel semantics;
-- compact event injection/notification into Local.
-
-Exit criteria:
-
-- Local can start a job and continue other work;
-- a completed/blocked job can re-enter Local later through a compact event;
-- user approval pauses do not destroy workflow state.
-
-## Phase 6 — Terminal writer integration
-
-Goal: connect the durable workflow to ChatGPT writer account behavior.
+Goal: connect durable workflow state to `chatgpt-writer`.
 
 Work:
 
 - persistent writer conversation identity;
-- deliver all required pre-implementation handoffs;
+- deliver all required research handoffs;
 - send separate `START_IMPLEMENTATION` control message;
 - capture PR receipt;
 - support writer `BLOCKED` output;
 - support updating an existing PR during remediation;
-- support merge execution only from authorized job state.
+- enforce target repo/branch/PR scope.
 
 Exit criteria:
 
@@ -157,19 +175,39 @@ Teams -> verbatim handoffs -> Writer -> PR
 
 works without Local implementation/push.
 
-## Phase 7 — PR review/remediation loop
+## Phase 8 — Scoped approval controller
+
+Goal: allow unattended creation of the reviewable PR while failing closed on ambiguity.
+
+Work:
+
+- detect Website confirmation UI;
+- classify recognized implementation/PR actions;
+- auto-confirm only when action/job/repository/branch-or-PR/state all match;
+- add `UNKNOWN_CONFIRMATION` exception state;
+- never treat generic `Allow` text alone as sufficient classification;
+- preserve explicit merge gate.
+
+Exit criteria:
+
+- routine branch/file/commit/PR confirmations can proceed automatically;
+- ambiguous confirmation stops safely;
+- merge remains unauthorized at this phase.
+
+## Phase 9 — PR review/remediation loop
 
 Goal: make Website teams review the real PR directly.
 
 Work:
 
-- spawn two independent review teams after PR creation;
-- use explicit ChatGPT final synthesizer in each team;
+- start two independent review team runs after PR creation;
+- deterministic review prompts;
+- explicit ChatGPT synthesizer;
 - deliver review results verbatim to writer;
 - send separate `APPLY_REVIEWS` control message;
 - loop on the same PR;
-- configure re-review policy and maximum cycles;
-- support fresh auditor mode for high-risk work.
+- configure initial `max_review_cycles` (recommended: 3);
+- escalate writer block, material conflict, or exhausted review limit to Local.
 
 Exit criteria:
 
@@ -179,41 +217,59 @@ PR -> Review A/B -> Writer fixes -> PR -> review gates
 
 works without Local pushing code between stages.
 
-## Phase 8 — Merge/approval policy
+## Phase 10 — Events and Local integration
 
-Goal: automate the happy path while preserving explicit authority.
+Goal: reproduce the best background-subagent UX without injecting raw reasoning into Local.
 
 Work:
 
-- represent merge authorization state;
-- test writer account with GitHub `Allow all actions`;
-- detect whether any platform-level approval still appears;
-- pause as `AWAITING_EXTERNAL_APPROVAL` when needed;
-- verify expected PR head before merge;
-- record executor and merged SHA.
+- INTERNAL / PROGRESS / ACTION_REQUIRED event classes;
+- host-native completion/event injection where DSH supports it;
+- compact PR/review progress receipts;
+- Local-facing status operation;
+- no busy polling as the primary mechanism.
 
 Exit criteria:
 
-- happy path can merge without unnecessary repeated prompts when platform permissions allow it;
-- workflow cannot merge before authorization state is reached.
+- Local can start a job and continue other work;
+- completed/blocked/action-required jobs can re-enter Local later through compact events.
 
-## Phase 9 — Hardening and observability
+## Phase 11 — Merge authorization
+
+Goal: make merge the normal human authority boundary.
+
+Work:
+
+- transition to `READY_FOR_MERGE_AUTHORIZATION` only after review gates pass;
+- present PR/head/review/CI state to Local/user;
+- persist user authorization bound to PR/head SHA;
+- re-check current head before merge;
+- after authorization, let writer execute merge and confirm Website merge `Allow` if present;
+- record merged SHA/executor.
+
+Exit criteria:
+
+- no merge can occur from the standard workflow without explicit user authorization;
+- a changed PR head invalidates stale authorization.
+
+## Phase 12 — Hardening and recovery
 
 Work:
 
 - restart recovery;
 - retries/backoff;
 - idempotent PR/merge actions;
-- audit trail for state transitions;
 - account isolation tests;
 - handoff payload/hash tests;
-- workflow metrics;
-- job inspection/debug command;
+- workflow transition tests;
+- approval-classification tests;
+- audit trail;
+- job inspection/debug tooling;
 - retention/cleanup rules.
 
-## Phase 10 — Generalize beyond coding
+## Phase 13 — Generalize beyond coding
 
-After coding is reliable, reuse the same primitives for:
+After the coding path is reliable, reuse the same primitives for:
 
 - research report workflows;
 - documentation synthesis;
@@ -221,4 +277,4 @@ After coding is reliable, reuse the same primitives for:
 - automation/action workflows;
 - design review.
 
-Do not generalize prematurely if it weakens the coding workflow implementation.
+Do not generalize prematurely if it weakens the coding workflow.

@@ -6,18 +6,22 @@ This directory separates the Internet Team design into focused documents rather 
 
 - [`internet-team-architecture.md`](./internet-team-architecture.md) — concise architecture overview and system boundaries.
 - [`SRS.md`](./SRS.md) — normative software requirements for the target runtime.
-- [`WORKFLOW.md`](./WORKFLOW.md) — end-to-end coding workflow, handoff rules, job states, and review loop.
+- [`WORKFLOW.md`](./WORKFLOW.md) — end-to-end coding workflow and user-visible approval behavior.
+- [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic runtime/state-machine design behind `/workflow <task>`.
 - [`ROADMAP.md`](./ROADMAP.md) — implementation phases and dependency order.
 - [`TODO.md`](./TODO.md) — concrete engineering work, ordered by ROI and dependency.
-- [`UPDATE.md`](./UPDATE.md) — validated discoveries and changes from the previous architecture assumptions.
+- [`UPDATE.md`](./UPDATE.md) — validated discoveries and changes from previous assumptions.
 
 ## Architecture decisions
 
-- [`ADR/0001-local-control-plane.md`](./ADR/0001-local-control-plane.md) — Local is the control plane, not the reasoning/data relay.
+- [`ADR/0001-local-control-plane.md`](./ADR/0001-local-control-plane.md) — Local is the user-facing authority broker; WorkflowEngine is the deterministic control plane.
 - [`ADR/0002-verbatim-handoffs.md`](./ADR/0002-verbatim-handoffs.md) — team and review outputs are delivered verbatim to the writer.
 - [`ADR/0003-multi-account-capability-routing.md`](./ADR/0003-multi-account-capability-routing.md) — separate ChatGPT thinker and writer accounts with capability-aware routing.
 - [`ADR/0004-pr-centric-review-loop.md`](./ADR/0004-pr-centric-review-loop.md) — implementation and post-review are centered on a GitHub PR.
 - [`ADR/0005-durable-jobs-and-events.md`](./ADR/0005-durable-jobs-and-events.md) — long-running work uses durable jobs and event-driven continuation.
+- [`ADR/0006-workflow-command-starts-real-engine.md`](./ADR/0006-workflow-command-starts-real-engine.md) — `/workflow` remains explicit UX but triggers real deterministic code.
+- [`ADR/0007-approval-policy.md`](./ADR/0007-approval-policy.md) — scoped implementation/PR confirmations may auto-allow; merge requires user authorization.
+- [`ADR/0008-direct-team-execution.md`](./ADR/0008-direct-team-execution.md) — WorkflowEngine runs team primitives directly instead of using free-form DSH subagents as intermediaries.
 
 ## Current implementation documentation
 
@@ -32,7 +36,8 @@ This directory separates the Internet Team design into focused documents rather 
 | --- | --- | --- |
 | SRS | What the target system must do | Normative target requirements |
 | ADR | Why a major design choice was made | Accepted design decision |
-| WORKFLOW | How the target workflow behaves | Operational design |
+| WORKFLOW | How the user-visible coding flow behaves | Operational design |
+| WORKFLOW-ENGINE | How deterministic orchestration/state works | Runtime design |
 | ROADMAP | In what order to build it | Planning |
 | TODO | Concrete implementation tasks | Working plan |
 | UPDATE | What changed and what has been validated | Current design delta |
