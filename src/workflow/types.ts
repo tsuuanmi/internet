@@ -76,6 +76,8 @@ export interface WorkflowPendingAction {
 		| "ACCOUNT_REAUTH_REQUIRED";
 	readonly message: string;
 	readonly expectedHeadSha?: string;
+	/** State to resume after a manually handled non-terminal exception. */
+	readonly resumeState?: WorkflowState;
 }
 
 export interface WorkflowEventRecord {

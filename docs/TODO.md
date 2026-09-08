@@ -268,30 +268,38 @@ The job transitions to `PR_OPEN` and emits a compact progress event. Malformed w
 
 ## P6 — Scoped approval controller
 
-### 22. Detect and classify Website confirmation UI
+**Status:** implemented for the Website writer path with conservative fail-closed recognition and exact workflow-scope matching.
 
-Do not auto-click based only on visible `Allow` text.
+### 22. ✅ Detect and classify Website confirmation UI
 
-### 23. Auto-confirm recognized in-scope implementation/PR actions
+`chatgpt-confirmation.ts` inspects only narrow confirmation/dialog roots and requires a GitHub-scoped surface with exactly one visible `Allow` action plus an explicit deny/cancel action. The controller parses a supported action, repository, branch/head, and PR number when applicable. Generic tool-call containers, unknown destructive actions, multiple visible confirmations, and ambiguous multi-action text are not guessed through.
 
-Require exact match against:
+Visible `Allow` text alone is never sufficient.
+
+### 23. ✅ Auto-confirm recognized in-scope implementation/PR actions
+
+`approval-policy.ts` requires exact match against runtime-derived account/session identity plus:
 
 ```text
-active job
-writer session
-repository
-workflow state
-action allowlist
-branch/PR identity when applicable
+active workflow job
+chatgpt-writer account
+current session == job writer session
+repository == authoritative job repository
+workflow state permits the action
+action is on the implementation/remediation allowlist
+branch == persisted PR head or internet-workflow/<job_id>
+PR number == persisted workflow PR when updating it
 ```
 
-### 24. Add fail-closed `UNKNOWN_CONFIRMATION`
+Initial implementation may auto-confirm branch creation, file writes, commits, branch push, and PR creation. Remediation may auto-confirm file writes, commits, branch push, and update of the exact persisted PR.
 
-Ambiguous/unrecognized confirmation pauses and notifies Local.
+### 24. ✅ Add fail-closed `UNKNOWN_CONFIRMATION`
 
-### 25. Explicitly exclude merge from auto-authorization
+Unknown, ambiguous, incomplete, or scope-mismatched confirmations are never clicked. The workflow caller supplies only expected authority; `BrowserManager` supplies the actual account/session identity. Malformed GitHub confirmation UI is treated as unknown rather than silently ignored. The writer reports `UNKNOWN_CONFIRMATION`; the engine persists the dedicated state plus an ACTION_REQUIRED event and records `resumeState: WRITER_RUNNING`. After the user/operator handles the exception, `continue(job_id)` resumes the writer phase instead of restarting research.
 
-Merge confirmation can only be executed after user merge authorization.
+### 25. ✅ Explicitly exclude merge from auto-authorization
+
+Repository authority is validated before merge classification. A correctly scoped premature merge confirmation becomes writer `BLOCKED` before any `Allow` action is pressed; a cross-repo or mismatched merge prompt is `UNKNOWN_CONFIRMATION`. Merge is not part of the phase-1 action allowlist and can only be executed by the later merge path after explicit user authorization bound to the concrete PR/head state.
 
 ## P7 — PR review/remediation
 

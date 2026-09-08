@@ -163,10 +163,13 @@ creates or updates exactly one pull request, and returns either a machine-valida
 The writer is never authorized to merge during this phase. A transient writer-control retry reuses the same
 conversation and does not redeliver handoffs that already have durable delivery receipts.
 
-`/workflow` itself is currently the admission/thin-adapter surface: later orchestration phases add scoped
-Website confirmation handling, automatic PR review/remediation, compact Local events, and the explicit
-head-SHA-bound merge gate. The workflow is registered only when both thinker accounts are enabled; the writer
-path additionally requires a ready `chatgpt-writer` account when implementation is driven.
+`/workflow` itself is currently the admission/thin-adapter surface. Scoped Website confirmation handling
+is now fail-closed: only a recognized GitHub confirmation that matches the active writer session, repository,
+workflow state, allowlisted action, and expected workflow branch/PR identity can be auto-confirmed. Unknown or
+ambiguous confirmations become `UNKNOWN_CONFIRMATION`; merge is never auto-authorized by this policy.
+Automatic PR review/remediation, compact Local events, and the explicit head-SHA-bound merge gate remain later
+phases. The workflow is registered only when both thinker accounts are enabled; the writer path additionally
+requires a ready `chatgpt-writer` account when implementation is driven.
 
 ## Install
 

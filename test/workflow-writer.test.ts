@@ -127,7 +127,53 @@ describe("workflow writer path", () => {
 		const blocked = await engine.runWriterImplementation(job.jobId);
 		expect(blocked.state).toBe("BLOCKED");
 		expect(blocked.pullRequest).toBeUndefined();
-		expect(blocked.pendingAction).toEqual({ kind: "WRITER_BLOCKED", message: "Base revision no longer matches." });
+		expect(blocked.pendingAction).toEqual({
+			kind: "WRITER_BLOCKED",
+			message: "Base revision no longer matches.",
+			resumeState: "WRITER_RUNNING",
+		});
+	});
+
+	it("fails closed on an unknown Website confirmation and resumes the writer phase explicitly", async () => {
+		const writer: WorkflowWriterRunner = {
+			async deliverExact() {},
+			async runControl() {
+				return { status: "UNKNOWN_CONFIRMATION", message: "confirmation branch identity is missing" };
+			},
+		};
+		const { engine, job } = setup(writer);
+		await engine.runResearch(job.jobId);
+		const unknown = await engine.runWriterImplementation(job.jobId);
+		expect(unknown.state).toBe("UNKNOWN_CONFIRMATION");
+		expect(unknown.pullRequest).toBeUndefined();
+		expect(unknown.pendingAction).toEqual({
+			kind: "UNKNOWN_CONFIRMATION",
+			message: "confirmation branch identity is missing",
+			resumeState: "WRITER_RUNNING",
+		});
+		const resumed = engine.continue(job.jobId);
+		expect(resumed.state).toBe("WRITER_RUNNING");
+		expect(resumed.pendingAction).toBeUndefined();
+	});
+
+	it("blocks a premature merge confirmation and never fabricates merge authority", async () => {
+		const writer: WorkflowWriterRunner = {
+			async deliverExact() {},
+			async runControl() {
+				return { status: "BLOCKED", message: "merge requires explicit user authorization" };
+			},
+		};
+		const { engine, job } = setup(writer);
+		await engine.runResearch(job.jobId);
+		const blocked = await engine.runWriterImplementation(job.jobId);
+		expect(blocked.state).toBe("BLOCKED");
+		expect(blocked.pullRequest).toBeUndefined();
+		expect(blocked.pendingAction).toEqual({
+			kind: "WRITER_BLOCKED",
+			message: "merge requires explicit user authorization",
+			resumeState: "WRITER_RUNNING",
+		});
+		expect(blocked.lastEvent?.type).toBe("WRITER_BLOCKED");
 	});
 });
 

@@ -40,7 +40,7 @@ const INTERNET_WORKFLOW_GUIDANCE = [
     "Workflow-owned team execution calls the lower-level team runtime directly with deterministic prompts and per-job lanes; no free-form child agent is needed merely to call internet_team.",
     "Research finals are materialized as exact SHA-256-bound durable handoffs. Data-plane payloads are separate from trusted control messages, and START_IMPLEMENTATION is gated on delivery of both research handoffs.",
     "The workflow writer is the separate chatgpt-writer account. It receives both research finals verbatim in one persistent per-job conversation, then a separate trusted START_IMPLEMENTATION control. The writer must open/update one PR and return a compact machine-validated PR receipt; merge is never part of this phase.",
-    "Approval classification, review-loop driving, Local events, and merge binding remain later workflow phases.",
+    "Scoped Website confirmation classification is fail-closed and auto-confirms only exact in-scope writer actions; merge is explicitly excluded. Review-loop driving, Local events, and merge binding remain later workflow phases.",
 ].join(" ");
 function enabledAccounts(config) {
     return new Set(ACCOUNT_IDS.filter((accountId) => {
