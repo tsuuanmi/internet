@@ -3,41 +3,31 @@ import { parseResearchArgs } from "#internet/tools/args";
 import { defineInternetResearchTool } from "#internet/tools/internet-research";
 
 describe("parseResearchArgs", () => {
-	it("accepts a query and optional isolated research settings", () => {
+	it("accepts explicit thinker accounts", () => {
 		expect(
-			parseResearchArgs({ query: "Compare two policies", name: "policy", providers: ["gemini-web"], visible: true }),
+			parseResearchArgs({ query: "Compare two policies", name: "policy", accounts: ["gemini-thinker"], visible: true }),
 		).toEqual({
 			query: "Compare two policies",
 			name: "policy",
-			providers: ["gemini-web"],
+			accounts: ["gemini-thinker"],
 			visible: true,
 		});
 	});
 
-	it("rejects blank queries, duplicate providers, and invalid visibility", () => {
+	it("rejects blank queries, duplicate accounts, and provider names", () => {
 		expect(() => parseResearchArgs({ query: " " })).toThrow(/non-empty/);
-		expect(() => parseResearchArgs({ query: "x", providers: ["gemini-web", "gemini-web"] })).toThrow(/duplicates/);
-		expect(() => parseResearchArgs({ query: "x", visible: "yes" })).toThrow(/boolean/);
+		expect(() => parseResearchArgs({ query: "x", accounts: ["gemini-thinker", "gemini-thinker"] })).toThrow(
+			/duplicates/,
+		);
+		expect(() => parseResearchArgs({ query: "x", accounts: ["gemini-web"] })).toThrow(/must be one of/);
 	});
 });
 
 describe("internet_research execution", () => {
-	const allowed = new Set(["chatgpt-web", "gemini-web"] as const);
+	const allowed = new Set(["chatgpt-thinker", "gemini-thinker"] as const);
 	const config = { researchTimeoutMs: 1 } as never;
 
-	it("uses the shared parser to reject duplicate providers before dispatch", async () => {
-		const research = vi.fn();
-		const tool = defineInternetResearchTool({ research } as never, config, allowed);
-
-		await expect(
-			tool.execute({ query: "Compare policies", providers: ["gemini-web", "gemini-web"] }, {
-				agent: { id: "agent" },
-			} as never),
-		).resolves.toEqual({ state: "failed", results: [] });
-		expect(research).not.toHaveBeenCalled();
-	});
-
-	it("dispatches normalized research input through its isolated owner", async () => {
+	it("dispatches through the exact account identity", async () => {
 		const research = vi.fn(async () => ({
 			text: "Report",
 			url: "https://gemini.google.com/app/conversation",
@@ -47,14 +37,15 @@ describe("internet_research execution", () => {
 		const signal = new AbortController().signal;
 
 		await expect(
-			tool.execute({ query: "Compare policies", name: "policy", providers: ["gemini-web"], visible: true }, {
-				agent: { id: "agent" },
-				signal,
-			} as never),
+			tool.execute(
+				{ query: "Compare policies", name: "policy", accounts: ["gemini-thinker"], visible: true },
+				{ agent: { id: "agent" }, signal } as never,
+			),
 		).resolves.toEqual({
 			state: "completed",
 			results: [
 				{
+					accountId: "gemini-thinker",
 					provider: "gemini-web",
 					state: "completed",
 					report: "Report",
@@ -63,11 +54,20 @@ describe("internet_research execution", () => {
 				},
 			],
 		});
-		expect(research).toHaveBeenCalledWith("gemini-web", {
+		expect(research).toHaveBeenCalledWith("gemini-thinker", {
 			prompt: "Compare policies",
 			sessionId: "agent:research:policy",
 			visible: true,
 			signal,
 		});
+	});
+
+	it("rejects a disabled account without routing by provider", async () => {
+		const research = vi.fn();
+		const tool = defineInternetResearchTool({ research } as never, config, new Set(["gemini-thinker"] as const));
+		await expect(
+			tool.execute({ query: "x", accounts: ["chatgpt-thinker"] }, { agent: { id: "agent" } } as never),
+		).resolves.toEqual({ state: "failed", results: [] });
+		expect(research).not.toHaveBeenCalled();
 	});
 });
