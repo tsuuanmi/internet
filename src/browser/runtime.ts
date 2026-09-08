@@ -500,7 +500,7 @@ export class BrowserManager {
 		);
 	}
 
-	/** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
+	/** Cancel any pending delayed-close timer for an account (the browser is needed now). */
 	private cancelPendingClose(accountId: AccountId): void {
 		const timer = this.pendingCloses.get(accountId);
 		if (timer === undefined) return;
@@ -714,8 +714,8 @@ export class BrowserManager {
 		const remote = options.remote === true || !this.display.hasInteractiveDisplay();
 		if (!remote) {
 			this.display.requireInteractiveDisplay();
-			await this.launchNormalLogin(provider);
-			await this.persistLoginProfile(provider);
+			await this.launchNormalLogin(accountId);
+			await this.persistLoginProfile(accountId);
 			return this.accountStatus(accountId);
 		}
 		if (process.platform !== "linux") {
@@ -980,14 +980,14 @@ export class BrowserManager {
 		}
 	}
 
-	/** Close the provider's managed inference browser, if one is open. */
-	async stop(provider: WebProvider): Promise<void> {
-		await this.runProviderExclusive(provider, () => this.closeProviderResources(provider));
+	/** Close the account's managed inference browser, if one is open. */
+	async stop(accountId: AccountId): Promise<void> {
+		await this.runAccountExclusive(accountId, () => this.closeAccountResources(accountId));
 	}
 
-	private async closeProviderResources(provider: WebProvider): Promise<void> {
+	private async closeAccountResources(accountId: AccountId): Promise<void> {
 		this.cancelPendingClose(accountId);
-		const remote = this.remoteLogins.get(provider);
+		const remote = this.remoteLogins.get(accountId);
 		if (remote !== undefined) {
 			await remote.waitForFinalization();
 			if (this.remoteLogins.get(accountId) === remote) this.remoteLogins.delete(accountId);
