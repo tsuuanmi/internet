@@ -55,7 +55,7 @@ import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/cor
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
-import type { WorkflowApprovalContext } from "#internet/workflow/approval-policy";
+import type { WorkflowApprovalScope } from "#internet/workflow/approval-policy";
 
 export interface ChatRequest {
 	prompt: string;
@@ -68,7 +68,7 @@ export interface ChatRequest {
 	/** Override the normal-turn completion deadline for a long research run. */
 	timeoutMs?: number;
 	/** Optional fail-closed Website confirmation policy for the workflow writer turn. */
-	confirmation?: WorkflowApprovalContext;
+	confirmation?: WorkflowApprovalScope;
 	signal?: AbortSignal;
 }
 
@@ -924,7 +924,12 @@ export class BrowserManager {
 							? chatgptDeepResearchSnapshot(page!, previousResearchText)
 							: (async () => {
 									if (request.confirmation !== undefined) {
-										await chatgptHandleWorkflowConfirmation(page!, request.confirmation);
+										await chatgptHandleWorkflowConfirmation(
+											page!,
+											request.confirmation,
+											accountId,
+											request.sessionId,
+										);
 									}
 									return chatgptSnapshot(page!, previousTurnText);
 								})(),

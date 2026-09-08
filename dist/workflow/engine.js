@@ -299,22 +299,6 @@ export class WorkflowEngine {
                 lastEvent: { type: "UNKNOWN_CONFIRMATION", class: "ACTION_REQUIRED", at: now(), message: result.message },
             }));
         }
-        if (result.status === "MERGE_CONFIRMATION_BLOCKED") {
-            return this.jobs.update(jobId, (current) => ({
-                ...withState(current, "BLOCKED"),
-                pendingAction: {
-                    kind: "WRITER_BLOCKED",
-                    message: result.message,
-                    resumeState: "WRITER_RUNNING",
-                },
-                lastEvent: {
-                    type: "MERGE_CONFIRMATION_BLOCKED",
-                    class: "ACTION_REQUIRED",
-                    at: now(),
-                    message: result.message,
-                },
-            }));
-        }
         if (result.status === "BLOCKED") {
             return this.jobs.update(jobId, (current) => ({
                 ...withState(current, "BLOCKED"),

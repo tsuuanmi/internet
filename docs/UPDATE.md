@@ -172,7 +172,7 @@ chatgpt-writer only
 => scoped Allow
 ```
 
-Everything else fails closed. Unknown or ambiguous confirmations become durable `UNKNOWN_CONFIRMATION` ACTION_REQUIRED state and retain `WRITER_RUNNING` as the explicit resume target. Merge is a separate class: even a perfectly recognized merge confirmation is blocked and never auto-clicked before the later user-owned merge gate.
+Everything else fails closed. The workflow supplies only expected approval scope; BrowserManager injects the actual account/session identity at the Website boundary. Unknown, malformed, ambiguous, or scope-mismatched confirmations become durable `UNKNOWN_CONFIRMATION` ACTION_REQUIRED state and retain `WRITER_RUNNING` as the explicit resume target. Repository authority is checked before merge classification: a cross-repo merge prompt is unknown, while a correctly scoped premature merge attempt becomes ordinary writer `BLOCKED` and is never auto-clicked before the later user-owned merge gate.
 
 The deterministic initial workflow branch is `internet-workflow/<job_id>` so branch identity can be checked before a PR receipt exists. Once the writer opens a PR, the persisted PR head and number become the authority for remediation confirmations.
 

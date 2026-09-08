@@ -1,12 +1,26 @@
-import { ChatGptMergeConfirmationError, ChatGptUnknownConfirmationError } from "#internet/browser/chatgpt-confirmation";
-import type { BrowserManager } from "#internet/browser/runtime";
-import { workflowWriterBranch } from "#internet/workflow/approval-policy";
+import {
+	type WorkflowApprovalScope,
+	WorkflowConfirmationError,
+	workflowWriterBranch,
+} from "#internet/workflow/approval-policy";
 import type { WorkflowControlMessage } from "#internet/workflow/control";
 import type { WorkflowJob, WorkflowPullRequestReceipt } from "#internet/workflow/types";
 
 export interface WorkflowWriterRunner {
 	deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void>;
 	runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult>;
+}
+
+export interface WorkflowWriterBrowser {
+	chat(
+		accountId: "chatgpt-writer",
+		request: {
+			readonly prompt: string;
+			readonly sessionId: string;
+			readonly confirmation?: WorkflowApprovalScope;
+			readonly signal?: AbortSignal;
+		},
+	): Promise<{ readonly text: string }>;
 }
 
 export interface WorkflowWriterDeliveryRequest {
@@ -26,8 +40,7 @@ export interface WorkflowWriterControlRequest {
 export type WorkflowWriterResult =
 	| { readonly status: "PR_OPEN"; readonly pullRequest: WorkflowPullRequestReceipt }
 	| { readonly status: "BLOCKED"; readonly message: string }
-	| { readonly status: "UNKNOWN_CONFIRMATION"; readonly message: string }
-	| { readonly status: "MERGE_CONFIRMATION_BLOCKED"; readonly message: string };
+	| { readonly status: "UNKNOWN_CONFIRMATION"; readonly message: string };
 
 function controlPrompt(job: WorkflowJob, control: WorkflowControlMessage): string {
 	if (control.kind !== "START_IMPLEMENTATION") {
@@ -99,18 +112,16 @@ export function parseWorkflowWriterResult(text: string): WorkflowWriterResult {
 	};
 }
 
-type WriterBrowser = Pick<BrowserManager, "chat">;
-
 /** Persistent ChatGPT Website writer bound to the workflow's dedicated writer conversation. */
 export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
-	private readonly manager: WriterBrowser;
+	private readonly browser: WorkflowWriterBrowser;
 
-	constructor(manager: WriterBrowser) {
-		this.manager = manager;
+	constructor(browser: WorkflowWriterBrowser) {
+		this.browser = browser;
 	}
 
 	async deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void> {
-		await this.manager.chat("chatgpt-writer", {
+		await this.browser.chat("chatgpt-writer", {
 			prompt: request.payload,
 			sessionId: request.sessionId,
 			signal: request.signal,
@@ -119,13 +130,11 @@ export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 
 	async runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult> {
 		try {
-			const result = await this.manager.chat("chatgpt-writer", {
+			const result = await this.browser.chat("chatgpt-writer", {
 				prompt: controlPrompt(request.job, request.control),
 				sessionId: request.sessionId,
 				confirmation: {
 					jobId: request.job.jobId,
-					accountId: "chatgpt-writer",
-					currentSessionId: request.sessionId,
 					writerSessionId: request.job.writerConversation.sessionId,
 					repository: request.job.repository,
 					state: request.job.state,
@@ -135,13 +144,10 @@ export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 			});
 			return parseWorkflowWriterResult(result.text);
 		} catch (error) {
-			if (error instanceof ChatGptUnknownConfirmationError) {
-				return { status: "UNKNOWN_CONFIRMATION", message: error.message };
-			}
-			if (error instanceof ChatGptMergeConfirmationError) {
-				return { status: "MERGE_CONFIRMATION_BLOCKED", message: error.message };
-			}
-			throw error;
+			if (!(error instanceof WorkflowConfirmationError)) throw error;
+			return error.kind === "unknown"
+				? { status: "UNKNOWN_CONFIRMATION", message: error.message }
+				: { status: "BLOCKED", message: error.message };
 		}
 	}
 }

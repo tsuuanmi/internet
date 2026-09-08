@@ -1,28 +1,11 @@
-import { classifyWorkflowConfirmation, } from "#internet/workflow/approval-policy";
-/**
- * Keep confirmation roots deliberately narrow. Generic tool-call containers are
- * not roots: they may wrap the real dialog and would create ambiguous duplicate
- * candidates, which must fail closed rather than be guessed through.
- */
-export const CHATGPT_CONFIRMATION_ROOT_SELECTOR = [
-    '[role="dialog"]',
+import { classifyWorkflowConfirmation, WorkflowConfirmationError, } from "#internet/workflow/approval-policy";
+const CHATGPT_CONFIRMATION_ROOT_SELECTORS = [
     '[data-testid*="confirmation"]',
     '[data-testid*="approval"]',
-].join(", ");
+    '[role="dialog"]',
+];
 const ALLOW_BUTTON_NAME = /^Allow$/u;
 const DENY_BUTTON_NAME = /^(?:Cancel|Deny|Reject|Don't allow|Don’t allow)$/u;
-export class ChatGptUnknownConfirmationError extends Error {
-    constructor(message) {
-        super(message);
-        this.name = "ChatGptUnknownConfirmationError";
-    }
-}
-export class ChatGptMergeConfirmationError extends Error {
-    constructor(message) {
-        super(message);
-        this.name = "ChatGptMergeConfirmationError";
-    }
-}
 function uniqueAction(text) {
     const lower = text.toLowerCase();
     const matches = [];
@@ -67,75 +50,55 @@ export function parseChatGptConfirmationText(text) {
         prNumber: prNumberFromText(text),
     };
 }
-async function candidateRoot(root) {
-    const text = await root.innerText().catch(() => "");
-    if (!/\bgithub\b/iu.test(text))
-        return false;
-    const buttons = root.getByRole("button");
-    const count = await buttons.count();
-    let allow = 0;
-    let deny = 0;
-    for (let index = 0; index < count; index += 1) {
-        const button = buttons.nth(index);
-        if (!(await button.isVisible().catch(() => false)))
-            continue;
-        const name = (await button.innerText().catch(() => "")).trim();
-        if (ALLOW_BUTTON_NAME.test(name))
-            allow += 1;
-        if (DENY_BUTTON_NAME.test(name))
-            deny += 1;
+async function visibleGitHubRoots(page) {
+    for (const selector of CHATGPT_CONFIRMATION_ROOT_SELECTORS) {
+        const roots = page.locator(selector).filter({ visible: true });
+        const count = await roots.count();
+        const matches = [];
+        for (let index = 0; index < count; index += 1) {
+            const root = roots.nth(index);
+            const text = await root.innerText().catch(() => "");
+            if (/\bgithub\b/iu.test(text))
+                matches.push(root);
+        }
+        if (matches.length > 0)
+            return matches;
     }
-    return allow === 1 && deny >= 1;
-}
-async function visibleConfirmationRoots(page) {
-    const roots = page.locator(CHATGPT_CONFIRMATION_ROOT_SELECTOR).filter({ visible: true });
-    const count = await roots.count();
-    const candidates = [];
-    for (let index = 0; index < count; index += 1) {
-        const root = roots.nth(index);
-        if (await candidateRoot(root))
-            candidates.push(root);
-    }
-    return candidates;
+    return [];
 }
 async function exactAllowButton(root) {
-    const buttons = root.getByRole("button");
-    const count = await buttons.count();
-    const matches = [];
-    for (let index = 0; index < count; index += 1) {
-        const button = buttons.nth(index);
-        if (!(await button.isVisible().catch(() => false)))
-            continue;
-        if (ALLOW_BUTTON_NAME.test((await button.innerText().catch(() => "")).trim()))
-            matches.push(button);
+    const allow = root.getByRole("button", { name: ALLOW_BUTTON_NAME }).filter({ visible: true });
+    const deny = root.getByRole("button", { name: DENY_BUTTON_NAME }).filter({ visible: true });
+    const [allowCount, denyCount] = await Promise.all([allow.count(), deny.count()]);
+    if (allowCount !== 1 || denyCount < 1) {
+        throw new WorkflowConfirmationError("unknown", "GitHub confirmation does not expose one exact Allow action and an explicit deny action");
     }
-    if (matches.length !== 1)
-        throw new ChatGptUnknownConfirmationError("recognized confirmation does not expose one exact Allow action");
-    return matches[0];
+    return allow.first();
 }
 /**
- * Inspect one visible Website confirmation and either safely approve the exact
- * in-scope writer action or fail closed. Returns false when no confirmation is visible.
+ * Inspect one visible ChatGPT Website GitHub confirmation and either approve
+ * the exact in-scope action or fail closed. Actual account/session identity is
+ * supplied by BrowserManager rather than asserted by the workflow caller.
  */
-export async function chatgptHandleWorkflowConfirmation(page, context) {
-    const roots = await visibleConfirmationRoots(page);
+export async function chatgptHandleWorkflowConfirmation(page, scope, accountId, sessionId) {
+    const roots = await visibleGitHubRoots(page);
     if (roots.length === 0)
         return false;
     if (roots.length !== 1) {
-        throw new ChatGptUnknownConfirmationError("multiple recognized Website confirmations are visible");
+        throw new WorkflowConfirmationError("unknown", "multiple GitHub Website confirmations are visible");
     }
     const root = roots[0];
-    const observation = parseChatGptConfirmationText(await root.innerText());
-    const decision = classifyWorkflowConfirmation(context, observation);
+    const allow = await exactAllowButton(root);
+    const context = { ...scope, accountId, sessionId };
+    const decision = classifyWorkflowConfirmation(context, parseChatGptConfirmationText(await root.innerText()));
     if (decision.kind === "merge-requires-user") {
-        throw new ChatGptMergeConfirmationError(decision.reason);
+        throw new WorkflowConfirmationError("merge-requires-user", decision.reason);
     }
     if (decision.kind === "unknown")
-        throw new ChatGptUnknownConfirmationError(decision.reason);
-    const allow = await exactAllowButton(root);
+        throw new WorkflowConfirmationError("unknown", decision.reason);
     await allow.press("Enter");
     await root.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {
-        throw new ChatGptUnknownConfirmationError("Website confirmation remained visible after the scoped Allow action");
+        throw new WorkflowConfirmationError("unknown", "Website confirmation remained visible after scoped approval");
     });
     return true;
 }

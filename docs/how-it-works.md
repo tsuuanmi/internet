@@ -115,18 +115,25 @@ a fabricated receipt. If a transient control call fails after the research hando
 job remains `WRITER_RUNNING`; retry reuses the same writer conversation and skips already-delivered handoffs.
 
 During writer execution, `BrowserManager` may inspect a visible ChatGPT Website GitHub confirmation before
-checking completion. Confirmation handling is deliberately separate from model-output parsing. A candidate
-must come from a narrow dialog/confirmation root, identify GitHub, expose exactly one semantic `Allow` button
-plus a deny/cancel control, and parse to one supported action. `WorkflowApprovalContext` then binds that
-observation to the exact `chatgpt-writer` conversation, authoritative repository, current workflow state, and
-expected branch/PR identity. The initial branch identity is deterministic as `internet-workflow/<job_id>`;
-once a PR exists, its persisted head/number become authoritative.
+checking completion. Confirmation handling is deliberately separate from model-output parsing. Dedicated
+confirmation/approval roots are preferred over generic dialogs to avoid nested duplicate candidates. Any
+visible narrow GitHub confirmation is treated as a potential authority boundary first; it must then expose
+exactly one semantic `Allow` button plus an explicit deny/cancel control and parse to one supported action.
+Malformed or ambiguous GitHub confirmation UI therefore fails closed instead of being mistaken for "no
+confirmation".
+
+The workflow caller passes only expected `WorkflowApprovalScope`. `BrowserManager` supplies the actual account
+ID and session ID when invoking the ChatGPT adapter, so the approval policy never trusts caller-self-asserted
+runtime identity. The resulting context is matched against `chatgpt-writer`, the authoritative repository,
+current workflow state, and expected branch/PR identity. The initial branch is deterministic as
+`internet-workflow/<job_id>`; once a PR exists, its persisted head/number become authoritative.
 
 Only in-scope implementation/remediation actions are auto-confirmed. Missing or mismatched metadata, ambiguous
 UI, unsupported actions, multiple candidates, or a confirmation that remains visible after activation fail
-closed as `UNKNOWN_CONFIRMATION`. The engine persists an ACTION_REQUIRED exception with the writer phase as
-the explicit resume state. A merge confirmation is recognized separately and is never clicked by the scoped
-auto-approval policy.
+closed as `UNKNOWN_CONFIRMATION`. Repository scope is validated before merge classification, so a cross-repo
+merge prompt is also unknown rather than a user-authorization request. The engine persists an ACTION_REQUIRED
+exception with the writer phase as the explicit resume state. A correctly scoped premature merge confirmation
+is never clicked and becomes ordinary writer `BLOCKED`; the later merge gate owns actual user authorization.
 
 Actual PR review/remediation loops, Local event injection, and the head-SHA-bound user merge authorization gate
 remain later workflow phases and are not implied by the current `/workflow` admission command.

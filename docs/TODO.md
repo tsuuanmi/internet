@@ -278,7 +278,7 @@ Visible `Allow` text alone is never sufficient.
 
 ### 23. ✅ Auto-confirm recognized in-scope implementation/PR actions
 
-`approval-policy.ts` requires exact match against:
+`approval-policy.ts` requires exact match against runtime-derived account/session identity plus:
 
 ```text
 active workflow job
@@ -295,11 +295,11 @@ Initial implementation may auto-confirm branch creation, file writes, commits, b
 
 ### 24. ✅ Add fail-closed `UNKNOWN_CONFIRMATION`
 
-Unknown, ambiguous, incomplete, or scope-mismatched confirmations are never clicked. The writer reports `UNKNOWN_CONFIRMATION`; the engine persists the dedicated state plus an ACTION_REQUIRED event and records `resumeState: WRITER_RUNNING`. After the user/operator handles the exception, `continue(job_id)` resumes the writer phase instead of restarting research.
+Unknown, ambiguous, incomplete, or scope-mismatched confirmations are never clicked. The workflow caller supplies only expected authority; `BrowserManager` supplies the actual account/session identity. Malformed GitHub confirmation UI is treated as unknown rather than silently ignored. The writer reports `UNKNOWN_CONFIRMATION`; the engine persists the dedicated state plus an ACTION_REQUIRED event and records `resumeState: WRITER_RUNNING`. After the user/operator handles the exception, `continue(job_id)` resumes the writer phase instead of restarting research.
 
 ### 25. ✅ Explicitly exclude merge from auto-authorization
 
-A recognized merge confirmation produces a dedicated blocked result before any `Allow` action is pressed. Merge is not part of the phase-1 action allowlist and can only be executed by the later merge path after explicit user authorization bound to the concrete PR/head state.
+Repository authority is validated before merge classification. A correctly scoped premature merge confirmation becomes writer `BLOCKED` before any `Allow` action is pressed; a cross-repo or mismatched merge prompt is `UNKNOWN_CONFIRMATION`. Merge is not part of the phase-1 action allowlist and can only be executed by the later merge path after explicit user authorization bound to the concrete PR/head state.
 
 ## P7 — PR review/remediation
 

@@ -703,7 +703,7 @@ export class BrowserManager {
                     ? chatgptDeepResearchSnapshot(page, previousResearchText)
                     : (async () => {
                         if (request.confirmation !== undefined) {
-                            await chatgptHandleWorkflowConfirmation(page, request.confirmation);
+                            await chatgptHandleWorkflowConfirmation(page, request.confirmation, accountId, request.sessionId);
                         }
                         return chatgptSnapshot(page, previousTurnText);
                     })(), waitOptions);

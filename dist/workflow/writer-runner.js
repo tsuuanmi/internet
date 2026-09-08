@@ -1,5 +1,4 @@
-import { ChatGptMergeConfirmationError, ChatGptUnknownConfirmationError } from "#internet/browser/chatgpt-confirmation";
-import { workflowWriterBranch } from "#internet/workflow/approval-policy";
+import { WorkflowConfirmationError, workflowWriterBranch, } from "#internet/workflow/approval-policy";
 function controlPrompt(job, control) {
     if (control.kind !== "START_IMPLEMENTATION") {
         throw new Error(`writer control ${control.kind} is not implemented by this phase`);
@@ -74,11 +73,11 @@ export function parseWorkflowWriterResult(text) {
 }
 /** Persistent ChatGPT Website writer bound to the workflow's dedicated writer conversation. */
 export class BrowserWorkflowWriterRunner {
-    constructor(manager) {
-        this.manager = manager;
+    constructor(browser) {
+        this.browser = browser;
     }
     async deliverExact(request) {
-        await this.manager.chat("chatgpt-writer", {
+        await this.browser.chat("chatgpt-writer", {
             prompt: request.payload,
             sessionId: request.sessionId,
             signal: request.signal,
@@ -86,13 +85,11 @@ export class BrowserWorkflowWriterRunner {
     }
     async runControl(request) {
         try {
-            const result = await this.manager.chat("chatgpt-writer", {
+            const result = await this.browser.chat("chatgpt-writer", {
                 prompt: controlPrompt(request.job, request.control),
                 sessionId: request.sessionId,
                 confirmation: {
                     jobId: request.job.jobId,
-                    accountId: "chatgpt-writer",
-                    currentSessionId: request.sessionId,
                     writerSessionId: request.job.writerConversation.sessionId,
                     repository: request.job.repository,
                     state: request.job.state,
@@ -103,13 +100,11 @@ export class BrowserWorkflowWriterRunner {
             return parseWorkflowWriterResult(result.text);
         }
         catch (error) {
-            if (error instanceof ChatGptUnknownConfirmationError) {
-                return { status: "UNKNOWN_CONFIRMATION", message: error.message };
-            }
-            if (error instanceof ChatGptMergeConfirmationError) {
-                return { status: "MERGE_CONFIRMATION_BLOCKED", message: error.message };
-            }
-            throw error;
+            if (!(error instanceof WorkflowConfirmationError))
+                throw error;
+            return error.kind === "unknown"
+                ? { status: "UNKNOWN_CONFIRMATION", message: error.message }
+                : { status: "BLOCKED", message: error.message };
         }
     }
 }

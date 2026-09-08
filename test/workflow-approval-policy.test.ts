@@ -14,7 +14,7 @@ function context(overrides: Partial<WorkflowApprovalContext> = {}): WorkflowAppr
 	return {
 		jobId,
 		accountId: "chatgpt-writer",
-		currentSessionId: writerSession,
+		sessionId: writerSession,
 		writerSessionId: writerSession,
 		repository: "https://github.com/Example/Repo",
 		state: "WRITER_RUNNING",
@@ -47,10 +47,17 @@ describe("workflow scoped approval policy", () => {
 		).toEqual({ kind: "auto-approve", action: "write_file" });
 	});
 
-	it("fails closed on session, repository, branch, action, and state mismatches", () => {
+	it("fails closed on actual account, session, repository, branch, action, and state mismatches", () => {
 		const branch = workflowWriterBranch(jobId);
 		expect(
-			classifyWorkflowConfirmation(context({ currentSessionId: "other" }), {
+			classifyWorkflowConfirmation(context({ accountId: "chatgpt-thinker" }), {
+				action: "create_commit",
+				repository: "example/repo",
+				branch,
+			}).kind,
+		).toBe("unknown");
+		expect(
+			classifyWorkflowConfirmation(context({ sessionId: "other" }), {
 				action: "create_commit",
 				repository: "example/repo",
 				branch,
@@ -87,7 +94,7 @@ describe("workflow scoped approval policy", () => {
 		).toBe("unknown");
 	});
 
-	it("requires exact PR identity for remediation PR updates", () => {
+	it("requires exact persisted PR authority for remediation updates", () => {
 		const pr = {
 			repository: "example/repo",
 			number: 9,
@@ -113,14 +120,25 @@ describe("workflow scoped approval policy", () => {
 				prNumber: 10,
 			}).kind,
 		).toBe("unknown");
+		expect(
+			classifyWorkflowConfirmation(
+				context({ state: "WRITER_REMEDIATING", pullRequest: { ...pr, repository: "other/repo" } }),
+				{ action: "update_pull_request", repository: "example/repo", branch: pr.head, prNumber: 9 },
+			).kind,
+		).toBe("unknown");
 	});
 
-	it("never auto-authorizes merge even when every identity matches", () => {
+	it("requires repository scope before classifying merge as user-owned", () => {
+		expect(
+			classifyWorkflowConfirmation(context(), {
+				action: "merge_pull_request",
+				repository: "other/repo",
+			}).kind,
+		).toBe("unknown");
 		expect(
 			classifyWorkflowConfirmation(context(), {
 				action: "merge_pull_request",
 				repository: "example/repo",
-				branch: workflowWriterBranch(jobId),
 			}).kind,
 		).toBe("merge-requires-user");
 	});

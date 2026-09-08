@@ -160,7 +160,7 @@ describe("workflow writer path", () => {
 		const writer: WorkflowWriterRunner = {
 			async deliverExact() {},
 			async runControl() {
-				return { status: "MERGE_CONFIRMATION_BLOCKED", message: "merge is never auto-authorized" };
+				return { status: "BLOCKED", message: "merge requires explicit user authorization" };
 			},
 		};
 		const { engine, job } = setup(writer);
@@ -170,10 +170,10 @@ describe("workflow writer path", () => {
 		expect(blocked.pullRequest).toBeUndefined();
 		expect(blocked.pendingAction).toEqual({
 			kind: "WRITER_BLOCKED",
-			message: "merge is never auto-authorized",
+			message: "merge requires explicit user authorization",
 			resumeState: "WRITER_RUNNING",
 		});
-		expect(blocked.lastEvent?.type).toBe("MERGE_CONFIRMATION_BLOCKED");
+		expect(blocked.lastEvent?.type).toBe("WRITER_BLOCKED");
 	});
 });
 

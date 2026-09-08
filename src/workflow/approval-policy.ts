@@ -1,3 +1,4 @@
+import type { AccountId } from "#internet/core/accounts";
 import type { WorkflowPullRequestReceipt, WorkflowState } from "#internet/workflow/types";
 
 export const WORKFLOW_CONFIRMATION_ACTIONS = [
@@ -11,6 +12,7 @@ export const WORKFLOW_CONFIRMATION_ACTIONS = [
 ] as const;
 
 export type WorkflowConfirmationAction = (typeof WORKFLOW_CONFIRMATION_ACTIONS)[number];
+export type WorkflowConfirmationIssue = "unknown" | "merge-requires-user";
 
 export interface WorkflowConfirmationObservation {
 	readonly action?: WorkflowConfirmationAction;
@@ -19,14 +21,19 @@ export interface WorkflowConfirmationObservation {
 	readonly prNumber?: number;
 }
 
-export interface WorkflowApprovalContext {
+/** Expected workflow authority passed into the browser runtime. */
+export interface WorkflowApprovalScope {
 	readonly jobId: string;
-	readonly accountId: "chatgpt-writer";
-	readonly currentSessionId: string;
 	readonly writerSessionId: string;
 	readonly repository: string;
 	readonly state: WorkflowState;
 	readonly pullRequest?: WorkflowPullRequestReceipt;
+}
+
+/** Expected workflow authority plus the actual runtime account/session. */
+export interface WorkflowApprovalContext extends WorkflowApprovalScope {
+	readonly accountId: AccountId;
+	readonly sessionId: string;
 }
 
 export type WorkflowConfirmationDecision =
@@ -34,7 +41,18 @@ export type WorkflowConfirmationDecision =
 	| { readonly kind: "merge-requires-user"; readonly reason: string }
 	| { readonly kind: "unknown"; readonly reason: string };
 
-const IMPLEMENTATION_ACTIONS = new Set<WorkflowConfirmationAction>([
+/** Domain-level interruption raised when Website confirmation cannot proceed automatically. */
+export class WorkflowConfirmationError extends Error {
+	readonly kind: WorkflowConfirmationIssue;
+
+	constructor(kind: WorkflowConfirmationIssue, message: string) {
+		super(message);
+		this.name = "WorkflowConfirmationError";
+		this.kind = kind;
+	}
+}
+
+const IMPLEMENTATION_ACTIONS: ReadonlySet<WorkflowConfirmationAction> = new Set([
 	"create_branch",
 	"write_file",
 	"create_commit",
@@ -42,10 +60,19 @@ const IMPLEMENTATION_ACTIONS = new Set<WorkflowConfirmationAction>([
 	"create_pull_request",
 ]);
 
-const REMEDIATION_ACTIONS = new Set<WorkflowConfirmationAction>([
+const REMEDIATION_ACTIONS: ReadonlySet<WorkflowConfirmationAction> = new Set([
 	"write_file",
 	"create_commit",
 	"push_branch",
+	"update_pull_request",
+]);
+
+const BRANCH_BOUND_ACTIONS: ReadonlySet<WorkflowConfirmationAction> = new Set([
+	"create_branch",
+	"write_file",
+	"create_commit",
+	"push_branch",
+	"create_pull_request",
 	"update_pull_request",
 ]);
 
@@ -66,30 +93,24 @@ function expectedBranch(context: WorkflowApprovalContext): string {
 	return context.pullRequest?.head ?? workflowWriterBranch(context.jobId);
 }
 
-function branchBound(action: WorkflowConfirmationAction): boolean {
-	return new Set<WorkflowConfirmationAction>([
-		"create_branch",
-		"write_file",
-		"create_commit",
-		"push_branch",
-		"create_pull_request",
-		"update_pull_request",
-	]).has(action);
+function allowedActions(state: WorkflowState): ReadonlySet<WorkflowConfirmationAction> | undefined {
+	if (state === "WRITER_RUNNING") return IMPLEMENTATION_ACTIONS;
+	if (state === "WRITER_REMEDIATING") return REMEDIATION_ACTIONS;
+	return undefined;
 }
 
 export function classifyWorkflowConfirmation(
 	context: WorkflowApprovalContext,
 	observation: WorkflowConfirmationObservation,
 ): WorkflowConfirmationDecision {
-	if (context.accountId !== "chatgpt-writer")
-		return { kind: "unknown", reason: "confirmation is not on the writer account" };
-	if (context.currentSessionId !== context.writerSessionId) {
+	if (context.accountId !== "chatgpt-writer") {
+		return { kind: "unknown", reason: "confirmation is not running on the workflow writer account" };
+	}
+	if (context.sessionId !== context.writerSessionId) {
 		return { kind: "unknown", reason: "confirmation session does not match the active writer conversation" };
 	}
 	if (observation.action === undefined) return { kind: "unknown", reason: "confirmation action is not recognized" };
-	if (observation.action === "merge_pull_request") {
-		return { kind: "merge-requires-user", reason: "merge is never auto-authorized by the implementation policy" };
-	}
+
 	const authoritativeRepository = normalizeGitHubRepository(context.repository);
 	const observedRepository = observation.repository && normalizeGitHubRepository(observation.repository);
 	if (authoritativeRepository === undefined || observedRepository === undefined) {
@@ -98,18 +119,33 @@ export function classifyWorkflowConfirmation(
 	if (authoritativeRepository !== observedRepository) {
 		return { kind: "unknown", reason: "confirmation repository does not match the workflow repository" };
 	}
-	const allowed =
-		context.state === "WRITER_RUNNING"
-			? IMPLEMENTATION_ACTIONS
-			: context.state === "WRITER_REMEDIATING"
-				? REMEDIATION_ACTIONS
-				: undefined;
+	if (context.pullRequest !== undefined) {
+		const pullRequestRepository = normalizeGitHubRepository(context.pullRequest.repository);
+		if (pullRequestRepository !== authoritativeRepository) {
+			return { kind: "unknown", reason: "persisted pull-request repository does not match workflow authority" };
+		}
+	}
+
+	if (observation.action === "merge_pull_request") {
+		if (context.pullRequest !== undefined) {
+			if (observation.prNumber !== undefined && observation.prNumber !== context.pullRequest.number) {
+				return { kind: "unknown", reason: "merge confirmation PR number does not match the workflow PR" };
+			}
+			if (observation.branch !== undefined && observation.branch !== context.pullRequest.head) {
+				return { kind: "unknown", reason: "merge confirmation branch does not match the workflow PR head" };
+			}
+		}
+		return { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
+	}
+
+	const allowed = allowedActions(context.state);
 	if (allowed === undefined || !allowed.has(observation.action)) {
 		return { kind: "unknown", reason: `confirmation action is not permitted from ${context.state}` };
 	}
-	if (branchBound(observation.action)) {
-		if (observation.branch === undefined)
+	if (BRANCH_BOUND_ACTIONS.has(observation.action)) {
+		if (observation.branch === undefined) {
 			return { kind: "unknown", reason: "confirmation branch identity is missing" };
+		}
 		if (observation.branch !== expectedBranch(context)) {
 			return { kind: "unknown", reason: "confirmation branch does not match the workflow branch" };
 		}
