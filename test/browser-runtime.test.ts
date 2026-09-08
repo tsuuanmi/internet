@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BrowserManager, type AccountStatus, type ChatRequest, type ChatResult } from "#internet/browser/runtime";
+import { type AccountStatus, BrowserManager, type ChatRequest, type ChatResult } from "#internet/browser/runtime";
 import type { AccountId } from "#internet/core/accounts";
 import { resolveBrowserConfig } from "#internet/core/config";
 
@@ -142,7 +142,7 @@ describe("BrowserManager account state boundaries", () => {
 		const lease = { generation: 0, signal: new AbortController().signal };
 		(browser as any).closeBrowser = vi.fn(async () => {});
 
-		await (browser as any).handleSignedOut("chatgpt-writer", "chatgpt-web", lease, writerRevision, "login-url");
+		await (browser as any).handleSignedOut("chatgpt-writer", lease, writerRevision, "login-url");
 		expect((browser as any).accounts.inspect("chatgpt-writer").state).toBe("reauth-required");
 		expect((browser as any).accounts.inspect("chatgpt-thinker").state).toBe("ready");
 		expect((browser as any).scheduler("chatgpt-writer").currentGeneration()).toBe(1);

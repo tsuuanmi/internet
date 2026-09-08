@@ -659,7 +659,7 @@ export class BrowserManager {
 			if (!this.scheduler(accountId).isCurrent(lease)) return;
 			const assessment = await this.assessAuthentication(provider, page, 5_000, lease.signal);
 			if (assessment.state === "signed-out") {
-				await this.handleSignedOut(accountId, provider, lease, accountRevision, assessment.evidence);
+				await this.handleSignedOut(accountId, lease, accountRevision, assessment.evidence);
 				return;
 			}
 			if (assessment.state !== "authenticated" || !this.scheduler(accountId).isCurrent(lease)) return;
@@ -676,7 +676,6 @@ export class BrowserManager {
 	 */
 	private async handleSignedOut(
 		accountId: AccountId,
-		provider: WebProvider,
 		lease: ProviderLease,
 		accountRevision: number,
 		evidence: "login-url" | "login-surface",
@@ -848,7 +847,7 @@ export class BrowserManager {
 			const authentication = await this.assessAuthentication(provider, page, 30_000, lease.signal);
 			if (authentication.state !== "authenticated") {
 				if (authentication.state === "signed-out") {
-					await this.handleSignedOut(accountId, provider, lease, accountRevision, authentication.evidence);
+					await this.handleSignedOut(accountId, lease, accountRevision, authentication.evidence);
 					throw new InternetError(
 						"login_required",
 						`Sign in to ${accountId} first with the internet_browser login action.`,

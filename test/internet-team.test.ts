@@ -56,9 +56,9 @@ describe("parseTeamArgs", () => {
 	it("rejects provider names, duplicates, and too-short account lists", () => {
 		expect(() => parseTeamArgs({ task: "T", accounts: ["chatgpt-thinker"] })).toThrow(/at least two/);
 		expect(() => parseTeamArgs({ task: "T", accounts: ["chatgpt-web", "gemini-thinker"] })).toThrow(/must be one of/);
-		expect(() =>
-			parseTeamArgs({ task: "T", accounts: ["chatgpt-thinker", "chatgpt-thinker"] }),
-		).toThrow(/duplicates/);
+		expect(() => parseTeamArgs({ task: "T", accounts: ["chatgpt-thinker", "chatgpt-thinker"] })).toThrow(
+			/duplicates/,
+		);
 	});
 });
 
@@ -101,11 +101,7 @@ describe("defineInternetTeamTool", () => {
 		const { manager, calls } = fakeManager(["A1", "B1", "FINAL"]);
 		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, includeTranscript: true }, exec);
-		expect(calls.map(({ accountId }) => accountId)).toEqual([
-			"chatgpt-thinker",
-			"gemini-thinker",
-			"chatgpt-thinker",
-		]);
+		expect(calls.map(({ accountId }) => accountId)).toEqual(["chatgpt-thinker", "gemini-thinker", "chatgpt-thinker"]);
 		expect(result).toMatchObject({
 			finalAnswer: "FINAL",
 			finalAccountId: "chatgpt-thinker",
@@ -121,19 +117,14 @@ describe("defineInternetTeamTool", () => {
 		expect(result).toMatchObject({
 			isError: true,
 			error: "gemini-thinker: boom",
-			transcript: [
-				{ round: 1, accountId: "chatgpt-thinker", provider: "chatgpt-web", text: "A1" },
-			],
+			transcript: [{ round: 1, accountId: "chatgpt-thinker", provider: "chatgpt-web", text: "A1" }],
 		});
 	});
 
 	it("rejects a non-thinker account instead of routing it by provider", async () => {
 		const { manager, calls } = fakeManager([]);
 		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
-		const result = await tool.execute(
-			{ task: "T", accounts: ["chatgpt-writer", "gemini-thinker"] },
-			exec,
-		);
+		const result = await tool.execute({ task: "T", accounts: ["chatgpt-writer", "gemini-thinker"] }, exec);
 		expect(result).toMatchObject({ isError: true });
 		expect(calls).toEqual([]);
 	});

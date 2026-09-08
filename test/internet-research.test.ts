@@ -5,7 +5,12 @@ import { defineInternetResearchTool } from "#internet/tools/internet-research";
 describe("parseResearchArgs", () => {
 	it("accepts explicit thinker accounts", () => {
 		expect(
-			parseResearchArgs({ query: "Compare two policies", name: "policy", accounts: ["gemini-thinker"], visible: true }),
+			parseResearchArgs({
+				query: "Compare two policies",
+				name: "policy",
+				accounts: ["gemini-thinker"],
+				visible: true,
+			}),
 		).toEqual({
 			query: "Compare two policies",
 			name: "policy",
@@ -37,10 +42,10 @@ describe("internet_research execution", () => {
 		const signal = new AbortController().signal;
 
 		await expect(
-			tool.execute(
-				{ query: "Compare policies", name: "policy", accounts: ["gemini-thinker"], visible: true },
-				{ agent: { id: "agent" }, signal } as never,
-			),
+			tool.execute({ query: "Compare policies", name: "policy", accounts: ["gemini-thinker"], visible: true }, {
+				agent: { id: "agent" },
+				signal,
+			} as never),
 		).resolves.toEqual({
 			state: "completed",
 			results: [
