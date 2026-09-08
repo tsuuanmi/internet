@@ -19,7 +19,7 @@ conversations, and visible browser inspection without running a separate daemon.
 - **Visible or hidden automation** — hidden managed Xvfb by default; opt into a user-visible window per call.
 - **Zero-install VNC on Linux x64/glibc 2.31+** — bundled x11vnc and noVNC,
   exposed only through a tokenized loopback URL intended for SSH forwarding.
-- **Explicit ChatGPT reasoning control** — `instant`, `medium`, or `high`, with `medium` as the default.
+- **Explicit ChatGPT reasoning control** — `instant`, `medium`, or `high`, with `high` as the default.
 - **Explicit Gemini mode control** — the observed latest Flash model with Extended thinking before every ordinary turn.
 
 This is a standalone DSH-native plugin. It does not wrap `@tsuuanmi/pi-internet`, does not require Bun,
@@ -93,8 +93,7 @@ internet_team {
 - browser visibility: hidden
 
 Providers speak sequentially in the requested order. During each round, a provider sees the task and
-each other provider's latest contribution. When synthesis is enabled, the final provider receives the
-full current-call transcript and produces the final answer. The DSH agent coordinates the debate but
+each other provider's latest contribution. When synthesis is enabled, the configured `teamSynthesizer` receives the full current-call transcript and produces the final answer. ChatGPT (`chatgpt-web`) is the default synthesizer, independent of speaking order. The DSH agent coordinates the debate but
 does not add its own debate turn.
 
 A team uses a derived session namespace (`<session>:team:<name>`), so team conversations are isolated
@@ -189,9 +188,10 @@ plugins:
       turnTimeoutMs: 300000
       researchTimeoutMs: 1800000
       maxConcurrentTurnsPerProvider: 1
-      chatgptThinkingLevel: medium
+      chatgptThinkingLevel: high
       teamRounds: 2
       teamMaxRounds: 4
+      teamSynthesizer: chatgpt-web
 ```
 
 Restart the existing DSH host after installing or updating the package so the server-side plugin loads
@@ -217,9 +217,10 @@ the new build. Starting a second web server does not update an already running D
 | `teamMaxRounds` | `4` | Maximum accepted per-call `rounds`. |
 | `teamTranscriptMaxChars` | `50000` | Unicode code-point budget for an opt-in transcript. |
 | `teamSynthesis` | `true` | Append a final synthesis turn by default. |
+| `teamSynthesizer` | `chatgpt-web` | Provider that performs final team synthesis, independent of speaking order. |
 | `enableChatgpt` | `true` | Register ChatGPT Web and `/internet`. |
 | `enableGemini` | `true` | Register Gemini Web. |
-| `chatgptThinkingLevel` | `medium` | ChatGPT reasoning level: `instant`, `medium`, or `high`. |
+| `chatgptThinkingLevel` | `high` | ChatGPT reasoning level: `instant`, `medium`, or `high`. |
 
 Invalid explicit values fail configuration loading. `teamRounds` cannot exceed `teamMaxRounds`, and
 `remoteLoginPort` must leave room for Gemini on the next TCP port. Capacity above `1` is an explicit

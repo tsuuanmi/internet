@@ -282,8 +282,8 @@ As of 2026-09-08:
 - Website actions may still surface an `Allow` confirmation.
 - The current plugin still models account/runtime identity too strongly by provider.
 - The current `/workflow` command is prompt-driven rather than a real durable workflow engine.
-- The current team orchestrator synthesizes with the last provider; target behavior is explicit ChatGPT synthesis.
-- The current ChatGPT thinking default is Medium; target behavior is High.
+- The team orchestrator now routes synthesis through an explicit configured provider; ChatGPT is the default.
+- Ordinary ChatGPT browser turns now default to High reasoning unless explicitly overridden.
 
 ## 15. Detailed documents
 

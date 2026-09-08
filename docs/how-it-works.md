@@ -120,7 +120,7 @@ GPT-5.6 and GPT-5.5. Those radio entries are model choices, not reasoning choice
 uses the slider whenever present. A legacy radio-only picker is accepted only when its complete labels
 are exactly `Instant`, `Medium`, and `High`; any other radio list fails rather than changing models.
 
-The default is `medium`, and every turn reopens and semantically verifies the picker so provider UI state
+The default is `high`, and every turn reopens and semantically verifies the picker so provider UI state
 cannot leak from a previous call.
 
 ### Prompt attachment and Send transition
@@ -189,8 +189,7 @@ Later turns receive the task plus each other provider's latest message and are a
 and improve it. A provider's own prior messages already exist in its native durable conversation, so the
 orchestrator injects only teammates' latest messages.
 
-When synthesis is enabled, the last provider receives the full current-call debate transcript and returns
-a single final answer. Synthesis is not included in the optional transcript. Without synthesis, the last
+When synthesis is enabled, the configured `teamSynthesizer` receives the full current-call debate transcript and returns a single final answer. The default synthesizer is `chatgpt-web`, independent of provider speaking order. Synthesis is not included in the optional transcript. Without synthesis, the last
 debate contribution is the final answer.
 
 The same `visible` flag is passed to every provider turn and synthesis turn. `visible: false` is not a
