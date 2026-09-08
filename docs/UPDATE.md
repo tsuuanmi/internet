@@ -124,7 +124,7 @@ continue
 
 The following remain unchanged:
 
-- separate `chatgpt-thinker` and `chatgpt-writer` account identities;
+- first-class semantic account identities now exist for `chatgpt-thinker`, `chatgpt-writer`, and `gemini-thinker`; provider-keyed browser/storage state is the next migration step;
 - team synthesis is explicitly routed through a configured provider; ChatGPT is the default synthesizer;
 - ChatGPT browser default is `high`;
 - two thinking teams feed exact outputs to the writer;

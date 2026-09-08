@@ -28,7 +28,9 @@
 **ROI:** very high  
 **Risk:** low-medium
 
-### 3. Define first-class `accountId`
+### 3. ✅ Define first-class `accountId`
+
+**Status:** implemented as the semantic account catalog and capability-routing contract. Browser/storage isolation follows in P1.
 
 Minimal contract:
 
