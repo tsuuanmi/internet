@@ -1,13 +1,22 @@
 import type { AccountId } from "#internet/core/accounts";
+import type { WebProvider } from "#internet/core/config";
 export declare const WORKFLOW_STATES: readonly ["CREATED", "RESEARCH_RUNNING", "RESEARCH_HANDOFFS_DELIVERING", "WRITER_RUNNING", "PR_OPEN", "REVIEW_RUNNING", "REVIEW_HANDOFFS_DELIVERING", "WRITER_REMEDIATING", "READY_FOR_MERGE_AUTHORIZATION", "AWAITING_MERGE_AUTHORIZATION", "MERGING", "DONE", "BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"];
 export type WorkflowState = (typeof WORKFLOW_STATES)[number];
 export declare const WORKFLOW_TEAM_STATUSES: readonly ["pending", "running", "completed", "failed"];
 export type WorkflowTeamStatus = (typeof WORKFLOW_TEAM_STATUSES)[number];
+export interface WorkflowTeamResult {
+    readonly finalAnswer: string;
+    readonly finalAccountId: AccountId;
+    readonly finalProvider: WebProvider;
+    readonly completedAt: string;
+    readonly reviewedHeadSha?: string;
+}
 export interface WorkflowTeamRun {
     readonly lane: "A" | "B";
     readonly status: WorkflowTeamStatus;
     readonly attempts: number;
     readonly sessionId: string;
+    readonly result?: WorkflowTeamResult;
     readonly error?: string;
 }
 export interface WorkflowAccountRouting {

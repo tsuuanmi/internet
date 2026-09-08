@@ -56,7 +56,7 @@ describe("team prompts", () => {
 });
 
 describe("runTeam account routing", () => {
-	it("uses thinker accounts and synthesizes with chatgpt-thinker by default", async () => {
+	it("uses thinker accounts, exact session identity, and chatgpt-thinker synthesis by default", async () => {
 		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
 		const result = success(await runTeam(chat, { task: "T", sessionId: "sess" }));
 		expect(calls.map((call) => call.accountId)).toEqual([
@@ -66,7 +66,7 @@ describe("runTeam account routing", () => {
 			"gemini-thinker",
 			"chatgpt-thinker",
 		]);
-		expect(calls.every((call) => call.sessionId === "sess:team:default")).toBe(true);
+		expect(calls.every((call) => call.sessionId === "sess")).toBe(true);
 		expect(result).toMatchObject({
 			finalAnswer: "FINAL",
 			finalAccountId: "chatgpt-thinker",
@@ -108,7 +108,7 @@ describe("runTeam account routing", () => {
 		expect(result.finalAccountId).toBe("chatgpt-thinker");
 	});
 
-	it("rejects invalid direct account selections", async () => {
+	it("rejects invalid direct account or session selections", async () => {
 		const { chat } = fakeChat([]);
 		await expect(runTeam(chat, { task: "T", sessionId: "s", rounds: 0 })).rejects.toThrow(/positive integer/);
 		await expect(runTeam(chat, { task: "T", sessionId: "s", accounts: ["chatgpt-thinker"] })).rejects.toThrow(
@@ -121,6 +121,7 @@ describe("runTeam account routing", () => {
 				accounts: ["chatgpt-thinker", "chatgpt-thinker"],
 			}),
 		).rejects.toThrow(/duplicates/);
+		await expect(runTeam(chat, { task: "T", sessionId: " " })).rejects.toThrow(/sessionId/u);
 	});
 
 	it("attributes failures to the exact authenticated account", async () => {
@@ -129,11 +130,5 @@ describe("runTeam account routing", () => {
 		if (!("error" in result)) throw new Error("expected team failure");
 		expect(result.error).toEqual({ accountId: "gemini-thinker", provider: "gemini-web", message: "boom" });
 		expect(result.transcript).toHaveLength(1);
-	});
-
-	it("namespaces durable team sessions", async () => {
-		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
-		await runTeam(chat, { task: "T", sessionId: "s", teamName: "review" });
-		expect(calls[0]?.sessionId).toBe("s:team:review");
 	});
 });

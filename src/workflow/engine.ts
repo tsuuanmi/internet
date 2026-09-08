@@ -1,11 +1,14 @@
 import { randomBytes } from "node:crypto";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
+import { type WorkflowTeamLane, WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
+import type { WorkflowTeamRunner, WorkflowTeamRunResult } from "#internet/workflow/team-runner";
 import {
 	type StartWorkflowInput,
 	TERMINAL_WORKFLOW_STATES,
 	type WorkflowDecisionInput,
 	type WorkflowJob,
 	type WorkflowState,
+	type WorkflowTeamRun,
 } from "#internet/workflow/types";
 
 export class WorkflowEngineError extends Error {
@@ -32,23 +35,33 @@ function writerSession(ownerSessionId: string, job: string): string {
 }
 
 function withState(current: WorkflowJob, state: WorkflowState): WorkflowJob {
-	return {
-		...current,
-		revision: current.revision + 1,
-		state,
-		updatedAt: now(),
-	};
+	return { ...current, revision: current.revision + 1, state, updatedAt: now() };
 }
 
-/**
- * Deterministic workflow state owner. Later TODOs attach TeamRunner, handoff,
- * writer, review, approval, and event controllers to this class.
- */
+function replaceLane(
+	runs: readonly [WorkflowTeamRun, WorkflowTeamRun],
+	lane: WorkflowTeamLane,
+	mutate: (run: WorkflowTeamRun) => WorkflowTeamRun,
+): readonly [WorkflowTeamRun, WorkflowTeamRun] {
+	return runs.map((run) => (run.lane === lane ? mutate(run) : run)) as unknown as readonly [
+		WorkflowTeamRun,
+		WorkflowTeamRun,
+	];
+}
+
+function allCompleted(runs: readonly WorkflowTeamRun[]): boolean {
+	return runs.every((run) => run.status === "completed");
+}
+
 export class WorkflowEngine {
 	private readonly jobs: WorkflowJobStore;
+	private readonly teams?: WorkflowTeamRunner;
+	private readonly prompts: WorkflowTeamPromptBuilder;
 
-	constructor(jobs: WorkflowJobStore) {
+	constructor(jobs: WorkflowJobStore, teams?: WorkflowTeamRunner, prompts = new WorkflowTeamPromptBuilder()) {
 		this.jobs = jobs;
+		this.teams = teams;
+		this.prompts = prompts;
 	}
 
 	start(input: StartWorkflowInput): WorkflowJob {
@@ -61,7 +74,7 @@ export class WorkflowEngine {
 
 		const id = jobId();
 		const timestamp = now();
-		const job: WorkflowJob = {
+		return this.jobs.create({
 			schema: "@tsuuanmi/internet-workflow-job",
 			version: 1,
 			revision: 1,
@@ -106,15 +119,11 @@ export class WorkflowEngine {
 				synthesizerAccount: "chatgpt-thinker",
 			},
 			handoffReceipts: [],
-			writerConversation: {
-				sessionId: writerSession(input.ownerSessionId, id),
-				accountId: "chatgpt-writer",
-			},
+			writerConversation: { sessionId: writerSession(input.ownerSessionId, id), accountId: "chatgpt-writer" },
 			reviewCycle: 0,
 			createdAt: timestamp,
 			updatedAt: timestamp,
-		};
-		return this.jobs.create(job);
+		});
 	}
 
 	status(jobId: string): WorkflowJob {
@@ -123,24 +132,125 @@ export class WorkflowEngine {
 		return job;
 	}
 
+	/** Run pending/failed research lanes concurrently; completed lanes are never repeated. */
+	async runResearch(jobId: string, signal?: AbortSignal): Promise<WorkflowJob> {
+		if (this.teams === undefined) throw new WorkflowEngineError("workflow team runner is not configured");
+		const before = this.status(jobId);
+		if (!["CREATED", "RESEARCH_RUNNING", "FAILED_RETRYABLE"].includes(before.state)) {
+			throw new WorkflowEngineError(`workflow job ${jobId} cannot run research from ${before.state}`);
+		}
+		const lanes = before.teamRuns.research.filter((run) => run.status !== "completed").map((run) => run.lane);
+		if (lanes.length === 0) {
+			if (before.state === "RESEARCH_HANDOFFS_DELIVERING") return before;
+			return this.jobs.update(jobId, (current) => withState(current, "RESEARCH_HANDOFFS_DELIVERING"));
+		}
+
+		const running = this.jobs.update(jobId, (current) => {
+			let research = current.teamRuns.research;
+			for (const lane of lanes) {
+				research = replaceLane(research, lane, (run) => ({
+					...run,
+					status: "running",
+					attempts: run.attempts + 1,
+					error: undefined,
+				}));
+			}
+			return {
+				...withState(current, "RESEARCH_RUNNING"),
+				teamRuns: { ...current.teamRuns, research },
+				lastEvent: { type: "RESEARCH_STARTED", class: "INTERNAL", at: now() },
+			};
+		});
+
+		await Promise.all(
+			lanes.map(async (lane) => {
+				const run = running.teamRuns.research.find((item) => item.lane === lane);
+				if (run === undefined) throw new WorkflowEngineError(`missing research lane ${lane}`);
+				let result: WorkflowTeamRunResult;
+				try {
+					result = await this.teams!.run({
+						task: this.prompts.research(running, lane),
+						sessionId: run.sessionId,
+						accounts: running.accountRouting.thinkerAccounts,
+						synthesizer: running.accountRouting.synthesizerAccount,
+						signal,
+					});
+				} catch (error) {
+					result = {
+						ok: false,
+						error: error instanceof Error ? error.message : String(error),
+						failedAccountId: running.accountRouting.synthesizerAccount,
+						failedProvider: "chatgpt-web",
+					};
+				}
+				this.recordTeamResult(jobId, "research", lane, result);
+			}),
+		);
+
+		return this.jobs.update(jobId, (current) => {
+			const completed = allCompleted(current.teamRuns.research);
+			return {
+				...withState(current, completed ? "RESEARCH_HANDOFFS_DELIVERING" : "FAILED_RETRYABLE"),
+				lastEvent: {
+					type: completed ? "RESEARCH_COMPLETED" : "RESEARCH_RETRY_REQUIRED",
+					class: completed ? "INTERNAL" : "ACTION_REQUIRED",
+					at: now(),
+					...(completed
+						? {}
+						: { message: "One or more research lanes failed; retry runs only incomplete lanes." }),
+				},
+			};
+		});
+	}
+
+	private recordTeamResult(
+		jobId: string,
+		phase: "research" | "review",
+		lane: WorkflowTeamLane,
+		result: WorkflowTeamRunResult,
+	): void {
+		this.jobs.update(jobId, (current) => {
+			const runs = current.teamRuns[phase];
+			const updated = replaceLane(runs, lane, (run) =>
+				result.ok
+					? {
+							...run,
+							status: "completed",
+							error: undefined,
+							result: {
+								finalAnswer: result.finalAnswer,
+								finalAccountId: result.finalAccountId,
+								finalProvider: result.finalProvider,
+								completedAt: now(),
+								...(phase === "review" && current.pullRequest !== undefined
+									? { reviewedHeadSha: current.pullRequest.headSha }
+									: {}),
+							},
+						}
+					: { ...run, status: "failed", error: result.error, result: undefined },
+			);
+			return {
+				...current,
+				revision: current.revision + 1,
+				teamRuns: { ...current.teamRuns, [phase]: updated },
+				updatedAt: now(),
+			};
+		});
+	}
+
 	cancel(jobId: string): WorkflowJob {
 		return this.jobs.update(jobId, (current) => {
-			if (TERMINAL_WORKFLOW_STATES.has(current.state)) {
+			if (TERMINAL_WORKFLOW_STATES.has(current.state))
 				throw new WorkflowEngineError(`workflow job ${jobId} is already terminal (${current.state})`);
-			}
 			return withState(current, "CANCELLED");
 		});
 	}
 
 	continue(jobId: string): WorkflowJob {
 		return this.jobs.update(jobId, (current) => {
-			if (!new Set<WorkflowState>(["BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE"]).has(current.state)) {
+			if (!new Set<WorkflowState>(["BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE"]).has(current.state))
 				throw new WorkflowEngineError(`workflow job ${jobId} cannot continue from ${current.state}`);
-			}
-			return {
-				...withState(current, "CREATED"),
-				pendingAction: undefined,
-			};
+			return { ...withState(current, "CREATED"), pendingAction: undefined };
 		});
 	}
 
@@ -149,31 +259,22 @@ export class WorkflowEngine {
 			if (
 				current.state !== "AWAITING_MERGE_AUTHORIZATION" ||
 				current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED"
-			) {
+			)
 				throw new WorkflowEngineError(`workflow job ${input.jobId} is not awaiting merge authorization`);
-			}
 			if (
 				current.pendingAction.expectedHeadSha !== undefined &&
 				input.expectedHeadSha !== current.pendingAction.expectedHeadSha
-			) {
+			)
 				throw new WorkflowEngineError("merge authorization head SHA does not match the pending action");
-			}
-			return {
-				...withState(current, "READY_FOR_MERGE_AUTHORIZATION"),
-				pendingAction: undefined,
-			};
+			return { ...withState(current, "READY_FOR_MERGE_AUTHORIZATION"), pendingAction: undefined };
 		});
 	}
 
 	reject(input: WorkflowDecisionInput): WorkflowJob {
 		return this.jobs.update(input.jobId, (current) => {
-			if (current.pendingAction === undefined) {
+			if (current.pendingAction === undefined)
 				throw new WorkflowEngineError(`workflow job ${input.jobId} has no pending action to reject`);
-			}
-			return {
-				...withState(current, "BLOCKED"),
-				pendingAction: undefined,
-			};
+			return { ...withState(current, "BLOCKED"), pendingAction: undefined };
 		});
 	}
 }

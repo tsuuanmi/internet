@@ -12,11 +12,9 @@ import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
+import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 
-/** Cordis plugin name used by loader diagnostics. */
 export const name = "internet";
-
-/** Services required by this plugin. */
 export const inject = ["tools", "systemPrompt", "commands"] as const;
 
 const INTERNET_CHAT_GUIDANCE = [
@@ -44,16 +42,14 @@ const INTERNET_TEAM_GUIDANCE = [
 const INTERNET_WORKFLOW_GUIDANCE = [
 	"Use internet_workflow as the deterministic control-plane surface for durable coding jobs. /workflow <task> is the normal user entry point and creates the same durable engine job after resolving the current Git repository and exact revision.",
 	"Workflow state, account routing, team lane identities, writer conversation identity, handoff receipts, PR receipt, review cycle, pending action, and compact last event are persisted outside model context.",
-	"The current foundation creates and controls durable jobs; later workflow TODOs attach direct TeamRunner, verbatim handoffs, writer/PR execution, approvals, review loops, and events without restoring the old giant prompt.",
+	"Workflow-owned team execution calls the lower-level team runtime directly with deterministic prompts and per-job lanes; no free-form child agent is needed merely to call internet_team.",
+	"Verbatim handoffs, writer/PR execution, approvals, review-loop driving, events, and merge binding remain separate later workflow phases.",
 ].join(" ");
 
-/** Minimal context surface this plugin uses; injected services are real DSH objects at runtime. */
 export interface PluginContext {
 	tools: { register(tool: ReturnType<typeof defineTool>): void };
 	commands: { register(command: CommandDefinition): void };
-	systemPrompt?: {
-		section(options: { name: string; order: number; text: string }): void;
-	};
+	systemPrompt?: { section(options: { name: string; order: number; text: string }): void };
 	effect(fn: () => (() => void | Promise<void>) | void): void;
 }
 
@@ -66,7 +62,6 @@ function enabledAccounts(config: ReturnType<typeof resolveBrowserConfig>): Set<A
 	);
 }
 
-/** Register browser-backed tools over explicit semantic account identities. */
 export function apply(ctx: PluginContext, rawConfig: unknown): void {
 	const config = resolveBrowserConfig(rawConfig);
 	const manager = new BrowserManager(config);
@@ -82,32 +77,19 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 	if (thinkers.size > 0) {
 		ctx.tools.register(defineInternetChatTool(manager, config.turnTimeoutMs, thinkers));
 		ctx.tools.register(defineInternetResearchTool(manager, config, thinkers));
-		ctx.systemPrompt?.section?.({
-			name: "tool:internet_research",
-			order: 119,
-			text: INTERNET_RESEARCH_GUIDANCE,
-		});
-		ctx.systemPrompt?.section?.({
-			name: "tool:internet_chat",
-			order: 120,
-			text: INTERNET_CHAT_GUIDANCE,
-		});
+		ctx.systemPrompt?.section?.({ name: "tool:internet_research", order: 119, text: INTERNET_RESEARCH_GUIDANCE });
+		ctx.systemPrompt?.section?.({ name: "tool:internet_chat", order: 120, text: INTERNET_CHAT_GUIDANCE });
 	}
 	if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker")) {
-		const workflowEngine = new WorkflowEngine(new WorkflowJobStore(config.dataDir));
+		const workflowEngine = new WorkflowEngine(
+			new WorkflowJobStore(config.dataDir),
+			new BrowserWorkflowTeamRunner(manager, config),
+		);
 		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine }));
 		ctx.tools.register(defineInternetWorkflowTool(workflowEngine));
 		ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
-		ctx.systemPrompt?.section?.({
-			name: "tool:internet_workflow",
-			order: 121,
-			text: INTERNET_WORKFLOW_GUIDANCE,
-		});
-		ctx.systemPrompt?.section?.({
-			name: "tool:internet_team",
-			order: 122,
-			text: INTERNET_TEAM_GUIDANCE,
-		});
+		ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
+		ctx.systemPrompt?.section?.({ name: "tool:internet_team", order: 122, text: INTERNET_TEAM_GUIDANCE });
 	}
 }
 
@@ -141,6 +123,10 @@ export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";
+export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
+export type { WorkflowTeamRunner, WorkflowTeamRunRequest, WorkflowTeamRunResult } from "#internet/workflow/team-runner";
+export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 export type {
 	StartWorkflowInput,
 	WorkflowAccountRouting,
@@ -151,6 +137,7 @@ export type {
 	WorkflowPendingAction,
 	WorkflowPullRequestReceipt,
 	WorkflowState,
+	WorkflowTeamResult,
 	WorkflowTeamRun,
 	WorkflowTeamStatus,
 } from "#internet/workflow/types";

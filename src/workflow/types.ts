@@ -1,4 +1,5 @@
 import type { AccountId } from "#internet/core/accounts";
+import type { WebProvider } from "#internet/core/config";
 
 export const WORKFLOW_STATES = [
 	"CREATED",
@@ -25,11 +26,20 @@ export type WorkflowState = (typeof WORKFLOW_STATES)[number];
 export const WORKFLOW_TEAM_STATUSES = ["pending", "running", "completed", "failed"] as const;
 export type WorkflowTeamStatus = (typeof WORKFLOW_TEAM_STATUSES)[number];
 
+export interface WorkflowTeamResult {
+	readonly finalAnswer: string;
+	readonly finalAccountId: AccountId;
+	readonly finalProvider: WebProvider;
+	readonly completedAt: string;
+	readonly reviewedHeadSha?: string;
+}
+
 export interface WorkflowTeamRun {
 	readonly lane: "A" | "B";
 	readonly status: WorkflowTeamStatus;
 	readonly attempts: number;
 	readonly sessionId: string;
+	readonly result?: WorkflowTeamResult;
 	readonly error?: string;
 }
 

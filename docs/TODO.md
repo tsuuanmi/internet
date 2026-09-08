@@ -153,17 +153,19 @@ The giant multi-phase follow-up prompt has been removed.
 
 ## P3 — Direct team runtime
 
-### 11. Add workflow-owned TeamRunner
+**Status:** implemented as workflow-owned primitives. Automatic end-to-end background driving remains a later orchestration/event concern; research execution itself no longer needs a free-form child agent.
 
-Call the lower-level team runtime directly instead of spawning a free-form DSH child agent merely to call `internet_team`.
+### 11. ✅ Add workflow-owned TeamRunner
 
-### 12. Add deterministic TeamPromptBuilder
+`BrowserWorkflowTeamRunner` calls the lower-level `runTeam` primitive directly with explicit thinker accounts and the configured synthesizer.
 
-Automatically construct research/review tasks from authoritative workflow state.
+### 12. ✅ Add deterministic TeamPromptBuilder
 
-### 13. Generate deterministic team session identities
+`WorkflowTeamPromptBuilder` constructs research/review tasks from authoritative job state. Research A/B receive intentionally different review focuses without an intermediary model rewriting the objective.
 
-Use stable per-job lane identities:
+### 13. ✅ Generate deterministic team session identities
+
+Stable per-job lane identities:
 
 ```text
 <local>:workflow:<job>:research:A
@@ -173,15 +175,15 @@ Use stable per-job lane identities:
 <local>:workflow:<job>:writer
 ```
 
-Review cycle and exact PR head SHA belong in authoritative workflow state and each review prompt, not in the reviewer conversation identity. This lets reviewer A/B independently retain their own context across remediation cycles of the same PR while remaining isolated from research and writer conversations.
+The lower-level team primitive now accepts this exact session identity; `internet_team` keeps its own `<agent>:team:<name>` namespace construction at the tool boundary. Review cycle and exact PR head SHA belong in authoritative workflow state and each review prompt, not in the reviewer conversation identity.
 
-### 14. Support two concurrent logical team runs
+### 14. ✅ Support two concurrent logical team runs
 
-Team A and B may be active simultaneously even if underlying same-account browser turns are serialized by the scheduler.
+`WorkflowEngine.runResearch()` starts incomplete A/B lanes together. Underlying same-account browser turns remain safely serialized by account schedulers while independent account work can proceed normally.
 
-### 15. Persist team completion and retry state
+### 15. ✅ Persist team completion and retry state
 
-A failed B should be retryable without restarting completed A or asking Local to reconstruct state.
+Each lane persists status, attempts, error, exact final result, completion timestamp, and later review-head binding. A failed lane is retryable without rerunning a completed sibling lane or asking Local to reconstruct state.
 
 ## P4 — Verbatim handoffs
 

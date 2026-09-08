@@ -57,9 +57,7 @@ function projectTranscript(transcript: readonly TeamTurn[], maxChars: number): T
 			remaining -= text.length;
 			continue;
 		}
-		if (remaining > 0) {
-			retained.unshift({ ...turn, text: text.slice(-remaining).join(""), textTruncation: "prefix" });
-		}
+		if (remaining > 0) retained.unshift({ ...turn, text: text.slice(-remaining).join(""), textTruncation: "prefix" });
 		transcriptTruncated = true;
 		break;
 	}
@@ -77,11 +75,7 @@ export function defineInternetTeamTool(
 		description:
 			"Run a multi-model debate between authenticated thinker accounts. Final synthesis uses the configured semantic account independently of speaking order. Account browsers are hidden by default; set visible=true to show them.",
 		parameters: {
-			task: {
-				type: "string",
-				required: true,
-				description: "The task or question for the team to debate.",
-			},
+			task: { type: "string", required: true, description: "The task or question for the team to debate." },
 			team: {
 				type: "string",
 				description: "Optional team name; different names get separate durable debate threads.",
@@ -165,8 +159,8 @@ export function defineInternetTeamTool(
 					error: `internet_team synthesizer ${config.teamSynthesizer} must be one of the selected accounts.`,
 				};
 			}
-			const sessionId = exec.agent?.id;
-			if (sessionId === undefined) {
+			const ownerSessionId = exec.agent?.id;
+			if (ownerSessionId === undefined) {
 				return {
 					isError: true,
 					error: "internet_team requires an agent-backed DSH session to own the durable team conversations.",
@@ -175,8 +169,7 @@ export function defineInternetTeamTool(
 			try {
 				const result = await runTeam((accountId, request) => manager.chat(accountId, request), {
 					task: input.task,
-					sessionId: String(sessionId),
-					teamName: input.team,
+					sessionId: `${String(ownerSessionId)}:team:${input.team ?? "default"}`,
 					rounds,
 					synthesize: input.synthesize ?? config.teamSynthesis,
 					synthesizer: config.teamSynthesizer,
@@ -201,9 +194,8 @@ export function defineInternetTeamTool(
 					...(transcript === undefined ? {} : transcript),
 				};
 			} catch (error) {
-				if (isInternetError(error)) {
+				if (isInternetError(error))
 					return { isError: true, error: `internet_team failed (${error.kind}): ${error.message}` };
-				}
 				throw error;
 			}
 		},
