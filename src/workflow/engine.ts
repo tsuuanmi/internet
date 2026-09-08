@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { normalizeGitHubRepository } from "#internet/workflow/approval-policy";
 import { createWorkflowControlMessage, type WorkflowControlMessage } from "#internet/workflow/control";
 import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
@@ -101,8 +102,10 @@ function samePullRequestIdentity(
 	a: NonNullable<WorkflowJob["pullRequest"]>,
 	b: NonNullable<WorkflowJob["pullRequest"]>,
 ): boolean {
+	const repository = normalizeGitHubRepository(a.repository);
 	return (
-		a.repository === b.repository &&
+		repository !== undefined &&
+		repository === normalizeGitHubRepository(b.repository) &&
 		a.number === b.number &&
 		a.url === b.url &&
 		a.base === b.base &&

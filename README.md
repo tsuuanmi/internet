@@ -163,13 +163,20 @@ creates or updates exactly one pull request, and returns either a machine-valida
 The writer is never authorized to merge during this phase. A transient writer-control retry reuses the same
 conversation and does not redeliver handoffs that already have durable delivery receipts.
 
-`/workflow` itself is currently the admission/thin-adapter surface. Scoped Website confirmation handling
-is now fail-closed: only a recognized GitHub confirmation that matches the active writer session, repository,
-workflow state, allowlisted action, and expected workflow branch/PR identity can be auto-confirmed. Unknown or
-ambiguous confirmations become `UNKNOWN_CONFIRMATION`; merge is never auto-authorized by this policy.
-Automatic PR review/remediation, compact Local events, and the explicit head-SHA-bound merge gate remain later
-phases. The workflow is registered only when both thinker accounts are enabled; the writer path additionally
-requires a ready `chatgpt-writer` account when implementation is driven.
+After the PR opens, the engine runs two independent review lanes against the actual PR and exact persisted
+head SHA. Each reviewer must return one strict JSON result containing `PASS` or `CHANGES_REQUIRED` plus the exact
+`reviewedHeadSha`; a malformed or wrong-head result fails that lane instead of being guessed through. Review A
+and B are stored and delivered verbatim to the same persistent writer conversation. If both pass the same head,
+the job enters `READY_FOR_MERGE_AUTHORIZATION`. Otherwise the engine sends a separate `APPLY_REVIEWS` control,
+requires the writer to update that same PR with a new head SHA, resets only the review-run state, and reviews the
+new head again. The default review limit is three cycles; exhaustion becomes `REVIEW_LIMIT_REACHED`.
+
+Scoped Website confirmation handling remains fail-closed throughout implementation and remediation: only a
+recognized GitHub confirmation matching the active writer session, repository, workflow state, allowlisted
+action, and expected branch/PR identity can be auto-confirmed. Unknown or ambiguous confirmations become
+`UNKNOWN_CONFIRMATION`; merge is never auto-authorized. Compact Local event injection and the explicit
+head-SHA-bound merge gate remain later phases. The workflow is registered only when both thinker accounts are
+enabled; the writer path additionally requires a ready `chatgpt-writer` account when implementation is driven.
 
 ## Install
 

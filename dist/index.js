@@ -40,7 +40,7 @@ const INTERNET_WORKFLOW_GUIDANCE = [
     "Workflow-owned team execution calls the lower-level team runtime directly with deterministic prompts and per-job lanes; no free-form child agent is needed merely to call internet_team.",
     "Research finals are materialized as exact SHA-256-bound durable handoffs. Data-plane payloads are separate from trusted control messages, and START_IMPLEMENTATION is gated on delivery of both research handoffs.",
     "The workflow writer is the separate chatgpt-writer account. It receives both research finals verbatim in one persistent per-job conversation, then a separate trusted START_IMPLEMENTATION control. The writer must open/update one PR and return a compact machine-validated PR receipt; merge is never part of this phase.",
-    "Scoped Website confirmation classification is fail-closed and auto-confirms only exact in-scope writer actions; merge is explicitly excluded. Review-loop driving, Local events, and merge binding remain later workflow phases.",
+    "Scoped Website confirmation classification is fail-closed and auto-confirms only exact in-scope writer actions; merge is explicitly excluded. Actual PR review now runs two independent exact-head reviewer lanes, delivers both finals verbatim to the persistent writer, applies remediation to the same PR, and re-reviews changed heads for up to three cycles. Local event injection and explicit merge binding remain later workflow phases.",
 ].join(" ");
 function enabledAccounts(config) {
     return new Set(ACCOUNT_IDS.filter((accountId) => {
@@ -85,6 +85,7 @@ export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 export { TERMINAL_WORKFLOW_STATES, WORKFLOW_STATES, WORKFLOW_TEAM_STATUSES } from "#internet/workflow/types";

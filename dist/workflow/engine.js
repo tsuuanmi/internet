@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { normalizeGitHubRepository } from "#internet/workflow/approval-policy";
 import { createWorkflowControlMessage } from "#internet/workflow/control";
 import { parseWorkflowReviewResult } from "#internet/workflow/review-result";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
@@ -54,7 +55,9 @@ function reviewReceipts(job) {
     return job.handoffReceipts.filter((item) => item.recipient === job.accountRouting.writerAccount && item.source.startsWith(prefix));
 }
 function samePullRequestIdentity(a, b) {
-    return (a.repository === b.repository &&
+    const repository = normalizeGitHubRepository(a.repository);
+    return (repository !== undefined &&
+        repository === normalizeGitHubRepository(b.repository) &&
         a.number === b.number &&
         a.url === b.url &&
         a.base === b.base &&
