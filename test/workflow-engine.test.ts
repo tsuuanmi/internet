@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WorkflowEngine } from "#internet/workflow/engine";
+import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
+import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import type { WorkflowTeamRunner, WorkflowTeamRunRequest } from "#internet/workflow/team-runner";
 
 const roots: string[] = [];
@@ -13,7 +15,13 @@ function fixture(runner?: WorkflowTeamRunner) {
 	const root = mkdtempSync(join(tmpdir(), "internet-workflow-"));
 	roots.push(root);
 	const store = new WorkflowJobStore(root);
-	return { root, store, engine: new WorkflowEngine(store, runner) };
+	const handoffs = new WorkflowHandoffStore(root);
+	return {
+		root,
+		store,
+		handoffs,
+		engine: new WorkflowEngine(store, runner, new WorkflowTeamPromptBuilder(), handoffs),
+	};
 }
 
 function start(workflow: WorkflowEngine) {
@@ -87,9 +95,44 @@ describe("WorkflowEngine", () => {
 		const completed = await running;
 		expect(completed.state).toBe("RESEARCH_HANDOFFS_DELIVERING");
 		expect(completed.teamRuns.research.map((run) => run.status)).toEqual(["completed", "completed"]);
-		expect(completed.teamRuns.research.every((run) => run.result?.finalAnswer.startsWith("answer:") === true)).toBe(
-			true,
+		expect(completed.teamRuns.research.every((run) => run.result?.finalAnswer.startsWith("answer:") === true)).toBe(true);
+	});
+
+	it("materializes exact research finals and blocks START_IMPLEMENTATION until both are delivered", async () => {
+		const runner: WorkflowTeamRunner = {
+			async run(request) {
+				const lane = request.sessionId.endsWith(":A") ? "A" : "B";
+				return {
+					ok: true,
+					finalAnswer: `${lane} exact\n\n  payload ✅\n`,
+					finalAccountId: "chatgpt-thinker",
+					finalProvider: "chatgpt-web",
+				};
+			},
+		};
+		const { engine: workflow, handoffs } = fixture(runner);
+		const job = start(workflow);
+		await workflow.runResearch(job.jobId);
+		const prepared = workflow.prepareResearchHandoffs(job.jobId);
+		expect(prepared.map((item) => [item.source, item.sequence, item.payload])).toEqual([
+			["research:A", 1, "A exact\n\n  payload ✅\n"],
+			["research:B", 2, "B exact\n\n  payload ✅\n"],
+		]);
+		expect(workflow.prepareResearchHandoffs(job.jobId).map((item) => item.handoffId)).toEqual(
+			prepared.map((item) => item.handoffId),
 		);
+		expect(() => workflow.startImplementationControl(job.jobId)).toThrow(/both research handoffs/u);
+
+		workflow.markHandoffDelivered(job.jobId, prepared[0]!.handoffId, prepared[0]!.payloadHash);
+		expect(() => workflow.startImplementationControl(job.jobId)).toThrow(/both research handoffs/u);
+		workflow.markHandoffDelivered(job.jobId, prepared[1]!.handoffId, prepared[1]!.payloadHash);
+
+		for (const item of prepared) expect(handoffs.get(job.jobId, item.handoffId)?.payload).toBe(item.payload);
+		const step = workflow.startImplementationControl(job.jobId);
+		expect(step.job.state).toBe("WRITER_RUNNING");
+		expect(step.control).toMatchObject({ kind: "START_IMPLEMENTATION", jobId: job.jobId });
+		expect(workflow.status(job.jobId).handoffReceipts.every((item) => item.status === "delivered")).toBe(true);
+		expect(workflow.startImplementationControl(job.jobId).job.state).toBe("WRITER_RUNNING");
 	});
 
 	it("retries only the failed research lane", async () => {
