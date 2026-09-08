@@ -13,8 +13,19 @@ function project(job: WorkflowJob) {
 		repository: job.repository,
 		baseRevision: job.baseRevision,
 		reviewCycle: job.reviewCycle,
-		...(job.pullRequest === undefined ? {} : { pullRequest: job.pullRequest }),
-		...(job.pendingAction === undefined ? {} : { pendingAction: job.pendingAction }),
+		...(job.pullRequest === undefined
+			? {}
+			: {
+					prNumber: job.pullRequest.number,
+					prUrl: job.pullRequest.url,
+					prHeadSha: job.pullRequest.headSha,
+				}),
+		...(job.pendingAction === undefined
+			? {}
+			: {
+					pendingAction: job.pendingAction.kind,
+					pendingMessage: job.pendingAction.message,
+				}),
 		updatedAt: job.updatedAt,
 	};
 }
@@ -41,7 +52,7 @@ export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<t
 		output: {
 			schema: {
 				type: "object",
-				additionalProperties: true,
+				additionalProperties: false,
 				properties: {
 					ok: { type: "boolean", required: true },
 					operation: { type: "string", required: true },
@@ -50,6 +61,11 @@ export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<t
 					repository: { type: "string" },
 					baseRevision: { type: "string" },
 					reviewCycle: { type: "number" },
+					prNumber: { type: "number" },
+					prUrl: { type: "string" },
+					prHeadSha: { type: "string" },
+					pendingAction: { type: "string" },
+					pendingMessage: { type: "string" },
 					updatedAt: { type: "string" },
 					message: { type: "string" },
 				},
@@ -81,6 +97,7 @@ export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<t
 					return { ok: true, operation, ...project(job) };
 				}
 				if (typeof args.jobId !== "string") return { ok: false, operation, message: `${operation} requires jobId` };
+				const expectedHeadSha = typeof args.expectedHeadSha === "string" ? args.expectedHeadSha : undefined;
 				const job =
 					operation === "status"
 						? engine.status(args.jobId)
@@ -89,8 +106,8 @@ export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<t
 							: operation === "continue"
 								? engine.continue(args.jobId)
 								: operation === "approve"
-									? engine.approve({ jobId: args.jobId, expectedHeadSha: typeof args.expectedHeadSha === "string" ? args.expectedHeadSha : undefined })
-									: engine.reject({ jobId: args.jobId, expectedHeadSha: typeof args.expectedHeadSha === "string" ? args.expectedHeadSha : undefined });
+									? engine.approve({ jobId: args.jobId, expectedHeadSha })
+									: engine.reject({ jobId: args.jobId, expectedHeadSha });
 				return { ok: true, operation, ...project(job) };
 			} catch (error) {
 				if (error instanceof WorkflowEngineError) return { ok: false, operation, message: error.message };
