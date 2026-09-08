@@ -81,7 +81,8 @@ export function classifyWorkflowConfirmation(
 	context: WorkflowApprovalContext,
 	observation: WorkflowConfirmationObservation,
 ): WorkflowConfirmationDecision {
-	if (context.accountId !== "chatgpt-writer") return { kind: "unknown", reason: "confirmation is not on the writer account" };
+	if (context.accountId !== "chatgpt-writer")
+		return { kind: "unknown", reason: "confirmation is not on the writer account" };
 	if (context.currentSessionId !== context.writerSessionId) {
 		return { kind: "unknown", reason: "confirmation session does not match the active writer conversation" };
 	}
@@ -107,7 +108,8 @@ export function classifyWorkflowConfirmation(
 		return { kind: "unknown", reason: `confirmation action is not permitted from ${context.state}` };
 	}
 	if (branchBound(observation.action)) {
-		if (observation.branch === undefined) return { kind: "unknown", reason: "confirmation branch identity is missing" };
+		if (observation.branch === undefined)
+			return { kind: "unknown", reason: "confirmation branch identity is missing" };
 		if (observation.branch !== expectedBranch(context)) {
 			return { kind: "unknown", reason: "confirmation branch does not match the workflow branch" };
 		}

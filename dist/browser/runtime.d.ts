@@ -2,6 +2,7 @@ import { type AccountState, type ReauthDiagnostic } from "#internet/browser/acco
 import { type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { type AccountId } from "#internet/core/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
+import type { WorkflowApprovalContext } from "#internet/workflow/approval-policy";
 export interface ChatRequest {
     prompt: string;
     /** Durable owner key: the current DSH agent/session ID. */
@@ -12,6 +13,8 @@ export interface ChatRequest {
     research?: boolean;
     /** Override the normal-turn completion deadline for a long research run. */
     timeoutMs?: number;
+    /** Optional fail-closed Website confirmation policy for the workflow writer turn. */
+    confirmation?: WorkflowApprovalContext;
     signal?: AbortSignal;
 }
 export interface ChatResult {

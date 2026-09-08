@@ -107,7 +107,8 @@ async function exactAllowButton(root: Locator): Promise<Locator> {
 		if (!(await button.isVisible().catch(() => false))) continue;
 		if (ALLOW_BUTTON_NAME.test((await button.innerText().catch(() => "")).trim())) matches.push(button);
 	}
-	if (matches.length !== 1) throw new ChatGptUnknownConfirmationError("recognized confirmation does not expose one exact Allow action");
+	if (matches.length !== 1)
+		throw new ChatGptUnknownConfirmationError("recognized confirmation does not expose one exact Allow action");
 	return matches[0]!;
 }
 

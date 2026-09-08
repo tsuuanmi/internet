@@ -23,6 +23,12 @@ export type WorkflowWriterResult = {
 } | {
     readonly status: "BLOCKED";
     readonly message: string;
+} | {
+    readonly status: "UNKNOWN_CONFIRMATION";
+    readonly message: string;
+} | {
+    readonly status: "MERGE_CONFIRMATION_BLOCKED";
+    readonly message: string;
 };
 export declare function parseWorkflowWriterResult(text: string): WorkflowWriterResult;
 type WriterBrowser = Pick<BrowserManager, "chat">;

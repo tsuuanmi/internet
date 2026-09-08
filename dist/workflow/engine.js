@@ -288,10 +288,37 @@ export class WorkflowEngine {
             control: step.control,
             signal,
         });
+        if (result.status === "UNKNOWN_CONFIRMATION") {
+            return this.jobs.update(jobId, (current) => ({
+                ...withState(current, "UNKNOWN_CONFIRMATION"),
+                pendingAction: {
+                    kind: "UNKNOWN_CONFIRMATION",
+                    message: result.message,
+                    resumeState: "WRITER_RUNNING",
+                },
+                lastEvent: { type: "UNKNOWN_CONFIRMATION", class: "ACTION_REQUIRED", at: now(), message: result.message },
+            }));
+        }
+        if (result.status === "MERGE_CONFIRMATION_BLOCKED") {
+            return this.jobs.update(jobId, (current) => ({
+                ...withState(current, "BLOCKED"),
+                pendingAction: {
+                    kind: "WRITER_BLOCKED",
+                    message: result.message,
+                    resumeState: "WRITER_RUNNING",
+                },
+                lastEvent: {
+                    type: "MERGE_CONFIRMATION_BLOCKED",
+                    class: "ACTION_REQUIRED",
+                    at: now(),
+                    message: result.message,
+                },
+            }));
+        }
         if (result.status === "BLOCKED") {
             return this.jobs.update(jobId, (current) => ({
                 ...withState(current, "BLOCKED"),
-                pendingAction: { kind: "WRITER_BLOCKED", message: result.message },
+                pendingAction: { kind: "WRITER_BLOCKED", message: result.message, resumeState: "WRITER_RUNNING" },
                 lastEvent: { type: "WRITER_BLOCKED", class: "ACTION_REQUIRED", at: now(), message: result.message },
             }));
         }
@@ -341,7 +368,7 @@ export class WorkflowEngine {
             if (!new Set(["BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE"]).has(current.state)) {
                 throw new WorkflowEngineError(`workflow job ${jobId} cannot continue from ${current.state}`);
             }
-            return { ...withState(current, "CREATED"), pendingAction: undefined };
+            return { ...withState(current, current.pendingAction?.resumeState ?? "CREATED"), pendingAction: undefined };
         });
     }
     approve(input) {

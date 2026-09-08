@@ -127,7 +127,11 @@ describe("workflow writer path", () => {
 		const blocked = await engine.runWriterImplementation(job.jobId);
 		expect(blocked.state).toBe("BLOCKED");
 		expect(blocked.pullRequest).toBeUndefined();
-		expect(blocked.pendingAction).toEqual({ kind: "WRITER_BLOCKED", message: "Base revision no longer matches." });
+		expect(blocked.pendingAction).toEqual({
+			kind: "WRITER_BLOCKED",
+			message: "Base revision no longer matches.",
+			resumeState: "WRITER_RUNNING",
+		});
 	});
 });
 

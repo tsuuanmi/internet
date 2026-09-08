@@ -21,6 +21,7 @@ import {
 	chatgptSnapshot,
 	chatgptWaitAuthenticationAssessment,
 } from "#internet/browser/chatgpt";
+import { chatgptHandleWorkflowConfirmation } from "#internet/browser/chatgpt-confirmation";
 import {
 	chatgptDeepResearchSnapshot,
 	chatgptEnableDeepResearch,
@@ -54,6 +55,7 @@ import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/cor
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
+import type { WorkflowApprovalContext } from "#internet/workflow/approval-policy";
 
 export interface ChatRequest {
 	prompt: string;
@@ -65,6 +67,8 @@ export interface ChatRequest {
 	research?: boolean;
 	/** Override the normal-turn completion deadline for a long research run. */
 	timeoutMs?: number;
+	/** Optional fail-closed Website confirmation policy for the workflow writer turn. */
+	confirmation?: WorkflowApprovalContext;
 	signal?: AbortSignal;
 }
 
@@ -918,7 +922,12 @@ export class BrowserManager {
 					() =>
 						request.research === true
 							? chatgptDeepResearchSnapshot(page!, previousResearchText)
-							: chatgptSnapshot(page!, previousTurnText),
+							: (async () => {
+									if (request.confirmation !== undefined) {
+										await chatgptHandleWorkflowConfirmation(page!, request.confirmation);
+									}
+									return chatgptSnapshot(page!, previousTurnText);
+								})(),
 					waitOptions,
 				);
 			} else {

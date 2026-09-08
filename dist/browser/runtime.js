@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { chromium } from "patchright-core";
 import { AccountStore, capturePortableStorageState, captureProfileBootstrapState, preserveIndexedDb, } from "#internet/browser/accounts";
 import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText, chatgptSelectThinkingLevel, chatgptSend, chatgptSnapshot, chatgptWaitAuthenticationAssessment, } from "#internet/browser/chatgpt";
+import { chatgptHandleWorkflowConfirmation } from "#internet/browser/chatgpt-confirmation";
 import { chatgptDeepResearchSnapshot, chatgptEnableDeepResearch, chatgptSendDeepResearch, } from "#internet/browser/chatgpt-research";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
@@ -700,7 +701,12 @@ export class BrowserManager {
                 conversationId = binding.conversationId;
                 text = await waitForStableCompletion(() => request.research === true
                     ? chatgptDeepResearchSnapshot(page, previousResearchText)
-                    : chatgptSnapshot(page, previousTurnText), waitOptions);
+                    : (async () => {
+                        if (request.confirmation !== undefined) {
+                            await chatgptHandleWorkflowConfirmation(page, request.confirmation);
+                        }
+                        return chatgptSnapshot(page, previousTurnText);
+                    })(), waitOptions);
             }
             else {
                 const previousTurnText = await geminiLastResponseText(page);

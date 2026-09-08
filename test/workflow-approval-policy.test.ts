@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { parseChatGptConfirmationText } from "#internet/browser/chatgpt-confirmation";
 import {
 	classifyWorkflowConfirmation,
 	normalizeGitHubRepository,
 	type WorkflowApprovalContext,
 	workflowWriterBranch,
 } from "#internet/workflow/approval-policy";
-import { parseChatGptConfirmationText } from "#internet/browser/chatgpt-confirmation";
 
 const jobId = "0123456789abcdef0123456789abcdef";
 const writerSession = `agent:workflow:${jobId}:writer`;
@@ -142,7 +142,11 @@ describe("ChatGPT confirmation text parser", () => {
 
 	it("does not guess ambiguous or unsupported destructive actions", () => {
 		expect(parseChatGptConfirmationText("GitHub Allow access").action).toBeUndefined();
-		expect(parseChatGptConfirmationText("GitHub Delete file Repository: example/repo Branch: x").action).toBeUndefined();
-		expect(parseChatGptConfirmationText("GitHub Create branch and push branch Repository: example/repo Branch: x").action).toBeUndefined();
+		expect(
+			parseChatGptConfirmationText("GitHub Delete file Repository: example/repo Branch: x").action,
+		).toBeUndefined();
+		expect(
+			parseChatGptConfirmationText("GitHub Create branch and push branch Repository: example/repo Branch: x").action,
+		).toBeUndefined();
 	});
 });
