@@ -1,4 +1,4 @@
-name: P7 apply
+name: P7 harden
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  harden:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -18,8 +18,6 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: python3 scripts/p7-apply.py
-      - run: python3 scripts/p7-fix.py
       - run: python3 scripts/p7-hardening.py
       - run: npm ci
       - run: npx biome check --write src test scripts
@@ -27,7 +25,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run verify-package
-      - name: Commit P7 implementation
+      - name: Commit P7 hardening
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
