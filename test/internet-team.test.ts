@@ -54,7 +54,7 @@ describe("parseTeamArgs", () => {
 	});
 
 	it("rejects provider names, duplicates, and too-short account lists", () => {
-		expect(() => parseTeamArgs({ task: "T", accounts: ["chatgpt-thinker"] })).toThrow(/at least two/);
+		expect(() => parseTeamArgs({ task: "T", accounts: ["chatgpt-thinker"] })).toThrow(/at least 2 account/);
 		expect(() => parseTeamArgs({ task: "T", accounts: ["chatgpt-web", "gemini-thinker"] })).toThrow(/must be one of/);
 		expect(() => parseTeamArgs({ task: "T", accounts: ["chatgpt-thinker", "chatgpt-thinker"] })).toThrow(
 			/duplicates/,
