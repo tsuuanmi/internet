@@ -5,8 +5,6 @@ import {
 	accountHasCapability,
 	accountsForProvider,
 	accountsWithCapabilities,
-	DEFAULT_ACCOUNT_BY_PROVIDER,
-	defaultAccountIdForProvider,
 	getAccountDefinition,
 	isAccountId,
 } from "#internet/core/accounts";
@@ -20,15 +18,6 @@ describe("account identity catalog", () => {
 		expect(getAccountDefinition("chatgpt-thinker").provider).toBe("chatgpt-web");
 		expect(getAccountDefinition("chatgpt-writer").provider).toBe("chatgpt-web");
 		expect(getAccountDefinition("gemini-thinker").provider).toBe("gemini-web");
-	});
-
-	it("keeps legacy provider-keyed calls on thinker accounts", () => {
-		expect(DEFAULT_ACCOUNT_BY_PROVIDER).toEqual({
-			"chatgpt-web": "chatgpt-thinker",
-			"gemini-web": "gemini-thinker",
-		});
-		expect(defaultAccountIdForProvider("chatgpt-web")).toBe("chatgpt-thinker");
-		expect(defaultAccountIdForProvider("gemini-web")).toBe("gemini-thinker");
 		expect(accountsForProvider("chatgpt-web").map((account) => account.accountId)).toEqual([
 			"chatgpt-thinker",
 			"chatgpt-writer",
