@@ -16,9 +16,7 @@ try {
 		encoding: "utf8",
 	});
 	const packed = JSON.parse(output);
-	if (!Array.isArray(packed) || typeof packed[0]?.filename !== "string") {
-		throw new Error("npm pack did not report a tarball filename");
-	}
+	if (!Array.isArray(packed) || typeof packed[0]?.filename !== "string") throw new Error("npm pack did not report a tarball filename");
 	tarball = join(packageRoot, packed[0].filename);
 	const consumer = join(temporaryRoot, "consumer");
 	mkdirSync(consumer);
@@ -59,14 +57,18 @@ try {
 		"dist/tools/internet-chat.d.ts",
 		"dist/tools/internet-team.js",
 		"dist/tools/internet-team.d.ts",
+		"dist/tools/internet-workflow.js",
+		"dist/tools/internet-workflow.d.ts",
+		"dist/workflow/engine.js",
+		"dist/workflow/engine.d.ts",
+		"dist/workflow/job-store.js",
+		"dist/workflow/job-store.d.ts",
 	]) {
 		if (!existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact missing: ${artifact}`);
 	}
 	if (process.platform === "linux" && process.arch === "x64") {
 		const runtime = join(installed, "vendor", "xvfb", "linux-x64-gnu");
-		for (const executable of ["Xvfb", "x11vnc", "xkbcomp"]) {
-			accessSync(join(runtime, "bin", executable), constants.X_OK);
-		}
+		for (const executable of ["Xvfb", "x11vnc", "xkbcomp"]) accessSync(join(runtime, "bin", executable), constants.X_OK);
 		execFileSync(join(runtime, "bin", "x11vnc"), ["-version"], {
 			env: { ...process.env, LD_LIBRARY_PATH: join(runtime, "lib"), XKB_CONFIG_ROOT: join(runtime, "share", "X11", "xkb") },
 			stdio: "pipe",
@@ -76,9 +78,9 @@ try {
 	const scenarios = [
 		{
 			config: {},
-			tools: ["internet_browser", "internet_chat", "internet_research", "internet_team"],
+			tools: ["internet_browser", "internet_chat", "internet_research", "internet_workflow", "internet_team"],
 			commands: ["internet", "workflow"],
-			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_team"],
+			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_workflow", "tool:internet_team"],
 		},
 		{
 			config: { enableChatgpt: false },
@@ -118,7 +120,7 @@ try {
 		assert.deepEqual(sections, scenario.sections);
 		await Promise.all(cleanups.map((cleanup) => cleanup?.()));
 	}
-	console.log("verified isolated packed plugin registration and browser client artifacts");
+	console.log("verified isolated packed plugin registration and workflow/browser client artifacts");
 } finally {
 	if (tarball !== undefined) rmSync(tarball, { force: true });
 	rmSync(temporaryRoot, { recursive: true, force: true });
