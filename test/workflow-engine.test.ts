@@ -1,4 +1,5 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,7 +16,6 @@ function engine() {
 }
 
 afterEach(async () => {
-	const { rm } = await import("node:fs/promises");
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -47,7 +47,7 @@ describe("WorkflowEngine", () => {
 		const path = join(root, "workflows", "jobs", `${job.jobId}.json`);
 		expect(existsSync(path)).toBe(true);
 		expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ jobId: job.jobId, version: 1, revision: 1 });
-		if (process.platform !== "win32") expect((await import("node:fs")).statSync(path).mode & 0o777).toBe(0o600);
+		if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
 	});
 
 	it("persists cancellation and increments the durable revision", () => {
@@ -65,7 +65,7 @@ describe("WorkflowEngine", () => {
 		expect(() => workflow.cancel(created.jobId)).toThrow(/already terminal/u);
 	});
 
-	it("rejects malformed or permission-weakened durable state", () => {
+	it("rejects permission-weakened durable state", () => {
 		const { store, engine: workflow } = engine();
 		const created = workflow.start({
 			objective: "Refactor it",
