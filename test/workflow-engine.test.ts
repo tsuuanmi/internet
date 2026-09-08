@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
-import type { WorkflowTeamRunRequest, WorkflowTeamRunner } from "#internet/workflow/team-runner";
+import type { WorkflowTeamRunner, WorkflowTeamRunRequest } from "#internet/workflow/team-runner";
 
 const roots: string[] = [];
 
@@ -81,16 +81,15 @@ describe("WorkflowEngine", () => {
 		const job = start(workflow);
 		const running = workflow.runResearch(job.jobId);
 		await Promise.resolve();
-		expect(started).toEqual([
-			`agent-7:workflow:${job.jobId}:research:A`,
-			`agent-7:workflow:${job.jobId}:research:B`,
-		]);
+		expect(started).toEqual([`agent-7:workflow:${job.jobId}:research:A`, `agent-7:workflow:${job.jobId}:research:B`]);
 		expect(workflow.status(job.jobId).teamRuns.research.map((run) => run.status)).toEqual(["running", "running"]);
 		for (const release of pending.values()) release();
 		const completed = await running;
 		expect(completed.state).toBe("RESEARCH_HANDOFFS_DELIVERING");
 		expect(completed.teamRuns.research.map((run) => run.status)).toEqual(["completed", "completed"]);
-		expect(completed.teamRuns.research.every((run) => run.result?.finalAnswer.startsWith("answer:") === true)).toBe(true);
+		expect(completed.teamRuns.research.every((run) => run.result?.finalAnswer.startsWith("answer:") === true)).toBe(
+			true,
+		);
 	});
 
 	it("retries only the failed research lane", async () => {
@@ -100,7 +99,12 @@ describe("WorkflowEngine", () => {
 			async run(request) {
 				calls.push(request.sessionId);
 				if (request.sessionId.endsWith(":B") && laneBFailures-- > 0) {
-					return { ok: false, error: "temporary failure", failedAccountId: "gemini-thinker", failedProvider: "gemini-web" };
+					return {
+						ok: false,
+						error: "temporary failure",
+						failedAccountId: "gemini-thinker",
+						failedProvider: "gemini-web",
+					};
 				}
 				return { ok: true, finalAnswer: "done", finalAccountId: "chatgpt-thinker", finalProvider: "chatgpt-web" };
 			},

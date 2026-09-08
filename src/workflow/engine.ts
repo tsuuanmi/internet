@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
-import { WorkflowTeamPromptBuilder, type WorkflowTeamLane } from "#internet/workflow/team-prompt-builder";
+import { type WorkflowTeamLane, WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import type { WorkflowTeamRunner, WorkflowTeamRunResult } from "#internet/workflow/team-runner";
 import {
 	type StartWorkflowInput,
@@ -85,12 +85,32 @@ export class WorkflowEngine {
 			state: "CREATED",
 			teamRuns: {
 				research: [
-					{ lane: "A", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "research", "A") },
-					{ lane: "B", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "research", "B") },
+					{
+						lane: "A",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "research", "A"),
+					},
+					{
+						lane: "B",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "research", "B"),
+					},
 				],
 				review: [
-					{ lane: "A", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "review", "A") },
-					{ lane: "B", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "review", "B") },
+					{
+						lane: "A",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "review", "A"),
+					},
+					{
+						lane: "B",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "review", "B"),
+					},
 				],
 			},
 			accountRouting: {
@@ -175,7 +195,9 @@ export class WorkflowEngine {
 					type: completed ? "RESEARCH_COMPLETED" : "RESEARCH_RETRY_REQUIRED",
 					class: completed ? "INTERNAL" : "ACTION_REQUIRED",
 					at: now(),
-					...(completed ? {} : { message: "One or more research lanes failed; retry runs only incomplete lanes." }),
+					...(completed
+						? {}
+						: { message: "One or more research lanes failed; retry runs only incomplete lanes." }),
 				},
 			};
 		});
@@ -234,9 +256,15 @@ export class WorkflowEngine {
 
 	approve(input: WorkflowDecisionInput): WorkflowJob {
 		return this.jobs.update(input.jobId, (current) => {
-			if (current.state !== "AWAITING_MERGE_AUTHORIZATION" || current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED")
+			if (
+				current.state !== "AWAITING_MERGE_AUTHORIZATION" ||
+				current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED"
+			)
 				throw new WorkflowEngineError(`workflow job ${input.jobId} is not awaiting merge authorization`);
-			if (current.pendingAction.expectedHeadSha !== undefined && input.expectedHeadSha !== current.pendingAction.expectedHeadSha)
+			if (
+				current.pendingAction.expectedHeadSha !== undefined &&
+				input.expectedHeadSha !== current.pendingAction.expectedHeadSha
+			)
 				throw new WorkflowEngineError("merge authorization head SHA does not match the pending action");
 			return { ...withState(current, "READY_FOR_MERGE_AUTHORIZATION"), pendingAction: undefined };
 		});

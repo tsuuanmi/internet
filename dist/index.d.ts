@@ -1,10 +1,7 @@
 import type { CommandDefinition } from "@deepseek-ai/dsh-commands";
 import type { defineTool } from "@deepseek-ai/dsh-tools";
-/** Cordis plugin name used by loader diagnostics. */
 export declare const name = "internet";
-/** Services required by this plugin. */
 export declare const inject: readonly ["tools", "systemPrompt", "commands"];
-/** Minimal context surface this plugin uses; injected services are real DSH objects at runtime. */
 export interface PluginContext {
     tools: {
         register(tool: ReturnType<typeof defineTool>): void;
@@ -21,7 +18,6 @@ export interface PluginContext {
     };
     effect(fn: () => (() => void | Promise<void>) | void): void;
 }
-/** Register browser-backed tools over explicit semantic account identities. */
 export declare function apply(ctx: PluginContext, rawConfig: unknown): void;
 export { BrowserManager } from "#internet/browser/runtime";
 export type { AccountCapability, AccountDefinition, AccountId, AccountRole } from "#internet/core/accounts";
@@ -36,6 +32,10 @@ export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
-export type { StartWorkflowInput, WorkflowAccountRouting, WorkflowDecisionInput, WorkflowEventRecord, WorkflowHandoffReceipt, WorkflowJob, WorkflowPendingAction, WorkflowPullRequestReceipt, WorkflowState, WorkflowTeamRun, WorkflowTeamStatus, } from "#internet/workflow/types";
+export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";
+export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
+export type { WorkflowTeamRunner, WorkflowTeamRunRequest, WorkflowTeamRunResult } from "#internet/workflow/team-runner";
+export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
+export type { StartWorkflowInput, WorkflowAccountRouting, WorkflowDecisionInput, WorkflowEventRecord, WorkflowHandoffReceipt, WorkflowJob, WorkflowPendingAction, WorkflowPullRequestReceipt, WorkflowState, WorkflowTeamResult, WorkflowTeamRun, WorkflowTeamStatus, } from "#internet/workflow/types";
 export { TERMINAL_WORKFLOW_STATES, WORKFLOW_STATES, WORKFLOW_TEAM_STATUSES } from "#internet/workflow/types";
 //# sourceMappingURL=index.d.ts.map

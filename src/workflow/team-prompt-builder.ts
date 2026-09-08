@@ -33,7 +33,8 @@ export class WorkflowTeamPromptBuilder {
 
 	review(job: WorkflowJob, lane: WorkflowTeamLane): string {
 		const pullRequest = job.pullRequest;
-		if (pullRequest === undefined) throw new Error("workflow review prompt requires a persisted pull request receipt");
+		if (pullRequest === undefined)
+			throw new Error("workflow review prompt requires a persisted pull request receipt");
 		return [
 			`Workflow review lane: ${lane}`,
 			`Repository: ${job.repository}`,
