@@ -163,14 +163,17 @@ Automatically construct research/review tasks from authoritative workflow state.
 
 ### 13. Generate deterministic team session identities
 
-Example:
+Use stable per-job lane identities:
 
 ```text
 <local>:workflow:<job>:research:A
 <local>:workflow:<job>:research:B
-<local>:workflow:<job>:review:<cycle>:A
-<local>:workflow:<job>:review:<cycle>:B
+<local>:workflow:<job>:review:A
+<local>:workflow:<job>:review:B
+<local>:workflow:<job>:writer
 ```
+
+Review cycle and exact PR head SHA belong in authoritative workflow state and each review prompt, not in the reviewer conversation identity. This lets reviewer A/B independently retain their own context across remediation cycles of the same PR while remaining isolated from research and writer conversations.
 
 ### 14. Support two concurrent logical team runs
 
