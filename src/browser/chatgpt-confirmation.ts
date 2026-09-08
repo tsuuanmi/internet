@@ -6,15 +6,19 @@ import {
 	type WorkflowConfirmationObservation,
 } from "#internet/workflow/approval-policy";
 
+/**
+ * Keep confirmation roots deliberately narrow. Generic tool-call containers are
+ * not roots: they may wrap the real dialog and would create ambiguous duplicate
+ * candidates, which must fail closed rather than be guessed through.
+ */
 export const CHATGPT_CONFIRMATION_ROOT_SELECTOR = [
 	'[role="dialog"]',
 	'[data-testid*="confirmation"]',
 	'[data-testid*="approval"]',
-	'[data-testid*="tool-call"]',
 ].join(", ");
 
 const ALLOW_BUTTON_NAME = /^Allow$/u;
-const DENY_BUTTON_NAME = /^(?:Cancel|Deny|Reject|Don't allow)$/u;
+const DENY_BUTTON_NAME = /^(?:Cancel|Deny|Reject|Don't allow|Don’t allow)$/u;
 
 export class ChatGptUnknownConfirmationError extends Error {
 	constructor(message: string) {
