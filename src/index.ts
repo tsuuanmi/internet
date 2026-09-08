@@ -11,7 +11,9 @@ import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { WorkflowEngine } from "#internet/workflow/engine";
+import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
+import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 
 export const name = "internet";
@@ -43,7 +45,8 @@ const INTERNET_WORKFLOW_GUIDANCE = [
 	"Use internet_workflow as the deterministic control-plane surface for durable coding jobs. /workflow <task> is the normal user entry point and creates the same durable engine job after resolving the current Git repository and exact revision.",
 	"Workflow state, account routing, team lane identities, writer conversation identity, handoff receipts, PR receipt, review cycle, pending action, and compact last event are persisted outside model context.",
 	"Workflow-owned team execution calls the lower-level team runtime directly with deterministic prompts and per-job lanes; no free-form child agent is needed merely to call internet_team.",
-	"Verbatim handoffs, writer/PR execution, approvals, review-loop driving, events, and merge binding remain separate later workflow phases.",
+	"Research finals are materialized as exact SHA-256-bound durable handoffs. Data-plane payloads are separate from trusted control messages, and START_IMPLEMENTATION is gated on delivery of both research handoffs.",
+	"Writer/PR execution, approval classification, review-loop driving, Local events, and merge binding remain later workflow phases.",
 ].join(" ");
 
 export interface PluginContext {
@@ -84,6 +87,8 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		const workflowEngine = new WorkflowEngine(
 			new WorkflowJobStore(config.dataDir),
 			new BrowserWorkflowTeamRunner(manager, config),
+			new WorkflowTeamPromptBuilder(),
+			new WorkflowHandoffStore(config.dataDir),
 		);
 		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine }));
 		ctx.tools.register(defineInternetWorkflowTool(workflowEngine));
@@ -121,7 +126,22 @@ export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#
 export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
+export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
+export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
+export type { WorkflowControlStep } from "#internet/workflow/engine";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
+export type {
+	CreateWorkflowHandoffInput,
+	WorkflowHandoff,
+	WorkflowHandoffStatus,
+} from "#internet/workflow/handoff-store";
+export {
+	HANDOFF_SCHEMA,
+	hashHandoffPayload,
+	parseWorkflowHandoff,
+	WorkflowHandoffStore,
+	WorkflowHandoffStoreError,
+} from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
 export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
