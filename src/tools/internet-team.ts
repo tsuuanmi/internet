@@ -1,7 +1,7 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { BrowserManager } from "#internet/browser/runtime";
-import type { BrowserConfig, WebProvider } from "#internet/core/config";
-import { WEB_PROVIDERS } from "#internet/core/config";
+import { ACCOUNT_IDS, type AccountId } from "#internet/core/accounts";
+import type { BrowserConfig } from "#internet/core/config";
 import { isInternetError } from "#internet/core/errors";
 import { runTeam, type TeamTurn } from "#internet/team/orchestrator";
 import { parseTeamArgs } from "#internet/tools/args";
@@ -36,7 +36,7 @@ export function renderInternetTeamResult(value: unknown): string {
 	const turns = output.transcript
 		.map((turn) => {
 			const omitted = turn.textTruncation === "prefix" ? "[Earlier content omitted]\n\n" : "";
-			return `### ${turn.provider} · round ${turn.round}\n${omitted}${turn.text}`;
+			return `### ${turn.accountId} · round ${turn.round}\n${omitted}${turn.text}`;
 		})
 		.join("\n\n");
 	const truncation = output.transcriptTruncated === true ? " (truncated)" : "";
@@ -66,21 +66,16 @@ function projectTranscript(transcript: readonly TeamTurn[], maxChars: number): T
 	return { transcript: retained, transcriptTruncated: transcriptTruncated || retained.length !== transcript.length };
 }
 
-/**
- * Define the `internet_team` model tool: run a multi-model debate between the
- * configured web providers on a task and return the final "best of both"
- * answer, optionally accompanied by a bounded current-call transcript. The DSH
- * agent is the team lead and does not participate in the debate.
- */
+/** Define the `internet_team` model tool over explicit thinker account identities. */
 export function defineInternetTeamTool(
 	manager: InternetTeamManager,
 	config: BrowserConfig,
-	allowed: ReadonlySet<WebProvider>,
+	allowed: ReadonlySet<AccountId>,
 ): ReturnType<typeof defineTool> {
 	return defineTool({
 		name: "internet_team",
 		description:
-			"Run a multi-model debate between configured web providers. Final synthesis uses the configured team synthesizer independently of speaking order. Provider browsers are hidden by default; set visible=true to show them on the user-managed display. Returns only the final answer unless includeTranscript is requested.",
+			"Run a multi-model debate between authenticated thinker accounts. Final synthesis uses the configured semantic account independently of speaking order. Account browsers are hidden by default; set visible=true to show them.",
 		parameters: {
 			task: {
 				type: "string",
@@ -93,7 +88,7 @@ export function defineInternetTeamTool(
 			},
 			rounds: {
 				type: "number",
-				description: "Number of debate rounds (each model speaks once per round). Defaults to the plugin config.",
+				description: "Number of debate rounds (each account speaks once per round). Defaults to the plugin config.",
 			},
 			synthesize: {
 				type: "boolean",
@@ -104,14 +99,15 @@ export function defineInternetTeamTool(
 				description:
 					"Include the bounded current-call debate transcript with truncation metadata. Defaults to false.",
 			},
-			providers: {
+			accounts: {
 				type: "array",
-				items: { type: "string", enum: [...WEB_PROVIDERS] },
-				description: "Ordered providers for the debate; the first opens. Defaults to [chatgpt-web, gemini-web].",
+				items: { type: "string", enum: [...ACCOUNT_IDS] },
+				description:
+					"Ordered thinker accounts for the debate; the first opens. Defaults to [chatgpt-thinker, gemini-thinker].",
 			},
 			visible: {
 				type: "boolean",
-				description: "Show both provider browsers on the user-managed display. Defaults to false.",
+				description: "Show both account browsers on the user-managed display. Defaults to false.",
 			},
 		},
 		output: {
@@ -120,6 +116,7 @@ export function defineInternetTeamTool(
 				additionalProperties: false,
 				properties: {
 					finalAnswer: { type: "string" },
+					finalAccountId: { type: "string" },
 					finalProvider: { type: "string" },
 					transcript: {
 						type: "array",
@@ -128,6 +125,7 @@ export function defineInternetTeamTool(
 							additionalProperties: false,
 							properties: {
 								round: { type: "integer", required: true },
+								accountId: { type: "string", required: true },
 								provider: { type: "string", required: true },
 								text: { type: "string", required: true },
 								textTruncation: { type: "string", enum: ["prefix"] },
@@ -153,14 +151,19 @@ export function defineInternetTeamTool(
 					error: `internet_team rounds must not exceed the configured maximum of ${config.teamMaxRounds}.`,
 				};
 			}
-			if (input.providers !== undefined) {
-				const disabled = input.providers.filter((provider) => !allowed.has(provider));
-				if (disabled.length > 0) {
-					return {
-						isError: true,
-						error: `internet_team providers ${disabled.join(", ")} are disabled in the internet plugin config.`,
-					};
-				}
+			const accounts = input.accounts ?? [...allowed];
+			const disabled = accounts.filter((accountId) => !allowed.has(accountId));
+			if (disabled.length > 0) {
+				return {
+					isError: true,
+					error: `internet_team accounts ${disabled.join(", ")} are disabled or not thinker accounts.`,
+				};
+			}
+			if (!accounts.includes(config.teamSynthesizer)) {
+				return {
+					isError: true,
+					error: `internet_team synthesizer ${config.teamSynthesizer} must be one of the selected accounts.`,
+				};
 			}
 			const sessionId = exec.agent?.id;
 			if (sessionId === undefined) {
@@ -170,14 +173,14 @@ export function defineInternetTeamTool(
 				};
 			}
 			try {
-				const result = await runTeam((provider, request) => manager.chat(provider, request), {
+				const result = await runTeam((accountId, request) => manager.chat(accountId, request), {
 					task: input.task,
 					sessionId: String(sessionId),
 					teamName: input.team,
 					rounds,
 					synthesize: input.synthesize ?? config.teamSynthesis,
 					synthesizer: config.teamSynthesizer,
-					providers: input.providers,
+					accounts,
 					visible: input.visible,
 					signal: exec.signal,
 				});
@@ -187,12 +190,13 @@ export function defineInternetTeamTool(
 				if ("error" in result) {
 					return {
 						isError: true,
-						error: `${result.error.provider}: ${result.error.message}`,
+						error: `${result.error.accountId}: ${result.error.message}`,
 						...(transcript === undefined ? {} : transcript),
 					};
 				}
 				return {
 					finalAnswer: result.finalAnswer,
+					finalAccountId: result.finalAccountId,
 					finalProvider: result.finalProvider,
 					...(transcript === undefined ? {} : transcript),
 				};
