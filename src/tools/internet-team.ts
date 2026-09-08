@@ -57,9 +57,7 @@ function projectTranscript(transcript: readonly TeamTurn[], maxChars: number): T
 			remaining -= text.length;
 			continue;
 		}
-		if (remaining > 0) {
-			retained.unshift({ ...turn, text: text.slice(-remaining).join(""), textTruncation: "prefix" });
-		}
+		if (remaining > 0) retained.unshift({ ...turn, text: text.slice(-remaining).join(""), textTruncation: "prefix" });
 		transcriptTruncated = true;
 		break;
 	}
@@ -77,15 +75,8 @@ export function defineInternetTeamTool(
 		description:
 			"Run a multi-model debate between authenticated thinker accounts. Final synthesis uses the configured semantic account independently of speaking order. Account browsers are hidden by default; set visible=true to show them.",
 		parameters: {
-			task: {
-				type: "string",
-				required: true,
-				description: "The task or question for the team to debate.",
-			},
-			team: {
-				type: "string",
-				description: "Optional team name; different names get separate durable debate threads.",
-			},
+			task: { type: "string", required: true, description: "The task or question for the team to debate." },
+			team: { type: "string", description: "Optional team name; different names get separate durable debate threads." },
 			rounds: {
 				type: "number",
 				description: "Number of debate rounds (each account speaks once per round). Defaults to the plugin config.",
@@ -96,19 +87,14 @@ export function defineInternetTeamTool(
 			},
 			includeTranscript: {
 				type: "boolean",
-				description:
-					"Include the bounded current-call debate transcript with truncation metadata. Defaults to false.",
+				description: "Include the bounded current-call debate transcript with truncation metadata. Defaults to false.",
 			},
 			accounts: {
 				type: "array",
 				items: { type: "string", enum: [...ACCOUNT_IDS] },
-				description:
-					"Ordered thinker accounts for the debate; the first opens. Defaults to [chatgpt-thinker, gemini-thinker].",
+				description: "Ordered thinker accounts for the debate; the first opens. Defaults to [chatgpt-thinker, gemini-thinker].",
 			},
-			visible: {
-				type: "boolean",
-				description: "Show both account browsers on the user-managed display. Defaults to false.",
-			},
+			visible: { type: "boolean", description: "Show both account browsers on the user-managed display. Defaults to false." },
 		},
 		output: {
 			schema: {
@@ -146,27 +132,18 @@ export function defineInternetTeamTool(
 			const input = parseTeamArgs(args);
 			const rounds = input.rounds ?? config.teamRounds;
 			if (rounds > config.teamMaxRounds) {
-				return {
-					isError: true,
-					error: `internet_team rounds must not exceed the configured maximum of ${config.teamMaxRounds}.`,
-				};
+				return { isError: true, error: `internet_team rounds must not exceed the configured maximum of ${config.teamMaxRounds}.` };
 			}
 			const accounts = input.accounts ?? [...allowed];
 			const disabled = accounts.filter((accountId) => !allowed.has(accountId));
 			if (disabled.length > 0) {
-				return {
-					isError: true,
-					error: `internet_team accounts ${disabled.join(", ")} are disabled or not thinker accounts.`,
-				};
+				return { isError: true, error: `internet_team accounts ${disabled.join(", ")} are disabled or not thinker accounts.` };
 			}
 			if (!accounts.includes(config.teamSynthesizer)) {
-				return {
-					isError: true,
-					error: `internet_team synthesizer ${config.teamSynthesizer} must be one of the selected accounts.`,
-				};
+				return { isError: true, error: `internet_team synthesizer ${config.teamSynthesizer} must be one of the selected accounts.` };
 			}
-			const sessionId = exec.agent?.id;
-			if (sessionId === undefined) {
+			const ownerSessionId = exec.agent?.id;
+			if (ownerSessionId === undefined) {
 				return {
 					isError: true,
 					error: "internet_team requires an agent-backed DSH session to own the durable team conversations.",
@@ -175,8 +152,7 @@ export function defineInternetTeamTool(
 			try {
 				const result = await runTeam((accountId, request) => manager.chat(accountId, request), {
 					task: input.task,
-					sessionId: String(sessionId),
-					teamName: input.team,
+					sessionId: `${String(ownerSessionId)}:team:${input.team ?? "default"}`,
 					rounds,
 					synthesize: input.synthesize ?? config.teamSynthesis,
 					synthesizer: config.teamSynthesizer,
@@ -201,9 +177,7 @@ export function defineInternetTeamTool(
 					...(transcript === undefined ? {} : transcript),
 				};
 			} catch (error) {
-				if (isInternetError(error)) {
-					return { isError: true, error: `internet_team failed (${error.kind}): ${error.message}` };
-				}
+				if (isInternetError(error)) return { isError: true, error: `internet_team failed (${error.kind}): ${error.message}` };
 				throw error;
 			}
 		},
