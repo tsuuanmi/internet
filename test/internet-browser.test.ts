@@ -80,9 +80,9 @@ describe("internet_browser", () => {
 			ok: false,
 			accountId: "chatgpt-writer",
 		});
-		await expect(tool.execute({ action: "status", account: "chatgpt-web" }, {} as never)).resolves.toMatchObject({
-			ok: false,
-			accountId: "chatgpt-web",
+		await expect(tool.execute({ action: "status", account: "chatgpt-web" }, {} as never)).rejects.toMatchObject({
+			code: "INVALID_ARGS",
 		});
+		expect(browser.status).not.toHaveBeenCalledWith("chatgpt-web");
 	});
 });
