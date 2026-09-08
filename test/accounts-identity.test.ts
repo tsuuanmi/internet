@@ -33,9 +33,9 @@ describe("account identity catalog", () => {
 			"chatgpt-thinker",
 			"gemini-thinker",
 		]);
-		expect(accountsWithCapabilities(["github.write", "github.pull_request"]).map((account) => account.accountId)).toEqual([
-			"chatgpt-writer",
-		]);
+		expect(
+			accountsWithCapabilities(["github.write", "github.pull_request"]).map((account) => account.accountId),
+		).toEqual(["chatgpt-writer"]);
 	});
 
 	it("validates semantic account ids", () => {
