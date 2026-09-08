@@ -1,0 +1,63 @@
+name: Sync account identity P0
+
+on:
+  push:
+    branches:
+      - impl/p0-account-id
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - name: Update TODO and architecture status
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          function replace(path, search, replacement, label) {
+            const before = fs.readFileSync(path, 'utf8');
+            if (!before.includes(search)) throw new Error(`Missing expected text: ${label}`);
+            fs.writeFileSync(path, before.replace(search, replacement));
+          }
+
+          replace(
+            'docs/TODO.md',
+            '### 3. Define first-class `accountId`\n\nMinimal contract:',
+            '### 3. ✅ Define first-class `accountId`\n\n**Status:** implemented as the semantic account catalog and capability-routing contract. Browser/storage isolation follows in P1.\n\nMinimal contract:',
+            'TODO accountId item',
+          );
+
+          replace(
+            'docs/UPDATE.md',
+            '- separate `chatgpt-thinker` and `chatgpt-writer` account identities;\n',
+            '- first-class semantic account identities now exist for `chatgpt-thinker`, `chatgpt-writer`, and `gemini-thinker`; provider-keyed browser/storage state is the next migration step;\n',
+            'UPDATE account identity status',
+          );
+          NODE
+      - run: npm run verify-package
+      - name: Commit generated artifacts and docs
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dist docs/TODO.md docs/UPDATE.md
+          if git diff --cached --quiet; then
+            echo 'nothing to commit'
+            exit 0
+          fi
+          git commit -m 'build: sync account identity artifacts'
+          git push
