@@ -1,6 +1,6 @@
 # Architecture Update — 2026-09-08
 
-This document records validated discoveries and resulting architecture changes. It is intentionally concise and points to SRS/ADR/WORKFLOW documents for normative detail.
+This document records validated discoveries and architecture changes. Normative details live in SRS/ADR/WORKFLOW documents.
 
 ## Validated capabilities
 
@@ -13,125 +13,167 @@ The connected ChatGPT Website GitHub integration has been validated end-to-end a
 - pull-request creation;
 - pull-request merge.
 
-A dedicated ChatGPT Website writer account can therefore serve as a terminal GitHub agent without requiring Local to implement or push the code first.
+A dedicated ChatGPT Website writer account can therefore serve as the terminal GitHub agent without requiring Local to implement or push code first.
 
-## GitHub permission configuration
+## Newly refined architecture
 
-The writer account is intended to use GitHub plugin permission mode `Allow all actions` when the platform exposes that option and the user intentionally accepts it.
+### 1. `/workflow <task>` remains explicit
 
-This should reduce repeated approval prompts on the happy path. The workflow must still support `AWAITING_EXTERNAL_APPROVAL` because platform/workspace protections may still require explicit confirmation for some actions.
+Automatic task detection is deferred.
 
-## Architecture changes
-
-### 1. Local becomes primarily a control plane
-
-Earlier design:
+The user starts the coding workflow explicitly with:
 
 ```text
-Local = UX + orchestration + broad code reading + implementation + review + merge
+/workflow <task>
 ```
 
-Updated design:
+But the command must evolve from the current giant-prompt prototype into a thin adapter over `internet_workflow.start(...)` and a durable `WorkflowEngine`.
+
+### 2. Local is not the state machine
+
+Updated responsibility split:
 
 ```text
-Local = UX + authority + workflow orchestration + approval/exception handling
-Website teams = broad cognition/repository analysis/review
-Writer account = repository mutation/PR remediation/authorized merge execution
-CI/runtime = empirical evidence
+User
+  = authority
+
+Local
+  = user-facing authority broker / workflow client
+
+WorkflowEngine
+  = deterministic orchestration control plane
+
+Website teams
+  = repository reading / reasoning / review
+
+Writer
+  = repository mutation / PR / authorized merge execution
 ```
 
-Local retains the ability to inspect code and diffs when risk or exceptions justify it, but this is not the normal path.
+Local remains able to inspect details on exception, but code-owned workflow state decides what happens next.
 
-### 2. Two independent thinking teams feed the writer directly
+### 3. Workflow-owned teams should run directly
 
-For the standard coding workflow, Local can spawn two independent reasoning teams.
+The current prompt asks Local to spawn free-form DSH subagents which then call `internet_team`. That preserves useful background execution, but introduces an avoidable transformation layer because a child agent may inspect code itself or summarize the team result before returning.
 
-Each team's final result is handed directly and verbatim to the writer account.
-
-Local does not summarize either result before delivery.
-
-After both handoffs are confirmed, Local/runtime sends only the control instruction to begin implementation.
-
-### 3. Review results also bypass Local summarization
-
-After the writer opens a PR, two independent review teams inspect the actual PR.
-
-Their final results are delivered verbatim to the writer.
-
-After all review handoffs arrive, Local/runtime sends only a separate remediation control message.
-
-### 4. PR becomes the shared implementation artifact
-
-The writer opens the PR before post-review.
-
-This removes the previous need for Local to push an intermediate implementation merely so Website reviewers can see it.
-
-Additional commits should represent real remediation, not orchestration transport.
-
-### 5. Multiple ChatGPT accounts become a core requirement
-
-The plugin currently assumes provider-level account identity too strongly.
-
-The target system requires at least:
+Target behavior:
 
 ```text
-chatgpt-thinker
-chatgpt-writer
-gemini-thinker
+WorkflowEngine
+  -> TeamRun A / TeamRun B
+  -> lower-level team runtime
+  -> ChatGPT final synthesis
+  -> exact final output
+  -> writer handoff
 ```
 
-Two ChatGPT accounts must have fully isolated authentication state, login profiles, conversations, scheduler state, and browser contexts.
+The engine itself prepares deterministic team tasks, starts multiple logical teams, tracks completion/retry, and uses compact completion events.
 
-### 6. ChatGPT is the default team synthesizer
+### 4. Preserve the good background-subagent UX
 
-The current team implementation synthesizes with the provider that spoke last.
+Even without a free-form child agent intermediary, the workflow should preserve:
 
-Target behavior is explicit synthesis routing to the ChatGPT thinker account, independent of debate speaking order.
+- automatic prompt preparation;
+- multiple concurrent logical team runs;
+- durable independent Website conversations;
+- automatic completion/event injection to Local;
+- ability for Local to continue other work while teams run.
 
-### 7. ChatGPT browser default reasoning changes to High
+The difference is that Local receives compact workflow events instead of raw/transformed reasoning payloads.
 
-Current implementation defaults ordinary ChatGPT turns to `medium`.
+### 5. Implementation/PR confirmations can auto-allow
 
-Target default is `high`, unless explicitly overridden.
+Starting `/workflow` authorizes the scoped actions required to produce and remediate a reviewable PR for the selected repository.
 
-### 8. Long-running workflows become durable jobs
+Recognized confirmations for branch/file/commit/PR actions may therefore be auto-confirmed when the active job, repository, writer session, action, workflow state, and branch/PR identity all match.
 
-The full coding workflow may span many minutes and may pause for browser/GitHub approval.
+Unknown confirmation UI must fail closed and notify Local.
 
-The target runtime uses persistent `job_id`, explicit workflow state, durable handoff receipts, and event-driven continuation rather than relying on one long synchronous Local tool call.
+### 6. Merge is the normal human authority gate
+
+PR creation is not the normal user checkpoint.
+
+After review gates pass:
+
+```text
+READY_FOR_MERGE_AUTHORIZATION
+  -> Local presents concrete PR
+  -> user approves/rejects
+```
+
+Only after explicit user approval may the writer request merge and the controller click the Website merge `Allow` prompt.
+
+Merge authorization should be bound to the exact reviewed PR head SHA; a changed head invalidates stale authorization.
+
+### 7. `internet_workflow` is the preferred workflow API name
+
+Conceptual operations:
+
+```text
+start
+status
+approve
+reject
+cancel
+continue
+```
+
+`/workflow` remains the standard UX wrapper.
+
+## Existing architecture points retained
+
+The following remain unchanged:
+
+- separate `chatgpt-thinker` and `chatgpt-writer` account identities;
+- ChatGPT thinker is the explicit default team synthesizer;
+- ChatGPT browser default should become `high`;
+- two thinking teams feed exact outputs to the writer;
+- two post-PR review teams feed exact outputs back to the writer;
+- PR is the canonical shared implementation artifact;
+- Local does not summarize normal team/review handoffs;
+- durable jobs/events replace one long Local call;
+- technical merge capability does not equal merge authorization.
 
 ## Updated target path
 
 ```text
 User
-  -> Local creates job
-  -> Team A + Team B
+  -> /workflow <task>
+  -> Local resolves repo/revision
+  -> WorkflowEngine creates durable job
+  -> Team A + Team B run directly
   -> ChatGPT synthesizes each
   -> exact outputs -> Writer
   -> START_IMPLEMENTATION
   -> Writer creates PR
-  -> Review A + Review B inspect PR
+     -> scoped implementation confirmations auto-allowed when recognized
+  -> Review A + Review B inspect PR directly
   -> exact review outputs -> Writer
   -> APPLY_REVIEWS
   -> Writer updates same PR
   -> review gates pass
-  -> Local/user authorizes merge
-  -> Writer or Local merges
+  -> Local presents merge request
+  -> user authorizes exact reviewed head
+  -> Writer merges; merge confirmation executed on user's behalf
   -> DONE
 ```
 
 ## Documents
 
-Normative details now live in:
+Normative/design details now live in:
 
 - `SRS.md`
 - `WORKFLOW.md`
+- `WORKFLOW-ENGINE.md`
 - `ADR/0001-local-control-plane.md`
 - `ADR/0002-verbatim-handoffs.md`
 - `ADR/0003-multi-account-capability-routing.md`
 - `ADR/0004-pr-centric-review-loop.md`
 - `ADR/0005-durable-jobs-and-events.md`
+- `ADR/0006-workflow-command-starts-real-engine.md`
+- `ADR/0007-approval-policy.md`
+- `ADR/0008-direct-team-execution.md`
 - `ROADMAP.md`
 - `TODO.md`
 
-`internet-team-architecture.md` should remain a concise overview and entry point rather than accumulating all detail.
+`internet-team-architecture.md` remains a concise overview rather than accumulating implementation detail.
