@@ -150,14 +150,23 @@ HTTPS remotes are converted to a credential-free HTTPS repository URL. A missing
 non-Git worktree, ambiguous remote, or local/private-network remote returns a direct error and queues
 nothing.
 
-On success, the command queues a model-visible seven-phase workflow with your objective, the selected
-repository URL, and the checked-out commit. The workflow requires independent upstream review, main-agent
-verification and a risk-based approval gate, implementation and validation, push, independent post-commit
-review, remediation, and a final report. Every research and post-commit reviewer prompt—and every
-reviewer's `internet_team` task—must explicitly repeat the selected repository URL and the relevant revision;
-subagents must not rely on inherited conversation context. It requires both browser providers because its
-independent reviews use `internet_team`; it is not registered when either provider is disabled. The command
-schedules the agent work rather than performing browser work synchronously.
+On success, the command creates a durable `WorkflowEngine` job and returns its job ID. It does not inject
+a giant multi-phase prompt into the Local conversation. The engine owns deterministic state, account routing,
+team lanes, exact handoff receipts, the persistent writer conversation, and the PR receipt outside model
+context.
+
+The implemented path currently runs Research A and Research B directly through the lower-level team runtime,
+materializes each final answer as a SHA-256-bound verbatim handoff, delivers A then B to the same
+`chatgpt-writer` conversation, and only then sends a separate trusted `START_IMPLEMENTATION` control. The
+writer verifies the repository and base revision, inspects and changes the repository, validates the work,
+creates or updates exactly one pull request, and returns either a machine-validated PR receipt or `BLOCKED`.
+The writer is never authorized to merge during this phase. A transient writer-control retry reuses the same
+conversation and does not redeliver handoffs that already have durable delivery receipts.
+
+`/workflow` itself is currently the admission/thin-adapter surface: later orchestration phases add scoped
+Website confirmation handling, automatic PR review/remediation, compact Local events, and the explicit
+head-SHA-bound merge gate. The workflow is registered only when both thinker accounts are enabled; the writer
+path additionally requires a ready `chatgpt-writer` account when implementation is driven.
 
 ## Install
 

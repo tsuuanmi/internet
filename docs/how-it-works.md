@@ -1,7 +1,7 @@
 # How `@tsuuanmi/internet` works
 
 This document describes the server-side plugin architecture, authentication boundary, browser lifecycle,
-provider interaction contracts, durable conversations, and `internet_team` orchestration.
+provider interaction contracts, durable conversations, team orchestration, and the deterministic coding-workflow control plane.
 
 ## Package layout
 
@@ -25,10 +25,14 @@ provider interaction contracts, durable conversations, and `internet_team` orche
 - `src/browser/submission.ts` — semantic enabled-state waiting, including `aria-disabled`.
 - `src/team/orchestrator.ts` — account ordering, debate prompts, team session isolation, transcript, and
   synthesis.
-- `src/tools/` — DSH definitions for `internet_chat`, `internet_team`, `internet_research`, and
-  `internet_browser`.
+- `src/tools/` — DSH definitions for `internet_chat`, `internet_team`, `internet_research`,
+  `internet_browser`, and the `internet_workflow` control surface.
+- `src/workflow/types.ts`, `job-store.ts`, and `engine.ts` — authoritative workflow state, private atomic job persistence, and deterministic transitions.
+- `src/workflow/team-runner.ts` and `team-prompt-builder.ts` — direct lower-level team execution and deterministic research/review tasks.
+- `src/workflow/handoff-store.ts` and `control.ts` — exact SHA-256-bound data-plane handoffs and separate trusted control messages.
+- `src/workflow/writer-runner.ts` — persistent `chatgpt-writer` routing, strict writer result parsing, and implementation/PR control.
 - `src/commands/internet.ts` — human `/internet` command backed by ChatGPT.
-- `src/commands/workflow.ts` — human `/workflow` command that resolves the session Git upstream and queues the reviewed implementation workflow.
+- `src/commands/workflow.ts` — thin `/workflow` admission adapter that resolves Git authority and creates a durable engine job.
 - `src/client.ts` — DSH-side command renderer.
 - `src/remote-login-client.ts` — isolated noVNC page with Save and Cancel controls; it is not part of the
   DSH application shell.
@@ -83,10 +87,35 @@ client command renderer.
 `/workflow <objective>` is a command-plane admission step, not a direct browser request. It reads only the
 receiving session's `header.cwd`, invokes Git with argument vectors (never a shell), selects the branch
 tracking remote, `origin`, or one unambiguous remote, and converts supported public SSH/HTTPS remote forms
-to a credential-free HTTPS URL. It verifies the worktree and `HEAD` first. On any failure it returns a direct
-command error and never queues a message. On success it follows up with the objective, selected upstream,
-and complete seven-phase workflow; the normal agent loop then owns the asynchronous subagent handoffs,
-scope gates, implementation, push, reviews, and final report.
+to a credential-free HTTPS URL. It verifies the worktree and exact `HEAD` first. On any failure it returns a
+direct command error and creates no job. On success it calls `WorkflowEngine.start(...)` and returns the
+durable job ID; no giant workflow prompt is injected into Local.
+
+The implemented engine path through P5 is:
+
+```text
+CREATED
+  -> RESEARCH_RUNNING
+  -> RESEARCH_HANDOFFS_DELIVERING
+  -> WRITER_RUNNING
+  -> PR_OPEN
+```
+
+Research A/B run directly through `BrowserWorkflowTeamRunner` with deterministic per-job lanes. Their final
+answers are stored verbatim in `WorkflowHandoffStore`, hashed over exact UTF-8 bytes, and delivered A then B
+to the single persistent `<local>:workflow:<job>:writer` conversation. Only after both delivery receipts are
+present does the engine send `START_IMPLEMENTATION` as a separate trusted control message.
+
+`BrowserWorkflowWriterRunner` always uses the explicit `chatgpt-writer` account. The writer verifies the
+repository and base revision, inspects and modifies the repository, validates the change, creates or updates
+exactly one PR, and must not merge. Its final response is parsed as strict `PR_OPEN` JSON and persisted as a
+PR receipt (`repository`, PR number/URL, base/head, and exact head SHA), or the job becomes `BLOCKED` without
+a fabricated receipt. If a transient control call fails after the research handoffs were acknowledged, the
+job remains `WRITER_RUNNING`; retry reuses the same writer conversation and skips already-delivered handoffs.
+
+Scoped Website confirmation policy, actual PR review/remediation loops, Local event injection, and the
+head-SHA-bound merge authorization gate are later workflow phases and are not implied by the current
+`/workflow` admission command.
 
 ## Deep Research request flow
 
