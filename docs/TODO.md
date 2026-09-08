@@ -187,7 +187,11 @@ Each lane persists status, attempts, error, exact final result, completion times
 
 ## P4 — Verbatim handoffs
 
-### 16. Add durable handoff primitive
+**Status:** implemented for the research-to-writer data plane. The same primitive is reusable for reviewer-to-writer delivery when the review loop lands.
+
+### 16. ✅ Add durable handoff primitive
+
+Each exact payload is stored privately under the workflow data directory with:
 
 ```text
 handoff_id
@@ -200,24 +204,22 @@ payload_hash
 delivery status
 ```
 
-### 17. Separate data messages from control messages
+`payload_hash` is SHA-256 over the exact UTF-8 payload. Creation is deterministic/idempotent for the same job/source/recipient/sequence and rejects changed content for an existing logical handoff. Delivery is at-least-once with an idempotent exact-hash receipt; Website UI delivery is not claimed to be transactional exactly-once.
 
-Data:
+### 17. ✅ Separate data messages from control messages
 
-- team final result;
-- review final result;
-- evidence packet.
+Data handoffs carry exact model output only. Trusted control messages use a separate typed contract:
 
-Control:
+- `START_IMPLEMENTATION`;
+- `APPLY_REVIEWS`;
+- `RETRY`;
+- `MERGE_AUTHORIZED`.
 
-- START_IMPLEMENTATION;
-- APPLY_REVIEWS;
-- RETRY;
-- MERGE_AUTHORIZED.
+No control instruction is prepended/appended to a verbatim team/reviewer payload.
 
-### 18. Add all-handoffs-delivered gates
+### 18. ✅ Add all-handoffs-delivered gates
 
-Writer cannot begin implementation/remediation before required handoffs are delivered.
+`WorkflowEngine.prepareResearchHandoffs()` materializes research A then B deterministically. `markHandoffDelivered()` records hash-bound delivery receipts. `START_IMPLEMENTATION` cannot be produced and the job cannot enter `WRITER_RUNNING` until both research handoffs are delivered.
 
 ## P5 — Writer and PR path
 
