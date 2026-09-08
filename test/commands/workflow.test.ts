@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { defineWorkflowCommand, type GitRunner, normalizeRepositoryUrl } from "#internet/commands/workflow";
+import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 
 const REVISION = "0123456789abcdef0123456789abcdef01234567";
+const JOB_ID = "0123456789abcdef0123456789abcdef";
 
 function createRunner(overrides: Record<string, string | Error> = {}): GitRunner {
 	const outputs: Record<string, string | Error> = {
@@ -21,121 +23,149 @@ function createRunner(overrides: Record<string, string | Error> = {}): GitRunner
 	};
 }
 
-function invocation(rawInput: string, cwd = "/repo") {
-	const followup = vi.fn();
+function fakeJob(input: StartWorkflowInput): WorkflowJob {
 	return {
-		input: {
-			agent: {
-				id: "1-1",
-				session: { header: cwd === "" ? {} : { cwd } },
-				followup,
-			},
-			rawInput,
-			signal: new AbortController().signal,
+		schema: "@tsuuanmi/internet-workflow-job",
+		version: 1,
+		revision: 1,
+		jobId: JOB_ID,
+		objective: input.objective,
+		repository: input.repository,
+		baseRevision: input.baseRevision,
+		state: "CREATED",
+		teamRuns: {
+			research: [
+				{ lane: "A", status: "pending", attempts: 0, sessionId: "research:A" },
+				{ lane: "B", status: "pending", attempts: 0, sessionId: "research:B" },
+			],
+			review: [
+				{ lane: "A", status: "pending", attempts: 0, sessionId: "review:A" },
+				{ lane: "B", status: "pending", attempts: 0, sessionId: "review:B" },
+			],
 		},
-		followup,
+		accountRouting: {
+			thinkerAccounts: ["chatgpt-thinker", "gemini-thinker"],
+			writerAccount: "chatgpt-writer",
+			synthesizerAccount: "chatgpt-thinker",
+		},
+		handoffReceipts: [],
+		writerConversation: { sessionId: "writer", accountId: "chatgpt-writer" },
+		reviewCycle: 0,
+		createdAt: "2026-09-08T00:00:00.000Z",
+		updatedAt: "2026-09-08T00:00:00.000Z",
 	};
 }
 
-function textFromFollowup(call: unknown): string {
-	const message = call as { content: Array<{ type: string; text: string }> };
-	return message.content[0]?.text ?? "";
+function engine() {
+	return { start: vi.fn((input: StartWorkflowInput) => fakeJob(input)) };
+}
+
+function invocation(rawInput: string, cwd = "/repo") {
+	return {
+		agent: {
+			id: "1-1",
+			session: { header: cwd === "" ? {} : { cwd } },
+		},
+		rawInput,
+		signal: new AbortController().signal,
+	};
 }
 
 describe("defineWorkflowCommand", () => {
-	it("queues the complete workflow against the session Git upstream", async () => {
+	it("resolves Git context and creates one durable engine job", async () => {
 		const runGit = vi.fn(createRunner());
-		const command = defineWorkflowCommand({ runGit });
-		const { input, followup } = invocation("  Correct the login redirect.  ");
+		const workflow = engine();
+		const command = defineWorkflowCommand({ engine: workflow, runGit });
+		const input = invocation("  Correct the login redirect.  ");
 
-		await expect(command.handler(input)).resolves.toEqual({
+		await expect(command.handler(input as never)).resolves.toEqual({
 			kind: "success",
-			text: "Workflow queued for https://github.com/example/signal at 0123456789ab.",
+			text: `Workflow ${JOB_ID} created for https://github.com/example/signal at 0123456789ab.`,
 		});
 		expect(runGit).toHaveBeenCalledWith("/repo", ["rev-parse", "--show-toplevel"], input.signal);
 		expect(runGit).toHaveBeenCalledWith("/repo", ["remote", "get-url", "--", "origin"], input.signal);
-		expect(followup).toHaveBeenCalledTimes(1);
-		const text = textFromFollowup(followup.mock.calls[0]?.[0]);
-		expect(text).toContain("Repository: https://github.com/example/signal");
-		expect(text).toContain("# Objective\n\nCorrect the login redirect.");
-		expect(text).toContain("Phase 1 — Independent Research and Review");
-		expect(text).toContain("Phase 7 — Final Report");
-		expect(text).toContain("`internet_team`");
-		expect(text).toContain("MUST include this exact repository handoff in every subagent prompt");
-		expect(text).toContain(
-			"Repository URL: https://github.com/example/signal\nTarget revision: 0123456789abcdef0123456789abcdef01234567",
-		);
-		expect(text).toContain("MUST include this exact repository handoff in every reviewer prompt");
-		expect(text).toContain("Commit to review: <exact pushed SHA>");
-		expect(text).not.toContain("git@github.com");
+		expect(workflow.start).toHaveBeenCalledWith({
+			objective: "Correct the login redirect.",
+			repository: "https://github.com/example/signal",
+			baseRevision: REVISION,
+			ownerSessionId: "1-1",
+		});
 	});
 
-	it("does not inspect Git or queue work without an objective", async () => {
+	it("does not inspect Git or start a job without an objective", async () => {
 		const runGit = vi.fn(createRunner());
-		const command = defineWorkflowCommand({ runGit });
-		const { input, followup } = invocation("  ");
+		const workflow = engine();
+		const command = defineWorkflowCommand({ engine: workflow, runGit });
+		const input = invocation("  ");
 
-		await expect(command.handler(input)).resolves.toEqual({
+		await expect(command.handler(input as never)).resolves.toEqual({
 			kind: "error",
 			text: "An objective is required. Usage: /workflow <objective>",
 		});
 		expect(runGit).not.toHaveBeenCalled();
-		expect(followup).not.toHaveBeenCalled();
+		expect(workflow.start).not.toHaveBeenCalled();
 	});
 
 	it("requires the session working directory", async () => {
 		const runGit = vi.fn(createRunner());
-		const command = defineWorkflowCommand({ runGit });
-		const { input, followup } = invocation("Fix it", "");
+		const workflow = engine();
+		const command = defineWorkflowCommand({ engine: workflow, runGit });
+		const input = invocation("Fix it", "");
 
-		await expect(command.handler(input)).resolves.toEqual({
+		await expect(command.handler(input as never)).resolves.toEqual({
 			kind: "error",
 			text: "/workflow requires a session working directory.",
 		});
 		expect(runGit).not.toHaveBeenCalled();
-		expect(followup).not.toHaveBeenCalled();
+		expect(workflow.start).not.toHaveBeenCalled();
 	});
 
-	it("does not queue work when the session directory is not a Git worktree", async () => {
+	it("does not start a job when the session directory is not a Git worktree", async () => {
+		const workflow = engine();
 		const command = defineWorkflowCommand({
+			engine: workflow,
 			runGit: createRunner({ "rev-parse --show-toplevel": new Error("not a git repository") }),
 		});
-		const { input, followup } = invocation("Fix it");
+		const input = invocation("Fix it");
 
-		await expect(command.handler(input)).resolves.toEqual({
+		await expect(command.handler(input as never)).resolves.toEqual({
 			kind: "error",
 			text: "/workflow requires the current session to be inside a Git worktree.",
 		});
-		expect(followup).not.toHaveBeenCalled();
+		expect(workflow.start).not.toHaveBeenCalled();
 	});
 
 	it("rejects ambiguous remotes without a tracked branch or origin", async () => {
+		const workflow = engine();
 		const command = defineWorkflowCommand({
+			engine: workflow,
 			runGit: createRunner({
 				remote: "fork\nupstream\n",
 				"config --get branch.main.remote": new Error("missing"),
 			}),
 		});
-		const { input, followup } = invocation("Fix it");
+		const input = invocation("Fix it");
 
-		await expect(command.handler(input)).resolves.toMatchObject({
+		await expect(command.handler(input as never)).resolves.toMatchObject({
 			kind: "error",
 			text: expect.stringContaining("could not select an upstream remote"),
 		});
-		expect(followup).not.toHaveBeenCalled();
+		expect(workflow.start).not.toHaveBeenCalled();
 	});
 
-	it("rejects unusable remotes without queuing work", async () => {
+	it("rejects unusable remotes without starting a job", async () => {
+		const workflow = engine();
 		const command = defineWorkflowCommand({
+			engine: workflow,
 			runGit: createRunner({ "remote get-url -- origin": "file:///private/repository\n" }),
 		});
-		const { input, followup } = invocation("Fix it");
+		const input = invocation("Fix it");
 
-		await expect(command.handler(input)).resolves.toMatchObject({
+		await expect(command.handler(input as never)).resolves.toMatchObject({
 			kind: "error",
 			text: expect.stringContaining("publicly addressable Git remote"),
 		});
-		expect(followup).not.toHaveBeenCalled();
+		expect(workflow.start).not.toHaveBeenCalled();
 	});
 });
 
