@@ -37,9 +37,9 @@ describe("WorkflowEngine", () => {
 			synthesizerAccount: "chatgpt-thinker",
 		});
 		expect(job.teamRuns.research.map((run) => run.sessionId)).toEqual([
-		`agent-7:workflow:${job.jobId}:research:A`,
-		`agent-7:workflow:${job.jobId}:research:B`,
-	]);
+			`agent-7:workflow:${job.jobId}:research:A`,
+			`agent-7:workflow:${job.jobId}:research:B`,
+		]);
 		expect(job.writerConversation).toEqual({
 			accountId: "chatgpt-writer",
 			sessionId: `agent-7:workflow:${job.jobId}:writer`,

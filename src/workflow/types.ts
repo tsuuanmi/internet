@@ -114,8 +114,4 @@ export interface WorkflowDecisionInput {
 	readonly expectedHeadSha?: string;
 }
 
-export const TERMINAL_WORKFLOW_STATES: ReadonlySet<WorkflowState> = new Set([
-	"DONE",
-	"FAILED_TERMINAL",
-	"CANCELLED",
-]);
+export const TERMINAL_WORKFLOW_STATES: ReadonlySet<WorkflowState> = new Set(["DONE", "FAILED_TERMINAL", "CANCELLED"]);

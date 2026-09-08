@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import {
-	TERMINAL_WORKFLOW_STATES,
 	type StartWorkflowInput,
+	TERMINAL_WORKFLOW_STATES,
 	type WorkflowDecisionInput,
 	type WorkflowJob,
 	type WorkflowState,
@@ -55,7 +55,8 @@ export class WorkflowEngine {
 		const objective = input.objective.trim();
 		if (objective === "") throw new WorkflowEngineError("workflow objective is required");
 		if (input.repository.trim() === "") throw new WorkflowEngineError("workflow repository is required");
-		if (!/^[0-9a-f]{40}$/u.test(input.baseRevision)) throw new WorkflowEngineError("workflow base revision must be a full Git SHA");
+		if (!/^[0-9a-f]{40}$/u.test(input.baseRevision))
+			throw new WorkflowEngineError("workflow base revision must be a full Git SHA");
 		if (input.ownerSessionId.trim() === "") throw new WorkflowEngineError("workflow owner session id is required");
 
 		const id = jobId();
@@ -71,12 +72,32 @@ export class WorkflowEngine {
 			state: "CREATED",
 			teamRuns: {
 				research: [
-					{ lane: "A", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "research", "A") },
-					{ lane: "B", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "research", "B") },
+					{
+						lane: "A",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "research", "A"),
+					},
+					{
+						lane: "B",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "research", "B"),
+					},
 				],
 				review: [
-					{ lane: "A", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "review", "A") },
-					{ lane: "B", status: "pending", attempts: 0, sessionId: laneSession(input.ownerSessionId, id, "review", "B") },
+					{
+						lane: "A",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "review", "A"),
+					},
+					{
+						lane: "B",
+						status: "pending",
+						attempts: 0,
+						sessionId: laneSession(input.ownerSessionId, id, "review", "B"),
+					},
 				],
 			},
 			accountRouting: {
@@ -125,10 +146,16 @@ export class WorkflowEngine {
 
 	approve(input: WorkflowDecisionInput): WorkflowJob {
 		return this.jobs.update(input.jobId, (current) => {
-			if (current.state !== "AWAITING_MERGE_AUTHORIZATION" || current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED") {
+			if (
+				current.state !== "AWAITING_MERGE_AUTHORIZATION" ||
+				current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED"
+			) {
 				throw new WorkflowEngineError(`workflow job ${input.jobId} is not awaiting merge authorization`);
 			}
-			if (current.pendingAction.expectedHeadSha !== undefined && input.expectedHeadSha !== current.pendingAction.expectedHeadSha) {
+			if (
+				current.pendingAction.expectedHeadSha !== undefined &&
+				input.expectedHeadSha !== current.pendingAction.expectedHeadSha
+			) {
 				throw new WorkflowEngineError("merge authorization head SHA does not match the pending action");
 			}
 			return {

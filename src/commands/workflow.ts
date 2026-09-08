@@ -53,7 +53,9 @@ async function runGitCommand(cwd: string, args: readonly string[], signal: Abort
 				return;
 			}
 			const detail = stderr.trim();
-			settle(() => reject(new WorkflowCommandError(detail === "" ? `git exited with status ${String(code)}` : detail)));
+			settle(() =>
+				reject(new WorkflowCommandError(detail === "" ? `git exited with status ${String(code)}` : detail)),
+			);
 		});
 	});
 }
@@ -133,13 +135,15 @@ async function resolveRepository(cwd: string, runGit: GitRunner, signal: AbortSi
 		if (isAborted(signal)) throw error;
 		throw new WorkflowCommandError("/workflow could not resolve the current Git revision.");
 	}
-	if (!/^[0-9a-f]{40}$/iu.test(revision)) throw new WorkflowCommandError("/workflow could not resolve a valid Git revision.");
+	if (!/^[0-9a-f]{40}$/iu.test(revision))
+		throw new WorkflowCommandError("/workflow could not resolve a valid Git revision.");
 
 	const remotes = cleanOutput((await optionalGit(runGit, cwd, ["remote"], signal)) ?? "")
 		.split(/\r?\n/u)
 		.map((remote) => remote.trim())
 		.filter((remote) => remote !== "");
-	if (remotes.length === 0) throw new WorkflowCommandError("/workflow requires a Git remote for the upstream repository.");
+	if (remotes.length === 0)
+		throw new WorkflowCommandError("/workflow requires a Git remote for the upstream repository.");
 
 	const branch = await optionalGit(runGit, cwd, ["rev-parse", "--abbrev-ref", "HEAD"], signal);
 	const trackingRemote =

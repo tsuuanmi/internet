@@ -71,7 +71,13 @@ export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<t
 				},
 			},
 			render: (_args, value) => {
-				const result = value as { ok?: unknown; operation?: unknown; jobId?: unknown; state?: unknown; message?: unknown };
+				const result = value as {
+					ok?: unknown;
+					operation?: unknown;
+					jobId?: unknown;
+					state?: unknown;
+					message?: unknown;
+				};
 				const summary = [`ok=${String(result.ok)}`, `operation=${String(result.operation)}`];
 				if (result.jobId !== undefined) summary.push(`job=${String(result.jobId)}`);
 				if (result.state !== undefined) summary.push(`state=${String(result.state)}`);
@@ -85,7 +91,11 @@ export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<t
 			const operation = args.operation as WorkflowOperation;
 			try {
 				if (operation === "start") {
-					if (typeof args.objective !== "string" || typeof args.repository !== "string" || typeof args.baseRevision !== "string") {
+					if (
+						typeof args.objective !== "string" ||
+						typeof args.repository !== "string" ||
+						typeof args.baseRevision !== "string"
+					) {
 						return { ok: false, operation, message: "start requires objective, repository, and baseRevision" };
 					}
 					const job = engine.start({

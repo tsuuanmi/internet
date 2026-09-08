@@ -1,0 +1,22 @@
+export const WORKFLOW_STATES = [
+    "CREATED",
+    "RESEARCH_RUNNING",
+    "RESEARCH_HANDOFFS_DELIVERING",
+    "WRITER_RUNNING",
+    "PR_OPEN",
+    "REVIEW_RUNNING",
+    "REVIEW_HANDOFFS_DELIVERING",
+    "WRITER_REMEDIATING",
+    "READY_FOR_MERGE_AUTHORIZATION",
+    "AWAITING_MERGE_AUTHORIZATION",
+    "MERGING",
+    "DONE",
+    "BLOCKED",
+    "UNKNOWN_CONFIRMATION",
+    "FAILED_RETRYABLE",
+    "FAILED_TERMINAL",
+    "CANCELLED",
+];
+export const WORKFLOW_TEAM_STATUSES = ["pending", "running", "completed", "failed"];
+export const TERMINAL_WORKFLOW_STATES = new Set(["DONE", "FAILED_TERMINAL", "CANCELLED"]);
+//# sourceMappingURL=types.js.map

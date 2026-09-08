@@ -64,7 +64,8 @@ export class WorkflowJobStore {
 }
 
 function assertJobId(jobId: string): void {
-	if (!/^[0-9a-f]{32}$/u.test(jobId)) throw new WorkflowJobStoreError("workflow job id must be 32 lowercase hex characters");
+	if (!/^[0-9a-f]{32}$/u.test(jobId))
+		throw new WorkflowJobStoreError("workflow job id must be 32 lowercase hex characters");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -97,7 +98,8 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 	if (!isRecord(value.teamRuns) || !Array.isArray(value.teamRuns.research) || !Array.isArray(value.teamRuns.review)) {
 		throw new Error("invalid team run state");
 	}
-	if (!isRecord(value.accountRouting) || !isRecord(value.writerConversation)) throw new Error("invalid account routing");
+	if (!isRecord(value.accountRouting) || !isRecord(value.writerConversation))
+		throw new Error("invalid account routing");
 	if (!Array.isArray(value.handoffReceipts)) throw new Error("invalid handoff receipts");
 	if (typeof value.reviewCycle !== "number" || !Number.isSafeInteger(value.reviewCycle) || value.reviewCycle < 0) {
 		throw new Error("invalid review cycle");
