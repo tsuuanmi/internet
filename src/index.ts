@@ -9,6 +9,9 @@ import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
 import { defineInternetChatTool } from "#internet/tools/internet-chat";
 import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
+import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
+import { WorkflowEngine } from "#internet/workflow/engine";
+import { WorkflowJobStore } from "#internet/workflow/job-store";
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = "internet";
@@ -36,6 +39,12 @@ const INTERNET_TEAM_GUIDANCE = [
 	"The tool returns only the final answer by default. includeTranscript: true adds a bounded current-call transcript with account identity and truncation metadata.",
 	"Every selected account needs its own ready portable account state. A model refusal is model output, while login, timeout, and DOM failures are orchestration errors that should be reported distinctly.",
 	"internet_team cannot search the web or read files. Paste all source material into task, and use web_search or web_fetch before the debate when current information is required.",
+].join(" ");
+
+const INTERNET_WORKFLOW_GUIDANCE = [
+	"Use internet_workflow as the deterministic control-plane surface for durable coding jobs. /workflow <task> is the normal user entry point and creates the same durable engine job after resolving the current Git repository and exact revision.",
+	"Workflow state, account routing, team lane identities, writer conversation identity, handoff receipts, PR receipt, review cycle, pending action, and compact last event are persisted outside model context.",
+	"The current foundation creates and controls durable jobs; later workflow TODOs attach direct TeamRunner, verbatim handoffs, writer/PR execution, approvals, review loops, and events without restoring the old giant prompt.",
 ].join(" ");
 
 /** Minimal context surface this plugin uses; injected services are real DSH objects at runtime. */
@@ -85,11 +94,18 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		});
 	}
 	if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker")) {
-		ctx.commands.register(defineWorkflowCommand());
+		const workflowEngine = new WorkflowEngine(new WorkflowJobStore(config.dataDir));
+		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine }));
+		ctx.tools.register(defineInternetWorkflowTool(workflowEngine));
 		ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
 		ctx.systemPrompt?.section?.({
-			name: "tool:internet_team",
+			name: "tool:internet_workflow",
 			order: 121,
+			text: INTERNET_WORKFLOW_GUIDANCE,
+		});
+		ctx.systemPrompt?.section?.({
+			name: "tool:internet_team",
+			order: 122,
 			text: INTERNET_TEAM_GUIDANCE,
 		});
 	}
@@ -122,3 +138,20 @@ export type {
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
 export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
+export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
+export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
+export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export type {
+	StartWorkflowInput,
+	WorkflowAccountRouting,
+	WorkflowDecisionInput,
+	WorkflowEventRecord,
+	WorkflowHandoffReceipt,
+	WorkflowJob,
+	WorkflowPendingAction,
+	WorkflowPullRequestReceipt,
+	WorkflowState,
+	WorkflowTeamRun,
+	WorkflowTeamStatus,
+} from "#internet/workflow/types";
+export { TERMINAL_WORKFLOW_STATES, WORKFLOW_STATES, WORKFLOW_TEAM_STATUSES } from "#internet/workflow/types";

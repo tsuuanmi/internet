@@ -18,7 +18,7 @@
 
 ### 2. ✅ Make the team synthesizer explicit and default to ChatGPT thinker
 
-**Status:** implemented at provider level; migrate the synthesizer identity to `accountId` during the multi-account phase.
+**Status:** implemented with explicit `accountId` routing; `chatgpt-thinker` is the default synthesizer.
 
 - Add explicit synthesizer selection.
 - Stop using `lastProvider` as synthesis destination.
@@ -96,7 +96,9 @@ Same-account dependent turns remain ordered. Different authenticated accounts sh
 
 ## P2 — Replace prompt-only `/workflow`
 
-### 8. Add `internet_workflow` service/tool contract
+**Status:** foundation implemented. Jobs are durable and `/workflow` now creates engine state rather than injecting the old giant multi-phase prompt. Execution controllers land in the following phases.
+
+### 8. ✅ Add `internet_workflow` service/tool contract
 
 Initial operations:
 
@@ -109,7 +111,7 @@ cancel
 continue
 ```
 
-### 9. Introduce `WorkflowEngine` + `WorkflowJobStore`
+### 9. ✅ Introduce `WorkflowEngine` + `WorkflowJobStore`
 
 Minimum durable job fields:
 
@@ -129,7 +131,9 @@ pending action
 last event
 ```
 
-### 10. Convert `/workflow` into a thin adapter
+The first implementation uses private atomic per-job JSON under the plugin data directory. A more sophisticated workflow database remains unnecessary until concurrency/retention requirements justify it.
+
+### 10. ✅ Convert `/workflow` into a thin adapter
 
 Keep UX:
 
@@ -137,15 +141,15 @@ Keep UX:
 /workflow <task>
 ```
 
-But change implementation to:
+Implementation now does:
 
 ```text
 resolve repo/revision
--> internet_workflow.start
+-> WorkflowEngine.start
 -> return job_id
 ```
 
-Remove the giant multi-phase follow-up prompt once engine behavior is available.
+The giant multi-phase follow-up prompt has been removed.
 
 ## P3 — Direct team runtime
 
@@ -159,14 +163,17 @@ Automatically construct research/review tasks from authoritative workflow state.
 
 ### 13. Generate deterministic team session identities
 
-Example:
+Use stable per-job lane identities:
 
 ```text
 <local>:workflow:<job>:research:A
 <local>:workflow:<job>:research:B
-<local>:workflow:<job>:review:<cycle>:A
-<local>:workflow:<job>:review:<cycle>:B
+<local>:workflow:<job>:review:A
+<local>:workflow:<job>:review:B
+<local>:workflow:<job>:writer
 ```
+
+Review cycle and exact PR head SHA belong in authoritative workflow state and each review prompt, not in the reviewer conversation identity. This lets reviewer A/B independently retain their own context across remediation cycles of the same PR while remaining isolated from research and writer conversations.
 
 ### 14. Support two concurrent logical team runs
 
@@ -215,6 +222,8 @@ Writer cannot begin implementation/remediation before required handoffs are deli
 ### 19. Add persistent `chatgpt-writer` conversation routing
 
 Writer receives Team A final, Team B final, then separate `START_IMPLEMENTATION`.
+
+The same writer conversation is reused across implementation, PR creation/update, and remediation for one workflow job so the executor retains the context it built while reading and modifying the repository.
 
 ### 20. Define writer control contract
 
@@ -354,6 +363,7 @@ Record merged SHA and executor.
 ## Defer until needed
 
 - automatic task detection instead of explicit `/workflow`;
+- website-level cross-conversation/project memory optimization; deterministic workflow correctness must not depend on implicit Website memory;
 - generic arbitrary DAG workflow language;
 - many writer accounts / automatic account pooling;
 - sophisticated artifact database;
