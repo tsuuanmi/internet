@@ -1,20 +1,17 @@
-import type { WebProvider } from "#internet/core/config";
+import { type AccountId } from "#internet/core/accounts";
 /** Validated `internet_chat` arguments. */
 export interface ChatInput {
-    provider: WebProvider;
+    accountId: AccountId;
     prompt: string;
     visible?: boolean;
 }
-/**
- * Validate and normalize the model-facing `internet_chat` arguments. Kept free
- * of any DeepSeek Harness import so it is unit-testable without DSH packages.
- */
+/** Validate and normalize model-facing `internet_chat` arguments. */
 export declare function parseChatArgs(args: Record<string, unknown>): ChatInput;
 /** Validated `internet_research` arguments. */
 export interface ResearchInput {
     query: string;
     name?: string;
-    providers?: WebProvider[];
+    accounts?: AccountId[];
     visible?: boolean;
 }
 /** Validate research arguments without coupling the parser to DSH packages. */
@@ -26,12 +23,9 @@ export interface TeamInput {
     rounds?: number;
     synthesize?: boolean;
     includeTranscript?: boolean;
-    providers?: WebProvider[];
+    accounts?: AccountId[];
     visible?: boolean;
 }
-/**
- * Validate and normalize the model-facing `internet_team` arguments. Kept free
- * of any DeepSeek Harness import so it is unit-testable without DSH packages.
- */
+/** Validate and normalize the model-facing `internet_team` arguments. */
 export declare function parseTeamArgs(args: Record<string, unknown>): TeamInput;
 //# sourceMappingURL=args.d.ts.map

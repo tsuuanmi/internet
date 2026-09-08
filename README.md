@@ -8,14 +8,14 @@ conversations, and visible browser inspection without running a separate daemon.
 
 ## Features
 
-- **`internet_chat`** — ask ChatGPT or Gemini through the authenticated website.
+- **`internet_chat`** — ask an explicit authenticated thinker account (`chatgpt-thinker` or `gemini-thinker`).
 - **`internet_team`** — run an ordered ChatGPT/Gemini debate and optional final synthesis.
-- **`internet_research`** — run provider-native Deep Research in one or both providers.
-- **`internet_browser`** — sign in, inspect account state, or stop a provider browser.
+- **`internet_research`** — run provider-native Deep Research through one or both thinker accounts.
+- **`internet_browser`** — sign in, inspect account state, or stop an exact semantic account, including `chatgpt-writer`.
 - **`/internet <question>`** — ask ChatGPT directly from the conversation UI without an agent model turn.
 - **`/workflow <objective>`** — queue a Git-aware, reviewed implementation workflow for the current session.
 - **Portable accounts** — copy only `~/.dsh/internet/accounts/` to move authenticated state.
-- **Durable conversations** — each DSH session resumes one native conversation per provider.
+- **Durable conversations** — each DSH session resumes one native conversation per account identity.
 - **Visible or hidden automation** — hidden managed Xvfb by default; opt into a user-visible window per call.
 - **Zero-install VNC on Linux x64/glibc 2.31+** — bundled x11vnc and noVNC,
   exposed only through a tokenized loopback URL intended for SSH forwarding.
@@ -31,7 +31,7 @@ and does not replace DSH's existing `web_search` or `web_fetch` tools.
 
 ```text
 internet_chat {
-  model: "chatgpt-web" | "gemini-web",
+  account: "chatgpt-thinker" | "gemini-thinker",
   prompt: string,
   visible?: boolean
 }
@@ -41,9 +41,7 @@ The browser is hidden by default. Set `visible: true` only when the user wants t
 window. Visible and hidden calls execute the same provider interaction code; only the display target
 changes.
 
-Each provider owns one durable native conversation for the current DSH session. A later call from the
-same session navigates back to that provider's bound ChatGPT `/c/<id>` or Gemini `/app/<id>` URL.
-ChatGPT and Gemini bindings are independent.
+Each account owns one durable native conversation for the current DSH session. A later call from the same session navigates back to that account's bound ChatGPT `/c/<id>` or Gemini `/app/<id>` URL. `chatgpt-thinker`, `chatgpt-writer`, and `gemini-thinker` never share durable binding state.
 
 ChatGPT turns select and verify `chatgptThinkingLevel` before every prompt. The current ChatGPT picker
 contains both a reasoning slider and nested model choices; the driver operates only the slider and never
@@ -58,15 +56,14 @@ submitted only after the semantic **Send prompt** action replaces Start Voice.
 ```text
 internet_research {
   query: string,
-  providers?: ["chatgpt-web", "gemini-web"],
+  accounts?: ["chatgpt-thinker", "gemini-thinker"],
   name?: string,
   visible?: boolean
 }
 ```
 
 This enables the provider-native Deep Research mode before submitting the query. It may run for up to
-`researchTimeoutMs` (30 minutes by default) and returns one independent result per provider; one provider
-failure preserves the other as `partial_success`. Research threads use an isolated durable owner key based
+`researchTimeoutMs` (30 minutes by default) and returns one independent result per selected account; one account failure preserves the other as `partial_success`. Research threads use an isolated durable owner key based
 on `name`, so they never share a normal `internet_chat` conversation. Deep Research availability depends on
 the signed-in provider account; the tool fails explicitly rather than downgrading to ordinary chat.
 
@@ -79,35 +76,35 @@ internet_team {
   rounds?: number,
   synthesize?: boolean,
   includeTranscript?: boolean,
-  providers?: ["chatgpt-web", "gemini-web"],
+  accounts?: ["chatgpt-thinker", "gemini-thinker"],
   visible?: boolean
 }
 ```
 
-`internet_team` is registered only when at least two providers are enabled. Defaults:
+`internet_team` is registered when both thinker accounts are enabled. Defaults:
 
-- providers: `chatgpt-web`, then `gemini-web`
+- accounts: `chatgpt-thinker`, then `gemini-thinker`
 - rounds: `2`
 - synthesis: enabled
 - transcript: omitted
 - browser visibility: hidden
 
-Providers speak sequentially in the requested order. During each round, a provider sees the task and
-each other provider's latest contribution. When synthesis is enabled, the configured `teamSynthesizer` receives the full current-call transcript and produces the final answer. ChatGPT (`chatgpt-web`) is the default synthesizer, independent of speaking order. The DSH agent coordinates the debate but
+Thinker accounts speak sequentially in the requested order. During each round, a provider sees the task and
+each other provider's latest contribution. When synthesis is enabled, the configured `teamSynthesizer` receives the full current-call transcript and produces the final answer. `chatgpt-thinker` is the default synthesizer, independent of speaking order. The DSH agent coordinates the debate but
 does not add its own debate turn.
 
 A team uses a derived session namespace (`<session>:team:<name>`), so team conversations are isolated
 from direct `internet_chat` conversations while remaining durable across repeated calls with the same
 team name. Different `team` values create separate native threads.
 
-By default the tool returns only `finalAnswer` and `finalProvider`. `includeTranscript: true` adds the
+By default the tool returns `finalAnswer`, `finalAccountId`, and `finalProvider`. `includeTranscript: true` adds the
 bounded transcript to both the structured result and model-visible rendered output. The newest content is retained within
 `teamTranscriptMaxChars`; `transcriptTruncated: true` reports omitted older content, and
 `textTruncation: "prefix"` marks a boundary turn whose beginning was removed. Returning the transcript
 also consumes more agent context.
 
 `visible: true` shows both providers as their turns execute. Hidden mode uses the same debate and browser
-automation flow on the managed display. Both accounts must be ready before a complete two-provider run.
+automation flow on the managed display. Both thinker accounts must be ready before a complete two-account run.
 Provider output remains model-generated: exact-string or adversarially worded tasks can be refused even
 when browser orchestration itself is healthy.
 
@@ -116,7 +113,7 @@ when browser orchestration itself is healthy.
 ```text
 internet_browser {
   action: "login" | "status" | "stop",
-  model: "chatgpt-web" | "gemini-web",
+  account: "chatgpt-thinker" | "chatgpt-writer" | "gemini-thinker",
   remote?: boolean
 }
 ```
@@ -125,7 +122,7 @@ internet_browser {
   `remote: true`, it first returns the SSH-forwarding command and tokenized loopback URL, then starts the
   noVNC Chrome session.
 - **`status`** reports the local account state and any active remote-login state.
-- **`stop`** closes the provider's inference browser and cancels a waiting remote login.
+- **`stop`** closes that account's inference browser and cancels its waiting remote login.
 
 Account states are `ready`, `reauth-required`, `invalid`, and `missing`. A `ready` result means a
 previously verified portable account exists locally; it is not a live guarantee that the provider will
@@ -187,11 +184,11 @@ plugins:
       remoteLoginPort: 39000
       turnTimeoutMs: 300000
       researchTimeoutMs: 1800000
-      maxConcurrentTurnsPerProvider: 1
+      maxConcurrentTurnsPerAccount: 1
       chatgptThinkingLevel: high
       teamRounds: 2
       teamMaxRounds: 4
-      teamSynthesizer: chatgpt-web
+      teamSynthesizer: chatgpt-thinker
 ```
 
 Restart the existing DSH host after installing or updating the package so the server-side plugin loads
@@ -205,25 +202,25 @@ the new build. Starting a second web server does not update an already running D
 | `dataDir` | `~/.dsh/internet` | Accounts, local login recovery profiles, conversations, and remote-login state. |
 | `headless` | `false` | Use native Chrome headless when true. Otherwise use headed Chrome on managed Xvfb by default. |
 | `loginTimeoutMs` | `180000` | Interactive login expiry, in milliseconds (3 minutes). |
-| `remoteLoginPort` | `39000` | ChatGPT loopback noVNC port; Gemini uses the next port (`39001`). |
+| `remoteLoginPort` | `39000` | Base loopback noVNC port. Account IDs use stable offsets: ChatGPT thinker `39000`, ChatGPT writer `39001`, Gemini thinker `39002`. |
 | `turnTimeoutMs` | `300000` | Maximum duration of one ordinary ChatGPT or Gemini provider turn (5 minutes). |
 | `researchTimeoutMs` | `1800000` | Maximum duration of one provider-native Deep Research run (30 minutes). |
 | `pollMs` | `200` | Response completion polling interval. |
 | `stableMs` | `1500` | Required unchanged, non-running response interval. |
 | `closeAfterMs` | `1800000` | Idle delay before closing an idle provider browser pool. |
-| `maxConcurrentTurnsPerProvider` | `1` | Maximum simultaneous hidden turns per provider from different DSH sessions; increase only after confirming provider account-state acceptance. |
+| `maxConcurrentTurnsPerAccount` | `1` | Maximum simultaneous hidden turns per authenticated account from different DSH sessions. Different account IDs use independent schedulers. |
 | `maxOutputChars` | `200000` | Maximum returned response characters. |
 | `teamRounds` | `2` | Default debate rounds; every provider speaks once per round. |
 | `teamMaxRounds` | `4` | Maximum accepted per-call `rounds`. |
 | `teamTranscriptMaxChars` | `50000` | Unicode code-point budget for an opt-in transcript. |
 | `teamSynthesis` | `true` | Append a final synthesis turn by default. |
-| `teamSynthesizer` | `chatgpt-web` | Provider that performs final team synthesis, independent of speaking order. |
+| `teamSynthesizer` | `chatgpt-thinker` | Account that performs final team synthesis, independent of speaking order. |
 | `enableChatgpt` | `true` | Register ChatGPT Web and `/internet`. |
 | `enableGemini` | `true` | Register Gemini Web. |
 | `chatgptThinkingLevel` | `high` | ChatGPT reasoning level: `instant`, `medium`, or `high`. |
 
 Invalid explicit values fail configuration loading. `teamRounds` cannot exceed `teamMaxRounds`, and
-`remoteLoginPort` must leave room for Gemini on the next TCP port. Capacity above `1` is an explicit
+`remoteLoginPort` must leave room for all semantic account offsets. Capacity above `1` is an explicit
 throughput opt-in for independent child-team work; it does not improve a single team's dependent rounds.
 
 ## Login
@@ -231,7 +228,7 @@ throughput opt-in for independent child-team work; it does not improve a single 
 ### Desktop login
 
 ```text
-internet_browser { action: "login", model: "chatgpt-web" }
+internet_browser { action: "login", account: "chatgpt-thinker" }
 ```
 
 The plugin opens a dedicated normal Chrome profile without browser-automation or remote-debugging flags.
@@ -244,7 +241,7 @@ canonical portable account file.
 Force remote mode when the DSH server has a display but the login should still use port forwarding:
 
 ```text
-internet_browser { action: "login", model: "gemini-web", remote: true }
+internet_browser { action: "login", account: "gemini-thinker", remote: true }
 ```
 
 The result contains a command and tokenized URL similar to:
@@ -259,7 +256,7 @@ http://127.0.0.1:39001/<secret-token>/
 
 Run the SSH command on the local computer, open the complete localhost URL, sign in through noVNC, and
 press **Save account**. Then call `status` until the remote state is `complete` and the account state is
-`ready`. ChatGPT uses port `39000`; Gemini uses `39001` with the default configuration.
+`ready`. With the default configuration, `chatgpt-thinker` uses `39000`, `chatgpt-writer` uses `39001`, and `gemini-thinker` uses `39002`.
 
 The HTTP/WebSocket and VNC listeners bind only to `127.0.0.1`. The URL token and temporary VNC password
 are bearer credentials. Do not publish the endpoint or put it behind a public reverse proxy. A remote
@@ -271,8 +268,9 @@ The portable boundary is exactly:
 
 ```text
 ~/.dsh/internet/accounts/
-  chatgpt-web.json
-  gemini-web.json
+  chatgpt-thinker.json
+  chatgpt-writer.json
+  gemini-thinker.json
 ```
 
 Each versioned JSON file contains cookies, local storage, and, when Patchright can safely serialize it,
@@ -285,9 +283,9 @@ To move accounts:
 1. Stop DSH on the source and destination computers.
 2. Securely copy only the `accounts/` directory into the destination's configured `dataDir`.
 3. Preserve private permissions (`0700` directory and `0600` files on POSIX).
-4. Restart DSH and check each provider with `internet_browser status`.
+4. Restart DSH and check each account with `internet_browser status`.
 
-Do not copy provider `login-profile/` directories or `conversations/`. Chrome profiles depend on machine
+Do not copy account `login-profile/` directories or `conversations/`. Chrome profiles depend on machine
 keyrings and platform details. Conversation files bind DSH session identities to native conversation
 URLs and are not authentication state.
 
@@ -295,8 +293,7 @@ Providers can expire or revoke a copied session, challenge a new device/IP, or r
 A challenge or temporarily unconfirmed browser surface does not by itself invalidate the local snapshot:
 retry it or inspect the provider visibly first. Only positive sign-out evidence marks an account as
 `reauth-required`, and `internet_browser status` reports its non-secret reason. When sign-in is actually
-required, run `internet_browser login`; successful verification atomically replaces only that provider's
-portable account file.
+required, run `internet_browser login`; successful verification atomically replaces only that account's portable account file.
 
 ## Browser and display lifecycle
 
@@ -310,8 +307,7 @@ a fallback. `visible: true` bypasses managed Xvfb and requires a user-managed di
 `headless: true` only when native Chrome headless is explicitly desired; the plugin does not silently
 switch to native headless.
 
-By default, one hidden turn runs per provider. Set `maxConcurrentTurnsPerProvider` above `1` only after
-confirming provider policy and account-state acceptance. Different DSH sessions may otherwise run in
+By default, one hidden turn runs per account. Set `maxConcurrentTurnsPerAccount` above `1` only after confirming account-state acceptance. Different account IDs, including the two ChatGPT accounts, have independent scheduler locks. Different DSH sessions may otherwise run in
 parallel; turns in one session, visible calls, login, stop, and a single team's dependent rounds remain
 ordered. A queued lifecycle operation forms a fence, so later turns wait until it completes. Each active
 turn uses an isolated non-persistent browser context restored from the same portable account. Snapshot
@@ -326,8 +322,9 @@ Plugin disposal closes contexts, Chrome processes, remote logins, and managed di
 Bindings are stored privately under:
 
 ```text
-~/.dsh/internet/chatgpt-web/conversations/<sha256(sessionId)>.json
-~/.dsh/internet/gemini-web/conversations/<sha256(sessionId)>.json
+~/.dsh/internet/chatgpt-thinker/conversations/<sha256(sessionId)>.json
+~/.dsh/internet/chatgpt-writer/conversations/<sha256(sessionId)>.json
+~/.dsh/internet/gemini-thinker/conversations/<sha256(sessionId)>.json
 ```
 
 The raw DSH session ID and prompt text are not stored in binding filenames or files. A binding records
@@ -338,17 +335,17 @@ native conversation.
 
 ```text
 # Hidden direct call (default)
-internet_chat { model: "chatgpt-web", prompt: "Remember codeword cobalt." }
+internet_chat { account: "chatgpt-thinker", prompt: "Remember codeword cobalt." }
 
 # Visible follow-up in the same native conversation
 internet_chat {
-  model: "chatgpt-web",
+  account: "chatgpt-thinker",
   prompt: "What codeword did I give you?",
   visible: true
 }
 
 # Gemini owns a separate durable thread
-internet_chat { model: "gemini-web", prompt: "Summarize this design tradeoff: ..." }
+internet_chat { account: "gemini-thinker", prompt: "Summarize this design tradeoff: ..." }
 
 # Default hidden two-provider debate with synthesis
 internet_team { task: "Design a resilient retry strategy for a payment API." }
@@ -361,10 +358,10 @@ internet_team {
   visible: true
 }
 
-# Ordered providers and bounded current-call transcript
+# Ordered thinker accounts and bounded current-call transcript
 internet_team {
   task: "Compare these migration plans: ...",
-  providers: ["gemini-web", "chatgpt-web"],
+  accounts: ["gemini-thinker", "chatgpt-thinker"],
   rounds: 3,
   includeTranscript: true
 }
@@ -376,8 +373,7 @@ debate requires current information.
 
 ## Troubleshooting
 
-- **`login_required` / `reauth-required`** — run `internet_browser login` for that provider. A team run
-  needs every selected provider ready.
+- **`login_required` / `reauth-required`** — run `internet_browser login` for that exact account. A team run needs every selected thinker account ready.
 - **Remote login is `waiting`** — keep the SSH tunnel open, finish sign-in, and press **Save account**.
 - **Remote login is `finalizing`** — wait and call `status`; verification is still running.
 - **Visible mode fails** — confirm the DSH host has a user-managed `$DISPLAY`. Visible mode never falls

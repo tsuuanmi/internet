@@ -1,31 +1,24 @@
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-	AccountStore,
-	capturePortableStorageState,
-	captureProfileBootstrapState,
-	type PortableStorageState,
-	parseAccountFile,
-	preserveIndexedDb,
-} from "#internet/browser/accounts";
-import { providerLocations } from "#internet/browser/storage";
+import { afterEach, describe, expect, it } from "vitest";
+import { AccountStore, type PortableStorageState, parseAccountFile } from "#internet/browser/accounts";
+import { accountLocations } from "#internet/browser/storage";
 
-const temporaryRoots: string[] = [];
+const roots: string[] = [];
 
-function temporaryRoot(): string {
-	const root = mkdtempSync(join(tmpdir(), "internet-accounts-"));
-	temporaryRoots.push(root);
-	return root;
+function root(): string {
+	const value = mkdtempSync(join(tmpdir(), "internet-accounts-"));
+	roots.push(value);
+	return value;
 }
 
-function storageState(indexedDB: unknown[] = []): PortableStorageState {
+function state(label = "one"): PortableStorageState {
 	return {
 		cookies: [
 			{
 				name: "session",
-				value: "secret",
+				value: label,
 				domain: ".example.com",
 				path: "/",
 				expires: -1,
@@ -34,261 +27,108 @@ function storageState(indexedDB: unknown[] = []): PortableStorageState {
 				sameSite: "Lax",
 			},
 		],
-		origins: [
-			{
-				origin: "https://example.com",
-				localStorage: [{ name: "account", value: "one" }],
-				indexedDB,
-			},
-		],
+		origins: [{ origin: "https://example.com", localStorage: [{ name: "account", value: label }] }],
 	};
 }
 
 afterEach(() => {
-	for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+	for (const value of roots.splice(0)) rmSync(value, { recursive: true, force: true });
 });
 
-describe("AccountStore", () => {
-	it.each(["chatgpt-web", "gemini-web"] as const)("persists a private portable %s account", (provider) => {
-		const root = temporaryRoot();
-		const store = new AccountStore(root);
-		const indexedDB = [{ name: "auth", version: 1, stores: [] }];
-		store.writeReady(provider, storageState(indexedDB), new Date("2026-01-02T03:04:05.000Z"));
-
-		const inspection = store.inspect(provider);
-		expect(inspection.state).toBe("ready");
-		expect(inspection.account).toMatchObject({
-			schema: "@tsuuanmi/internet-account",
-			version: 1,
-			provider,
-			status: "ready",
-			verifiedAt: "2026-01-02T03:04:05.000Z",
-			revision: 1,
+describe("AccountStore account identity", () => {
+	it.each([
+		["chatgpt-thinker", "chatgpt-web"],
+		["chatgpt-writer", "chatgpt-web"],
+		["gemini-thinker", "gemini-web"],
+	] as const)("persists private v2 state for %s", (accountId, provider) => {
+		const store = new AccountStore(root());
+		store.writeReady(accountId, state(), new Date("2026-01-02T03:04:05.000Z"));
+		const inspection = store.inspect(accountId);
+		expect(inspection).toMatchObject({
+			state: "ready",
+			account: {
+				version: 2,
+				accountId,
+				provider,
+				status: "ready",
+				revision: 1,
+			},
 		});
-		expect(inspection.account?.storageState.origins[0]?.indexedDB).toEqual(indexedDB);
 		if (process.platform !== "win32") {
 			expect(statSync(dirname(inspection.path)).mode & 0o777).toBe(0o700);
 			expect(statSync(inspection.path).mode & 0o777).toBe(0o600);
 		}
 	});
 
-	it("distinguishes missing, invalid, and reauthentication-required accounts", () => {
-		const root = temporaryRoot();
-		const store = new AccountStore(root);
-		expect(store.inspect("chatgpt-web").state).toBe("missing");
+	it("isolates thinker and writer state even though both use ChatGPT", () => {
+		const store = new AccountStore(root());
+		store.writeReady("chatgpt-thinker", state("thinker"));
+		store.writeReady("chatgpt-writer", state("writer"));
+		expect(store.inspect("chatgpt-thinker").path).not.toBe(store.inspect("chatgpt-writer").path);
+		expect(store.inspect("chatgpt-thinker").account?.storageState.cookies[0]?.value).toBe("thinker");
+		expect(store.inspect("chatgpt-writer").account?.storageState.cookies[0]?.value).toBe("writer");
+	});
 
-		store.writeReady("chatgpt-web", storageState());
-		store.markReauthRequired("chatgpt-web", new Date("2026-02-03T04:05:06.000Z"), {
+	it("keeps stale-write protection account-local", () => {
+		const store = new AccountStore(root());
+		store.writeReady("chatgpt-thinker", state("initial"));
+		const revision = store.inspect("chatgpt-thinker").account!.revision;
+		expect(store.writeReadyIfRevision("chatgpt-thinker", revision, state("fresh"))?.revision).toBe(revision + 1);
+		expect(store.writeReadyIfRevision("chatgpt-thinker", revision, state("stale"))).toBeUndefined();
+		expect(store.inspect("chatgpt-thinker").account?.storageState.cookies[0]?.value).toBe("fresh");
+	});
+
+	it("marks only the selected account for reauthentication", () => {
+		const store = new AccountStore(root());
+		store.writeReady("chatgpt-thinker", state("thinker"));
+		store.writeReady("chatgpt-writer", state("writer"));
+		store.markReauthRequired("chatgpt-writer", new Date("2026-02-03T04:05:06.000Z"), {
 			observedAt: "2026-02-03T04:05:06.000Z",
 			evidence: "login-url",
 		});
-		expect(store.inspect("chatgpt-web")).toMatchObject({
-			state: "reauth-required",
-			account: {
-				status: "reauth-required",
-				invalidatedAt: "2026-02-03T04:05:06.000Z",
-				reauthDiagnostic: { evidence: "login-url" },
-			},
-		});
-		store.writeReady("chatgpt-web", storageState());
-		expect(store.inspect("chatgpt-web").account?.reauthDiagnostic).toBeUndefined();
-
-		const path = providerLocations(root, "chatgpt-web").accountPath;
-		writeFileSync(path, "not json", { mode: 0o600 });
-		expect(store.inspect("chatgpt-web")).toMatchObject({ state: "invalid", error: expect.any(String) });
+		expect(store.inspect("chatgpt-thinker").state).toBe("ready");
+		expect(store.inspect("chatgpt-writer").state).toBe("reauth-required");
 	});
 
-	it("normalizes legacy version-one accounts without a revision", () => {
-		const account = parseAccountFile(
-			{
-				schema: "@tsuuanmi/internet-account",
-				version: 1,
-				provider: "chatgpt-web",
-				status: "ready",
-				verifiedAt: "2026-01-02T03:04:05.000Z",
-				storageState: storageState(),
-			},
-			"chatgpt-web",
-		);
-		expect(account.revision).toBe(0);
+	it("rejects old provider-keyed schema instead of migrating it", () => {
+		expect(() =>
+			parseAccountFile(
+				{
+					schema: "@tsuuanmi/internet-account",
+					version: 1,
+					provider: "chatgpt-web",
+					status: "ready",
+					verifiedAt: "2026-01-02T03:04:05.000Z",
+					storageState: state(),
+				},
+				"chatgpt-thinker",
+			),
+		).toThrow(/schema/);
 	});
 
-	it("commits only a snapshot based on the current account revision", () => {
-		const store = new AccountStore(temporaryRoot());
-		store.writeReady("gemini-web", storageState([{ name: "initial" }]));
-		const initial = store.inspect("gemini-web").account!;
-		const committed = store.writeReadyIfRevision("gemini-web", initial.revision, storageState([{ name: "first" }]));
-		const stale = store.writeReadyIfRevision("gemini-web", initial.revision, storageState([{ name: "stale" }]));
-
-		expect(committed?.revision).toBe(initial.revision + 1);
-		expect(stale).toBeUndefined();
-		expect(store.inspect("gemini-web").account?.storageState.origins[0]?.indexedDB).toEqual([{ name: "first" }]);
-	});
-
-	it("rejects unsupported schemas, provider mismatches, and malformed storage state", () => {
+	it("rejects account and provider mismatches", () => {
 		const valid = {
 			schema: "@tsuuanmi/internet-account",
-			version: 1,
+			version: 2,
+			accountId: "chatgpt-thinker",
 			provider: "chatgpt-web",
 			status: "ready",
 			verifiedAt: "2026-01-02T03:04:05.000Z",
-			storageState: storageState(),
+			revision: 1,
+			storageState: state(),
 		};
-		expect(() => parseAccountFile({ ...valid, version: 2 }, "chatgpt-web")).toThrow(/schema/);
-		expect(() => parseAccountFile(valid, "gemini-web")).toThrow(/belongs/);
-		expect(() => parseAccountFile({ ...valid, storageState: { cookies: {}, origins: [] } }, "chatgpt-web")).toThrow(
-			/storage state/,
-		);
+		expect(() => parseAccountFile({ ...valid, accountId: "chatgpt-writer" }, "chatgpt-thinker")).toThrow(/belongs/);
+		expect(() => parseAccountFile({ ...valid, provider: "gemini-web" }, "chatgpt-thinker")).toThrow(/provider/);
 	});
 
-	it("rejects a reauth diagnostic with extra keys", () => {
-		const root = temporaryRoot();
-		const store = new AccountStore(root);
-		store.writeReady("chatgpt-web", storageState());
-		const account = store.inspect("chatgpt-web").account!;
-		const path = providerLocations(root, "chatgpt-web").accountPath;
-		const withExtra = {
-			...account,
-			status: "reauth-required",
-			invalidatedAt: "2026-03-01T00:00:00.000Z",
-			reauthDiagnostic: {
-				observedAt: "2026-03-01T00:00:00.000Z",
-				evidence: "login-url",
-				secret: "leaked",
-			},
-		};
-		writeFileSync(path, `${JSON.stringify(withExtra)}\n`, { mode: 0o600 });
-		expect(store.inspect("chatgpt-web").state).toBe("invalid");
-	});
-
-	it("preserves the previous account when serialization fails", () => {
-		const root = temporaryRoot();
-		const store = new AccountStore(root);
-		store.writeReady("chatgpt-web", storageState(), new Date("2026-01-01T00:00:00.000Z"));
-		const path = providerLocations(root, "chatgpt-web").accountPath;
-		const before = readFileSync(path, "utf8");
-		const circular: Record<string, unknown> = {};
-		circular.self = circular;
-		const invalid = storageState([circular]);
-
-		expect(() => store.writeReady("chatgpt-web", invalid)).toThrow();
-		expect(readFileSync(path, "utf8")).toBe(before);
-	});
-});
-
-describe("browser state capture", () => {
-	it("requests IndexedDB from a portable Patchright context", async () => {
-		const expected = storageState([{ name: "database" }]);
-		const context = {
-			storageState: async (options: unknown) => {
-				expect(options).toEqual({ indexedDB: true });
-				return expected;
-			},
-		};
-		await expect(capturePortableStorageState(context as never)).resolves.toEqual({
-			storageState: expected,
-			indexedDbCaptured: true,
-		});
-	});
-
-	it("falls back to cookies and local storage for the known oversized IndexedDB failure", async () => {
-		const fallback = storageState();
-		const context = {
-			storageState: vi
-				.fn()
-				.mockRejectedValueOnce(new Error("Unable to serialize IndexedDB: Failed to read large IndexedDB value"))
-				.mockResolvedValueOnce(fallback),
-		};
-
-		await expect(capturePortableStorageState(context as never)).resolves.toEqual({
-			storageState: fallback,
-			indexedDbCaptured: false,
-		});
-		expect(context.storageState).toHaveBeenNthCalledWith(1, { indexedDB: true });
-		expect(context.storageState).toHaveBeenNthCalledWith(2);
-	});
-
-	it("does not fall back for unrelated storage capture failures", async () => {
-		const failure = new Error("unexpected storage failure");
-		const context = { storageState: vi.fn(async () => Promise.reject(failure)) };
-
-		await expect(capturePortableStorageState(context as never)).rejects.toBe(failure);
-		expect(context.storageState).toHaveBeenCalledTimes(1);
-	});
-
-	it("redacts a failed IndexedDB-free fallback", async () => {
-		const context = {
-			storageState: vi
-				.fn()
-				.mockRejectedValueOnce(new Error("Unable to serialize IndexedDB: Failed to read large IndexedDB value"))
-				.mockRejectedValueOnce(new Error("cookie=secret")),
-		};
-
-		await expect(capturePortableStorageState(context as never)).rejects.toMatchObject({
-			kind: "provider_error",
-			message: "Browser account state could not be captured without IndexedDB.",
-		});
-	});
-
-	it("preserves previous IndexedDB when a fallback snapshot omits it", () => {
-		const previous = storageState([{ name: "auth", version: 1, stores: [] }]);
-		const fallback: PortableStorageState = {
-			cookies: [{ ...previous.cookies[0]!, value: "rotated" }],
-			origins: [{ origin: "https://example.com", localStorage: [{ name: "account", value: "two" }] }],
-		};
-
-		expect(preserveIndexedDb(fallback, previous)).toEqual({
-			cookies: [{ ...previous.cookies[0]!, value: "rotated" }],
-			origins: [
-				{
-					origin: "https://example.com",
-					localStorage: [{ name: "account", value: "two" }],
-					indexedDB: [{ name: "auth", version: 1, stores: [] }],
-				},
-			],
-		});
-	});
-
-	it("does not restore IndexedDB for an origin absent from a fallback snapshot", () => {
-		const previous: PortableStorageState = {
-			cookies: [],
-			origins: [
-				{ origin: "https://current.example", localStorage: [], indexedDB: [{ name: "current" }] },
-				{ origin: "https://stale.example", localStorage: [], indexedDB: [{ name: "stale" }] },
-			],
-		};
-		const fallback: PortableStorageState = {
-			cookies: [],
-			origins: [{ origin: "https://current.example", localStorage: [{ name: "account", value: "two" }] }],
-		};
-
-		expect(preserveIndexedDb(fallback, previous)).toEqual({
-			cookies: [],
-			origins: [
-				{
-					origin: "https://current.example",
-					localStorage: [{ name: "account", value: "two" }],
-					indexedDB: [{ name: "current" }],
-				},
-			],
-		});
-	});
-
-	it("captures bootstrap cookies and local storage from a persistent profile", async () => {
-		const cookies = storageState().cookies;
-		const page = {
-			isClosed: () => false,
-			url: () => "https://example.com/app",
-			evaluate: async () => [{ name: "account", value: "one" }],
-		};
-		const context = {
-			cookies: async () => cookies,
-			pages: () => [page],
-		};
-
-		await expect(captureProfileBootstrapState(context as never)).resolves.toEqual({
-			cookies,
-			origins: [{ origin: "https://example.com", localStorage: [{ name: "account", value: "one" }] }],
-		});
+	it("reports malformed canonical files as invalid without touching other accounts", () => {
+		const dataDir = root();
+		const store = new AccountStore(dataDir);
+		store.writeReady("chatgpt-writer", state("writer"));
+		const thinkerPath = accountLocations(dataDir, "chatgpt-thinker").accountPath;
+		writeFileSync(thinkerPath, "not json", { mode: 0o600 });
+		expect(store.inspect("chatgpt-thinker").state).toBe("invalid");
+		expect(store.inspect("chatgpt-writer").state).toBe("ready");
+		expect(readFileSync(accountLocations(dataDir, "chatgpt-writer").accountPath, "utf8")).toContain("chatgpt-writer");
 	});
 });

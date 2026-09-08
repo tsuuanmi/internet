@@ -19,29 +19,30 @@ function fakeContext(): {
 	return { context, sections, tools, commands };
 }
 
-describe("internet-team system guidance", () => {
-	it("registers only canonical tool IDs and documents team isolation", () => {
+describe("account-aware plugin registration", () => {
+	it("registers canonical tools and documents account isolation", () => {
 		const { context, sections, tools, commands } = fakeContext();
 		apply(context, {});
 		const team = sections.find((section) => section.name === "tool:internet_team");
+		const chat = sections.find((section) => section.name === "tool:internet_chat");
 		const research = sections.find((section) => section.name === "tool:internet_research");
 
-		expect(team?.text).toContain("focused background subagent");
 		expect(team?.text).toContain("<child-agent-id>:team:<name>");
-		expect(team?.text).toContain("rather than recursively delegating");
-		expect(team?.text).toContain("maxConcurrentTurnsPerProvider");
-		expect(team?.text).toContain("same-session turns, visible calls, login");
-		expect(team?.text).toContain("call internet_team directly");
-		expect(tools).toEqual(["internet_chat", "internet_research", "internet_browser", "internet_team"]);
+		expect(team?.text).toContain("per authenticated account");
+		expect(team?.text).toContain("maxConcurrentTurnsPerAccount");
+		expect(team?.text).toContain("different accounts have independent schedulers");
+		expect(team?.text).toContain("chatgpt-thinker is the default explicit synthesizer");
+		expect(chat?.text).toContain("chatgpt-thinker and chatgpt-writer have separate login state");
+		expect(tools).toEqual(["internet_browser", "internet_chat", "internet_research", "internet_team"]);
 		expect(commands).toEqual(["internet", "workflow"]);
-		expect(research?.text).toContain("30 minutes");
+		expect(research?.text).toContain("thinker accounts");
 	});
 
-	it("omits internet_team when only one provider is enabled", () => {
+	it("omits internet_team when Gemini is disabled while keeping ChatGPT account lifecycle", () => {
 		const { context, tools, commands } = fakeContext();
 		apply(context, { enableGemini: false });
 
-		expect(tools).toEqual(["internet_chat", "internet_research", "internet_browser"]);
+		expect(tools).toEqual(["internet_browser", "internet_chat", "internet_research"]);
 		expect(commands).toEqual(["internet"]);
 	});
 });

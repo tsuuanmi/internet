@@ -15,13 +15,13 @@ function invocation(rawInput: string) {
 }
 
 describe("defineInternetCommand", () => {
-	it("sends the question to the durable ChatGPT conversation", async () => {
+	it("sends the question to the durable ChatGPT thinker conversation", async () => {
 		const chat = vi.fn().mockResolvedValue({ text: "ChatGPT answer", url: "https://chatgpt.com/c/test" });
 		const command = defineInternetCommand({ chat });
 		const input = invocation("  explain consensus  ");
 
 		await expect(command.handler(input)).resolves.toEqual({ kind: "success", text: "ChatGPT answer" });
-		expect(chat).toHaveBeenCalledWith("chatgpt-web", {
+		expect(chat).toHaveBeenCalledWith("chatgpt-thinker", {
 			prompt: "explain consensus",
 			sessionId: "1-1",
 			signal: input.signal,

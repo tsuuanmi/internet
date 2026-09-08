@@ -1,6 +1,7 @@
+import { type AccountId } from "#internet/core/accounts";
 /** Browser-backed web providers this plugin can drive. */
 export type WebProvider = "chatgpt-web" | "gemini-web";
-/** Known provider ids, used to validate tool arguments. */
+/** Known provider ids, used for provider implementation dispatch. */
 export declare const WEB_PROVIDERS: readonly WebProvider[];
 /**
  * ChatGPT Web reasoning-effort levels, ordered by the UI index the model
@@ -20,7 +21,7 @@ export interface BrowserConfig {
     headless: boolean;
     /** Max time to wait for an interactive login to reach the authenticated surface (ms). */
     loginTimeoutMs: number;
-    /** Stable loopback port for ChatGPT remote login; Gemini uses the next port. */
+    /** Stable loopback base port; each semantic account receives a deterministic offset. */
     remoteLoginPort: number;
     /** Max time for one browser chat turn to reach completion (ms). */
     turnTimeoutMs: number;
@@ -32,11 +33,11 @@ export interface BrowserConfig {
     stableMs: number;
     /** Idle delay before an inference browser is closed after a turn (ms). */
     closeAfterMs: number;
-    /** Maximum simultaneous hidden turns for one provider; same-session turns remain ordered. */
-    maxConcurrentTurnsPerProvider: number;
+    /** Maximum simultaneous hidden turns for one authenticated account. */
+    maxConcurrentTurnsPerAccount: number;
     /** Upper bound on returned chat output characters. */
     maxOutputChars: number;
-    /** Default debate rounds for the `internet_team` tool (each model speaks once per round). */
+    /** Default debate rounds for the `internet_team` tool (each account speaks once per round). */
     teamRounds: number;
     /** Maximum per-call debate rounds accepted by `internet_team`. */
     teamMaxRounds: number;
@@ -44,11 +45,11 @@ export interface BrowserConfig {
     teamTranscriptMaxChars: number;
     /** Whether the `internet_team` tool appends a final synthesis turn. */
     teamSynthesis: boolean;
-    /** Provider that performs the final team synthesis, independent of speaking order. */
-    teamSynthesizer: WebProvider;
-    /** Register the ChatGPT Web provider. */
+    /** Semantic account that performs final team synthesis, independent of speaking order. */
+    teamSynthesizer: AccountId;
+    /** Register accounts backed by the ChatGPT Web provider. */
     enableChatgpt: boolean;
-    /** Register the Gemini Web provider. */
+    /** Register accounts backed by the Gemini Web provider. */
     enableGemini: boolean;
     /** Default ChatGPT Web reasoning-effort level selected before each turn. */
     chatgptThinkingLevel: ChatGptThinkingLevel;
@@ -69,7 +70,7 @@ export declare const Config: import("@deepseek-ai/schemastery").Schema<{
     pollMs: number;
     stableMs: number;
     closeAfterMs: number;
-    maxConcurrentTurnsPerProvider: number;
+    maxConcurrentTurnsPerAccount: number;
     maxOutputChars: number;
     teamRounds: number;
     teamMaxRounds: number;

@@ -76,19 +76,19 @@ try {
 	const scenarios = [
 		{
 			config: {},
-			tools: ["internet_chat", "internet_research", "internet_browser", "internet_team"],
+			tools: ["internet_browser", "internet_chat", "internet_research", "internet_team"],
 			commands: ["internet", "workflow"],
-			sections: ["tool:internet_research", "tool:internet_team", "tool:internet_chat"],
+			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_team"],
 		},
 		{
 			config: { enableChatgpt: false },
-			tools: ["internet_chat", "internet_research", "internet_browser"],
+			tools: ["internet_browser", "internet_chat", "internet_research"],
 			commands: [],
 			sections: ["tool:internet_research", "tool:internet_chat"],
 		},
 		{
 			config: { enableGemini: false },
-			tools: ["internet_chat", "internet_research", "internet_browser"],
+			tools: ["internet_browser", "internet_chat", "internet_research"],
 			commands: ["internet"],
 			sections: ["tool:internet_research", "tool:internet_chat"],
 		},

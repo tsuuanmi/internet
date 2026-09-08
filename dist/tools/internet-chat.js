@@ -1,25 +1,19 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { WEB_PROVIDERS } from "#internet/core/config";
+import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
 import { isInternetError } from "#internet/core/errors";
 import { parseChatArgs } from "#internet/tools/args";
 export { parseChatArgs } from "#internet/tools/args";
-/**
- * Define the `internet_chat` model tool: ask ChatGPT Web or Gemini Web a
- * question through a real logged-in browser and return the rendered answer as
- * markdown. This is the MVP entry point that DSH agents call; a provider-model
- * adapter on `ctx.llm` can be layered on later reusing the same
- * {@link BrowserManager}.
- */
+/** Define the `internet_chat` model tool over explicitly selected thinker accounts. */
 export function defineInternetChatTool(manager, timeoutMs, allowed) {
     return defineTool({
         name: "internet_chat",
-        description: "Ask ChatGPT or Gemini through a logged-in browser. Both providers durably resume one native conversation per current DSH session. The browser is hidden by default; set visible=true to show it on the user-managed display.",
+        description: "Ask an explicitly selected authenticated web account. Thinker accounts durably resume one native conversation per current DSH session. The browser is hidden by default; set visible=true to show it on the user-managed display.",
         parameters: {
-            model: {
+            account: {
                 type: "string",
                 required: true,
-                enum: [...WEB_PROVIDERS],
-                description: "Which web model to call.",
+                enum: [...ACCOUNT_IDS],
+                description: "Semantic authenticated account to call.",
             },
             prompt: {
                 type: "string",
@@ -37,6 +31,7 @@ export function defineInternetChatTool(manager, timeoutMs, allowed) {
                 additionalProperties: false,
                 properties: {
                     answer: { type: "string", required: true },
+                    accountId: { type: "string", required: true },
                     provider: { type: "string", required: true },
                     url: { type: "string" },
                     conversationId: { type: "string" },
@@ -49,10 +44,12 @@ export function defineInternetChatTool(manager, timeoutMs, allowed) {
         timeoutMs,
         isConcurrencySafe: () => false,
         async execute(args, exec) {
-            const { provider, prompt, visible } = parseChatArgs(args);
-            if (!allowed.has(provider)) {
+            const { accountId, prompt, visible } = parseChatArgs(args);
+            const provider = getAccountDefinition(accountId).provider;
+            if (!allowed.has(accountId)) {
                 return {
-                    answer: `internet_chat provider ${provider} is disabled in the internet plugin config.`,
+                    answer: `internet_chat account ${accountId} is not enabled for direct thinker chat.`,
+                    accountId,
                     provider,
                     isError: true,
                 };
@@ -61,12 +58,13 @@ export function defineInternetChatTool(manager, timeoutMs, allowed) {
             if (sessionId === undefined) {
                 return {
                     answer: "internet_chat requires an agent-backed DSH session to own the durable web conversation.",
+                    accountId,
                     provider,
                     isError: true,
                 };
             }
             try {
-                const result = await manager.chat(provider, {
+                const result = await manager.chat(accountId, {
                     prompt,
                     sessionId: String(sessionId),
                     visible,
@@ -74,6 +72,7 @@ export function defineInternetChatTool(manager, timeoutMs, allowed) {
                 });
                 return {
                     answer: result.text,
+                    accountId,
                     provider,
                     url: result.url,
                     ...(result.conversationId === undefined ? {} : { conversationId: result.conversationId }),
@@ -83,6 +82,7 @@ export function defineInternetChatTool(manager, timeoutMs, allowed) {
                 if (isInternetError(error)) {
                     return {
                         answer: `internet_chat failed (${error.kind}): ${error.message}`,
+                        accountId,
                         provider,
                         isError: true,
                     };
@@ -92,7 +92,7 @@ export function defineInternetChatTool(manager, timeoutMs, allowed) {
         },
         presentCall: (args) => ({
             card: "generic",
-            title: `${String(args.model)} · ${String(args.prompt).slice(0, 80)}`,
+            title: `${String(args.account)} · ${String(args.prompt).slice(0, 80)}`,
             kind: "other",
             rawInput: String(args.prompt),
         }),

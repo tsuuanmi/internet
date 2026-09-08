@@ -1,5 +1,6 @@
 import { type AccountState, type ReauthDiagnostic } from "#internet/browser/accounts";
 import { type RemoteLoginStatus } from "#internet/browser/remote-login";
+import { type AccountId } from "#internet/core/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 export interface ChatRequest {
     prompt: string;
@@ -21,7 +22,8 @@ export interface ChatResult {
 export interface LoginOptions {
     remote?: boolean;
 }
-export interface ProviderStatus {
+export interface AccountStatus {
+    accountId: AccountId;
     provider: WebProvider;
     state: AccountState;
     accountPath: string;
@@ -34,7 +36,7 @@ export interface ProviderStatus {
 }
 /**
  * Owns isolated browser sessions. Interactive login runs in a dedicated,
- * per-provider normal Chrome profile (without browser-automation flags). The
+ * per-account normal Chrome profile (without browser-automation flags). The
  * profile is retained so reopening login visibly shows the same signed-in account.
  * After Chrome closes, patchright verifies bootstrap profile state in a fresh
  * context and writes the canonical portable account file, including IndexedDB.
@@ -49,8 +51,7 @@ export declare class BrowserManager {
     private readonly schedulers;
     private readonly remoteLogins;
     private readonly accounts;
-    private readonly chatGptConversations;
-    private readonly geminiConversations;
+    private readonly conversations;
     private readonly pendingCloses;
     private readonly activeContexts;
     private readonly accountCommitQueues;
@@ -58,10 +59,12 @@ export declare class BrowserManager {
     private disposed;
     constructor(config: BrowserConfig);
     private chromeExecutable;
+    private provider;
     private locations;
+    private conversationStore;
     private scheduler;
-    private invalidateProvider;
-    private runProviderExclusive;
+    private invalidateAccount;
+    private runAccountExclusive;
     private homeUrl;
     private activePage;
     private assessAuthentication;
@@ -81,9 +84,9 @@ export declare class BrowserManager {
     private verifyFallbackStorageState;
     private closeBrowser;
     private closeVirtualDisplaySessions;
-    /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
+    /** Cancel any pending delayed-close timer for an account (the browser is needed now). */
     private cancelPendingClose;
-    /** Schedule closing a provider browser after its scheduler becomes idle. */
+    /** Schedule closing an account browser after its scheduler becomes idle. */
     private scheduleCloseWhenIdle;
     private scheduleClose;
     private launchBrowser;
@@ -100,21 +103,21 @@ export declare class BrowserManager {
      */
     private handleSignedOut;
     /** Open local or SSH-forwarded normal Chrome for sign-in. */
-    login(provider: WebProvider, options?: LoginOptions): Promise<ProviderStatus>;
-    private loginProvider;
+    login(accountId: AccountId, options?: LoginOptions): Promise<AccountStatus>;
+    private loginAccount;
     private startRemoteLogin;
     private persistLoginProfile;
     /** Report persisted account and active remote-login state. */
-    status(provider: WebProvider): Promise<ProviderStatus>;
-    private providerStatus;
+    status(accountId: AccountId): Promise<AccountStatus>;
+    private accountStatus;
     /** Run one long provider Deep Research request in an isolated durable conversation. */
-    research(provider: WebProvider, request: ChatRequest): Promise<ChatResult>;
-    /** Run one browser chat turn against the provider and return rendered markdown. */
-    chat(provider: WebProvider, request: ChatRequest): Promise<ChatResult>;
-    private chatProvider;
-    /** Close the provider's managed inference browser, if one is open. */
-    stop(provider: WebProvider): Promise<void>;
-    private closeProviderResources;
+    research(accountId: AccountId, request: ChatRequest): Promise<ChatResult>;
+    /** Run one browser chat turn against an authenticated account and return rendered markdown. */
+    chat(accountId: AccountId, request: ChatRequest): Promise<ChatResult>;
+    private chatAccount;
+    /** Close the account's managed inference browser, if one is open. */
+    stop(accountId: AccountId): Promise<void>;
+    private closeAccountResources;
     /** Close every managed inference browser (no leaked Chrome processes). */
     dispose(): Promise<void>;
 }

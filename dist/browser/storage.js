@@ -1,15 +1,18 @@
 import { join } from "node:path";
+import { getAccountDefinition } from "#internet/core/accounts";
 import { ensurePrivateDirectory } from "#internet/core/private-json";
-/** Compute provider paths under the configured DSH internet data directory. */
-export function providerLocations(dataDir, provider) {
+/** Compute account-scoped paths under the configured DSH internet data directory. */
+export function accountLocations(dataDir, accountId) {
+    const provider = getAccountDefinition(accountId).provider;
     return {
+        accountId,
         provider,
-        profileDir: join(dataDir, provider, "login-profile"),
-        accountPath: join(dataDir, "accounts", `${provider}.json`),
+        profileDir: join(dataDir, accountId, "login-profile"),
+        accountPath: join(dataDir, "accounts", `${accountId}.json`),
     };
 }
 /** Ensure the machine-local login profile directory exists privately. */
-export function ensureLoginProfileDirectory(dataDir, provider) {
-    ensurePrivateDirectory(providerLocations(dataDir, provider).profileDir);
+export function ensureLoginProfileDirectory(dataDir, accountId) {
+    ensurePrivateDirectory(accountLocations(dataDir, accountId).profileDir);
 }
 //# sourceMappingURL=storage.js.map

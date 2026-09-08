@@ -10,12 +10,12 @@ describe("resolveBrowserConfig", () => {
 		expect(config).toEqual(DEFAULT_CONFIG);
 	});
 
-	it("defaults remote login to three minutes, provider turns to five minutes, and browser idling to 30 minutes", () => {
+	it("defaults remote login to three minutes, account turns to five minutes, and browser idling to 30 minutes", () => {
 		expect(resolveBrowserConfig({}).loginTimeoutMs).toBe(180_000);
 		expect(resolveBrowserConfig({}).turnTimeoutMs).toBe(300_000);
 		expect(resolveBrowserConfig({}).researchTimeoutMs).toBe(1_800_000);
 		expect(resolveBrowserConfig({}).closeAfterMs).toBe(1_800_000);
-		expect(resolveBrowserConfig({}).maxConcurrentTurnsPerProvider).toBe(1);
+		expect(resolveBrowserConfig({}).maxConcurrentTurnsPerAccount).toBe(1);
 	});
 
 	it("honors explicit overrides", () => {
@@ -27,8 +27,7 @@ describe("resolveBrowserConfig", () => {
 			loginTimeoutMs: 60_000,
 			remoteLoginPort: 40_000,
 			closeAfterMs: 5_000,
-			maxConcurrentTurnsPerProvider: 2,
-			teamSynthesizer: "gemini-web",
+			maxConcurrentTurnsPerAccount: 2,
 		});
 		expect(config.chromePath).toBe("/custom/chrome");
 		expect(config.headless).toBe(false);
@@ -37,8 +36,7 @@ describe("resolveBrowserConfig", () => {
 		expect(config.loginTimeoutMs).toBe(60_000);
 		expect(config.remoteLoginPort).toBe(40_000);
 		expect(config.closeAfterMs).toBe(5_000);
-		expect(config.maxConcurrentTurnsPerProvider).toBe(2);
-		expect(config.teamSynthesizer).toBe("gemini-web");
+		expect(config.maxConcurrentTurnsPerAccount).toBe(2);
 	});
 
 	it("ignores unknown fields and non-object input", () => {
@@ -56,9 +54,9 @@ describe("resolveBrowserConfig", () => {
 	it("rejects invalid positive-integer config", () => {
 		expect(() => resolveBrowserConfig({ turnTimeoutMs: -5 })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ researchTimeoutMs: 0 })).toThrow(InternetError);
-		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerProvider: 0 })).toThrow(InternetError);
-		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerProvider: Number.NaN })).toThrow(InternetError);
-		expect(() => resolveBrowserConfig({ remoteLoginPort: 65_535 })).toThrow(/must not exceed 65534/);
+		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerAccount: 0 })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerAccount: Number.NaN })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ remoteLoginPort: 65_535 })).toThrow(/must not exceed 65533/);
 	});
 
 	it("honors team config overrides", () => {
@@ -67,13 +65,13 @@ describe("resolveBrowserConfig", () => {
 			teamMaxRounds: 5,
 			teamTranscriptMaxChars: 10_000,
 			teamSynthesis: false,
-			teamSynthesizer: "gemini-web",
+			teamSynthesizer: "chatgpt-thinker",
 		});
 		expect(config.teamRounds).toBe(3);
 		expect(config.teamMaxRounds).toBe(5);
 		expect(config.teamTranscriptMaxChars).toBe(10_000);
 		expect(config.teamSynthesis).toBe(false);
-		expect(config.teamSynthesizer).toBe("gemini-web");
+		expect(config.teamSynthesizer).toBe("chatgpt-thinker");
 	});
 
 	it("rejects invalid team limits", () => {
@@ -83,10 +81,10 @@ describe("resolveBrowserConfig", () => {
 		expect(() => resolveBrowserConfig({ teamRounds: 3, teamMaxRounds: 2 })).toThrow(/must not exceed/);
 	});
 
-	it("defaults ChatGPT thinking to High and team synthesis to ChatGPT", () => {
+	it("defaults ChatGPT thinking to High and team synthesis to chatgpt-thinker", () => {
 		const config = resolveBrowserConfig({});
 		expect(config.chatgptThinkingLevel).toBe("high");
-		expect(config.teamSynthesizer).toBe("chatgpt-web");
+		expect(config.teamSynthesizer).toBe("chatgpt-thinker");
 	});
 
 	it("honors the three supported chatgptThinkingLevel values", () => {
@@ -102,7 +100,9 @@ describe("resolveBrowserConfig", () => {
 		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: 1 })).toThrow(InternetError);
 	});
 
-	it("rejects an unsupported team synthesizer", () => {
+	it("rejects unknown or non-synthesizer account ids", () => {
+		expect(() => resolveBrowserConfig({ teamSynthesizer: "gemini-thinker" })).toThrow(/cannot synthesize/);
+		expect(() => resolveBrowserConfig({ teamSynthesizer: "chatgpt-writer" })).toThrow(/cannot synthesize/);
 		expect(() => resolveBrowserConfig({ teamSynthesizer: "claude-web" })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ teamSynthesizer: 1 })).toThrow(InternetError);
 	});

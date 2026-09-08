@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { AccountId } from "#internet/core/accounts";
+import { getAccountDefinition } from "#internet/core/accounts";
 import { writePrivateJson } from "#internet/core/private-json";
 
 const CHATGPT_ORIGIN = "https://chatgpt.com";
@@ -9,16 +11,14 @@ const GEMINI_ORIGIN = "https://gemini.google.com";
 const GEMINI_CONVERSATION_PATH = /^\/app\/([A-Za-z0-9_-]+)$/;
 
 export interface ConversationBinding {
-	version: 1;
+	version: 2;
+	accountId: AccountId;
 	revision: number;
 	sessionHash: string;
 	conversationId: string;
 	conversationUrl: string;
 	updatedAt: string;
 }
-
-export type ChatGptConversationBinding = ConversationBinding;
-export type GeminiConversationBinding = ConversationBinding;
 
 /** Parse and canonicalize one native ChatGPT conversation URL. */
 export function parseChatGptConversationUrl(value: string): { id: string; url: string } {
@@ -44,20 +44,17 @@ export function parseGeminiConversationUrl(value: string): { id: string; url: st
 
 type ConversationUrlParser = (value: string) => { id: string; url: string };
 
-/**
- * Durable private 1:1 bindings from DSH session IDs to a provider's native
- * conversations. Shared by the ChatGPT and Gemini stores; each provider owns a
- * private subdirectory and its own URL parser.
- */
-class ConversationStore {
+/** Durable private 1:1 bindings from DSH session IDs to one authenticated account's native conversations. */
+export class ConversationStore {
 	private readonly root: string;
 	private readonly parseUrl: ConversationUrlParser;
-	private readonly providerName: string;
+	private readonly accountId: AccountId;
 
-	constructor(dataDir: string, providerDir: string, providerName: string, parseUrl: ConversationUrlParser) {
-		this.root = resolve(dataDir, providerDir, "conversations");
-		this.parseUrl = parseUrl;
-		this.providerName = providerName;
+	constructor(dataDir: string, accountId: AccountId) {
+		const provider = getAccountDefinition(accountId).provider;
+		this.root = resolve(dataDir, accountId, "conversations");
+		this.accountId = accountId;
+		this.parseUrl = provider === "chatgpt-web" ? parseChatGptConversationUrl : parseGeminiConversationUrl;
 		mkdirSync(this.root, { recursive: true, mode: 0o700 });
 		chmodSync(this.root, 0o700);
 	}
@@ -67,7 +64,7 @@ class ConversationStore {
 		const path = this.path(expectedHash);
 		if (!existsSync(path)) return undefined;
 		if ((statSync(path).mode & 0o077) !== 0) {
-			throw new Error(`${this.providerName} conversation binding is not private: ${path}`);
+			throw new Error(`${this.accountId} conversation binding is not private: ${path}`);
 		}
 		const binding = JSON.parse(readFileSync(path, "utf8")) as unknown;
 		return this.validateBinding(binding, expectedHash);
@@ -80,11 +77,12 @@ class ConversationStore {
 		const existing = this.read(sessionId);
 		if (existing !== undefined && existing.conversationId !== conversation.id) {
 			throw new Error(
-				`DSH session is already bound to ${this.providerName} conversation ${existing.conversationId}; refusing ${conversation.id}`,
+				`DSH session is already bound to ${this.accountId} conversation ${existing.conversationId}; refusing ${conversation.id}`,
 			);
 		}
 		const binding: ConversationBinding = {
-			version: 1,
+			version: 2,
+			accountId: this.accountId,
 			revision: (existing?.revision ?? 0) + 1,
 			sessionHash,
 			conversationId: conversation.id,
@@ -101,11 +99,12 @@ class ConversationStore {
 
 	private validateBinding(value: unknown, expectedHash: string): ConversationBinding {
 		if (typeof value !== "object" || value === null || Array.isArray(value)) {
-			throw new Error(`Invalid ${this.providerName} conversation binding`);
+			throw new Error(`Invalid ${this.accountId} conversation binding`);
 		}
 		const binding = value as Partial<ConversationBinding>;
 		if (
-			binding.version !== 1 ||
+			binding.version !== 2 ||
+			binding.accountId !== this.accountId ||
 			!Number.isSafeInteger(binding.revision) ||
 			(binding.revision ?? 0) < 1 ||
 			binding.sessionHash !== expectedHash ||
@@ -113,27 +112,13 @@ class ConversationStore {
 			typeof binding.conversationUrl !== "string" ||
 			typeof binding.updatedAt !== "string"
 		) {
-			throw new Error(`Invalid ${this.providerName} conversation binding`);
+			throw new Error(`Invalid ${this.accountId} conversation binding`);
 		}
 		const conversation = this.parseUrl(binding.conversationUrl);
 		if (conversation.id !== binding.conversationId || conversation.url !== binding.conversationUrl) {
-			throw new Error(`Invalid ${this.providerName} conversation binding identity`);
+			throw new Error(`Invalid ${this.accountId} conversation binding identity`);
 		}
 		return binding as ConversationBinding;
-	}
-}
-
-/** Durable private 1:1 bindings from DSH session IDs to ChatGPT conversations. */
-export class ChatGptConversationStore extends ConversationStore {
-	constructor(dataDir: string) {
-		super(dataDir, "chatgpt-web", "ChatGPT", parseChatGptConversationUrl);
-	}
-}
-
-/** Durable private 1:1 bindings from DSH session IDs to Gemini conversations. */
-export class GeminiConversationStore extends ConversationStore {
-	constructor(dataDir: string) {
-		super(dataDir, "gemini-web", "Gemini", parseGeminiConversationUrl);
 	}
 }
 

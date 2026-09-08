@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
-import { providerLocations } from "#internet/browser/storage";
+import { accountLocations } from "#internet/browser/storage";
+import { getAccountDefinition } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 import { writePrivateJson } from "#internet/core/private-json";
 const ACCOUNT_SCHEMA = "@tsuuanmi/internet-account";
@@ -73,13 +74,13 @@ export async function captureProfileBootstrapState(context) {
     }
     return { cookies, origins };
 }
-/** Owns the canonical portable account files for all configured providers. */
+/** Owns canonical portable account files keyed strictly by semantic account ID. */
 export class AccountStore {
     constructor(dataDir) {
         this.dataDir = dataDir;
     }
-    inspect(provider) {
-        const path = providerLocations(this.dataDir, provider).accountPath;
+    inspect(accountId) {
+        const path = accountLocations(this.dataDir, accountId).accountPath;
         if (!existsSync(path))
             return { state: "missing", path };
         try {
@@ -89,7 +90,7 @@ export class AccountStore {
             if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) {
                 throw new Error("account file permissions must be 0600");
             }
-            const account = parseAccountFile(JSON.parse(readFileSync(path, "utf8")), provider);
+            const account = parseAccountFile(JSON.parse(readFileSync(path, "utf8")), accountId);
             return { state: account.status, path, account };
         }
         catch (error) {
@@ -100,17 +101,18 @@ export class AccountStore {
             };
         }
     }
-    writeReady(provider, storageState, verifiedAt = new Date()) {
+    writeReady(accountId, storageState, verifiedAt = new Date()) {
         const account = {
             schema: ACCOUNT_SCHEMA,
-            version: 1,
-            provider,
+            version: 2,
+            accountId,
+            provider: getAccountDefinition(accountId).provider,
             status: "ready",
             verifiedAt: verifiedAt.toISOString(),
-            revision: this.nextRevision(provider),
+            revision: this.nextRevision(accountId),
             storageState,
         };
-        this.write(provider, account);
+        this.write(accountId, account);
         return account;
     }
     /**
@@ -118,8 +120,8 @@ export class AccountStore {
      * canonical revision. Storage state is opaque (including IndexedDB), so a
      * stale full snapshot is discarded rather than unsafely merged.
      */
-    writeReadyIfRevision(provider, expectedRevision, storageState, verifiedAt = new Date()) {
-        const inspection = this.inspect(provider);
+    writeReadyIfRevision(accountId, expectedRevision, storageState, verifiedAt = new Date()) {
+        const inspection = this.inspect(accountId);
         if (inspection.state !== "ready" || inspection.account?.revision !== expectedRevision)
             return undefined;
         const account = {
@@ -129,11 +131,11 @@ export class AccountStore {
             revision: expectedRevision + 1,
             storageState,
         };
-        this.write(provider, account);
+        this.write(accountId, account);
         return account;
     }
-    markReauthRequired(provider, invalidatedAt = new Date(), reauthDiagnostic) {
-        const inspection = this.inspect(provider);
+    markReauthRequired(accountId, invalidatedAt = new Date(), reauthDiagnostic) {
+        const inspection = this.inspect(accountId);
         if (inspection.account === undefined)
             return undefined;
         const account = {
@@ -143,7 +145,7 @@ export class AccountStore {
             reauthDiagnostic,
             revision: inspection.account.revision + 1,
         };
-        this.write(provider, account);
+        this.write(accountId, account);
         return account;
     }
     /**
@@ -151,8 +153,8 @@ export class AccountStore {
      * revision. This prevents a stale or cancelled turn from overwriting a
      * newer login or refreshed snapshot made through a different lease.
      */
-    markReauthRequiredIfRevision(provider, expectedRevision, invalidatedAt = new Date(), reauthDiagnostic) {
-        const inspection = this.inspect(provider);
+    markReauthRequiredIfRevision(accountId, expectedRevision, invalidatedAt = new Date(), reauthDiagnostic) {
+        const inspection = this.inspect(accountId);
         if (inspection.account === undefined || inspection.account.revision !== expectedRevision)
             return undefined;
         const account = {
@@ -162,30 +164,32 @@ export class AccountStore {
             reauthDiagnostic,
             revision: inspection.account.revision + 1,
         };
-        this.write(provider, account);
+        this.write(accountId, account);
         return account;
     }
-    nextRevision(provider) {
-        const revision = this.inspect(provider).account?.revision;
+    nextRevision(accountId) {
+        const revision = this.inspect(accountId).account?.revision;
         return (revision ?? 0) + 1;
     }
-    write(provider, account) {
-        writePrivateJson(providerLocations(this.dataDir, provider).accountPath, account);
+    write(accountId, account) {
+        writePrivateJson(accountLocations(this.dataDir, accountId).accountPath, account);
     }
 }
-export function parseAccountFile(value, provider) {
+export function parseAccountFile(value, accountId) {
     if (!isRecord(value))
         throw new Error("account file must be an object");
-    if (value.schema !== ACCOUNT_SCHEMA || value.version !== 1)
+    if (value.schema !== ACCOUNT_SCHEMA || value.version !== 2)
         throw new Error("unsupported account file schema");
+    if (value.accountId !== accountId)
+        throw new Error(`account file belongs to ${String(value.accountId)}`);
+    const provider = getAccountDefinition(accountId).provider;
     if (value.provider !== provider)
-        throw new Error(`account file belongs to ${String(value.provider)}`);
+        throw new Error(`account file provider must be ${provider}`);
     if (value.status !== "ready" && value.status !== "reauth-required")
         throw new Error("invalid account status");
     if (!isTimestamp(value.verifiedAt))
         throw new Error("invalid account verification timestamp");
-    if (value.revision !== undefined &&
-        (typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 0)) {
+    if (typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 1) {
         throw new Error("invalid account revision");
     }
     if (value.status === "ready" && (value.invalidatedAt !== undefined || value.reauthDiagnostic !== undefined)) {
@@ -199,7 +203,7 @@ export function parseAccountFile(value, provider) {
     }
     if (!isPortableStorageState(value.storageState))
         throw new Error("invalid account storage state");
-    return { ...value, revision: value.revision ?? 0 };
+    return value;
 }
 function isPortableStorageState(value) {
     if (!isRecord(value) || !Array.isArray(value.cookies) || !Array.isArray(value.origins))

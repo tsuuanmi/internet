@@ -54,7 +54,9 @@ gemini-thinker
 
 ## P1 — Multi-account foundation
 
-### 4. Refactor account storage from provider-keyed to account-keyed
+**Status:** implemented as one clean-break refactor. Authenticated runtime boundaries now require explicit `accountId`; provider remains website implementation metadata only. No legacy account migration or provider-to-account fallback is included.
+
+### 4. ✅ Refactor account storage from provider-keyed to account-keyed
 
 Affected areas include `src/browser/accounts.ts` and `src/browser/storage.ts`.
 
@@ -66,7 +68,7 @@ Requirements:
 - no implicit provider-to-account fallback;
 - no cross-account stale snapshot overwrite.
 
-### 5. Refactor BrowserManager maps to account identity
+### 5. ✅ Refactor BrowserManager maps to account identity
 
 Review provider-keyed:
 
@@ -78,7 +80,7 @@ Review provider-keyed:
 - active contexts;
 - account commit queues.
 
-### 6. Make conversation stores account-aware
+### 6. ✅ Make conversation stores account-aware
 
 Target isolation:
 
@@ -88,7 +90,7 @@ chatgpt-writer/conversations
 gemini-thinker/conversations
 ```
 
-### 7. Make scheduler serialization account-aware
+### 7. ✅ Make scheduler serialization account-aware
 
 Same-account dependent turns remain ordered. Different authenticated accounts should not share a provider lock unless intentionally configured.
 

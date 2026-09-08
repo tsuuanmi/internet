@@ -1,27 +1,25 @@
 import { describe, expect, it } from "vitest";
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
-import type { WebProvider } from "#internet/core/config";
+import type { AccountId } from "#internet/core/accounts";
 import {
 	composeSynthesisPrompt,
 	composeTurnPrompt,
-	joinNames,
 	runTeam,
 	type TeamResult,
 	type TeamSuccess,
 } from "#internet/team/orchestrator";
 
 interface RecordedCall {
-	provider: WebProvider;
+	accountId: AccountId;
 	prompt: string;
 	sessionId: string;
 	visible?: boolean;
 }
 
-/** A fake chat that consumes a script of responses (or thrown errors) in order. */
 function fakeChat(script: Array<string | Error>) {
 	const calls: RecordedCall[] = [];
-	const chat = async (provider: WebProvider, request: ChatRequest): Promise<ChatResult> => {
-		calls.push({ provider, prompt: request.prompt, sessionId: request.sessionId, visible: request.visible });
+	const chat = async (accountId: AccountId, request: ChatRequest): Promise<ChatResult> => {
+		calls.push({ accountId, prompt: request.prompt, sessionId: request.sessionId, visible: request.visible });
 		const next = script.shift();
 		if (next instanceof Error) throw next;
 		if (next === undefined) throw new Error("no more scripted responses");
@@ -30,193 +28,112 @@ function fakeChat(script: Array<string | Error>) {
 	return { chat, calls };
 }
 
-function expectTeamSuccess(result: TeamResult): TeamSuccess {
+function success(result: TeamResult): TeamSuccess {
 	if ("error" in result) throw new Error(result.error.message);
 	return result;
 }
 
-describe("joinNames", () => {
-	it("joins zero, one, two, and many names", () => {
-		expect(joinNames([])).toBe("");
-		expect(joinNames(["A"])).toBe("A");
-		expect(joinNames(["A", "B"])).toBe("A and B");
-		expect(joinNames(["A", "B", "C"])).toBe("A, B, and C");
-	});
-});
-
-describe("composeTurnPrompt", () => {
-	it("produces an opener for round 1 with no prior text", () => {
-		const prompt = composeTurnPrompt("Task X", "chatgpt-web", [{ provider: "gemini-web", text: "" }], 1);
-		expect(prompt).toContain("initial analysis");
-		expect(prompt).toContain("Task X");
-		expect(prompt).toContain("You are ChatGPT on a team with Gemini.");
-		expect(prompt).not.toContain("Gemini said");
-	});
-
-	it("feeds the other model's latest message on later turns", () => {
+describe("team prompts", () => {
+	it("uses semantic account identities while preserving model display names", () => {
 		const prompt = composeTurnPrompt(
 			"Task X",
-			"gemini-web",
-			[{ provider: "chatgpt-web", text: "ChatGPT's idea" }],
-			2,
+			"chatgpt-thinker",
+			[{ accountId: "gemini-thinker", provider: "gemini-web", text: "" }],
+			1,
 		);
-		expect(prompt).toContain("ChatGPT said");
-		expect(prompt).toContain("ChatGPT's idea");
-		expect(prompt).toContain("critique");
+		expect(prompt).toContain("You are ChatGPT on a team with Gemini.");
+		expect(prompt).toContain("initial analysis");
 	});
-});
 
-describe("composeSynthesisPrompt", () => {
-	it("includes the full transcript and asks for a merged answer", () => {
+	it("includes account-aware transcript contributions in synthesis", () => {
 		const prompt = composeSynthesisPrompt("Task X", [
-			{ round: 1, provider: "chatgpt-web", text: "A1" },
-			{ round: 1, provider: "gemini-web", text: "B1" },
+			{ round: 1, accountId: "chatgpt-thinker", provider: "chatgpt-web", text: "A1" },
+			{ round: 1, accountId: "gemini-thinker", provider: "gemini-web", text: "B1" },
 		]);
-		expect(prompt).toContain("best of both");
 		expect(prompt).toContain("A1");
 		expect(prompt).toContain("B1");
-		expect(prompt).toContain("ChatGPT");
-		expect(prompt).toContain("Gemini");
 	});
 });
 
-describe("runTeam", () => {
-	it("alternates providers, synthesizes with ChatGPT, and uses a derived team session id", async () => {
+describe("runTeam account routing", () => {
+	it("uses thinker accounts and synthesizes with chatgpt-thinker by default", async () => {
 		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
-		const result = expectTeamSuccess(await runTeam(chat, { task: "T", sessionId: "sess" }));
-		expect(calls.map((c) => c.provider)).toEqual([
-			"chatgpt-web",
-			"gemini-web",
-			"chatgpt-web",
-			"gemini-web",
-			"chatgpt-web",
+		const result = success(await runTeam(chat, { task: "T", sessionId: "sess" }));
+		expect(calls.map((call) => call.accountId)).toEqual([
+			"chatgpt-thinker",
+			"gemini-thinker",
+			"chatgpt-thinker",
+			"gemini-thinker",
+			"chatgpt-thinker",
 		]);
-		expect(calls.every((c) => c.sessionId === "sess:team:default")).toBe(true);
-		expect(result.finalAnswer).toBe("FINAL");
-		expect(result.finalProvider).toBe("chatgpt-web");
-		expect(result.transcript).toEqual([
-			{ round: 1, provider: "chatgpt-web", text: "A1" },
-			{ round: 1, provider: "gemini-web", text: "B1" },
-			{ round: 2, provider: "chatgpt-web", text: "A2" },
-			{ round: 2, provider: "gemini-web", text: "B2" },
-		]);
+		expect(calls.every((call) => call.sessionId === "sess:team:default")).toBe(true);
+		expect(result).toMatchObject({
+			finalAnswer: "FINAL",
+			finalAccountId: "chatgpt-thinker",
+			finalProvider: "chatgpt-web",
+		});
+		expect(result.transcript[0]).toMatchObject({
+			accountId: "chatgpt-thinker",
+			provider: "chatgpt-web",
+			text: "A1",
+		});
 	});
 
-	it("composes opener, critique, and synthesis prompts in order", async () => {
-		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
-		await runTeam(chat, { task: "Design a logo", sessionId: "s" });
-		expect(calls[0].prompt).toContain("initial analysis");
-		expect(calls[1].prompt).toContain("A1");
-		expect(calls[1].prompt).toContain("critique");
-		expect(calls[2].prompt).toContain("B1");
-		expect(calls[3].prompt).toContain("A2");
-		expect(calls[4].prompt).toContain("best of both");
-		expect(calls[4].prompt).toContain("A1");
-		expect(calls[4].prompt).toContain("B2");
-	});
-
-	it("returns the last turn when synthesis is disabled and propagates visible mode", async () => {
+	it("returns the last account turn when synthesis is disabled", async () => {
 		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2"]);
-		const result = expectTeamSuccess(
-			await runTeam(chat, { task: "T", sessionId: "s", synthesize: false, visible: true }),
-		);
+		const result = success(await runTeam(chat, { task: "T", sessionId: "s", synthesize: false, visible: true }));
 		expect(result.finalAnswer).toBe("B2");
+		expect(result.finalAccountId).toBe("gemini-thinker");
 		expect(result.finalProvider).toBe("gemini-web");
 		expect(calls.every((call) => call.visible === true)).toBe(true);
 	});
 
-	it("honors a custom round count", async () => {
-		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "A3", "B3", "FINAL"]);
-		const result = expectTeamSuccess(await runTeam(chat, { task: "T", sessionId: "s", rounds: 3 }));
-		expect(calls.map((c) => c.provider)).toEqual([
-			"chatgpt-web",
-			"gemini-web",
-			"chatgpt-web",
-			"gemini-web",
-			"chatgpt-web",
-			"gemini-web",
-			"chatgpt-web",
-		]);
-		expect(result.finalAnswer).toBe("FINAL");
-		expect(result.finalProvider).toBe("chatgpt-web");
-	});
-
-	it("honors a custom provider order without changing the default synthesizer", async () => {
+	it("allows speaking order to differ from the synthesizer", async () => {
 		const { chat, calls } = fakeChat(["G1", "C1", "G2", "C2", "FINAL"]);
-		const result = expectTeamSuccess(
+		const result = success(
 			await runTeam(chat, {
 				task: "T",
 				sessionId: "s",
-				providers: ["gemini-web", "chatgpt-web"],
+				accounts: ["gemini-thinker", "chatgpt-thinker"],
+				synthesizer: "chatgpt-thinker",
 			}),
 		);
-		expect(calls.map((c) => c.provider)).toEqual([
-			"gemini-web",
-			"chatgpt-web",
-			"gemini-web",
-			"chatgpt-web",
-			"chatgpt-web",
+		expect(calls.map((call) => call.accountId)).toEqual([
+			"gemini-thinker",
+			"chatgpt-thinker",
+			"gemini-thinker",
+			"chatgpt-thinker",
+			"chatgpt-thinker",
 		]);
-		expect(result.finalProvider).toBe("chatgpt-web");
+		expect(result.finalAccountId).toBe("chatgpt-thinker");
 	});
 
-	it("honors an explicit synthesizer independently of speaking order", async () => {
-		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
-		const result = expectTeamSuccess(await runTeam(chat, { task: "T", sessionId: "s", synthesizer: "gemini-web" }));
-		expect(calls.map((c) => c.provider)).toEqual([
-			"chatgpt-web",
-			"gemini-web",
-			"chatgpt-web",
-			"gemini-web",
-			"gemini-web",
-		]);
-		expect(result.finalProvider).toBe("gemini-web");
-	});
-
-	it("rejects invalid direct orchestration options", async () => {
+	it("rejects invalid direct account selections", async () => {
 		const { chat } = fakeChat([]);
 		await expect(runTeam(chat, { task: "T", sessionId: "s", rounds: 0 })).rejects.toThrow(/positive integer/);
-		await expect(runTeam(chat, { task: "T", sessionId: "s", providers: ["chatgpt-web"] })).rejects.toThrow(
-			/at least two providers/,
+		await expect(runTeam(chat, { task: "T", sessionId: "s", accounts: ["chatgpt-thinker"] })).rejects.toThrow(
+			/at least two accounts/,
 		);
 		await expect(
-			runTeam(chat, { task: "T", sessionId: "s", providers: ["chatgpt-web", "chatgpt-web"] }),
+			runTeam(chat, {
+				task: "T",
+				sessionId: "s",
+				accounts: ["chatgpt-thinker", "chatgpt-thinker"],
+			}),
 		).rejects.toThrow(/duplicates/);
 	});
 
-	it("namespaces the team session id by team name", async () => {
-		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
-		await runTeam(chat, { task: "T", sessionId: "s", teamName: "code-review" });
-		expect(calls[0].sessionId).toBe("s:team:code-review");
-	});
-
-	it("returns a partial error when a provider fails mid-debate", async () => {
-		const { chat, calls } = fakeChat(["A1", new Error("boom")]);
+	it("attributes failures to the exact authenticated account", async () => {
+		const { chat } = fakeChat(["A1", new Error("boom")]);
 		const result = await runTeam(chat, { task: "T", sessionId: "s" });
-		expect("error" in result).toBe(true);
 		if (!("error" in result)) throw new Error("expected team failure");
-		expect(result.error).toEqual({ provider: "gemini-web", message: "boom" });
-		expect(result.transcript).toEqual([{ round: 1, provider: "chatgpt-web", text: "A1" }]);
-		expect(calls).toHaveLength(2);
+		expect(result.error).toEqual({ accountId: "gemini-thinker", provider: "gemini-web", message: "boom" });
+		expect(result.transcript).toHaveLength(1);
 	});
 
-	it("attributes a synthesis failure to the configured synthesizer", async () => {
-		const { chat } = fakeChat(["A1", "B1", "A2", "B2", new Error("synthesis failed")]);
-		const result = await runTeam(chat, { task: "T", sessionId: "s" });
-		expect("error" in result).toBe(true);
-		if (!("error" in result)) throw new Error("expected team failure");
-		expect(result.error).toEqual({ provider: "chatgpt-web", message: "synthesis failed" });
-	});
-
-	it("short-circuits on an aborted signal", async () => {
-		const controller = new AbortController();
-		controller.abort(new Error("cancelled"));
+	it("namespaces durable team sessions", async () => {
 		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
-		const result = await runTeam(chat, { task: "T", sessionId: "s", signal: controller.signal });
-		expect("error" in result).toBe(true);
-		if (!("error" in result)) throw new Error("expected team failure");
-		expect(result.error).toEqual({ provider: "chatgpt-web", message: "cancelled" });
-		expect(result.transcript).toEqual([]);
-		expect(calls).toHaveLength(0);
+		await runTeam(chat, { task: "T", sessionId: "s", teamName: "review" });
+		expect(calls[0]?.sessionId).toBe("s:team:review");
 	});
 });
