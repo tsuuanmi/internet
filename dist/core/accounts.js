@@ -38,24 +38,11 @@ export const ACCOUNTS = {
         capabilities: ["browser.chat", "team.reason", "team.review", "github.read"],
     },
 };
-/**
- * Compatibility route for existing provider-keyed APIs while the browser
- * runtime migrates to first-class account IDs. Existing ChatGPT/Gemini calls
- * continue to address the thinker accounts; the writer is never selected
- * implicitly from a provider name.
- */
-export const DEFAULT_ACCOUNT_BY_PROVIDER = {
-    "chatgpt-web": "chatgpt-thinker",
-    "gemini-web": "gemini-thinker",
-};
 export function isAccountId(value) {
     return typeof value === "string" && ACCOUNT_IDS.includes(value);
 }
 export function getAccountDefinition(accountId) {
     return ACCOUNTS[accountId];
-}
-export function defaultAccountIdForProvider(provider) {
-    return DEFAULT_ACCOUNT_BY_PROVIDER[provider];
 }
 /** Return every semantic account backed by one provider in stable catalog order. */
 export function accountsForProvider(provider) {

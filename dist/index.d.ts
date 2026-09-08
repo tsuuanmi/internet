@@ -29,7 +29,7 @@ export interface PluginContext {
 export declare function apply(ctx: PluginContext, rawConfig: unknown): void;
 export { BrowserManager } from "#internet/browser/runtime";
 export type { AccountCapability, AccountDefinition, AccountId, AccountRole } from "#internet/core/accounts";
-export { ACCOUNT_CAPABILITIES, ACCOUNT_IDS, ACCOUNT_ROLES, ACCOUNTS, accountHasCapability, accountsForProvider, accountsWithCapabilities, DEFAULT_ACCOUNT_BY_PROVIDER, defaultAccountIdForProvider, getAccountDefinition, isAccountId, } from "#internet/core/accounts";
+export { ACCOUNT_CAPABILITIES, ACCOUNT_IDS, ACCOUNT_ROLES, ACCOUNTS, accountHasCapability, accountsForProvider, accountsWithCapabilities, getAccountDefinition, isAccountId, } from "#internet/core/accounts";
 export type { BrowserConfig, ChatGptThinkingLevel, WebProvider } from "#internet/core/config";
 export { CHATGPT_THINKING_LEVELS, Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
