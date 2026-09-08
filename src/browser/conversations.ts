@@ -129,7 +129,10 @@ export class ConversationStore {
 
 /** Durable private ChatGPT thinker conversation bindings. */
 export class ChatGptConversationStore extends ConversationStore {
-	constructor(dataDir: string, accountId: Extract<AccountId, "chatgpt-thinker" | "chatgpt-writer"> = "chatgpt-thinker") {
+	constructor(
+		dataDir: string,
+		accountId: Extract<AccountId, "chatgpt-thinker" | "chatgpt-writer"> = "chatgpt-thinker",
+	) {
 		super(dataDir, accountId);
 	}
 }

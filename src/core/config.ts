@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import S from "@deepseek-ai/schemastery";
-import { ACCOUNT_IDS, accountHasCapability, type AccountId } from "#internet/core/accounts";
+import { ACCOUNT_IDS, type AccountId, accountHasCapability } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 
 /** Browser-backed web providers this plugin can drive. */
@@ -140,11 +140,17 @@ function asPositiveInteger(value: unknown, fallback: number, name: string): numb
 function asTeamSynthesizer(value: unknown): AccountId {
 	const selected = value ?? DEFAULT_CONFIG.teamSynthesizer;
 	if (typeof selected !== "string" || !(ACCOUNT_IDS as readonly string[]).includes(selected)) {
-		throw new InternetError("config_error", `browser config teamSynthesizer must be one of ${ACCOUNT_IDS.join(", ")}`);
+		throw new InternetError(
+			"config_error",
+			`browser config teamSynthesizer must be one of ${ACCOUNT_IDS.join(", ")}`,
+		);
 	}
 	const accountId = selected as AccountId;
 	if (!accountHasCapability(accountId, "team.synthesize")) {
-		throw new InternetError("config_error", `browser config teamSynthesizer account ${accountId} cannot synthesize teams`);
+		throw new InternetError(
+			"config_error",
+			`browser config teamSynthesizer account ${accountId} cannot synthesize teams`,
+		);
 	}
 	return accountId;
 }

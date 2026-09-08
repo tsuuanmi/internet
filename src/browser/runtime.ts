@@ -29,9 +29,8 @@ import {
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import {
-	ChatGptConversationStore,
 	type ConversationBinding,
-	GeminiConversationStore,
+	ConversationStore,
 	parseChatGptConversationUrl,
 	parseGeminiConversationUrl,
 } from "#internet/browser/conversations";
@@ -50,7 +49,8 @@ import {
 import { geminiEnableDeepResearch, geminiStartResearchPlan } from "#internet/browser/gemini-research";
 import { type ProviderLease, ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
-import { ensureLoginProfileDirectory, type ProviderLocations, providerLocations } from "#internet/browser/storage";
+import { type AccountLocations, accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
+import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -78,7 +78,8 @@ export interface LoginOptions {
 	remote?: boolean;
 }
 
-export interface ProviderStatus {
+export interface AccountStatus {
+	accountId: AccountId;
 	provider: WebProvider;
 	state: AccountState;
 	accountPath: string;
@@ -113,7 +114,7 @@ function isTransientStorageCaptureError(error: unknown): boolean {
 
 /**
  * Owns isolated browser sessions. Interactive login runs in a dedicated,
- * per-provider normal Chrome profile (without browser-automation flags). The
+ * per-account normal Chrome profile (without browser-automation flags). The
  * profile is retained so reopening login visibly shows the same signed-in account.
  * After Chrome closes, patchright verifies bootstrap profile state in a fresh
  * context and writes the canonical portable account file, including IndexedDB.
@@ -123,16 +124,15 @@ export class BrowserManager {
 	private readonly config: BrowserConfig;
 	private readonly configuredChromePath: string | undefined;
 	private resolvedChromePath: string | undefined;
-	private readonly browsers = new Map<WebProvider, ManagedBrowser>();
-	private readonly browserLaunches = new Map<WebProvider, Promise<ManagedBrowser>>();
-	private readonly schedulers = new Map<WebProvider, ProviderScheduler>();
-	private readonly remoteLogins = new Map<WebProvider, RemoteLoginSession>();
+	private readonly browsers = new Map<AccountId, ManagedBrowser>();
+	private readonly browserLaunches = new Map<AccountId, Promise<ManagedBrowser>>();
+	private readonly schedulers = new Map<AccountId, ProviderScheduler>();
+	private readonly remoteLogins = new Map<AccountId, RemoteLoginSession>();
 	private readonly accounts: AccountStore;
-	private readonly chatGptConversations: ChatGptConversationStore;
-	private readonly geminiConversations: GeminiConversationStore;
-	private readonly pendingCloses = new Map<WebProvider, NodeJS.Timeout>();
-	private readonly activeContexts = new Map<WebProvider, Map<AbortSignal, BrowserContext>>();
-	private readonly accountCommitQueues = new Map<WebProvider, Promise<void>>();
+	private readonly conversations = new Map<AccountId, ConversationStore>();
+	private readonly pendingCloses = new Map<AccountId, NodeJS.Timeout>();
+	private readonly activeContexts = new Map<AccountId, Map<AbortSignal, BrowserContext>>();
+	private readonly accountCommitQueues = new Map<AccountId, Promise<void>>();
 	private readonly display: BrowserDisplayManager;
 	private disposed = false;
 
@@ -145,8 +145,6 @@ export class BrowserManager {
 		});
 		this.configuredChromePath = config.chromePath;
 		this.accounts = new AccountStore(config.dataDir);
-		this.chatGptConversations = new ChatGptConversationStore(config.dataDir);
-		this.geminiConversations = new GeminiConversationStore(config.dataDir);
 	}
 
 	private chromeExecutable(): string {
@@ -154,28 +152,41 @@ export class BrowserManager {
 		return this.resolvedChromePath;
 	}
 
-	private locations(provider: WebProvider): ProviderLocations {
-		return providerLocations(this.config.dataDir, provider);
+	private provider(accountId: AccountId): WebProvider {
+		return getAccountDefinition(accountId).provider;
 	}
 
-	private scheduler(provider: WebProvider): ProviderScheduler {
-		let scheduler = this.schedulers.get(provider);
+	private locations(accountId: AccountId): AccountLocations {
+		return accountLocations(this.config.dataDir, accountId);
+	}
+
+	private conversationStore(accountId: AccountId): ConversationStore {
+		let store = this.conversations.get(accountId);
+		if (store === undefined) {
+			store = new ConversationStore(this.config.dataDir, accountId);
+			this.conversations.set(accountId, store);
+		}
+		return store;
+	}
+
+	private scheduler(accountId: AccountId): ProviderScheduler {
+		let scheduler = this.schedulers.get(accountId);
 		if (scheduler === undefined) {
-			scheduler = new ProviderScheduler(this.config.maxConcurrentTurnsPerProvider);
-			this.schedulers.set(provider, scheduler);
+			scheduler = new ProviderScheduler(this.config.maxConcurrentTurnsPerAccount);
+			this.schedulers.set(accountId, scheduler);
 		}
 		return scheduler;
 	}
 
-	private invalidateProvider(provider: WebProvider, message: string): void {
-		this.scheduler(provider).invalidate(new InternetError("aborted", message));
+	private invalidateAccount(accountId: AccountId, message: string): void {
+		this.scheduler(accountId).invalidate(new InternetError("aborted", message));
 	}
 
-	private async runProviderExclusive<T>(provider: WebProvider, operation: () => Promise<T>): Promise<T> {
+	private async runAccountExclusive<T>(accountId: AccountId, operation: () => Promise<T>): Promise<T> {
 		if (this.disposed) throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
-		this.cancelPendingClose(provider);
-		this.invalidateProvider(provider, "provider lifecycle operation superseded queued browser turns");
-		return this.scheduler(provider).runExclusive(operation);
+		this.cancelPendingClose(accountId);
+		this.invalidateAccount(accountId, "account lifecycle operation superseded queued browser turns");
+		return this.scheduler(accountId).runExclusive(operation);
 	}
 
 	private homeUrl(provider: WebProvider): string {
@@ -312,8 +323,9 @@ export class BrowserManager {
 		);
 	}
 
-	private async launchNormalLogin(provider: WebProvider): Promise<void> {
-		const { profileDir } = this.locations(provider);
+	private async launchNormalLogin(accountId: AccountId): Promise<void> {
+		const provider = this.provider(accountId);
+		const { profileDir } = this.locations(accountId);
 		const child = spawn(
 			this.chromeExecutable(),
 			[
@@ -363,8 +375,9 @@ export class BrowserManager {
 		});
 	}
 
-	private async captureLoginState(provider: WebProvider): Promise<PortableStorageState> {
-		const { profileDir } = this.locations(provider);
+	private async captureLoginState(accountId: AccountId): Promise<PortableStorageState> {
+		const provider = this.provider(accountId);
+		const { profileDir } = this.locations(accountId);
 		const display = await this.display.prepare(false);
 		const context = await chromium.launchPersistentContext(profileDir, {
 			executablePath: this.chromeExecutable(),
@@ -469,52 +482,52 @@ export class BrowserManager {
 		}
 	}
 
-	private async closeBrowser(provider: WebProvider): Promise<void> {
-		const managed = this.browsers.get(provider);
+	private async closeBrowser(accountId: AccountId): Promise<void> {
+		const managed = this.browsers.get(accountId);
 		if (managed === undefined) return;
-		this.browsers.delete(provider);
+		this.browsers.delete(accountId);
 		await managed.browser.close().catch(() => {});
 	}
 
 	private async closeVirtualDisplaySessions(): Promise<void> {
-		const providers = [...this.browsers]
+		const accountIds = [...this.browsers]
 			.filter(([, managed]) => managed.displayKind === "virtual")
-			.map(([provider]) => provider);
+			.map(([accountId]) => accountId);
 		await Promise.all(
-			providers.map((provider) =>
-				this.runProviderExclusive(provider, () => this.closeBrowser(provider)).catch(() => {}),
+			accountIds.map((accountId) =>
+				this.runAccountExclusive(accountId, () => this.closeBrowser(accountId)).catch(() => {}),
 			),
 		);
 	}
 
 	/** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
-	private cancelPendingClose(provider: WebProvider): void {
-		const timer = this.pendingCloses.get(provider);
+	private cancelPendingClose(accountId: AccountId): void {
+		const timer = this.pendingCloses.get(accountId);
 		if (timer === undefined) return;
 		clearTimeout(timer);
-		this.pendingCloses.delete(provider);
+		this.pendingCloses.delete(accountId);
 	}
 
-	/** Schedule closing a provider browser after its scheduler becomes idle. */
-	private scheduleCloseWhenIdle(provider: WebProvider): void {
-		const scheduler = this.scheduler(provider);
+	/** Schedule closing an account browser after its scheduler becomes idle. */
+	private scheduleCloseWhenIdle(accountId: AccountId): void {
+		const scheduler = this.scheduler(accountId);
 		void scheduler.waitForIdle().then(() => {
 			if (this.disposed || !scheduler.isIdle) return;
-			this.scheduleClose(provider);
+			this.scheduleClose(accountId);
 		});
 	}
 
-	private scheduleClose(provider: WebProvider): void {
-		if (this.disposed || !this.scheduler(provider).isIdle) return;
-		this.cancelPendingClose(provider);
+	private scheduleClose(accountId: AccountId): void {
+		if (this.disposed || !this.scheduler(accountId).isIdle) return;
+		this.cancelPendingClose(accountId);
 		const timer = setTimeout(() => {
-			this.pendingCloses.delete(provider);
-			void this.stop(provider).catch(() => {});
+			this.pendingCloses.delete(accountId);
+			void this.stop(accountId).catch(() => {});
 		}, this.config.closeAfterMs);
-		this.pendingCloses.set(provider, timer);
+		this.pendingCloses.set(accountId, timer);
 	}
 
-	private async launchBrowser(provider: WebProvider, headless: boolean, visible: boolean): Promise<ManagedBrowser> {
+	private async launchBrowser(accountId: AccountId, headless: boolean, visible: boolean): Promise<ManagedBrowser> {
 		const display = await this.display.prepare(headless, visible);
 		const browser = await chromium.launch({
 			executablePath: this.chromeExecutable(),
@@ -531,39 +544,39 @@ export class BrowserManager {
 			viewport: browserViewport(display),
 		};
 		browser.once("disconnected", () => {
-			if (this.browsers.get(provider)?.browser === browser) this.browsers.delete(provider);
+			if (this.browsers.get(accountId)?.browser === browser) this.browsers.delete(accountId);
 		});
 		return managed;
 	}
 
-	private async ensureBrowser(provider: WebProvider, headless: boolean, visible: boolean): Promise<ManagedBrowser> {
-		const existing = this.browsers.get(provider);
+	private async ensureBrowser(accountId: AccountId, headless: boolean, visible: boolean): Promise<ManagedBrowser> {
+		const existing = this.browsers.get(accountId);
 		if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible)
 			return existing;
-		if (existing !== undefined) await this.closeBrowser(provider);
+		if (existing !== undefined) await this.closeBrowser(accountId);
 
-		const pending = this.browserLaunches.get(provider);
+		const pending = this.browserLaunches.get(accountId);
 		if (pending !== undefined) return pending;
-		const launch = this.launchBrowser(provider, headless, visible);
-		this.browserLaunches.set(provider, launch);
+		const launch = this.launchBrowser(accountId, headless, visible);
+		this.browserLaunches.set(accountId, launch);
 		try {
 			const managed = await launch;
-			this.browsers.set(provider, managed);
+			this.browsers.set(accountId, managed);
 			return managed;
 		} finally {
-			if (this.browserLaunches.get(provider) === launch) this.browserLaunches.delete(provider);
+			if (this.browserLaunches.get(accountId) === launch) this.browserLaunches.delete(accountId);
 		}
 	}
 
-	private async ensureContext(provider: WebProvider, headless: boolean, visible: boolean): Promise<ContextBootstrap> {
-		const inspection = this.accounts.inspect(provider);
+	private async ensureContext(accountId: AccountId, headless: boolean, visible: boolean): Promise<ContextBootstrap> {
+		const inspection = this.accounts.inspect(accountId);
 		if (inspection.state === "invalid") {
-			throw new InternetError("provider_error", `${provider} account file is invalid: ${inspection.error}`);
+			throw new InternetError("provider_error", `${accountId} account file is invalid: ${inspection.error}`);
 		}
 		if (inspection.state !== "ready" || inspection.account === undefined) {
-			throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
+			throw new InternetError("login_required", `Sign in to ${accountId} first with internet_browser login.`);
 		}
-		const managed = await this.ensureBrowser(provider, headless, visible);
+		const managed = await this.ensureBrowser(accountId, headless, visible);
 		try {
 			const context = await managed.browser.newContext({
 				storageState: inspection.account.storageState,
@@ -575,16 +588,16 @@ export class BrowserManager {
 				storageState: inspection.account.storageState,
 			};
 		} catch (error) {
-			if (!managed.browser.isConnected()) this.browsers.delete(provider);
+			if (!managed.browser.isConnected()) this.browsers.delete(accountId);
 			throw error;
 		}
 	}
 
-	private trackContext(provider: WebProvider, lease: ProviderLease, context: BrowserContext): () => void {
-		let contexts = this.activeContexts.get(provider);
+	private trackContext(accountId: AccountId, lease: ProviderLease, context: BrowserContext): () => void {
+		let contexts = this.activeContexts.get(accountId);
 		if (contexts === undefined) {
 			contexts = new Map();
-			this.activeContexts.set(provider, contexts);
+			this.activeContexts.set(accountId, contexts);
 		}
 		const closeOnAbort = (): void => {
 			void context.close().catch(() => {});
@@ -594,10 +607,10 @@ export class BrowserManager {
 		if (lease.signal.aborted) closeOnAbort();
 		return () => {
 			lease.signal.removeEventListener("abort", closeOnAbort);
-			const current = this.activeContexts.get(provider);
+			const current = this.activeContexts.get(accountId);
 			if (current === undefined) return;
 			current.delete(lease.signal);
-			if (current.size === 0) this.activeContexts.delete(provider);
+			if (current.size === 0) this.activeContexts.delete(accountId);
 		};
 	}
 
@@ -612,28 +625,29 @@ export class BrowserManager {
 	}
 
 	private async commitAccountSnapshot(
-		provider: WebProvider,
+		accountId: AccountId,
 		lease: ProviderLease,
 		expectedRevision: number,
 		storageState: PortableStorageState,
 	): Promise<void> {
-		const previous = this.accountCommitQueues.get(provider) ?? Promise.resolve();
+		const previous = this.accountCommitQueues.get(accountId) ?? Promise.resolve();
 		const commit = previous
 			.catch(() => {})
 			.then(() => {
-				if (!this.scheduler(provider).isCurrent(lease)) return;
-				this.accounts.writeReadyIfRevision(provider, expectedRevision, storageState);
+				if (!this.scheduler(accountId).isCurrent(lease)) return;
+				this.accounts.writeReadyIfRevision(accountId, expectedRevision, storageState);
 			});
-		this.accountCommitQueues.set(provider, commit);
+		this.accountCommitQueues.set(accountId, commit);
 		try {
 			await commit;
 		} finally {
-			if (this.accountCommitQueues.get(provider) === commit) this.accountCommitQueues.delete(provider);
+			if (this.accountCommitQueues.get(accountId) === commit) this.accountCommitQueues.delete(accountId);
 		}
 	}
 
 	/** Preserve a provider-rotated session after a recoverable failed turn. */
 	private async recoverAuthenticatedSnapshot(
+		accountId: AccountId,
 		provider: WebProvider,
 		page: Page,
 		context: BrowserContext,
@@ -642,15 +656,15 @@ export class BrowserManager {
 		previousStorageState: PortableStorageState,
 	): Promise<void> {
 		try {
-			if (!this.scheduler(provider).isCurrent(lease)) return;
+			if (!this.scheduler(accountId).isCurrent(lease)) return;
 			const assessment = await this.assessAuthentication(provider, page, 5_000, lease.signal);
 			if (assessment.state === "signed-out") {
-				await this.handleSignedOut(provider, lease, accountRevision, assessment.evidence);
+				await this.handleSignedOut(accountId, provider, lease, accountRevision, assessment.evidence);
 				return;
 			}
-			if (assessment.state !== "authenticated" || !this.scheduler(provider).isCurrent(lease)) return;
+			if (assessment.state !== "authenticated" || !this.scheduler(accountId).isCurrent(lease)) return;
 			const storageState = await this.captureAccountSnapshot(context, previousStorageState);
-			await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);
+			await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
 		} catch {
 			// Keep the original turn error; recovery is an opportunistic state refresh.
 		}
@@ -661,57 +675,59 @@ export class BrowserManager {
 	 * bootstrapped revision and the lease is current, then invalidate turns.
 	 */
 	private async handleSignedOut(
+		accountId: AccountId,
 		provider: WebProvider,
 		lease: ProviderLease,
 		accountRevision: number,
 		evidence: "login-url" | "login-surface",
 	): Promise<void> {
-		if (!this.scheduler(provider).isCurrent(lease)) return;
-		const invalidated = this.accounts.markReauthRequiredIfRevision(provider, accountRevision, new Date(), {
+		if (!this.scheduler(accountId).isCurrent(lease)) return;
+		const invalidated = this.accounts.markReauthRequiredIfRevision(accountId, accountRevision, new Date(), {
 			observedAt: new Date().toISOString(),
 			evidence,
 		});
 		if (invalidated === undefined) return;
-		this.scheduler(provider).invalidate(
-			new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`),
+		this.scheduler(accountId).invalidate(
+			new InternetError("login_required", `Sign in to ${accountId} first with the internet_browser login action.`),
 		);
-		void this.scheduler(provider)
-			.runExclusive(() => this.closeBrowser(provider))
+		void this.scheduler(accountId)
+			.runExclusive(() => this.closeBrowser(accountId))
 			.catch(() => {});
 	}
 
 	/** Open local or SSH-forwarded normal Chrome for sign-in. */
-	async login(provider: WebProvider, options: LoginOptions = {}): Promise<ProviderStatus> {
-		return this.runProviderExclusive(provider, () => this.loginProvider(provider, options));
+	async login(accountId: AccountId, options: LoginOptions = {}): Promise<AccountStatus> {
+		return this.runAccountExclusive(accountId, () => this.loginAccount(accountId, options));
 	}
 
-	private async loginProvider(provider: WebProvider, options: LoginOptions): Promise<ProviderStatus> {
-		const active = this.remoteLogins.get(provider);
+	private async loginAccount(accountId: AccountId, options: LoginOptions): Promise<AccountStatus> {
+		const active = this.remoteLogins.get(accountId);
 		if (active?.status().state === "waiting" || active?.status().state === "finalizing") {
-			return this.providerStatus(provider);
+			return this.accountStatus(accountId);
 		}
 		if (active !== undefined) {
-			this.remoteLogins.delete(provider);
+			this.remoteLogins.delete(accountId);
 			await active.dispose();
 		}
-		await this.closeProviderResources(provider);
-		ensureLoginProfileDirectory(this.config.dataDir, provider);
+		await this.closeAccountResources(accountId);
+		ensureLoginProfileDirectory(this.config.dataDir, accountId);
 		const remote = options.remote === true || !this.display.hasInteractiveDisplay();
 		if (!remote) {
 			this.display.requireInteractiveDisplay();
 			await this.launchNormalLogin(provider);
 			await this.persistLoginProfile(provider);
-			return this.providerStatus(provider);
+			return this.accountStatus(accountId);
 		}
 		if (process.platform !== "linux") {
 			throw new InternetError("browser_unavailable", "SSH-forwarded remote login is supported only on Linux.");
 		}
-		await this.startRemoteLogin(provider);
-		return this.providerStatus(provider);
+		await this.startRemoteLogin(accountId);
+		return this.accountStatus(accountId);
 	}
 
-	private async startRemoteLogin(provider: WebProvider): Promise<void> {
-		const locations = this.locations(provider);
+	private async startRemoteLogin(accountId: AccountId): Promise<void> {
+		const provider = this.provider(accountId);
+		const locations = this.locations(accountId);
 		let session: RemoteLoginSession;
 		session = await RemoteLoginSession.start({
 			provider,
@@ -720,37 +736,40 @@ export class BrowserManager {
 			profileDir: locations.profileDir,
 			homeUrl: this.homeUrl(provider),
 			timeoutMs: this.config.loginTimeoutMs,
-			port: this.config.remoteLoginPort + (provider === "gemini-web" ? 1 : 0),
+			port: this.config.remoteLoginPort + ACCOUNT_IDS.indexOf(accountId),
 			finalize: () =>
-				this.runProviderExclusive(provider, async () => {
-					if (this.remoteLogins.get(provider) !== session || session.status().state !== "finalizing") {
+				this.runAccountExclusive(accountId, async () => {
+					if (this.remoteLogins.get(accountId) !== session || session.status().state !== "finalizing") {
 						throw new InternetError("aborted", "Remote login was cancelled before finalization.");
 					}
-					await this.persistLoginProfile(provider);
+					await this.persistLoginProfile(accountId);
 				}),
 			onClosed: () => {
-				if (this.remoteLogins.get(provider) === session) this.remoteLogins.delete(provider);
+				if (this.remoteLogins.get(accountId) === session) this.remoteLogins.delete(accountId);
 			},
 		});
-		this.remoteLogins.set(provider, session);
+		this.remoteLogins.set(accountId, session);
 	}
 
-	private async persistLoginProfile(provider: WebProvider): Promise<void> {
-		await this.waitForProfileUnlock(this.locations(provider).profileDir);
-		const bootstrapState = await this.captureLoginState(provider);
+	private async persistLoginProfile(accountId: AccountId): Promise<void> {
+		const provider = this.provider(accountId);
+		await this.waitForProfileUnlock(this.locations(accountId).profileDir);
+		const bootstrapState = await this.captureLoginState(accountId);
 		const storageState = await this.verifyStorageState(provider, bootstrapState);
-		this.accounts.writeReady(provider, storageState);
+		this.accounts.writeReady(accountId, storageState);
 	}
 
 	/** Report persisted account and active remote-login state. */
-	async status(provider: WebProvider): Promise<ProviderStatus> {
-		return this.providerStatus(provider);
+	async status(accountId: AccountId): Promise<AccountStatus> {
+		return this.accountStatus(accountId);
 	}
 
-	private providerStatus(provider: WebProvider): ProviderStatus {
-		const inspection = this.accounts.inspect(provider);
-		const remoteLogin = this.remoteLogins.get(provider)?.status();
+	private accountStatus(accountId: AccountId): AccountStatus {
+		const provider = this.provider(accountId);
+		const inspection = this.accounts.inspect(accountId);
+		const remoteLogin = this.remoteLogins.get(accountId)?.status();
 		return {
+			accountId,
 			provider,
 			state: inspection.state,
 			accountPath: inspection.path,
@@ -770,52 +789,50 @@ export class BrowserManager {
 	}
 
 	/** Run one long provider Deep Research request in an isolated durable conversation. */
-	async research(provider: WebProvider, request: ChatRequest): Promise<ChatResult> {
-		return this.chat(provider, { ...request, research: true, timeoutMs: this.config.researchTimeoutMs });
+	async research(accountId: AccountId, request: ChatRequest): Promise<ChatResult> {
+		return this.chat(accountId, { ...request, research: true, timeoutMs: this.config.researchTimeoutMs });
 	}
 
-	/** Run one browser chat turn against the provider and return rendered markdown. */
-	async chat(provider: WebProvider, request: ChatRequest): Promise<ChatResult> {
+	/** Run one browser chat turn against an authenticated account and return rendered markdown. */
+	async chat(accountId: AccountId, request: ChatRequest): Promise<ChatResult> {
 		if (this.disposed) throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
-		this.cancelPendingClose(provider);
-		const scheduler = this.scheduler(provider);
+		this.cancelPendingClose(accountId);
+		const scheduler = this.scheduler(accountId);
 		try {
 			return request.visible === true
-				? await scheduler.runExclusive((lease) => this.chatProvider(provider, request, lease), request.signal)
+				? await scheduler.runExclusive((lease) => this.chatAccount(accountId, request, lease), request.signal)
 				: await scheduler.runTurn(request.sessionId, request.signal, (lease) =>
-						this.chatProvider(provider, request, lease),
+						this.chatAccount(accountId, request, lease),
 					);
 		} finally {
-			this.scheduleCloseWhenIdle(provider);
+			this.scheduleCloseWhenIdle(accountId);
 		}
 	}
 
-	private async chatProvider(provider: WebProvider, request: ChatRequest, lease: ProviderLease): Promise<ChatResult> {
-		const remoteState = this.remoteLogins.get(provider)?.status().state;
+	private async chatAccount(accountId: AccountId, request: ChatRequest, lease: ProviderLease): Promise<ChatResult> {
+		const provider = this.provider(accountId);
+		const remoteState = this.remoteLogins.get(accountId)?.status().state;
 		if (remoteState === "waiting" || remoteState === "finalizing") {
 			throw new InternetError(
 				"login_required",
-				`${provider} remote login is ${remoteState}; save or stop it first.`,
+				`${accountId} remote login is ${remoteState}; save or stop it first.`,
 			);
 		}
-		this.cancelPendingClose(provider);
+		this.cancelPendingClose(accountId);
 		const visible = request.visible === true;
 		const headless = visible ? false : this.config.headless;
 		const {
 			context,
 			accountRevision,
 			storageState: previousStorageState,
-		} = await this.ensureContext(provider, headless, visible);
-		const untrackContext = this.trackContext(provider, lease, context);
+		} = await this.ensureContext(accountId, headless, visible);
+		const untrackContext = this.trackContext(accountId, lease, context);
 		let page: Page | undefined;
 		try {
 			page = await this.activePage(context);
 			let binding: ConversationBinding | undefined;
 			try {
-				binding =
-					provider === "chatgpt-web"
-						? this.chatGptConversations.read(request.sessionId)
-						: this.geminiConversations.read(request.sessionId);
+				binding = this.conversationStore(accountId).read(request.sessionId);
 			} catch (error) {
 				throw new InternetError(
 					"provider_error",
@@ -831,10 +848,10 @@ export class BrowserManager {
 			const authentication = await this.assessAuthentication(provider, page, 30_000, lease.signal);
 			if (authentication.state !== "authenticated") {
 				if (authentication.state === "signed-out") {
-					await this.handleSignedOut(provider, lease, accountRevision, authentication.evidence);
+					await this.handleSignedOut(accountId, provider, lease, accountRevision, authentication.evidence);
 					throw new InternetError(
 						"login_required",
-						`Sign in to ${provider} first with the internet_browser login action.`,
+						`Sign in to ${accountId} first with the internet_browser login action.`,
 					);
 				}
 				throw new InternetError(
@@ -890,7 +907,7 @@ export class BrowserManager {
 					lease.signal,
 				);
 				try {
-					binding = this.chatGptConversations.bind(request.sessionId, conversation.url);
+					binding = this.conversationStore(accountId).bind(request.sessionId, conversation.url);
 				} catch (error) {
 					throw new InternetError(
 						"provider_error",
@@ -920,7 +937,7 @@ export class BrowserManager {
 					lease.signal,
 				);
 				try {
-					binding = this.geminiConversations.bind(request.sessionId, conversation.url);
+					binding = this.conversationStore(accountId).bind(request.sessionId, conversation.url);
 				} catch (error) {
 					throw new InternetError(
 						"provider_error",
@@ -938,7 +955,7 @@ export class BrowserManager {
 				);
 			}
 			const storageState = await this.captureAccountSnapshot(context, previousStorageState);
-			await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);
+			await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
 			return {
 				text: text.slice(0, this.config.maxOutputChars),
 				url: page.url(),
@@ -947,6 +964,7 @@ export class BrowserManager {
 		} catch (error) {
 			if (page !== undefined) {
 				await this.recoverAuthenticatedSnapshot(
+					accountId,
 					provider,
 					page,
 					context,
@@ -968,14 +986,14 @@ export class BrowserManager {
 	}
 
 	private async closeProviderResources(provider: WebProvider): Promise<void> {
-		this.cancelPendingClose(provider);
+		this.cancelPendingClose(accountId);
 		const remote = this.remoteLogins.get(provider);
 		if (remote !== undefined) {
 			await remote.waitForFinalization();
-			if (this.remoteLogins.get(provider) === remote) this.remoteLogins.delete(provider);
+			if (this.remoteLogins.get(accountId) === remote) this.remoteLogins.delete(accountId);
 			await remote.cancel();
 		}
-		await this.closeBrowser(provider);
+		await this.closeBrowser(accountId);
 	}
 
 	/** Close every managed inference browser (no leaked Chrome processes). */
@@ -991,7 +1009,7 @@ export class BrowserManager {
 			const remoteLogins = [...this.remoteLogins.values()];
 			this.remoteLogins.clear();
 			await Promise.all(remoteLogins.map((session) => session.dispose()));
-			await Promise.all([...this.browsers.keys()].map((provider) => this.closeBrowser(provider)));
+			await Promise.all([...this.browsers.keys()].map((accountId) => this.closeBrowser(accountId)));
 		} finally {
 			await this.display.dispose();
 		}
