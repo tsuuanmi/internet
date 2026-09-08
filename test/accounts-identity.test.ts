@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
 	ACCOUNT_IDS,
 	ACCOUNTS,
-	DEFAULT_ACCOUNT_BY_PROVIDER,
 	accountHasCapability,
 	accountsForProvider,
 	accountsWithCapabilities,
+	DEFAULT_ACCOUNT_BY_PROVIDER,
 	defaultAccountIdForProvider,
 	getAccountDefinition,
 	isAccountId,
