@@ -20,9 +20,6 @@ export interface ConversationBinding {
 	updatedAt: string;
 }
 
-export type ChatGptConversationBinding = ConversationBinding;
-export type GeminiConversationBinding = ConversationBinding;
-
 /** Parse and canonicalize one native ChatGPT conversation URL. */
 export function parseChatGptConversationUrl(value: string): { id: string; url: string } {
 	const url = new URL(value);
@@ -47,19 +44,17 @@ export function parseGeminiConversationUrl(value: string): { id: string; url: st
 
 type ConversationUrlParser = (value: string) => { id: string; url: string };
 
-/** Durable private 1:1 bindings from DSH session IDs to one account's native conversations. */
+/** Durable private 1:1 bindings from DSH session IDs to one authenticated account's native conversations. */
 export class ConversationStore {
 	private readonly root: string;
 	private readonly parseUrl: ConversationUrlParser;
 	private readonly accountId: AccountId;
-	private readonly accountName: string;
 
 	constructor(dataDir: string, accountId: AccountId) {
 		const provider = getAccountDefinition(accountId).provider;
 		this.root = resolve(dataDir, accountId, "conversations");
 		this.accountId = accountId;
 		this.parseUrl = provider === "chatgpt-web" ? parseChatGptConversationUrl : parseGeminiConversationUrl;
-		this.accountName = accountId;
 		mkdirSync(this.root, { recursive: true, mode: 0o700 });
 		chmodSync(this.root, 0o700);
 	}
@@ -69,7 +64,7 @@ export class ConversationStore {
 		const path = this.path(expectedHash);
 		if (!existsSync(path)) return undefined;
 		if ((statSync(path).mode & 0o077) !== 0) {
-			throw new Error(`${this.accountName} conversation binding is not private: ${path}`);
+			throw new Error(`${this.accountId} conversation binding is not private: ${path}`);
 		}
 		const binding = JSON.parse(readFileSync(path, "utf8")) as unknown;
 		return this.validateBinding(binding, expectedHash);
@@ -82,7 +77,7 @@ export class ConversationStore {
 		const existing = this.read(sessionId);
 		if (existing !== undefined && existing.conversationId !== conversation.id) {
 			throw new Error(
-				`DSH session is already bound to ${this.accountName} conversation ${existing.conversationId}; refusing ${conversation.id}`,
+				`DSH session is already bound to ${this.accountId} conversation ${existing.conversationId}; refusing ${conversation.id}`,
 			);
 		}
 		const binding: ConversationBinding = {
@@ -104,7 +99,7 @@ export class ConversationStore {
 
 	private validateBinding(value: unknown, expectedHash: string): ConversationBinding {
 		if (typeof value !== "object" || value === null || Array.isArray(value)) {
-			throw new Error(`Invalid ${this.accountName} conversation binding`);
+			throw new Error(`Invalid ${this.accountId} conversation binding`);
 		}
 		const binding = value as Partial<ConversationBinding>;
 		if (
@@ -117,30 +112,13 @@ export class ConversationStore {
 			typeof binding.conversationUrl !== "string" ||
 			typeof binding.updatedAt !== "string"
 		) {
-			throw new Error(`Invalid ${this.accountName} conversation binding`);
+			throw new Error(`Invalid ${this.accountId} conversation binding`);
 		}
 		const conversation = this.parseUrl(binding.conversationUrl);
 		if (conversation.id !== binding.conversationId || conversation.url !== binding.conversationUrl) {
-			throw new Error(`Invalid ${this.accountName} conversation binding identity`);
+			throw new Error(`Invalid ${this.accountId} conversation binding identity`);
 		}
 		return binding as ConversationBinding;
-	}
-}
-
-/** Durable private ChatGPT thinker conversation bindings. */
-export class ChatGptConversationStore extends ConversationStore {
-	constructor(
-		dataDir: string,
-		accountId: Extract<AccountId, "chatgpt-thinker" | "chatgpt-writer"> = "chatgpt-thinker",
-	) {
-		super(dataDir, accountId);
-	}
-}
-
-/** Durable private Gemini thinker conversation bindings. */
-export class GeminiConversationStore extends ConversationStore {
-	constructor(dataDir: string, accountId: Extract<AccountId, "gemini-thinker"> = "gemini-thinker") {
-		super(dataDir, accountId);
 	}
 }
 
