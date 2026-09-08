@@ -62,7 +62,8 @@ Requirements:
 
 - separate portable state for two ChatGPT accounts;
 - private permissions retained;
-- migration/compatibility for existing account files;
+- account-scoped canonical paths only;
+- no implicit provider-to-account fallback;
 - no cross-account stale snapshot overwrite.
 
 ### 5. Refactor BrowserManager maps to account identity
