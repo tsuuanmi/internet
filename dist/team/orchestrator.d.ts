@@ -39,6 +39,8 @@ export interface TeamOptions {
     rounds?: number;
     /** Whether to append a final synthesis turn. */
     synthesize?: boolean;
+    /** Provider that performs the final synthesis, independent of speaking order. */
+    synthesizer?: WebProvider;
     /** Ordered providers; the first opens the debate. */
     providers?: readonly WebProvider[];
     /** Show automated provider browsers on the user-managed display. */
@@ -60,11 +62,12 @@ export declare function composeTurnPrompt(task: string, provider: WebProvider, o
 /** Compose the final synthesis prompt from the full debate transcript. */
 export declare function composeSynthesisPrompt(task: string, transcript: readonly TeamTurn[]): string;
 /**
- * Run a multi-model debate: the providers speak in order each round, each
- * seeing every other model's latest message, then (optionally) the last
- * speaker synthesizes a single final answer from the full transcript. The team
- * uses a derived session key so its conversations are isolated from the
- * agent's own direct `internet_chat` threads yet durable across repeated calls.
+ * Run a multi-model debate: providers speak in order each round, each seeing
+ * every other provider's latest message. When synthesis is enabled, an
+ * explicitly selected synthesizer receives the full transcript; synthesis is
+ * therefore independent from the provider speaking order. The team uses a
+ * derived session key so its conversations are isolated from the agent's own
+ * direct `internet_chat` threads yet durable across repeated calls.
  */
 export declare function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamResult>;
 //# sourceMappingURL=orchestrator.d.ts.map

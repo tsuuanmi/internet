@@ -6,7 +6,9 @@
 
 ## P0 — Do next
 
-### 1. Default ChatGPT browser reasoning to High
+### 1. ✅ Default ChatGPT browser reasoning to High
+
+**Status:** implemented.
 
 - Change `DEFAULT_CONFIG.chatgptThinkingLevel` from `medium` to `high`.
 - Update comments/system guidance/tests/config examples.
@@ -14,7 +16,9 @@
 **ROI:** very high  
 **Risk:** low
 
-### 2. Make the team synthesizer explicit and default to ChatGPT thinker
+### 2. ✅ Make the team synthesizer explicit and default to ChatGPT thinker
+
+**Status:** implemented at provider level; migrate the synthesizer identity to `accountId` during the multi-account phase.
 
 - Add explicit synthesizer selection.
 - Stop using `lastProvider` as synthesis destination.

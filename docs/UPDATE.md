@@ -125,8 +125,8 @@ continue
 The following remain unchanged:
 
 - separate `chatgpt-thinker` and `chatgpt-writer` account identities;
-- ChatGPT thinker is the explicit default team synthesizer;
-- ChatGPT browser default should become `high`;
+- team synthesis is explicitly routed through a configured provider; ChatGPT is the default synthesizer;
+- ChatGPT browser default is `high`;
 - two thinking teams feed exact outputs to the writer;
 - two post-PR review teams feed exact outputs back to the writer;
 - PR is the canonical shared implementation artifact;

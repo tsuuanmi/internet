@@ -80,7 +80,7 @@ export function defineInternetTeamTool(
 	return defineTool({
 		name: "internet_team",
 		description:
-			"Run a multi-model debate between configured web providers. Provider browsers are hidden by default; set visible=true to show them on the user-managed display. Returns only the final answer unless includeTranscript is requested.",
+			"Run a multi-model debate between configured web providers. Final synthesis uses the configured team synthesizer independently of speaking order. Provider browsers are hidden by default; set visible=true to show them on the user-managed display. Returns only the final answer unless includeTranscript is requested.",
 		parameters: {
 			task: {
 				type: "string",
@@ -176,6 +176,7 @@ export function defineInternetTeamTool(
 					teamName: input.team,
 					rounds,
 					synthesize: input.synthesize ?? config.teamSynthesis,
+					synthesizer: config.teamSynthesizer,
 					providers: input.providers,
 					visible: input.visible,
 					signal: exec.signal,

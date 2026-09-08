@@ -28,6 +28,7 @@ describe("resolveBrowserConfig", () => {
 			remoteLoginPort: 40_000,
 			closeAfterMs: 5_000,
 			maxConcurrentTurnsPerProvider: 2,
+			teamSynthesizer: "gemini-web",
 		});
 		expect(config.chromePath).toBe("/custom/chrome");
 		expect(config.headless).toBe(false);
@@ -37,6 +38,7 @@ describe("resolveBrowserConfig", () => {
 		expect(config.remoteLoginPort).toBe(40_000);
 		expect(config.closeAfterMs).toBe(5_000);
 		expect(config.maxConcurrentTurnsPerProvider).toBe(2);
+		expect(config.teamSynthesizer).toBe("gemini-web");
 	});
 
 	it("ignores unknown fields and non-object input", () => {
@@ -65,11 +67,13 @@ describe("resolveBrowserConfig", () => {
 			teamMaxRounds: 5,
 			teamTranscriptMaxChars: 10_000,
 			teamSynthesis: false,
+			teamSynthesizer: "gemini-web",
 		});
 		expect(config.teamRounds).toBe(3);
 		expect(config.teamMaxRounds).toBe(5);
 		expect(config.teamTranscriptMaxChars).toBe(10_000);
 		expect(config.teamSynthesis).toBe(false);
+		expect(config.teamSynthesizer).toBe("gemini-web");
 	});
 
 	it("rejects invalid team limits", () => {
@@ -79,8 +83,10 @@ describe("resolveBrowserConfig", () => {
 		expect(() => resolveBrowserConfig({ teamRounds: 3, teamMaxRounds: 2 })).toThrow(/must not exceed/);
 	});
 
-	it("defaults chatgptThinkingLevel to medium", () => {
-		expect(resolveBrowserConfig({}).chatgptThinkingLevel).toBe("medium");
+	it("defaults ChatGPT thinking to High and team synthesis to ChatGPT", () => {
+		const config = resolveBrowserConfig({});
+		expect(config.chatgptThinkingLevel).toBe("high");
+		expect(config.teamSynthesizer).toBe("chatgpt-web");
 	});
 
 	it("honors the three supported chatgptThinkingLevel values", () => {
@@ -94,5 +100,10 @@ describe("resolveBrowserConfig", () => {
 		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: "pro" })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: "ultra" })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ chatgptThinkingLevel: 1 })).toThrow(InternetError);
+	});
+
+	it("rejects an unsupported team synthesizer", () => {
+		expect(() => resolveBrowserConfig({ teamSynthesizer: "claude-web" })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ teamSynthesizer: 1 })).toThrow(InternetError);
 	});
 });

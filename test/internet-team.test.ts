@@ -179,19 +179,28 @@ describe("defineInternetTeamTool", () => {
 		});
 	});
 
-	it("does not include the final synthesis response in the transcript", async () => {
-		const { manager } = fakeManager(["A1", "B1", "FINAL"]);
+	it("uses ChatGPT for synthesis even though Gemini speaks last by default", async () => {
+		const { manager, calls } = fakeManager(["A1", "B1", "FINAL"]);
 		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, includeTranscript: true }, exec);
+		expect(calls.map(({ provider }) => provider)).toEqual(["chatgpt-web", "gemini-web", "chatgpt-web"]);
 		expect(result).toEqual({
 			finalAnswer: "FINAL",
-			finalProvider: "gemini-web",
+			finalProvider: "chatgpt-web",
 			transcript: [
 				{ round: 1, provider: "chatgpt-web", text: "A1" },
 				{ round: 1, provider: "gemini-web", text: "B1" },
 			],
 			transcriptTruncated: false,
 		});
+	});
+
+	it("honors an explicit configured team synthesizer", async () => {
+		const { manager, calls } = fakeManager(["A1", "B1", "FINAL"]);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({ teamSynthesizer: "gemini-web" }), allowed);
+		const result = await tool.execute({ task: "T", rounds: 1 }, exec);
+		expect(calls.map(({ provider }) => provider)).toEqual(["chatgpt-web", "gemini-web", "gemini-web"]);
+		expect(result).toEqual({ finalAnswer: "FINAL", finalProvider: "gemini-web" });
 	});
 
 	it("returns completed transcript turns on an opted-in provider failure", async () => {

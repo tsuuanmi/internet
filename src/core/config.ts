@@ -11,7 +11,7 @@ export const WEB_PROVIDERS: readonly WebProvider[] = ["chatgpt-web", "gemini-web
 
 /**
  * ChatGPT Web reasoning-effort levels, ordered by the UI index the model
- * switcher exposes (Instant=0, Medium=1, High=2). "Medium" is the default
+ * switcher exposes (Instant=0, Medium=1, High=2). "High" is the default
  * unless the profile explicitly overrides it.
  */
 export type ChatGptThinkingLevel = "instant" | "medium" | "high";
@@ -53,6 +53,8 @@ export interface BrowserConfig {
 	teamTranscriptMaxChars: number;
 	/** Whether the `internet_team` tool appends a final synthesis turn. */
 	teamSynthesis: boolean;
+	/** Provider that performs the final team synthesis, independent of speaking order. */
+	teamSynthesizer: WebProvider;
 	/** Register the ChatGPT Web provider. */
 	enableChatgpt: boolean;
 	/** Register the Gemini Web provider. */
@@ -83,9 +85,10 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	teamMaxRounds: 4,
 	teamTranscriptMaxChars: 50_000,
 	teamSynthesis: true,
+	teamSynthesizer: "chatgpt-web",
 	enableChatgpt: true,
 	enableGemini: true,
-	chatgptThinkingLevel: "medium",
+	chatgptThinkingLevel: "high",
 };
 
 /**
@@ -109,6 +112,7 @@ export const Config = S.object({
 	teamMaxRounds: S.number().default(DEFAULT_CONFIG.teamMaxRounds),
 	teamTranscriptMaxChars: S.number().default(DEFAULT_CONFIG.teamTranscriptMaxChars),
 	teamSynthesis: S.boolean().default(DEFAULT_CONFIG.teamSynthesis),
+	teamSynthesizer: S.string().default(DEFAULT_CONFIG.teamSynthesizer),
 	enableChatgpt: S.boolean().default(DEFAULT_CONFIG.enableChatgpt),
 	enableGemini: S.boolean().default(DEFAULT_CONFIG.enableGemini),
 	chatgptThinkingLevel: S.string().default(DEFAULT_CONFIG.chatgptThinkingLevel),
@@ -131,6 +135,14 @@ function asPositiveInteger(value: unknown, fallback: number, name: string): numb
 		throw new InternetError("config_error", `browser config ${name} must be at least 1`);
 	}
 	return typeof value === "number" ? Math.floor(value) : fallback;
+}
+
+function asWebProvider(value: unknown, fallback: WebProvider, name: string): WebProvider {
+	if (value === undefined) return fallback;
+	if (typeof value === "string" && (WEB_PROVIDERS as readonly string[]).includes(value)) {
+		return value as WebProvider;
+	}
+	throw new InternetError("config_error", `browser config ${name} must be one of ${WEB_PROVIDERS.join(", ")}`);
 }
 
 function asChatGptThinkingLevel(value: unknown): ChatGptThinkingLevel {
@@ -195,6 +207,7 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 			"teamTranscriptMaxChars",
 		),
 		teamSynthesis: asBoolean(input.teamSynthesis, DEFAULT_CONFIG.teamSynthesis),
+		teamSynthesizer: asWebProvider(input.teamSynthesizer, DEFAULT_CONFIG.teamSynthesizer, "teamSynthesizer"),
 		enableChatgpt: asBoolean(input.enableChatgpt, DEFAULT_CONFIG.enableChatgpt),
 		enableGemini: asBoolean(input.enableGemini, DEFAULT_CONFIG.enableGemini),
 		chatgptThinkingLevel: asChatGptThinkingLevel(input.chatgptThinkingLevel),
