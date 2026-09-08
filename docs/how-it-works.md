@@ -31,6 +31,7 @@ provider interaction contracts, durable conversations, team orchestration, and t
 - `src/workflow/team-runner.ts` and `team-prompt-builder.ts` — direct lower-level team execution and deterministic research/review tasks.
 - `src/workflow/handoff-store.ts` and `control.ts` — exact SHA-256-bound data-plane handoffs and separate trusted control messages.
 - `src/workflow/writer-runner.ts` — persistent `chatgpt-writer` routing, strict writer result parsing, and implementation/PR control.
+- `src/workflow/approval-policy.ts` and `src/browser/chatgpt-confirmation.ts` — deterministic writer-action scope checks plus conservative Website confirmation recognition/handling.
 - `src/commands/internet.ts` — human `/internet` command backed by ChatGPT.
 - `src/commands/workflow.ts` — thin `/workflow` admission adapter that resolves Git authority and creates a durable engine job.
 - `src/client.ts` — DSH-side command renderer.
@@ -91,7 +92,7 @@ to a credential-free HTTPS URL. It verifies the worktree and exact `HEAD` first.
 direct command error and creates no job. On success it calls `WorkflowEngine.start(...)` and returns the
 durable job ID; no giant workflow prompt is injected into Local.
 
-The implemented engine path through P5 is:
+The implemented engine path through P6 is:
 
 ```text
 CREATED
@@ -113,9 +114,22 @@ PR receipt (`repository`, PR number/URL, base/head, and exact head SHA), or the 
 a fabricated receipt. If a transient control call fails after the research handoffs were acknowledged, the
 job remains `WRITER_RUNNING`; retry reuses the same writer conversation and skips already-delivered handoffs.
 
-Scoped Website confirmation policy, actual PR review/remediation loops, Local event injection, and the
-head-SHA-bound merge authorization gate are later workflow phases and are not implied by the current
-`/workflow` admission command.
+During writer execution, `BrowserManager` may inspect a visible ChatGPT Website GitHub confirmation before
+checking completion. Confirmation handling is deliberately separate from model-output parsing. A candidate
+must come from a narrow dialog/confirmation root, identify GitHub, expose exactly one semantic `Allow` button
+plus a deny/cancel control, and parse to one supported action. `WorkflowApprovalContext` then binds that
+observation to the exact `chatgpt-writer` conversation, authoritative repository, current workflow state, and
+expected branch/PR identity. The initial branch identity is deterministic as `internet-workflow/<job_id>`;
+once a PR exists, its persisted head/number become authoritative.
+
+Only in-scope implementation/remediation actions are auto-confirmed. Missing or mismatched metadata, ambiguous
+UI, unsupported actions, multiple candidates, or a confirmation that remains visible after activation fail
+closed as `UNKNOWN_CONFIRMATION`. The engine persists an ACTION_REQUIRED exception with the writer phase as
+the explicit resume state. A merge confirmation is recognized separately and is never clicked by the scoped
+auto-approval policy.
+
+Actual PR review/remediation loops, Local event injection, and the head-SHA-bound user merge authorization gate
+remain later workflow phases and are not implied by the current `/workflow` admission command.
 
 ## Deep Research request flow
 

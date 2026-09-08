@@ -156,6 +156,26 @@ Writer verifies repo/base, implements, validates
 
 The writer conversation is stable for the workflow job and is intended to continue through later remediation. Durable delivery receipts prevent acknowledged Research A/B handoffs from being resent when a transient writer-control call is retried. Successful output persists repository, PR number/URL, base/head, and exact head SHA in the job before review begins. Merge remains explicitly outside this phase.
 
+## Scoped Website approval controller implemented
+
+P6 TODO #22–#25 now turns the accepted ADR-0007 policy into code. Website GitHub confirmation handling is no longer a generic “click Allow” behavior. The controller first recognizes a narrow confirmation surface, parses one supported action and its repository/branch/PR identity, then evaluates that observation against deterministic workflow context.
+
+The phase-1 auto-approval boundary is:
+
+```text
+chatgpt-writer only
++ exact writer conversation
++ exact repository
++ permitted WRITER_RUNNING / WRITER_REMEDIATING state
++ allowlisted implementation/remediation action
++ exact workflow branch / persisted PR identity
+=> scoped Allow
+```
+
+Everything else fails closed. Unknown or ambiguous confirmations become durable `UNKNOWN_CONFIRMATION` ACTION_REQUIRED state and retain `WRITER_RUNNING` as the explicit resume target. Merge is a separate class: even a perfectly recognized merge confirmation is blocked and never auto-clicked before the later user-owned merge gate.
+
+The deterministic initial workflow branch is `internet-workflow/<job_id>` so branch identity can be checked before a PR receipt exists. Once the writer opens a PR, the persisted PR head and number become the authority for remediation confirmations.
+
 ## Existing architecture points retained
 
 The following remain unchanged:
