@@ -54,27 +54,12 @@ export const ACCOUNTS: Readonly<Record<AccountId, AccountDefinition>> = {
 	},
 };
 
-/**
- * Compatibility route for existing provider-keyed APIs while the browser
- * runtime migrates to first-class account IDs. Existing ChatGPT/Gemini calls
- * continue to address the thinker accounts; the writer is never selected
- * implicitly from a provider name.
- */
-export const DEFAULT_ACCOUNT_BY_PROVIDER: Readonly<Record<WebProvider, AccountId>> = {
-	"chatgpt-web": "chatgpt-thinker",
-	"gemini-web": "gemini-thinker",
-};
-
 export function isAccountId(value: unknown): value is AccountId {
 	return typeof value === "string" && (ACCOUNT_IDS as readonly string[]).includes(value);
 }
 
 export function getAccountDefinition(accountId: AccountId): AccountDefinition {
 	return ACCOUNTS[accountId];
-}
-
-export function defaultAccountIdForProvider(provider: WebProvider): AccountId {
-	return DEFAULT_ACCOUNT_BY_PROVIDER[provider];
 }
 
 /** Return every semantic account backed by one provider in stable catalog order. */
