@@ -197,7 +197,7 @@ export class WorkflowEngine {
         if (this.handoffs === undefined)
             throw new WorkflowEngineError("workflow handoff store is not configured");
         const job = this.status(jobId);
-        if (job.state !== "RESEARCH_HANDOFFS_DELIVERING") {
+        if (job.state !== "RESEARCH_HANDOFFS_DELIVERING" && job.state !== "WRITER_RUNNING") {
             throw new WorkflowEngineError(`workflow job ${jobId} cannot prepare research handoffs from ${job.state}`);
         }
         if (!allCompleted(job.teamRuns.research))
