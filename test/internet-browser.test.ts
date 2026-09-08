@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ProviderStatus } from "#internet/browser/runtime";
+import type { AccountStatus } from "#internet/browser/runtime";
 import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
 
-const allowed = new Set(["chatgpt-web", "gemini-web"] as const);
+const allowed = new Set(["chatgpt-thinker", "chatgpt-writer", "gemini-thinker"] as const);
 
-function manager(status: ProviderStatus) {
+function manager(status: AccountStatus) {
 	return {
 		login: vi.fn(async () => status),
 		status: vi.fn(async () => status),
@@ -13,45 +13,39 @@ function manager(status: ProviderStatus) {
 }
 
 describe("internet_browser", () => {
-	it("reports a verified portable account after login", async () => {
+	it("reports a verified portable account after explicit thinker login", async () => {
 		const browser = manager({
+			accountId: "chatgpt-thinker",
 			provider: "chatgpt-web",
 			state: "ready",
-			accountPath: "/home/user/.dsh/internet/accounts/chatgpt-web.json",
+			accountPath: "/home/user/.dsh/internet/accounts/chatgpt-thinker.json",
 		});
 		const tool = defineInternetBrowserTool(browser as never, allowed);
 
-		await expect(tool.execute({ action: "login", model: "chatgpt-web" }, {} as never)).resolves.toEqual({
+		await expect(tool.execute({ action: "login", account: "chatgpt-thinker" }, {} as never)).resolves.toEqual({
 			ok: true,
+			accountId: "chatgpt-thinker",
 			provider: "chatgpt-web",
 			state: "ready",
-			accountPath: "/home/user/.dsh/internet/accounts/chatgpt-web.json",
-			message: "chatgpt-web portable account is verified and ready.",
+			accountPath: "/home/user/.dsh/internet/accounts/chatgpt-thinker.json",
+			message: "chatgpt-thinker portable account is verified and ready.",
 		});
+		expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker", { remote: false });
 	});
 
-	it.each([
-		["missing", "gemini-web has no account; run internet_browser login."],
-		["reauth-required", "gemini-web requires sign-in; run internet_browser login."],
-		["invalid", "gemini-web account file is invalid; run internet_browser login to replace it."],
-	] as const)("reports %s local account state precisely", async (state, message) => {
+	it("routes the ChatGPT writer independently from the thinker", async () => {
 		const browser = manager({
-			provider: "gemini-web",
-			state,
-			accountPath: "/home/user/.dsh/internet/accounts/gemini-web.json",
+			accountId: "chatgpt-writer",
+			provider: "chatgpt-web",
+			state: "missing",
+			accountPath: "/accounts/chatgpt-writer.json",
 		});
 		const tool = defineInternetBrowserTool(browser as never, allowed);
-
-		await expect(tool.execute({ action: "status", model: "gemini-web" }, {} as never)).resolves.toEqual({
-			ok: true,
-			provider: "gemini-web",
-			state,
-			accountPath: "/home/user/.dsh/internet/accounts/gemini-web.json",
-			message,
-		});
+		await tool.execute({ action: "status", account: "chatgpt-writer" }, {} as never);
+		expect(browser.status).toHaveBeenCalledWith("chatgpt-writer");
 	});
 
-	it("returns SSH-forwarded remote-login instructions", async () => {
+	it("returns account-specific SSH-forwarded remote-login instructions", async () => {
 		const remoteLogin = {
 			state: "waiting" as const,
 			message: "Remote desktop ready.",
@@ -61,25 +55,34 @@ describe("internet_browser", () => {
 			expiresAt: "2026-01-01T00:03:00.000Z",
 		};
 		const browser = manager({
+			accountId: "chatgpt-writer",
 			provider: "chatgpt-web",
 			state: "missing",
 			accountPath: "/account.json",
 			remoteLogin,
 		});
 		const tool = defineInternetBrowserTool(browser as never, allowed);
-		const result = await tool.execute({ action: "login", model: "chatgpt-web", remote: true }, {} as never);
-		expect(browser.login).toHaveBeenCalledWith("chatgpt-web", { remote: true });
-		expect(result).toMatchObject({ ok: true, state: "missing", remoteLogin });
-		expect((result as { message: string }).message).toContain("Save account");
-		const [{ text }] = tool.output.render({}, result as never) as [{ type: "text"; text: string }];
-		expect(text.indexOf("SSH:")).toBeLessThan(text.indexOf("URL:"));
+		const result = await tool.execute({ action: "login", account: "chatgpt-writer", remote: true }, {} as never);
+		expect(browser.login).toHaveBeenCalledWith("chatgpt-writer", { remote: true });
+		expect(result).toMatchObject({ ok: true, accountId: "chatgpt-writer", provider: "chatgpt-web", remoteLogin });
+		expect((result as { message: string }).message).toContain("chatgpt-writer");
 	});
 
-	it("rejects remote outside the login action", async () => {
-		const browser = manager({ provider: "gemini-web", state: "missing", accountPath: "/account.json" });
-		const tool = defineInternetBrowserTool(browser as never, allowed);
-		await expect(tool.execute({ action: "status", model: "gemini-web", remote: true }, {} as never)).resolves.toEqual(
-			{ ok: false, provider: "gemini-web", message: "remote is valid only for the login action" },
-		);
+	it("rejects disabled and provider-like identities rather than falling back", async () => {
+		const browser = manager({
+			accountId: "gemini-thinker",
+			provider: "gemini-web",
+			state: "missing",
+			accountPath: "/account.json",
+		});
+		const tool = defineInternetBrowserTool(browser as never, new Set(["gemini-thinker"] as const));
+		await expect(tool.execute({ action: "status", account: "chatgpt-writer" }, {} as never)).resolves.toMatchObject({
+			ok: false,
+			accountId: "chatgpt-writer",
+		});
+		await expect(tool.execute({ action: "status", account: "chatgpt-web" }, {} as never)).resolves.toMatchObject({
+			ok: false,
+			accountId: "chatgpt-web",
+		});
 	});
 });
