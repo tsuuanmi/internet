@@ -95,7 +95,9 @@ describe("WorkflowEngine", () => {
 		const completed = await running;
 		expect(completed.state).toBe("RESEARCH_HANDOFFS_DELIVERING");
 		expect(completed.teamRuns.research.map((run) => run.status)).toEqual(["completed", "completed"]);
-		expect(completed.teamRuns.research.every((run) => run.result?.finalAnswer.startsWith("answer:") === true)).toBe(true);
+		expect(completed.teamRuns.research.every((run) => run.result?.finalAnswer.startsWith("answer:") === true)).toBe(
+			true,
+		);
 	});
 
 	it("materializes exact research finals and blocks START_IMPLEMENTATION until both are delivered", async () => {

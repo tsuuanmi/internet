@@ -1,9 +1,4 @@
-export const WORKFLOW_CONTROL_KINDS = [
-	"START_IMPLEMENTATION",
-	"APPLY_REVIEWS",
-	"RETRY",
-	"MERGE_AUTHORIZED",
-] as const;
+export const WORKFLOW_CONTROL_KINDS = ["START_IMPLEMENTATION", "APPLY_REVIEWS", "RETRY", "MERGE_AUTHORIZED"] as const;
 
 export type WorkflowControlKind = (typeof WORKFLOW_CONTROL_KINDS)[number];
 

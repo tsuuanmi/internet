@@ -30,7 +30,12 @@ export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#
 export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
+export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
+export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
+export type { WorkflowControlStep } from "#internet/workflow/engine";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
+export type { CreateWorkflowHandoffInput, WorkflowHandoff, WorkflowHandoffStatus, } from "#internet/workflow/handoff-store";
+export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
 export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";

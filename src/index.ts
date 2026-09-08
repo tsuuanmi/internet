@@ -114,7 +114,14 @@ export {
 export type { BrowserConfig, ChatGptThinkingLevel, WebProvider } from "#internet/core/config";
 export { CHATGPT_THINKING_LEVELS, Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
-export type { OtherContribution, TeamFailure, TeamOptions, TeamResult, TeamSuccess, TeamTurn } from "#internet/team/orchestrator";
+export type {
+	OtherContribution,
+	TeamFailure,
+	TeamOptions,
+	TeamResult,
+	TeamSuccess,
+	TeamTurn,
+} from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
 export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";

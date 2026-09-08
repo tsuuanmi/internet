@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { createWorkflowControlMessage } from "#internet/workflow/control";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { TERMINAL_WORKFLOW_STATES, } from "#internet/workflow/types";
 export class WorkflowEngineError extends Error {
@@ -28,11 +29,31 @@ function replaceLane(runs, lane, mutate) {
 function allCompleted(runs) {
     return runs.every((run) => run.status === "completed");
 }
+function receipt(handoff) {
+    return {
+        handoffId: handoff.handoffId,
+        source: handoff.source,
+        recipient: handoff.recipient,
+        sequence: handoff.sequence,
+        payloadHash: handoff.payloadHash,
+        status: handoff.status,
+    };
+}
+function upsertReceipts(current, incoming) {
+    const byId = new Map(current.map((item) => [item.handoffId, item]));
+    for (const item of incoming)
+        byId.set(item.handoffId, item);
+    return [...byId.values()].sort((a, b) => a.sequence - b.sequence || a.handoffId.localeCompare(b.handoffId));
+}
+function researchReceipts(job) {
+    return job.handoffReceipts.filter((item) => item.recipient === job.accountRouting.writerAccount && /^research:[AB]$/u.test(item.source));
+}
 export class WorkflowEngine {
-    constructor(jobs, teams, prompts = new WorkflowTeamPromptBuilder()) {
+    constructor(jobs, teams, prompts = new WorkflowTeamPromptBuilder(), handoffs) {
         this.jobs = jobs;
         this.teams = teams;
         this.prompts = prompts;
+        this.handoffs = handoffs;
     }
     start(input) {
         const objective = input.objective.trim();
@@ -171,6 +192,75 @@ export class WorkflowEngine {
                 },
             };
         });
+    }
+    /** Materialize exact research finals as durable data-plane handoffs. Idempotent by lane/sequence. */
+    prepareResearchHandoffs(jobId) {
+        if (this.handoffs === undefined)
+            throw new WorkflowEngineError("workflow handoff store is not configured");
+        const job = this.status(jobId);
+        if (job.state !== "RESEARCH_HANDOFFS_DELIVERING") {
+            throw new WorkflowEngineError(`workflow job ${jobId} cannot prepare research handoffs from ${job.state}`);
+        }
+        if (!allCompleted(job.teamRuns.research))
+            throw new WorkflowEngineError("all research lanes must complete before handoff creation");
+        const handoffs = job.teamRuns.research.map((run, index) => {
+            if (run.result === undefined)
+                throw new WorkflowEngineError(`research lane ${run.lane} has no final result`);
+            return this.handoffs.create({
+                jobId,
+                source: `research:${run.lane}`,
+                recipient: job.accountRouting.writerAccount,
+                sequence: index + 1,
+                payload: run.result.finalAnswer,
+            });
+        });
+        this.jobs.update(jobId, (current) => ({
+            ...current,
+            revision: current.revision + 1,
+            handoffReceipts: upsertReceipts(current.handoffReceipts, handoffs.map(receipt)),
+            lastEvent: { type: "RESEARCH_HANDOFFS_PREPARED", class: "INTERNAL", at: now() },
+            updatedAt: now(),
+        }));
+        return handoffs;
+    }
+    /** Mark a delivery only when the receiver consumed the exact expected payload hash. */
+    markHandoffDelivered(jobId, handoffId, expectedPayloadHash) {
+        if (this.handoffs === undefined)
+            throw new WorkflowEngineError("workflow handoff store is not configured");
+        const delivered = this.handoffs.markDelivered(jobId, handoffId, expectedPayloadHash);
+        return this.jobs.update(jobId, (current) => {
+            if (!current.handoffReceipts.some((item) => item.handoffId === handoffId)) {
+                throw new WorkflowEngineError(`handoff ${handoffId} is not registered on workflow job ${jobId}`);
+            }
+            return {
+                ...current,
+                revision: current.revision + 1,
+                handoffReceipts: upsertReceipts(current.handoffReceipts, [receipt(delivered)]),
+                lastEvent: { type: "HANDOFF_DELIVERED", class: "INTERNAL", at: now() },
+                updatedAt: now(),
+            };
+        });
+    }
+    /**
+     * Produce the trusted START_IMPLEMENTATION control only after both exact
+     * research data messages have delivery receipts. Replays are safe.
+     */
+    startImplementationControl(jobId) {
+        const current = this.status(jobId);
+        if (current.state !== "RESEARCH_HANDOFFS_DELIVERING" && current.state !== "WRITER_RUNNING") {
+            throw new WorkflowEngineError(`workflow job ${jobId} cannot start implementation from ${current.state}`);
+        }
+        const receipts = researchReceipts(current);
+        if (receipts.length !== 2 || !receipts.every((item) => item.status === "delivered")) {
+            throw new WorkflowEngineError("writer cannot start until both research handoffs are delivered");
+        }
+        const job = current.state === "WRITER_RUNNING"
+            ? current
+            : this.jobs.update(jobId, (state) => ({
+                ...withState(state, "WRITER_RUNNING"),
+                lastEvent: { type: "START_IMPLEMENTATION_READY", class: "INTERNAL", at: now() },
+            }));
+        return { job, control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId) };
     }
     recordTeamResult(jobId, phase, lane, result) {
         this.jobs.update(jobId, (current) => {

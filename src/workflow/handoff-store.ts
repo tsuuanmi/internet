@@ -71,7 +71,8 @@ export function parseWorkflowHandoff(value: unknown): WorkflowHandoff {
 	if (!isRecord(value) || value.schema !== HANDOFF_SCHEMA || value.version !== 1) {
 		throw new Error("unsupported handoff schema");
 	}
-	if (typeof value.handoffId !== "string" || !/^[0-9a-f]{64}$/u.test(value.handoffId)) throw new Error("invalid handoff id");
+	if (typeof value.handoffId !== "string" || !/^[0-9a-f]{64}$/u.test(value.handoffId))
+		throw new Error("invalid handoff id");
 	if (typeof value.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(value.jobId)) throw new Error("invalid job id");
 	if (typeof value.source !== "string" || value.source.trim() === "") throw new Error("invalid handoff source");
 	if (typeof value.recipient !== "string") throw new Error("invalid handoff recipient");
@@ -79,11 +80,16 @@ export function parseWorkflowHandoff(value: unknown): WorkflowHandoff {
 		throw new Error("invalid handoff sequence");
 	}
 	if (typeof value.payload !== "string") throw new Error("invalid handoff payload");
-	if (typeof value.payloadHash !== "string" || !/^[0-9a-f]{64}$/u.test(value.payloadHash)) throw new Error("invalid payload hash");
+	if (typeof value.payloadHash !== "string" || !/^[0-9a-f]{64}$/u.test(value.payloadHash))
+		throw new Error("invalid payload hash");
 	if (hashHandoffPayload(value.payload) !== value.payloadHash) throw new Error("handoff payload hash mismatch");
 	if (value.status !== "pending" && value.status !== "delivered") throw new Error("invalid handoff status");
-	if (typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt))) throw new Error("invalid createdAt");
-	if (value.deliveredAt !== undefined && (typeof value.deliveredAt !== "string" || !Number.isFinite(Date.parse(value.deliveredAt)))) {
+	if (typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)))
+		throw new Error("invalid createdAt");
+	if (
+		value.deliveredAt !== undefined &&
+		(typeof value.deliveredAt !== "string" || !Number.isFinite(Date.parse(value.deliveredAt)))
+	) {
 		throw new Error("invalid deliveredAt");
 	}
 	return value as unknown as WorkflowHandoff;
@@ -166,7 +172,8 @@ export class WorkflowHandoffStore {
 		assertHex(expectedPayloadHash, 64, "expected payload hash");
 		const current = this.get(jobId, handoffId);
 		if (current === undefined) throw new WorkflowHandoffStoreError(`handoff ${handoffId} does not exist`);
-		if (current.payloadHash !== expectedPayloadHash) throw new WorkflowHandoffStoreError("handoff delivery hash mismatch");
+		if (current.payloadHash !== expectedPayloadHash)
+			throw new WorkflowHandoffStoreError("handoff delivery hash mismatch");
 		if (current.status === "delivered") return current;
 		const next: WorkflowHandoff = { ...current, status: "delivered", deliveredAt: new Date().toISOString() };
 		writePrivateJson(this.pathFor(jobId, handoffId), next);

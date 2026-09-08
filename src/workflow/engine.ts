@@ -251,7 +251,8 @@ export class WorkflowEngine {
 		if (job.state !== "RESEARCH_HANDOFFS_DELIVERING") {
 			throw new WorkflowEngineError(`workflow job ${jobId} cannot prepare research handoffs from ${job.state}`);
 		}
-		if (!allCompleted(job.teamRuns.research)) throw new WorkflowEngineError("all research lanes must complete before handoff creation");
+		if (!allCompleted(job.teamRuns.research))
+			throw new WorkflowEngineError("all research lanes must complete before handoff creation");
 		const handoffs = job.teamRuns.research.map((run, index) => {
 			if (run.result === undefined) throw new WorkflowEngineError(`research lane ${run.lane} has no final result`);
 			return this.handoffs!.create({
