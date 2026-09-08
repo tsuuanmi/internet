@@ -43,6 +43,8 @@ export interface TeamOptions {
 	rounds?: number;
 	/** Whether to append a final synthesis turn. */
 	synthesize?: boolean;
+	/** Provider that performs the final synthesis, independent of speaking order. */
+	synthesizer?: WebProvider;
 	/** Ordered providers; the first opens the debate. */
 	providers?: readonly WebProvider[];
 	/** Show automated provider browsers on the user-managed display. */
@@ -55,6 +57,7 @@ export type ChatFn = (provider: WebProvider, request: ChatRequest) => Promise<Ch
 
 const DEFAULT_ROUNDS = 2;
 const DEFAULT_PROVIDERS: readonly WebProvider[] = ["chatgpt-web", "gemini-web"];
+const DEFAULT_SYNTHESIZER: WebProvider = "chatgpt-web";
 
 function providerName(provider: WebProvider): string {
 	if (provider === "chatgpt-web") return "ChatGPT";
@@ -125,15 +128,17 @@ export function composeSynthesisPrompt(task: string, transcript: readonly TeamTu
 }
 
 /**
- * Run a multi-model debate: the providers speak in order each round, each
- * seeing every other model's latest message, then (optionally) the last
- * speaker synthesizes a single final answer from the full transcript. The team
- * uses a derived session key so its conversations are isolated from the
- * agent's own direct `internet_chat` threads yet durable across repeated calls.
+ * Run a multi-model debate: providers speak in order each round, each seeing
+ * every other provider's latest message. When synthesis is enabled, an
+ * explicitly selected synthesizer receives the full transcript; synthesis is
+ * therefore independent from the provider speaking order. The team uses a
+ * derived session key so its conversations are isolated from the agent's own
+ * direct `internet_chat` threads yet durable across repeated calls.
  */
 export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamResult> {
 	const rounds = options.rounds ?? DEFAULT_ROUNDS;
 	const synthesize = options.synthesize ?? true;
+	const synthesizer = options.synthesizer ?? DEFAULT_SYNTHESIZER;
 	const providers = options.providers ?? DEFAULT_PROVIDERS;
 	if (!Number.isInteger(rounds) || rounds <= 0) {
 		throw new Error("team debate rounds must be a positive integer");
@@ -144,17 +149,22 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 	if (new Set(providers).size !== providers.length) {
 		throw new Error("team debate providers must not contain duplicates");
 	}
+	if (synthesize && !providers.includes(synthesizer)) {
+		throw new Error("team synthesizer must be one of the selected providers");
+	}
 	const teamSessionId = `${options.sessionId}:team:${options.teamName ?? "default"}`;
 
 	const transcript: TeamTurn[] = [];
 	const lastByProvider = new Map<WebProvider, string>();
-	let lastProvider: WebProvider = providers[0];
+	let activeProvider: WebProvider = providers[0];
+	let finalDebateProvider: WebProvider = providers[0];
 
 	try {
 		for (let round = 1; round <= rounds; round++) {
 			for (const provider of providers) {
 				assertNotAborted(options.signal);
-				lastProvider = provider;
+				activeProvider = provider;
+				finalDebateProvider = provider;
 				const others = providers
 					.filter((other) => other !== provider)
 					.map((other) => ({ provider: other, text: lastByProvider.get(other) ?? "" }));
@@ -172,23 +182,24 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 
 		if (synthesize) {
 			assertNotAborted(options.signal);
+			activeProvider = synthesizer;
 			const prompt = composeSynthesisPrompt(options.task, transcript);
-			const result = await chat(lastProvider, {
+			const result = await chat(synthesizer, {
 				prompt,
 				sessionId: teamSessionId,
 				visible: options.visible,
 				signal: options.signal,
 			});
-			return { finalAnswer: result.text, finalProvider: lastProvider, transcript: [...transcript] };
+			return { finalAnswer: result.text, finalProvider: synthesizer, transcript: [...transcript] };
 		}
 
-		const finalAnswer = lastByProvider.get(lastProvider);
+		const finalAnswer = lastByProvider.get(finalDebateProvider);
 		if (finalAnswer === undefined) throw new Error("team debate completed without a final turn");
-		return { finalAnswer, finalProvider: lastProvider, transcript: [...transcript] };
+		return { finalAnswer, finalProvider: finalDebateProvider, transcript: [...transcript] };
 	} catch (error) {
 		return {
 			error: {
-				provider: lastProvider,
+				provider: activeProvider,
 				message: error instanceof Error ? error.message : String(error),
 			},
 			transcript: [...transcript],
