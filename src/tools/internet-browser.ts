@@ -85,11 +85,7 @@ export function defineInternetBrowserTool(
 					remoteLogin?: { state?: unknown; url?: unknown; sshCommand?: unknown };
 					message?: unknown;
 				};
-				const summary = [
-					`ok=${String(v.ok)}`,
-					`account=${String(v.accountId)}`,
-					`provider=${String(v.provider)}`,
-				];
+				const summary = [`ok=${String(v.ok)}`, `account=${String(v.accountId)}`, `provider=${String(v.provider)}`];
 				if (v.state !== undefined) summary.push(`state=${String(v.state)}`);
 				if (v.remoteLogin?.state !== undefined) summary.push(`remote=${String(v.remoteLogin.state)}`);
 				const lines = [summary.join(" · ")];
@@ -104,7 +100,12 @@ export function defineInternetBrowserTool(
 		async execute(args) {
 			const rawAccount = args.account;
 			if (!isAccountId(rawAccount)) {
-				return { ok: false, accountId: String(rawAccount), provider: "unknown", message: `unknown account ${String(rawAccount)}` };
+				return {
+					ok: false,
+					accountId: String(rawAccount),
+					provider: "unknown",
+					message: `unknown account ${String(rawAccount)}`,
+				};
 			}
 			const accountId = rawAccount;
 			const provider = getAccountDefinition(accountId).provider;
@@ -120,7 +121,12 @@ export function defineInternetBrowserTool(
 				return { ok: false, accountId, provider, message: "remote is valid only for the login action" };
 			}
 			if (!allowed.has(accountId)) {
-				return { ok: false, accountId, provider, message: `account ${accountId} is disabled in the internet plugin config` };
+				return {
+					ok: false,
+					accountId,
+					provider,
+					message: `account ${accountId} is disabled in the internet plugin config`,
+				};
 			}
 			try {
 				if (action === "login") {

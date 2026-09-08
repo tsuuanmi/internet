@@ -65,9 +65,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 
 	const accounts = enabledAccounts(config);
 	if (accounts.size === 0) return;
-	const thinkers = new Set(
-		[...accounts].filter((accountId) => getAccountDefinition(accountId).role === "thinker"),
-	);
+	const thinkers = new Set([...accounts].filter((accountId) => getAccountDefinition(accountId).role === "thinker"));
 
 	if (accounts.has("chatgpt-thinker")) ctx.commands.register(defineInternetCommand(manager));
 
