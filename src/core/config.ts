@@ -1,12 +1,13 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import S from "@deepseek-ai/schemastery";
+import { ACCOUNT_IDS, accountHasCapability, type AccountId } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 
 /** Browser-backed web providers this plugin can drive. */
 export type WebProvider = "chatgpt-web" | "gemini-web";
 
-/** Known provider ids, used to validate tool arguments. */
+/** Known provider ids, used for provider implementation dispatch. */
 export const WEB_PROVIDERS: readonly WebProvider[] = ["chatgpt-web", "gemini-web"];
 
 /**
@@ -29,7 +30,7 @@ export interface BrowserConfig {
 	headless: boolean;
 	/** Max time to wait for an interactive login to reach the authenticated surface (ms). */
 	loginTimeoutMs: number;
-	/** Stable loopback port for ChatGPT remote login; Gemini uses the next port. */
+	/** Stable loopback base port; each semantic account receives a deterministic offset. */
 	remoteLoginPort: number;
 	/** Max time for one browser chat turn to reach completion (ms). */
 	turnTimeoutMs: number;
@@ -41,11 +42,11 @@ export interface BrowserConfig {
 	stableMs: number;
 	/** Idle delay before an inference browser is closed after a turn (ms). */
 	closeAfterMs: number;
-	/** Maximum simultaneous hidden turns for one provider; same-session turns remain ordered. */
-	maxConcurrentTurnsPerProvider: number;
+	/** Maximum simultaneous hidden turns for one authenticated account. */
+	maxConcurrentTurnsPerAccount: number;
 	/** Upper bound on returned chat output characters. */
 	maxOutputChars: number;
-	/** Default debate rounds for the `internet_team` tool (each model speaks once per round). */
+	/** Default debate rounds for the `internet_team` tool (each account speaks once per round). */
 	teamRounds: number;
 	/** Maximum per-call debate rounds accepted by `internet_team`. */
 	teamMaxRounds: number;
@@ -53,11 +54,11 @@ export interface BrowserConfig {
 	teamTranscriptMaxChars: number;
 	/** Whether the `internet_team` tool appends a final synthesis turn. */
 	teamSynthesis: boolean;
-	/** Provider that performs the final team synthesis, independent of speaking order. */
-	teamSynthesizer: WebProvider;
-	/** Register the ChatGPT Web provider. */
+	/** Semantic account that performs final team synthesis, independent of speaking order. */
+	teamSynthesizer: AccountId;
+	/** Register accounts backed by the ChatGPT Web provider. */
 	enableChatgpt: boolean;
-	/** Register the Gemini Web provider. */
+	/** Register accounts backed by the Gemini Web provider. */
 	enableGemini: boolean;
 	/** Default ChatGPT Web reasoning-effort level selected before each turn. */
 	chatgptThinkingLevel: ChatGptThinkingLevel;
@@ -73,19 +74,18 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	headless: false,
 	loginTimeoutMs: 180_000,
 	remoteLoginPort: 39_000,
-	// Shared by ChatGPT and Gemini browser turns.
 	turnTimeoutMs: 300_000,
 	researchTimeoutMs: 1_800_000,
 	pollMs: 200,
 	stableMs: 1_500,
 	closeAfterMs: 1_800_000,
-	maxConcurrentTurnsPerProvider: 1,
+	maxConcurrentTurnsPerAccount: 1,
 	maxOutputChars: 200_000,
 	teamRounds: 2,
 	teamMaxRounds: 4,
 	teamTranscriptMaxChars: 50_000,
 	teamSynthesis: true,
-	teamSynthesizer: "chatgpt-web",
+	teamSynthesizer: "chatgpt-thinker",
 	enableChatgpt: true,
 	enableGemini: true,
 	chatgptThinkingLevel: "high",
@@ -106,7 +106,7 @@ export const Config = S.object({
 	pollMs: S.number().default(DEFAULT_CONFIG.pollMs),
 	stableMs: S.number().default(DEFAULT_CONFIG.stableMs),
 	closeAfterMs: S.number().default(DEFAULT_CONFIG.closeAfterMs),
-	maxConcurrentTurnsPerProvider: S.number().default(DEFAULT_CONFIG.maxConcurrentTurnsPerProvider),
+	maxConcurrentTurnsPerAccount: S.number().default(DEFAULT_CONFIG.maxConcurrentTurnsPerAccount),
 	maxOutputChars: S.number().default(DEFAULT_CONFIG.maxOutputChars),
 	teamRounds: S.number().default(DEFAULT_CONFIG.teamRounds),
 	teamMaxRounds: S.number().default(DEFAULT_CONFIG.teamMaxRounds),
@@ -137,12 +137,16 @@ function asPositiveInteger(value: unknown, fallback: number, name: string): numb
 	return typeof value === "number" ? Math.floor(value) : fallback;
 }
 
-function asWebProvider(value: unknown, fallback: WebProvider, name: string): WebProvider {
-	if (value === undefined) return fallback;
-	if (typeof value === "string" && (WEB_PROVIDERS as readonly string[]).includes(value)) {
-		return value as WebProvider;
+function asTeamSynthesizer(value: unknown): AccountId {
+	const selected = value ?? DEFAULT_CONFIG.teamSynthesizer;
+	if (typeof selected !== "string" || !(ACCOUNT_IDS as readonly string[]).includes(selected)) {
+		throw new InternetError("config_error", `browser config teamSynthesizer must be one of ${ACCOUNT_IDS.join(", ")}`);
 	}
-	throw new InternetError("config_error", `browser config ${name} must be one of ${WEB_PROVIDERS.join(", ")}`);
+	const accountId = selected as AccountId;
+	if (!accountHasCapability(accountId, "team.synthesize")) {
+		throw new InternetError("config_error", `browser config teamSynthesizer account ${accountId} cannot synthesize teams`);
+	}
+	return accountId;
 }
 
 function asChatGptThinkingLevel(value: unknown): ChatGptThinkingLevel {
@@ -166,8 +170,12 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 	const teamRounds = asPositiveInteger(input.teamRounds, DEFAULT_CONFIG.teamRounds, "teamRounds");
 	const teamMaxRounds = asPositiveInteger(input.teamMaxRounds, DEFAULT_CONFIG.teamMaxRounds, "teamMaxRounds");
 	const remoteLoginPort = asPositiveInteger(input.remoteLoginPort, DEFAULT_CONFIG.remoteLoginPort, "remoteLoginPort");
-	if (remoteLoginPort > 65_534) {
-		throw new InternetError("config_error", "browser config remoteLoginPort must not exceed 65534");
+	const maxRemoteLoginBasePort = 65_535 - (ACCOUNT_IDS.length - 1);
+	if (remoteLoginPort > maxRemoteLoginBasePort) {
+		throw new InternetError(
+			"config_error",
+			`browser config remoteLoginPort must not exceed ${maxRemoteLoginBasePort}`,
+		);
 	}
 	if (teamRounds > teamMaxRounds) {
 		throw new InternetError("config_error", "browser config teamRounds must not exceed teamMaxRounds");
@@ -193,10 +201,10 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 		pollMs: asPositiveInteger(input.pollMs, DEFAULT_CONFIG.pollMs, "pollMs"),
 		stableMs: asPositiveInteger(input.stableMs, DEFAULT_CONFIG.stableMs, "stableMs"),
 		closeAfterMs: asPositiveInteger(input.closeAfterMs, DEFAULT_CONFIG.closeAfterMs, "closeAfterMs"),
-		maxConcurrentTurnsPerProvider: asPositiveInteger(
-			input.maxConcurrentTurnsPerProvider,
-			DEFAULT_CONFIG.maxConcurrentTurnsPerProvider,
-			"maxConcurrentTurnsPerProvider",
+		maxConcurrentTurnsPerAccount: asPositiveInteger(
+			input.maxConcurrentTurnsPerAccount,
+			DEFAULT_CONFIG.maxConcurrentTurnsPerAccount,
+			"maxConcurrentTurnsPerAccount",
 		),
 		maxOutputChars: asPositiveInteger(input.maxOutputChars, DEFAULT_CONFIG.maxOutputChars, "maxOutputChars"),
 		teamRounds,
@@ -207,7 +215,7 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 			"teamTranscriptMaxChars",
 		),
 		teamSynthesis: asBoolean(input.teamSynthesis, DEFAULT_CONFIG.teamSynthesis),
-		teamSynthesizer: asWebProvider(input.teamSynthesizer, DEFAULT_CONFIG.teamSynthesizer, "teamSynthesizer"),
+		teamSynthesizer: asTeamSynthesizer(input.teamSynthesizer),
 		enableChatgpt: asBoolean(input.enableChatgpt, DEFAULT_CONFIG.enableChatgpt),
 		enableGemini: asBoolean(input.enableGemini, DEFAULT_CONFIG.enableGemini),
 		chatgptThinkingLevel: asChatGptThinkingLevel(input.chatgptThinkingLevel),
