@@ -20,6 +20,7 @@ jobs:
           cache: npm
       - run: python3 scripts/p7-apply.py
       - run: python3 scripts/p7-fix.py
+      - run: python3 scripts/p7-hardening.py
       - run: npm ci
       - run: npx biome check --write src test scripts
       - run: npm run check
@@ -35,5 +36,5 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m 'feat: add PR review remediation loop'
+          git commit -m 'refactor: bind PR reviews to asserted head SHA'
           git push
