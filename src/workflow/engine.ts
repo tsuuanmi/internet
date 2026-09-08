@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { createWorkflowControlMessage, type WorkflowControlMessage } from "#internet/workflow/control";
 import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
-import { parseWorkflowReviewVerdict } from "#internet/workflow/review-result";
+import type { WorkflowReviewResult } from "#internet/workflow/review-result";
+import { parseWorkflowReviewResult } from "#internet/workflow/review-result";
 import { type WorkflowTeamLane, WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import type { WorkflowTeamRunner, WorkflowTeamRunResult } from "#internet/workflow/team-runner";
 import {
@@ -437,6 +438,7 @@ export class WorkflowEngine {
 				const run = running.teamRuns.review.find((item) => item.lane === lane);
 				if (run === undefined) throw new WorkflowEngineError(`missing review lane ${lane}`);
 				let result: WorkflowTeamRunResult;
+				let reviewResult: WorkflowReviewResult | undefined;
 				try {
 					result = await this.teams!.run({
 						task: this.prompts.review(running, lane),
@@ -445,7 +447,12 @@ export class WorkflowEngine {
 						synthesizer: running.accountRouting.synthesizerAccount,
 						signal,
 					});
-					if (result.ok) parseWorkflowReviewVerdict(result.finalAnswer);
+					if (result.ok) {
+						reviewResult = parseWorkflowReviewResult(result.finalAnswer);
+						if (reviewResult.reviewedHeadSha !== reviewedHeadSha) {
+							throw new Error("workflow reviewer result is bound to a different PR head SHA");
+						}
+					}
 				} catch (error) {
 					result = {
 						ok: false,
@@ -454,7 +461,7 @@ export class WorkflowEngine {
 						failedProvider: "chatgpt-web",
 					};
 				}
-				this.recordTeamResult(jobId, "review", lane, result, reviewedHeadSha);
+				this.recordTeamResult(jobId, "review", lane, result, reviewResult);
 			}),
 		);
 
@@ -642,7 +649,7 @@ export class WorkflowEngine {
 		phase: "research" | "review",
 		lane: WorkflowTeamLane,
 		result: WorkflowTeamRunResult,
-		reviewedHeadSha?: string,
+		reviewResult?: WorkflowReviewResult,
 	): void {
 		this.jobs.update(jobId, (current) => {
 			const runs = current.teamRuns[phase];
@@ -657,8 +664,8 @@ export class WorkflowEngine {
 								finalAccountId: result.finalAccountId,
 								finalProvider: result.finalProvider,
 								completedAt: now(),
-								...(phase === "review" && reviewedHeadSha !== undefined
-									? { reviewedHeadSha, reviewVerdict: parseWorkflowReviewVerdict(result.finalAnswer) }
+								...(phase === "review" && reviewResult !== undefined
+									? { reviewedHeadSha: reviewResult.reviewedHeadSha, reviewVerdict: reviewResult.verdict }
 									: {}),
 							},
 						}

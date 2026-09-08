@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createWorkflowControlMessage } from "#internet/workflow/control";
-import { parseWorkflowReviewVerdict } from "#internet/workflow/review-result";
+import { parseWorkflowReviewResult } from "#internet/workflow/review-result";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { TERMINAL_WORKFLOW_STATES, } from "#internet/workflow/types";
 export class WorkflowEngineError extends Error {
@@ -372,6 +372,7 @@ export class WorkflowEngine {
             if (run === undefined)
                 throw new WorkflowEngineError(`missing review lane ${lane}`);
             let result;
+            let reviewResult;
             try {
                 result = await this.teams.run({
                     task: this.prompts.review(running, lane),
@@ -380,8 +381,12 @@ export class WorkflowEngine {
                     synthesizer: running.accountRouting.synthesizerAccount,
                     signal,
                 });
-                if (result.ok)
-                    parseWorkflowReviewVerdict(result.finalAnswer);
+                if (result.ok) {
+                    reviewResult = parseWorkflowReviewResult(result.finalAnswer);
+                    if (reviewResult.reviewedHeadSha !== reviewedHeadSha) {
+                        throw new Error("workflow reviewer result is bound to a different PR head SHA");
+                    }
+                }
             }
             catch (error) {
                 result = {
@@ -391,7 +396,7 @@ export class WorkflowEngine {
                     failedProvider: "chatgpt-web",
                 };
             }
-            this.recordTeamResult(jobId, "review", lane, result, reviewedHeadSha);
+            this.recordTeamResult(jobId, "review", lane, result, reviewResult);
         }));
         return this.jobs.update(jobId, (current) => {
             const completed = allCompleted(current.teamRuns.review) &&
@@ -557,7 +562,7 @@ export class WorkflowEngine {
             lastEvent: { type: "WRITER_BLOCKED", class: "ACTION_REQUIRED", at: now(), message },
         }));
     }
-    recordTeamResult(jobId, phase, lane, result, reviewedHeadSha) {
+    recordTeamResult(jobId, phase, lane, result, reviewResult) {
         this.jobs.update(jobId, (current) => {
             const runs = current.teamRuns[phase];
             const updated = replaceLane(runs, lane, (run) => result.ok
@@ -570,8 +575,8 @@ export class WorkflowEngine {
                         finalAccountId: result.finalAccountId,
                         finalProvider: result.finalProvider,
                         completedAt: now(),
-                        ...(phase === "review" && reviewedHeadSha !== undefined
-                            ? { reviewedHeadSha, reviewVerdict: parseWorkflowReviewVerdict(result.finalAnswer) }
+                        ...(phase === "review" && reviewResult !== undefined
+                            ? { reviewedHeadSha: reviewResult.reviewedHeadSha, reviewVerdict: reviewResult.verdict }
                             : {}),
                     },
                 }

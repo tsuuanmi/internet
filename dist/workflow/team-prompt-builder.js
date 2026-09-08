@@ -42,7 +42,7 @@ export class WorkflowTeamPromptBuilder {
             "",
             laneFocus("review", lane),
             "",
-            'Review the actual PR at the exact head SHA above. Treat earlier review cycles only as context; findings must be valid for this head. Return exactly one JSON object and no markdown or surrounding prose. Use {"verdict":"PASS","summary":"concise evidence-based summary"} when no material issue remains. Otherwise use {"verdict":"CHANGES_REQUIRED","findings":[{"severity":"high|medium|low","location":"file/area","issue":"concrete problem","remediation":"required fix"}]}. The complete JSON object is the reviewer payload delivered verbatim to the writer; do not rely on another agent to summarize it.',
+            'Review the actual PR at the exact head SHA above. Treat earlier review cycles only as context; findings must be valid for this head. Return exactly one JSON object and no markdown or surrounding prose. Use {"verdict":"PASS","reviewedHeadSha":"the exact 40-character PR head SHA above","summary":"concise evidence-based summary"} when no material issue remains. Otherwise use {"verdict":"CHANGES_REQUIRED","reviewedHeadSha":"the exact 40-character PR head SHA above","findings":[{"severity":"high|medium|low","location":"file/area","issue":"concrete problem","remediation":"required fix"}]}. The complete JSON object is the reviewer payload delivered verbatim to the writer; do not rely on another agent to summarize it.',
         ].join("\n");
     }
 }

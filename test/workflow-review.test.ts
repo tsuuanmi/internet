@@ -22,7 +22,10 @@ function setup(reviewAnswers: string[], writer: WorkflowWriterRunner, maxReviewC
 			const review = request.sessionId.includes(":review:");
 			return {
 				ok: true,
-				finalAnswer: review ? (reviewAnswers[reviewIndex++] ?? '{"verdict":"PASS","summary":"clean"}') : "research",
+				finalAnswer: review
+					? (reviewAnswers[reviewIndex++] ??
+						'{"verdict":"PASS","reviewedHeadSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","summary":"clean"}')
+					: "research",
 				finalAccountId: "chatgpt-thinker",
 				finalProvider: "chatgpt-web",
 			};
@@ -70,8 +73,8 @@ describe("workflow PR review/remediation", () => {
 				throw new Error("control should not run on PASS");
 			},
 		};
-		const a = '{"verdict":"PASS","summary":"A clean"}';
-		const b = '{"verdict":"PASS","summary":"B clean"}';
+		const a = '{"verdict":"PASS","reviewedHeadSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","summary":"A clean"}';
+		const b = '{"verdict":"PASS","reviewedHeadSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","summary":"B clean"}';
 		const { engine, jobId } = setup([a, b], writer);
 		const reviewed = await engine.runReview(jobId);
 		expect(reviewed.state).toBe("REVIEW_HANDOFFS_DELIVERING");
@@ -108,9 +111,11 @@ describe("workflow PR review/remediation", () => {
 			},
 		};
 		const change =
-			'{"verdict":"CHANGES_REQUIRED","findings":[{"severity":"high","location":"x","issue":"bug","remediation":"fix"}]}';
-		const pass = '{"verdict":"PASS","summary":"clean"}';
-		const { engine, jobId } = setup([change, pass, pass, pass], writer);
+			'{"verdict":"CHANGES_REQUIRED","reviewedHeadSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","findings":[{"severity":"high","location":"x","issue":"bug","remediation":"fix"}]}';
+		const pass = '{"verdict":"PASS","reviewedHeadSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","summary":"clean"}';
+		const passNewHead =
+			'{"verdict":"PASS","reviewedHeadSha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","summary":"clean"}';
+		const { engine, jobId } = setup([change, pass, passNewHead, passNewHead], writer);
 		await engine.runReview(jobId);
 		const remediated = await engine.runWriterRemediation(jobId);
 		expect(delivered).toEqual([change, pass]);
@@ -135,7 +140,10 @@ describe("workflow PR review/remediation", () => {
 				return { status: "BLOCKED", message: "unused" };
 			},
 		};
-		const { engine, jobId } = setup(["PASS", '{"verdict":"PASS","summary":"ok"}'], writer);
+		const { engine, jobId } = setup(
+			["PASS", '{"verdict":"PASS","reviewedHeadSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","summary":"ok"}'],
+			writer,
+		);
 		const reviewed = await engine.runReview(jobId);
 		expect(reviewed.state).toBe("REVIEW_RUNNING");
 		expect(reviewed.teamRuns.review.some((run) => run.status === "failed")).toBe(true);
@@ -158,7 +166,8 @@ describe("workflow PR review/remediation", () => {
 				};
 			},
 		};
-		const change = '{"verdict":"CHANGES_REQUIRED","findings":[]}';
+		const change =
+			'{"verdict":"CHANGES_REQUIRED","reviewedHeadSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","findings":[]}';
 		const { engine, jobId } = setup([change, change], writer);
 		await engine.runReview(jobId);
 		const blocked = await engine.runWriterRemediation(jobId);
@@ -173,7 +182,8 @@ describe("workflow PR review/remediation", () => {
 				throw new Error("review limit should stop before writer control");
 			},
 		};
-		const change = '{"verdict":"CHANGES_REQUIRED","findings":[]}';
+		const change =
+			'{"verdict":"CHANGES_REQUIRED","reviewedHeadSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","findings":[]}';
 		const { engine, jobId } = setup([change, change], writer, 1);
 		await engine.runReview(jobId);
 		const blocked = await engine.runWriterRemediation(jobId);
