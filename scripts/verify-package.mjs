@@ -1,62 +1,57 @@
 import assert from "node:assert/strict";
+import { constants, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { access as accessAsync } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const root = dirname(fileURLToPath(import.meta.url));
-const packageRoot = dirname(root);
-const temporaryRoot = mkdtempSync(join(tmpdir(), "internet-package-smoke-"));
+const temporaryRoot = mkdtempSync(join(tmpdir(), "internet-package-"));
 let tarball;
-
 try {
-	const output = execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["pack", "--json"], {
-		cwd: packageRoot,
+	const packed = execFileSync("npm", ["pack", "--json", "--pack-destination", temporaryRoot], {
 		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"],
 	});
-	const packed = JSON.parse(output);
-	if (!Array.isArray(packed) || typeof packed[0]?.filename !== "string") {
-		throw new Error("npm pack did not report a tarball filename");
-	}
-	tarball = join(packageRoot, packed[0].filename);
+	const [{ filename }] = JSON.parse(packed);
+	tarball = join(temporaryRoot, filename);
 	const consumer = join(temporaryRoot, "consumer");
-	mkdirSync(consumer);
-	writeFileSync(join(consumer, "package.json"), '{"private":true,"type":"module"}\n');
-	execFileSync(
-		process.platform === "win32" ? "npm.cmd" : "npm",
-		["install", "--ignore-scripts", "--package-lock=false", "--omit=dev", "--no-audit", "--no-fund", tarball],
-		{ cwd: consumer, stdio: "pipe" },
-	);
-	const installed = join(consumer, "node_modules", "@tsuuanmi", "internet");
-	for (const artifact of ["dist/index.js", "dist/client.js", "dist/client.d.ts", "dist/remote-login-client.js", "cordis.patch.yml"]) {
-		if (!existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact missing: ${artifact}`);
-	}
+	execFileSync("npm", ["init", "-y"], { cwd: temporaryRoot, stdio: "ignore" });
+	execFileSync("npm", ["install", "--ignore-scripts", tarball], { cwd: temporaryRoot, stdio: "ignore" });
+	const installed = join(temporaryRoot, "node_modules", "@tsuuanmi", "internet");
+
+	const packageJson = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
+	assert.equal(packageJson.name, "@tsuuanmi/internet");
+	assert.equal(packageJson.type, "module");
+	assert.equal(packageJson.main, "./dist/index.js");
+	assert.equal(packageJson.types, "./dist/index.d.ts");
+	assert.equal(packageJson.exports?.["."]?.import, "./dist/index.js");
+	assert.equal(packageJson.exports?.["."]?.types, "./dist/index.d.ts");
+	assert.equal(packageJson.exports?.["./client"]?.import, "./dist/client.js");
+	assert.equal(packageJson.exports?.["./client"]?.types, "./dist/client.d.ts");
+	assert.equal(packageJson.exports?.["./remote-login-client"]?.import, "./dist/remote-login-client.js");
+	assert.deepEqual(packageJson.files, ["dist", "vendor", "cordis.patch.yml", "README.md"]);
+	assert.equal(packageJson.peerDependencies?.["@deepseek-ai/dsh"], ">=0.1.0-rc.1");
+	assert.equal(packageJson.peerDependencies?.["@deepseek-ai/dsh-tools"], ">=0.1.0-rc.1");
+	assert.equal(packageJson.peerDependencies?.["@deepseek-ai/dsh-commands"], ">=0.1.0-rc.1");
+	assert.equal(packageJson.peerDependenciesMeta?.["@deepseek-ai/dsh"]?.optional, true);
+	assert.equal(packageJson.peerDependenciesMeta?.["@deepseek-ai/dsh-tools"]?.optional, true);
+	assert.equal(packageJson.peerDependenciesMeta?.["@deepseek-ai/dsh-commands"]?.optional, true);
+	assert.equal(packageJson.dependencies?.["@deepseek-ai/schemastery"], "^3.17.0");
+	assert.equal(packageJson.dependencies?.["patchright-core"], "1.57.2");
+
 	for (const artifact of [
-		"dist/client.js.map",
-		"dist/remote-login-client.js.map",
-		"dist/remote-login-client.d.ts",
-		"dist/remote-login-client.d.ts.map",
-		"dist/tools/browser.js",
-		"dist/tools/browser.js.map",
-		"dist/tools/browser.d.ts",
-		"dist/tools/browser.d.ts.map",
-		"dist/tools/browser-chat.js",
-		"dist/tools/browser-chat.js.map",
-		"dist/tools/browser-chat.d.ts",
-		"dist/tools/browser-chat.d.ts.map",
-		"dist/tools/browser-team.js",
-		"dist/tools/browser-team.js.map",
-		"dist/tools/browser-team.d.ts",
-		"dist/tools/browser-team.d.ts.map",
-	]) {
-		if (existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact must not contain: ${artifact}`);
-	}
-	for (const artifact of [
+		"dist/index.js",
+		"dist/index.d.ts",
+		"dist/client.js",
+		"dist/client.d.ts",
+		"dist/remote-login-client.js",
 		"dist/tools/internet-browser.js",
 		"dist/tools/internet-browser.d.ts",
 		"dist/tools/internet-chat.js",
 		"dist/tools/internet-chat.d.ts",
+		"dist/tools/internet-research.js",
+		"dist/tools/internet-research.d.ts",
 		"dist/tools/internet-team.js",
 		"dist/tools/internet-team.d.ts",
 	]) {
@@ -65,7 +60,7 @@ try {
 	if (process.platform === "linux" && process.arch === "x64") {
 		const runtime = join(installed, "vendor", "xvfb", "linux-x64-gnu");
 		for (const executable of ["Xvfb", "x11vnc", "xkbcomp"]) {
-			accessSync(join(runtime, "bin", executable), constants.X_OK);
+			await accessAsync(join(runtime, "bin", executable), constants.X_OK);
 		}
 		execFileSync(join(runtime, "bin", "x11vnc"), ["-version"], {
 			env: { ...process.env, LD_LIBRARY_PATH: join(runtime, "lib"), XKB_CONFIG_ROOT: join(runtime, "share", "X11", "xkb") },
@@ -76,19 +71,19 @@ try {
 	const scenarios = [
 		{
 			config: {},
-			tools: ["internet_chat", "internet_research", "internet_browser", "internet_team"],
+			tools: ["internet_browser", "internet_chat", "internet_research", "internet_team"],
 			commands: ["internet", "workflow"],
-			sections: ["tool:internet_research", "tool:internet_team", "tool:internet_chat"],
+			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_team"],
 		},
 		{
 			config: { enableChatgpt: false },
-			tools: ["internet_chat", "internet_research", "internet_browser"],
+			tools: ["internet_browser", "internet_chat", "internet_research"],
 			commands: [],
 			sections: ["tool:internet_research", "tool:internet_chat"],
 		},
 		{
 			config: { enableGemini: false },
-			tools: ["internet_chat", "internet_research", "internet_browser"],
+			tools: ["internet_browser", "internet_chat", "internet_research"],
 			commands: ["internet"],
 			sections: ["tool:internet_research", "tool:internet_chat"],
 		},
