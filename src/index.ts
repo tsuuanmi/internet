@@ -100,8 +100,6 @@ export {
 	accountHasCapability,
 	accountsForProvider,
 	accountsWithCapabilities,
-	DEFAULT_ACCOUNT_BY_PROVIDER,
-	defaultAccountIdForProvider,
 	getAccountDefinition,
 	isAccountId,
 } from "#internet/core/accounts";
