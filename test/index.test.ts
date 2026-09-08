@@ -34,7 +34,7 @@ describe("account-aware plugin registration", () => {
 		expect(team?.text).toContain("different accounts have independent schedulers");
 		expect(team?.text).toContain("chatgpt-thinker is the default explicit synthesizer");
 		expect(chat?.text).toContain("chatgpt-thinker and chatgpt-writer have separate login state");
-		expect(workflow?.text).toContain("durable deterministic coding jobs");
+		expect(workflow?.text).toContain("deterministic control-plane surface for durable coding jobs");
 		expect(workflow?.text).toContain("later workflow TODOs attach direct TeamRunner");
 		expect(tools).toEqual([
 			"internet_browser",
