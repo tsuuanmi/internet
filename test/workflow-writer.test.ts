@@ -82,6 +82,39 @@ describe("workflow writer path", () => {
 		expect(completed.handoffReceipts.every((receipt) => receipt.status === "delivered")).toBe(true);
 	});
 
+	it("retries writer control on the same conversation without redelivering acknowledged handoffs", async () => {
+		const delivered: string[] = [];
+		let controls = 0;
+		const writer: WorkflowWriterRunner = {
+			async deliverExact(request) {
+				delivered.push(request.payload);
+			},
+			async runControl() {
+				controls += 1;
+				if (controls === 1) throw new Error("temporary writer failure");
+				return {
+					status: "PR_OPEN",
+					pullRequest: {
+						repository: "example/repo",
+						number: 43,
+						url: "https://github.com/example/repo/pull/43",
+						base: "main",
+						head: "workflow/fix-race",
+						headSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+					},
+				};
+			},
+		};
+		const { engine, job } = setup(writer);
+		await engine.runResearch(job.jobId);
+		await expect(engine.runWriterImplementation(job.jobId)).rejects.toThrow(/temporary writer failure/u);
+		expect(engine.status(job.jobId).state).toBe("WRITER_RUNNING");
+		const completed = await engine.runWriterImplementation(job.jobId);
+		expect(delivered).toEqual(["A exact\n\n  research ✅\n", "B exact\n\n  research ✅\n"]);
+		expect(controls).toBe(2);
+		expect(completed.state).toBe("PR_OPEN");
+	});
+
 	it("persists writer BLOCKED instead of fabricating a PR receipt", async () => {
 		const writer: WorkflowWriterRunner = {
 			async deliverExact() {},
