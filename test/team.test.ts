@@ -81,7 +81,7 @@ describe("composeSynthesisPrompt", () => {
 });
 
 describe("runTeam", () => {
-	it("alternates providers and uses a derived team session id", async () => {
+	it("alternates providers, synthesizes with ChatGPT, and uses a derived team session id", async () => {
 		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
 		const result = expectTeamSuccess(await runTeam(chat, { task: "T", sessionId: "sess" }));
 		expect(calls.map((c) => c.provider)).toEqual([
@@ -89,11 +89,11 @@ describe("runTeam", () => {
 			"gemini-web",
 			"chatgpt-web",
 			"gemini-web",
-			"gemini-web",
+			"chatgpt-web",
 		]);
 		expect(calls.every((c) => c.sessionId === "sess:team:default")).toBe(true);
 		expect(result.finalAnswer).toBe("FINAL");
-		expect(result.finalProvider).toBe("gemini-web");
+		expect(result.finalProvider).toBe("chatgpt-web");
 		expect(result.transcript).toEqual([
 			{ round: 1, provider: "chatgpt-web", text: "A1" },
 			{ round: 1, provider: "gemini-web", text: "B1" },
@@ -135,12 +135,13 @@ describe("runTeam", () => {
 			"gemini-web",
 			"chatgpt-web",
 			"gemini-web",
-			"gemini-web",
+			"chatgpt-web",
 		]);
 		expect(result.finalAnswer).toBe("FINAL");
+		expect(result.finalProvider).toBe("chatgpt-web");
 	});
 
-	it("honors a custom provider order", async () => {
+	it("honors a custom provider order without changing the default synthesizer", async () => {
 		const { chat, calls } = fakeChat(["G1", "C1", "G2", "C2", "FINAL"]);
 		const result = expectTeamSuccess(
 			await runTeam(chat, {
@@ -157,6 +158,21 @@ describe("runTeam", () => {
 			"chatgpt-web",
 		]);
 		expect(result.finalProvider).toBe("chatgpt-web");
+	});
+
+	it("honors an explicit synthesizer independently of speaking order", async () => {
+		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
+		const result = expectTeamSuccess(
+			await runTeam(chat, { task: "T", sessionId: "s", synthesizer: "gemini-web" }),
+		);
+		expect(calls.map((c) => c.provider)).toEqual([
+			"chatgpt-web",
+			"gemini-web",
+			"chatgpt-web",
+			"gemini-web",
+			"gemini-web",
+		]);
+		expect(result.finalProvider).toBe("gemini-web");
 	});
 
 	it("rejects invalid direct orchestration options", async () => {
@@ -184,6 +200,14 @@ describe("runTeam", () => {
 		expect(result.error).toEqual({ provider: "gemini-web", message: "boom" });
 		expect(result.transcript).toEqual([{ round: 1, provider: "chatgpt-web", text: "A1" }]);
 		expect(calls).toHaveLength(2);
+	});
+
+	it("attributes a synthesis failure to the configured synthesizer", async () => {
+		const { chat } = fakeChat(["A1", "B1", "A2", "B2", new Error("synthesis failed")]);
+		const result = await runTeam(chat, { task: "T", sessionId: "s" });
+		expect("error" in result).toBe(true);
+		if (!("error" in result)) throw new Error("expected team failure");
+		expect(result.error).toEqual({ provider: "chatgpt-web", message: "synthesis failed" });
 	});
 
 	it("short-circuits on an aborted signal", async () => {
