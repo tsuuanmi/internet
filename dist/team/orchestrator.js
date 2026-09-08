@@ -1,13 +1,14 @@
+import { getAccountDefinition } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 const DEFAULT_ROUNDS = 2;
-const DEFAULT_PROVIDERS = ["chatgpt-web", "gemini-web"];
-const DEFAULT_SYNTHESIZER = "chatgpt-web";
-function providerName(provider) {
-    if (provider === "chatgpt-web")
+const DEFAULT_ACCOUNTS = ["chatgpt-thinker", "gemini-thinker"];
+const DEFAULT_SYNTHESIZER = "chatgpt-thinker";
+function accountName(accountId) {
+    if (accountId === "chatgpt-thinker")
         return "ChatGPT";
-    if (provider === "gemini-web")
+    if (accountId === "gemini-thinker")
         return "Gemini";
-    return provider;
+    return accountId;
 }
 /** Join display names with an Oxford comma: "A", "A and B", "A, B, and C". */
 export function joinNames(names) {
@@ -24,16 +25,10 @@ function assertNotAborted(signal) {
         throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "team debate aborted");
     }
 }
-/**
- * Compose the prompt for one debate turn. The opener (round 1, before any
- * teammate has spoken) asks for an initial analysis; later turns feed every
- * other model's latest message and ask for critique and refinement. Each
- * model's own history already lives in its native conversation, so only the
- * other models' latest messages need to be injected.
- */
-export function composeTurnPrompt(task, provider, others, round) {
-    const name = providerName(provider);
-    const teamLine = `You are ${name} on a team with ${joinNames(others.map((other) => providerName(other.provider)))}.`;
+/** Compose the prompt for one debate turn. */
+export function composeTurnPrompt(task, accountId, others, round) {
+    const name = accountName(accountId);
+    const teamLine = `You are ${name} on a team with ${joinNames(others.map((other) => accountName(other.accountId)))}.`;
     if (round === 1 && others.every((other) => other.text.trim() === "")) {
         return [
             teamLine,
@@ -45,7 +40,7 @@ export function composeTurnPrompt(task, provider, others, round) {
     }
     const lines = [teamLine, "", `Task: ${task}`, ""];
     for (const other of others) {
-        lines.push(`${providerName(other.provider)} said:`, '"""', other.text, '"""', "");
+        lines.push(`${accountName(other.accountId)} said:`, '"""', other.text, '"""', "");
     }
     lines.push(`Respond as ${name}: critique, refine, and improve toward the best combined answer.`);
     return lines.join("\n");
@@ -60,64 +55,69 @@ export function composeSynthesisPrompt(task, transcript) {
         "Debate:",
     ];
     for (const turn of transcript) {
-        lines.push("", `### ${providerName(turn.provider)} (round ${turn.round})`, turn.text);
+        lines.push("", `### ${accountName(turn.accountId)} (round ${turn.round})`, turn.text);
     }
     lines.push("", "Final answer (best of both):");
     return lines.join("\n");
 }
 /**
- * Run a multi-model debate: providers speak in order each round, each seeing
- * every other provider's latest message. When synthesis is enabled, an
- * explicitly selected synthesizer receives the full transcript; synthesis is
- * therefore independent from the provider speaking order. The team uses a
- * derived session key so its conversations are isolated from the agent's own
- * direct `internet_chat` threads yet durable across repeated calls.
+ * Run a multi-model debate using explicit authenticated accounts. Each account
+ * has its own durable browser state, conversation namespace, and scheduler.
  */
 export async function runTeam(chat, options) {
     const rounds = options.rounds ?? DEFAULT_ROUNDS;
     const synthesize = options.synthesize ?? true;
     const synthesizer = options.synthesizer ?? DEFAULT_SYNTHESIZER;
-    const providers = options.providers ?? DEFAULT_PROVIDERS;
+    const accounts = options.accounts ?? DEFAULT_ACCOUNTS;
     if (!Number.isInteger(rounds) || rounds <= 0) {
         throw new Error("team debate rounds must be a positive integer");
     }
-    if (providers.length < 2) {
-        throw new Error("team debate requires at least two providers");
+    if (accounts.length < 2) {
+        throw new Error("team debate requires at least two accounts");
     }
-    if (new Set(providers).size !== providers.length) {
-        throw new Error("team debate providers must not contain duplicates");
+    if (new Set(accounts).size !== accounts.length) {
+        throw new Error("team debate accounts must not contain duplicates");
     }
-    if (synthesize && !providers.includes(synthesizer)) {
-        throw new Error("team synthesizer must be one of the selected providers");
+    if (synthesize && !accounts.includes(synthesizer)) {
+        throw new Error("team synthesizer must be one of the selected accounts");
     }
     const teamSessionId = `${options.sessionId}:team:${options.teamName ?? "default"}`;
     const transcript = [];
-    const lastByProvider = new Map();
-    let activeProvider = providers[0];
-    let finalDebateProvider = providers[0];
+    const lastByAccount = new Map();
+    let activeAccountId = accounts[0];
+    let finalDebateAccountId = accounts[0];
     try {
         for (let round = 1; round <= rounds; round++) {
-            for (const provider of providers) {
+            for (const accountId of accounts) {
                 assertNotAborted(options.signal);
-                activeProvider = provider;
-                finalDebateProvider = provider;
-                const others = providers
-                    .filter((other) => other !== provider)
-                    .map((other) => ({ provider: other, text: lastByProvider.get(other) ?? "" }));
-                const prompt = composeTurnPrompt(options.task, provider, others, round);
-                const result = await chat(provider, {
+                activeAccountId = accountId;
+                finalDebateAccountId = accountId;
+                const others = accounts
+                    .filter((other) => other !== accountId)
+                    .map((other) => ({
+                    accountId: other,
+                    provider: getAccountDefinition(other).provider,
+                    text: lastByAccount.get(other) ?? "",
+                }));
+                const prompt = composeTurnPrompt(options.task, accountId, others, round);
+                const result = await chat(accountId, {
                     prompt,
                     sessionId: teamSessionId,
                     visible: options.visible,
                     signal: options.signal,
                 });
-                lastByProvider.set(provider, result.text);
-                transcript.push({ round, provider, text: result.text });
+                lastByAccount.set(accountId, result.text);
+                transcript.push({
+                    round,
+                    accountId,
+                    provider: getAccountDefinition(accountId).provider,
+                    text: result.text,
+                });
             }
         }
         if (synthesize) {
             assertNotAborted(options.signal);
-            activeProvider = synthesizer;
+            activeAccountId = synthesizer;
             const prompt = composeSynthesisPrompt(options.task, transcript);
             const result = await chat(synthesizer, {
                 prompt,
@@ -125,17 +125,28 @@ export async function runTeam(chat, options) {
                 visible: options.visible,
                 signal: options.signal,
             });
-            return { finalAnswer: result.text, finalProvider: synthesizer, transcript: [...transcript] };
+            return {
+                finalAnswer: result.text,
+                finalAccountId: synthesizer,
+                finalProvider: getAccountDefinition(synthesizer).provider,
+                transcript: [...transcript],
+            };
         }
-        const finalAnswer = lastByProvider.get(finalDebateProvider);
+        const finalAnswer = lastByAccount.get(finalDebateAccountId);
         if (finalAnswer === undefined)
             throw new Error("team debate completed without a final turn");
-        return { finalAnswer, finalProvider: finalDebateProvider, transcript: [...transcript] };
+        return {
+            finalAnswer,
+            finalAccountId: finalDebateAccountId,
+            finalProvider: getAccountDefinition(finalDebateAccountId).provider,
+            transcript: [...transcript],
+        };
     }
     catch (error) {
         return {
             error: {
-                provider: activeProvider,
+                accountId: activeAccountId,
+                provider: getAccountDefinition(activeAccountId).provider,
                 message: error instanceof Error ? error.message : String(error),
             },
             transcript: [...transcript],

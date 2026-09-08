@@ -7,7 +7,7 @@ provider interaction contracts, durable conversations, and `internet_team` orche
 
 - `src/index.ts` — Cordis plugin entry, tool registration, command registration, lifecycle disposal, and
   agent-facing system-prompt guidance.
-- `src/browser/runtime.ts` — `BrowserManager`, provider serialization, Chrome/context ownership, account
+- `src/browser/runtime.ts` — `BrowserManager`, account serialization, Chrome/context ownership, account
   refresh, durable conversation navigation, and turn execution.
 - `src/browser/chatgpt.ts` — ChatGPT authentication, reasoning selection, prompt attachment, semantic
   submission, assistant-turn snapshots, and completion state.
@@ -17,13 +17,13 @@ provider interaction contracts, durable conversations, and `internet_team` orche
   contracts and verified composer-mode state.
 - `src/browser/accounts.ts` — versioned portable account inspection, private writes, and IndexedDB-aware
   storage-state capture.
-- `src/browser/conversations.ts` — private, hashed DSH-session-to-provider-conversation bindings.
+- `src/browser/conversations.ts` — private, hashed DSH-session-to-account-conversation bindings.
 - `src/browser/display.ts` — visible display selection and shared hidden inference Xvfb lifecycle.
 - `src/browser/remote-login.ts`, `vnc.ts`, and `xvfb.ts` — tokenized loopback noVNC, x11vnc, Xvfb,
   timeout, finalization, and cleanup.
 - `src/browser/completion.ts` — conservative provider-independent response stabilization.
 - `src/browser/submission.ts` — semantic enabled-state waiting, including `aria-disabled`.
-- `src/team/orchestrator.ts` — provider ordering, debate prompts, team session isolation, transcript, and
+- `src/team/orchestrator.ts` — account ordering, debate prompts, team session isolation, transcript, and
   synthesis.
 - `src/tools/` — DSH definitions for `internet_chat`, `internet_team`, `internet_research`, and
   `internet_browser`.
@@ -41,11 +41,12 @@ provider interaction contracts, durable conversations, and `internet_team` orche
 `apply()` resolves and validates the profile configuration, creates one `BrowserManager`, and registers a
 Cordis disposal effect. Chrome is discovered lazily on first browser operation.
 
-Registration depends on enabled providers:
+Registration derives enabled semantic accounts from the enabled website implementations:
 
-- `internet_chat` and `internet_browser` are available when at least one provider is enabled.
-- `/internet` is available only when ChatGPT is enabled.
-- `internet_team` and `/workflow` are available only when at least two providers are enabled.
+- `internet_browser` manages every enabled semantic account, including `chatgpt-writer`.
+- `internet_chat` and `internet_research` expose enabled thinker accounts only.
+- `/internet` is available when `chatgpt-thinker` is enabled.
+- `internet_team` and `/workflow` require both `chatgpt-thinker` and `gemini-thinker`.
 
 The plugin also contributes tool-selection guidance through `ctx.systemPrompt`. Updating the installed
 package requires restarting the existing DSH host so its server-side module is reloaded.
@@ -53,17 +54,17 @@ package requires restarting the existing DSH host so its server-side module is r
 ## Direct request flow
 
 ```text
-internet_chat { model, prompt, visible? }
-  -> validate model, prompt, and visible
+internet_chat { account, prompt, visible? }
+  -> validate explicit accountId, prompt, and visible
   -> read String(exec.agent.id) as the durable owner
-  -> BrowserManager.chat(provider, request)
-  -> acquire a provider lease (same session FIFO; default hidden capacity one)
+  -> BrowserManager.chat(accountId, request)
+  -> acquire that account's lease (same session FIFO; default hidden capacity one)
   -> ensure account file is ready
   -> ensure a compatible browser and isolated per-turn context exist
        visible=true  -> headed Chrome on user-managed display
        visible=false + headless=false -> headed Chrome on managed Xvfb
        visible=false + headless=true  -> native Chrome headless
-  -> read dataDir/<provider>/conversations/<sha256(sessionId)>.json
+  -> read dataDir/<accountId>/conversations/<sha256(sessionId)>.json
   -> navigate to bound URL, or provider home on the first turn
   -> verify authenticated provider surface
   -> capture the previous response identity
@@ -89,9 +90,8 @@ scope gates, implementation, push, reviews, and final report.
 
 ## Deep Research request flow
 
-`internet_research { query, providers?, name?, visible? }` derives a separate owner key:
-`<agent-id>:research:<name>`. It invokes selected providers concurrently, while each provider still holds
-its ordinary serialized browser lease. Before submission, each adapter enables and verifies its native Deep
+`internet_research { query, accounts?, name?, visible? }` derives a separate owner key:
+`<agent-id>:research:<name>`. It invokes selected thinker accounts concurrently, while each account holds its own serialized browser lease. Before submission, each adapter enables and verifies its native Deep
 Research composer state. The normal five-minute turn deadline is replaced by `researchTimeoutMs` (30 minutes
 by default). Every provider result retains its own markdown and native URL; a completed provider is returned
 even when the other result fails (`partial_success`). The driver never retries after a verified Send action,
@@ -174,28 +174,28 @@ native provider history.
 This isolates team conversations from direct `internet_chat` conversations. All calls using the same DSH
 session and team name resume the same ChatGPT and Gemini team threads.
 
-For each round, providers speak sequentially in the requested order:
+For each round, thinker accounts speak sequentially in the requested order:
 
 ```text
 for round 1..rounds:
-  for provider in providers:
-    prompt = task + every other provider's latest contribution
-    result = BrowserManager.chat(provider, teamSessionId, visible)
+  for accountId in accounts:
+    prompt = task + every other account's latest contribution
+    result = BrowserManager.chat(accountId, teamSessionId, visible)
     transcript.push(result)
 ```
 
-The first provider in round one receives an initial-analysis prompt because no teammate has spoken yet.
+The first account in round one receives an initial-analysis prompt because no teammate has spoken yet.
 Later turns receive the task plus each other provider's latest message and are asked to critique, refine,
 and improve it. A provider's own prior messages already exist in its native durable conversation, so the
 orchestrator injects only teammates' latest messages.
 
-When synthesis is enabled, the configured `teamSynthesizer` receives the full current-call debate transcript and returns a single final answer. The default synthesizer is `chatgpt-web`, independent of provider speaking order. Synthesis is not included in the optional transcript. Without synthesis, the last
+When synthesis is enabled, the configured `teamSynthesizer` receives the full current-call debate transcript and returns a single final answer. The default synthesizer is `chatgpt-thinker`, independent of account speaking order. Synthesis is not included in the optional transcript. Without synthesis, the last
 debate contribution is the final answer.
 
 The same `visible` flag is passed to every provider turn and synthesis turn. `visible: false` is not a
 separate orchestration path: it uses the same prompts and provider drivers on hidden browser displays.
 
-The orchestrator stops at the first provider failure and returns that provider plus all completed current-
+The orchestrator stops at the first account failure and returns that account plus all completed current-
 call turns. It does not silently continue with a missing teammate. A team's own turns remain sequential and
 the DSH tool remains non-concurrency-safe; optional runtime concurrency applies only across independent
 hidden child-team session ids.
@@ -210,14 +210,15 @@ are retained first. If the boundary turn does not fit, only its suffix is retain
 `textTruncation: "prefix"`. `transcriptTruncated` is true whenever any earlier content was omitted. The
 final synthesis response is returned separately and does not consume transcript budget.
 
-## Durable provider conversations
+## Durable account conversations
 
 Every agent-backed tool execution exposes the DSH owner as `exec.agent.id`. The plugin hashes its string
 form and stores one binding at:
 
 ```text
-dataDir/chatgpt-web/conversations/<sha256(sessionId)>.json
-dataDir/gemini-web/conversations/<sha256(sessionId)>.json
+dataDir/chatgpt-thinker/conversations/<sha256(sessionId)>.json
+dataDir/chatgpt-writer/conversations/<sha256(sessionId)>.json
+dataDir/gemini-thinker/conversations/<sha256(sessionId)>.json
 ```
 
 The directory is mode `0700`; files are mode `0600`. Writes use fsync and atomic rename. The raw DSH
@@ -231,8 +232,7 @@ remain private and durable without a separate storage implementation.
 
 ### Local desktop
 
-`internet_browser login` stops existing provider inference, creates or reuses a provider-isolated login
-profile, and launches normal Chrome without browser-automation or remote-debugging flags. The user signs
+`internet_browser login` stops existing provider inference, creates or reuses an account-isolated login profile, and launches normal Chrome without browser-automation or remote-debugging flags. The user signs
 in and closes Chrome completely.
 
 ### Remote noVNC
@@ -243,16 +243,16 @@ On displayless Linux, or when `remote: true`, `RemoteLoginSession` owns:
 - bundled-first x11vnc,
 - a loopback HTTP/WebSocket bridge,
 - an isolated noVNC page,
-- normal Chrome using the provider login profile,
+- normal Chrome using that account's login profile,
 - expiry, finalization, and cleanup.
 
-The stable HTTP ports are `remoteLoginPort` for ChatGPT and `remoteLoginPort + 1` for Gemini. The VNC
+Stable HTTP ports use `remoteLoginPort + ACCOUNT_IDS.indexOf(accountId)`: by default `39000` for ChatGPT thinker, `39001` for ChatGPT writer, and `39002` for Gemini thinker. The VNC
 upstream is private and ephemeral. All listeners bind to `127.0.0.1`. A 256-bit URL path token, temporary
 VNC password, strict same-origin handling, explicit routes, no-store headers, and CSP define the boundary.
 Public binding and proxy trust are intentionally absent.
 
 The lifecycle state is `waiting`, `finalizing`, `complete`, or `failed`. The login tool returns immediately
-while waiting. Pressing **Save account** re-enters the serialized provider queue and runs the one
+while waiting. Pressing **Save account** re-enters that account's serialized queue and runs the one
 authoritative finalization path. Once finalization starts, it runs to completion; `stop` cancels only a
 waiting login.
 
@@ -265,7 +265,7 @@ After Chrome releases the login profile lock:
 3. The context captures IndexedDB in addition to cookies and local storage when Patchright can safely
    serialize it. If an oversized IndexedDB value prevents capture, the cookie/local-storage snapshot must
    restore an authenticated fresh context before it can replace the account.
-4. The plugin atomically writes `dataDir/accounts/<provider>.json` with mode `0600`.
+4. The plugin atomically writes schema-v2 `dataDir/accounts/<accountId>.json` with mode `0600`; the file binds both `accountId` and its derived provider implementation. Version-1 provider-keyed files are not imported or used as fallback.
 
 A failed, cancelled, expired, or unverified login never replaces an existing ready account.
 
@@ -298,11 +298,9 @@ data. Unsupported targets skip private binaries and use system executables when 
 bypasses display discovery. The plugin does not silently convert a failed headed launch into native
 headless mode.
 
-The default allows one hidden turn per provider. Different DSH session ids lease isolated non-persistent
-contexts from the same portable account; repeated turns for one session remain FIFO. Set
-`maxConcurrentTurnsPerProvider` above `1` only after confirming provider policy and account-state
-acceptance. A visible call, login, remote-login finalization, stop, reauthentication, and display loss
-are provider-exclusive barriers. Contexts close after their turns; compatible browser processes close
+The default allows one hidden turn per account. Different DSH session ids lease isolated non-persistent
+contexts from the same portable account; repeated turns for one session remain FIFO. Set `maxConcurrentTurnsPerAccount` above `1` only after confirming account-state acceptance. Separate account IDs own separate schedulers, so `chatgpt-thinker` and `chatgpt-writer` do not share a lock. A visible call, login, remote-login finalization, stop, reauthentication, and display loss
+are account-exclusive barriers. Contexts close after their turns; compatible browser processes close
 after `closeAfterMs` of pool-wide idleness.
 
 Successful current-generation turns serialize portable-account refreshes. Every context remembers the
@@ -310,8 +308,7 @@ canonical account revision used to bootstrap it; a commit advances that revision
 from the older revision are discarded. The stored account is a bootstrap cache, not a mergeable replica of
 arbitrary provider state. An IndexedDB-free fallback refresh retains IndexedDB only for origins present in
 the fresh snapshot while updating cookies and local storage. Only affirmative sign-out proof marks
-reauth-required; a challenge or unconfirmed surface preserves the ready snapshot. Reauthentication invalidates the provider
-generation, aborts active leases, and prevents older turns from restoring a `ready` snapshot.
+reauth-required; a challenge or unconfirmed surface preserves the ready snapshot. Reauthentication invalidates only the affected account generation, aborts active leases, and prevents older turns from restoring a `ready` snapshot.
 `BrowserManager.dispose()` closes contexts, Chrome, pending remote logins, timers, and the shared
 inference display.
 

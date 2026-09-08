@@ -120,12 +120,32 @@ continue
 
 `/workflow` remains the standard UX wrapper.
 
+## Multi-account foundation implemented
+
+P1 TODO #4–#7 are implemented together as a coherent identity-boundary change:
+
+```text
+accounts/chatgpt-thinker.json
+accounts/chatgpt-writer.json
+accounts/gemini-thinker.json
+
+chatgpt-thinker/login-profile
+chatgpt-writer/login-profile
+gemini-thinker/login-profile
+
+<accountId>/conversations/<sha256(sessionId)>.json
+```
+
+`BrowserManager` browser pools, launches, schedulers, remote logins, active contexts, delayed closes, and account commit queues are keyed by `accountId`. `chatgpt-thinker` and `chatgpt-writer` therefore have independent authentication state and independent scheduler locks even though both use the ChatGPT Web implementation.
+
 ## Existing architecture points retained
 
 The following remain unchanged:
 
-- first-class semantic account identities now exist for `chatgpt-thinker`, `chatgpt-writer`, and `gemini-thinker`; provider-keyed browser/storage state is the next migration step;
-- team synthesis is explicitly routed through a configured provider; ChatGPT is the default synthesizer;
+- first-class semantic account identities now exist for `chatgpt-thinker`, `chatgpt-writer`, and `gemini-thinker`; portable account state, login profiles, BrowserManager maps, durable conversations, and scheduler locks are all account-scoped;
+- authenticated runtime APIs require explicit `accountId`; provider is derived from the account catalog and is never used as an implicit account selector;
+- portable account files use schema version 2 with both `accountId` and provider identity, and version-1 provider-keyed files are intentionally not migrated or read as fallback;
+- team synthesis is explicitly routed through the configured `chatgpt-thinker` account, independent of speaking order;
 - ChatGPT browser default is `high`;
 - two thinking teams feed exact outputs to the writer;
 - two post-PR review teams feed exact outputs back to the writer;

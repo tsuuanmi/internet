@@ -1,10 +1,10 @@
 import { isInternetError } from "#internet/core/errors";
 const USAGE = "Usage: /internet <question>";
-/** Define the human-facing `/internet` command backed by ChatGPT Web. */
+/** Define the human-facing `/internet` command backed by the ChatGPT thinker account. */
 export function defineInternetCommand(manager) {
     return {
         name: "internet",
-        description: "ask ChatGPT through the browser",
+        description: "ask the ChatGPT thinker account through the browser",
         input: { hint: "<question>" },
         async handler(invocation) {
             const prompt = invocation.rawInput.trim();
@@ -12,7 +12,7 @@ export function defineInternetCommand(manager) {
                 return { kind: "error", text: `A question is required. ${USAGE}` };
             }
             try {
-                const result = await manager.chat("chatgpt-web", {
+                const result = await manager.chat("chatgpt-thinker", {
                     prompt,
                     sessionId: String(invocation.agent.id),
                     signal: invocation.signal,

@@ -54,17 +54,13 @@ Implementation and configuration should use semantic aliases such as `chatgpt-th
 
 ## Identity key
 
-Runtime identity should move from:
+Runtime identity is:
 
 ```text
-provider
+accountId
 ```
 
-toward:
-
-```text
-provider + accountId
-```
+`provider` is derived metadata describing the website implementation behind that authenticated account; it is not an authentication key or fallback selector.
 
 Conversation identity should include:
 
@@ -111,17 +107,19 @@ technical capability != workflow authority
 
 Even if the writer can technically merge, merge should occur only when the active workflow reaches an authorized merge state.
 
-## Current implementation impact
+## Implementation status
 
-This decision affects at least:
+Implemented for the browser/runtime foundation. Authenticated state is now keyed by `accountId` across portable account files, login profiles, BrowserManager lifecycle maps, durable conversations, and scheduler leases. Tool/runtime boundaries use explicit account identities and derive provider implementation from the account catalog.
+
+The implementation touched:
 
 - `src/core/config.ts` — account definitions and role/capability configuration;
-- `src/browser/accounts.ts` — account files currently keyed by provider;
-- `src/browser/storage.ts` — login profile/account paths currently keyed by provider;
-- `src/browser/runtime.ts` — browser, scheduler, login, context, and account-commit maps currently keyed by provider;
-- `src/browser/conversations.ts` — ChatGPT/Gemini stores currently use provider-specific directories;
-- `src/browser/provider-scheduler.ts` — scheduling/serialization must become account-aware;
-- tool argument schemas where explicit account selection or role routing is required.
+- `src/browser/accounts.ts` — account schema v2 and account-scoped portable state;
+- `src/browser/storage.ts` — account-scoped login profiles and portable-account paths;
+- `src/browser/runtime.ts` — browser, scheduler, login, context, and account-commit maps keyed by account;
+- `src/browser/conversations.ts` — account-scoped durable conversation directories;
+- `src/browser/provider-scheduler.ts` — one scheduler instance is owned per account identity;
+- tool argument schemas and team orchestration, which now route by explicit account identity.
 
 ## Migration principles
 

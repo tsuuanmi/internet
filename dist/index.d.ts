@@ -21,11 +21,7 @@ export interface PluginContext {
     };
     effect(fn: () => (() => void | Promise<void>) | void): void;
 }
-/**
- * Register the browser-backed web tools. The {@link BrowserManager} is created
- * lazily (Chrome is only discovered on first use) and disposed through a
- * Cordis effect so no browser process outlives the plugin.
- */
+/** Register browser-backed tools over explicit semantic account identities. */
 export declare function apply(ctx: PluginContext, rawConfig: unknown): void;
 export { BrowserManager } from "#internet/browser/runtime";
 export type { AccountCapability, AccountDefinition, AccountId, AccountRole } from "#internet/core/accounts";
@@ -35,6 +31,6 @@ export { CHATGPT_THINKING_LEVELS, Config, resolveBrowserConfig, WEB_PROVIDERS } 
 export { InternetError, isInternetError } from "#internet/core/errors";
 export type { OtherContribution, TeamFailure, TeamOptions, TeamResult, TeamSuccess, TeamTurn, } from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
-export type { TeamInput } from "#internet/tools/args";
+export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 //# sourceMappingURL=index.d.ts.map

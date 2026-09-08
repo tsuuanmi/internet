@@ -7,13 +7,14 @@ import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText,
 import { chatgptDeepResearchSnapshot, chatgptEnableDeepResearch, chatgptSendDeepResearch, } from "#internet/browser/chatgpt-research";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
-import { ChatGptConversationStore, GeminiConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
+import { ConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import { GEMINI_HOME_URL, geminiDeepResearchSnapshot, geminiIsAuthenticated, geminiLastDeepResearchReportText, geminiLastResponseText, geminiSelectDefaultMode, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
 import { geminiEnableDeepResearch, geminiStartResearchPlan } from "#internet/browser/gemini-research";
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
-import { ensureLoginProfileDirectory, providerLocations } from "#internet/browser/storage";
+import { accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
+import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
 function isTransientStorageCaptureError(error) {
@@ -22,7 +23,7 @@ function isTransientStorageCaptureError(error) {
 }
 /**
  * Owns isolated browser sessions. Interactive login runs in a dedicated,
- * per-provider normal Chrome profile (without browser-automation flags). The
+ * per-account normal Chrome profile (without browser-automation flags). The
  * profile is retained so reopening login visibly shows the same signed-in account.
  * After Chrome closes, patchright verifies bootstrap profile state in a fresh
  * context and writes the canonical portable account file, including IndexedDB.
@@ -34,6 +35,7 @@ export class BrowserManager {
         this.browserLaunches = new Map();
         this.schedulers = new Map();
         this.remoteLogins = new Map();
+        this.conversations = new Map();
         this.pendingCloses = new Map();
         this.activeContexts = new Map();
         this.accountCommitQueues = new Map();
@@ -46,33 +48,42 @@ export class BrowserManager {
         });
         this.configuredChromePath = config.chromePath;
         this.accounts = new AccountStore(config.dataDir);
-        this.chatGptConversations = new ChatGptConversationStore(config.dataDir);
-        this.geminiConversations = new GeminiConversationStore(config.dataDir);
     }
     chromeExecutable() {
         this.resolvedChromePath ??= discoverChrome(this.configuredChromePath);
         return this.resolvedChromePath;
     }
-    locations(provider) {
-        return providerLocations(this.config.dataDir, provider);
+    provider(accountId) {
+        return getAccountDefinition(accountId).provider;
     }
-    scheduler(provider) {
-        let scheduler = this.schedulers.get(provider);
+    locations(accountId) {
+        return accountLocations(this.config.dataDir, accountId);
+    }
+    conversationStore(accountId) {
+        let store = this.conversations.get(accountId);
+        if (store === undefined) {
+            store = new ConversationStore(this.config.dataDir, accountId);
+            this.conversations.set(accountId, store);
+        }
+        return store;
+    }
+    scheduler(accountId) {
+        let scheduler = this.schedulers.get(accountId);
         if (scheduler === undefined) {
-            scheduler = new ProviderScheduler(this.config.maxConcurrentTurnsPerProvider);
-            this.schedulers.set(provider, scheduler);
+            scheduler = new ProviderScheduler(this.config.maxConcurrentTurnsPerAccount);
+            this.schedulers.set(accountId, scheduler);
         }
         return scheduler;
     }
-    invalidateProvider(provider, message) {
-        this.scheduler(provider).invalidate(new InternetError("aborted", message));
+    invalidateAccount(accountId, message) {
+        this.scheduler(accountId).invalidate(new InternetError("aborted", message));
     }
-    async runProviderExclusive(provider, operation) {
+    async runAccountExclusive(accountId, operation) {
         if (this.disposed)
             throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
-        this.cancelPendingClose(provider);
-        this.invalidateProvider(provider, "provider lifecycle operation superseded queued browser turns");
-        return this.scheduler(provider).runExclusive(operation);
+        this.cancelPendingClose(accountId);
+        this.invalidateAccount(accountId, "account lifecycle operation superseded queued browser turns");
+        return this.scheduler(accountId).runExclusive(operation);
     }
     homeUrl(provider) {
         return provider === "chatgpt-web" ? CHATGPT_HOME_URL : GEMINI_HOME_URL;
@@ -182,8 +193,9 @@ export class BrowserManager {
         }
         throw new InternetError("login_failed", "Normal Chrome is still using the login profile. Close the dedicated Chrome window completely.");
     }
-    async launchNormalLogin(provider) {
-        const { profileDir } = this.locations(provider);
+    async launchNormalLogin(accountId) {
+        const provider = this.provider(accountId);
+        const { profileDir } = this.locations(accountId);
         const child = spawn(this.chromeExecutable(), [
             `--user-data-dir=${profileDir}`,
             "--new-window",
@@ -219,8 +231,9 @@ export class BrowserManager {
             });
         });
     }
-    async captureLoginState(provider) {
-        const { profileDir } = this.locations(provider);
+    async captureLoginState(accountId) {
+        const provider = this.provider(accountId);
+        const { profileDir } = this.locations(accountId);
         const display = await this.display.prepare(false);
         const context = await chromium.launchPersistentContext(profileDir, {
             executablePath: this.chromeExecutable(),
@@ -307,47 +320,47 @@ export class BrowserManager {
             await context.close().catch(() => { });
         }
     }
-    async closeBrowser(provider) {
-        const managed = this.browsers.get(provider);
+    async closeBrowser(accountId) {
+        const managed = this.browsers.get(accountId);
         if (managed === undefined)
             return;
-        this.browsers.delete(provider);
+        this.browsers.delete(accountId);
         await managed.browser.close().catch(() => { });
     }
     async closeVirtualDisplaySessions() {
-        const providers = [...this.browsers]
+        const accountIds = [...this.browsers]
             .filter(([, managed]) => managed.displayKind === "virtual")
-            .map(([provider]) => provider);
-        await Promise.all(providers.map((provider) => this.runProviderExclusive(provider, () => this.closeBrowser(provider)).catch(() => { })));
+            .map(([accountId]) => accountId);
+        await Promise.all(accountIds.map((accountId) => this.runAccountExclusive(accountId, () => this.closeBrowser(accountId)).catch(() => { })));
     }
-    /** Cancel any pending delayed-close timer for a provider (the browser is needed now). */
-    cancelPendingClose(provider) {
-        const timer = this.pendingCloses.get(provider);
+    /** Cancel any pending delayed-close timer for an account (the browser is needed now). */
+    cancelPendingClose(accountId) {
+        const timer = this.pendingCloses.get(accountId);
         if (timer === undefined)
             return;
         clearTimeout(timer);
-        this.pendingCloses.delete(provider);
+        this.pendingCloses.delete(accountId);
     }
-    /** Schedule closing a provider browser after its scheduler becomes idle. */
-    scheduleCloseWhenIdle(provider) {
-        const scheduler = this.scheduler(provider);
+    /** Schedule closing an account browser after its scheduler becomes idle. */
+    scheduleCloseWhenIdle(accountId) {
+        const scheduler = this.scheduler(accountId);
         void scheduler.waitForIdle().then(() => {
             if (this.disposed || !scheduler.isIdle)
                 return;
-            this.scheduleClose(provider);
+            this.scheduleClose(accountId);
         });
     }
-    scheduleClose(provider) {
-        if (this.disposed || !this.scheduler(provider).isIdle)
+    scheduleClose(accountId) {
+        if (this.disposed || !this.scheduler(accountId).isIdle)
             return;
-        this.cancelPendingClose(provider);
+        this.cancelPendingClose(accountId);
         const timer = setTimeout(() => {
-            this.pendingCloses.delete(provider);
-            void this.stop(provider).catch(() => { });
+            this.pendingCloses.delete(accountId);
+            void this.stop(accountId).catch(() => { });
         }, this.config.closeAfterMs);
-        this.pendingCloses.set(provider, timer);
+        this.pendingCloses.set(accountId, timer);
     }
-    async launchBrowser(provider, headless, visible) {
+    async launchBrowser(accountId, headless, visible) {
         const display = await this.display.prepare(headless, visible);
         const browser = await chromium.launch({
             executablePath: this.chromeExecutable(),
@@ -364,41 +377,41 @@ export class BrowserManager {
             viewport: browserViewport(display),
         };
         browser.once("disconnected", () => {
-            if (this.browsers.get(provider)?.browser === browser)
-                this.browsers.delete(provider);
+            if (this.browsers.get(accountId)?.browser === browser)
+                this.browsers.delete(accountId);
         });
         return managed;
     }
-    async ensureBrowser(provider, headless, visible) {
-        const existing = this.browsers.get(provider);
+    async ensureBrowser(accountId, headless, visible) {
+        const existing = this.browsers.get(accountId);
         if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible)
             return existing;
         if (existing !== undefined)
-            await this.closeBrowser(provider);
-        const pending = this.browserLaunches.get(provider);
+            await this.closeBrowser(accountId);
+        const pending = this.browserLaunches.get(accountId);
         if (pending !== undefined)
             return pending;
-        const launch = this.launchBrowser(provider, headless, visible);
-        this.browserLaunches.set(provider, launch);
+        const launch = this.launchBrowser(accountId, headless, visible);
+        this.browserLaunches.set(accountId, launch);
         try {
             const managed = await launch;
-            this.browsers.set(provider, managed);
+            this.browsers.set(accountId, managed);
             return managed;
         }
         finally {
-            if (this.browserLaunches.get(provider) === launch)
-                this.browserLaunches.delete(provider);
+            if (this.browserLaunches.get(accountId) === launch)
+                this.browserLaunches.delete(accountId);
         }
     }
-    async ensureContext(provider, headless, visible) {
-        const inspection = this.accounts.inspect(provider);
+    async ensureContext(accountId, headless, visible) {
+        const inspection = this.accounts.inspect(accountId);
         if (inspection.state === "invalid") {
-            throw new InternetError("provider_error", `${provider} account file is invalid: ${inspection.error}`);
+            throw new InternetError("provider_error", `${accountId} account file is invalid: ${inspection.error}`);
         }
         if (inspection.state !== "ready" || inspection.account === undefined) {
-            throw new InternetError("login_required", `Sign in to ${provider} first with internet_browser login.`);
+            throw new InternetError("login_required", `Sign in to ${accountId} first with internet_browser login.`);
         }
-        const managed = await this.ensureBrowser(provider, headless, visible);
+        const managed = await this.ensureBrowser(accountId, headless, visible);
         try {
             const context = await managed.browser.newContext({
                 storageState: inspection.account.storageState,
@@ -412,15 +425,15 @@ export class BrowserManager {
         }
         catch (error) {
             if (!managed.browser.isConnected())
-                this.browsers.delete(provider);
+                this.browsers.delete(accountId);
             throw error;
         }
     }
-    trackContext(provider, lease, context) {
-        let contexts = this.activeContexts.get(provider);
+    trackContext(accountId, lease, context) {
+        let contexts = this.activeContexts.get(accountId);
         if (contexts === undefined) {
             contexts = new Map();
-            this.activeContexts.set(provider, contexts);
+            this.activeContexts.set(accountId, contexts);
         }
         const closeOnAbort = () => {
             void context.close().catch(() => { });
@@ -431,12 +444,12 @@ export class BrowserManager {
             closeOnAbort();
         return () => {
             lease.signal.removeEventListener("abort", closeOnAbort);
-            const current = this.activeContexts.get(provider);
+            const current = this.activeContexts.get(accountId);
             if (current === undefined)
                 return;
             current.delete(lease.signal);
             if (current.size === 0)
-                this.activeContexts.delete(provider);
+                this.activeContexts.delete(accountId);
         };
     }
     async captureAccountSnapshot(context, previousStorageState) {
@@ -445,38 +458,38 @@ export class BrowserManager {
             ? capture.storageState
             : preserveIndexedDb(capture.storageState, previousStorageState);
     }
-    async commitAccountSnapshot(provider, lease, expectedRevision, storageState) {
-        const previous = this.accountCommitQueues.get(provider) ?? Promise.resolve();
+    async commitAccountSnapshot(accountId, lease, expectedRevision, storageState) {
+        const previous = this.accountCommitQueues.get(accountId) ?? Promise.resolve();
         const commit = previous
             .catch(() => { })
             .then(() => {
-            if (!this.scheduler(provider).isCurrent(lease))
+            if (!this.scheduler(accountId).isCurrent(lease))
                 return;
-            this.accounts.writeReadyIfRevision(provider, expectedRevision, storageState);
+            this.accounts.writeReadyIfRevision(accountId, expectedRevision, storageState);
         });
-        this.accountCommitQueues.set(provider, commit);
+        this.accountCommitQueues.set(accountId, commit);
         try {
             await commit;
         }
         finally {
-            if (this.accountCommitQueues.get(provider) === commit)
-                this.accountCommitQueues.delete(provider);
+            if (this.accountCommitQueues.get(accountId) === commit)
+                this.accountCommitQueues.delete(accountId);
         }
     }
     /** Preserve a provider-rotated session after a recoverable failed turn. */
-    async recoverAuthenticatedSnapshot(provider, page, context, lease, accountRevision, previousStorageState) {
+    async recoverAuthenticatedSnapshot(accountId, provider, page, context, lease, accountRevision, previousStorageState) {
         try {
-            if (!this.scheduler(provider).isCurrent(lease))
+            if (!this.scheduler(accountId).isCurrent(lease))
                 return;
             const assessment = await this.assessAuthentication(provider, page, 5_000, lease.signal);
             if (assessment.state === "signed-out") {
-                await this.handleSignedOut(provider, lease, accountRevision, assessment.evidence);
+                await this.handleSignedOut(accountId, lease, accountRevision, assessment.evidence);
                 return;
             }
-            if (assessment.state !== "authenticated" || !this.scheduler(provider).isCurrent(lease))
+            if (assessment.state !== "authenticated" || !this.scheduler(accountId).isCurrent(lease))
                 return;
             const storageState = await this.captureAccountSnapshot(context, previousStorageState);
-            await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);
+            await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
         }
         catch {
             // Keep the original turn error; recovery is an opportunistic state refresh.
@@ -486,50 +499,51 @@ export class BrowserManager {
      * Persist reauth-required only when the canonical account is still the
      * bootstrapped revision and the lease is current, then invalidate turns.
      */
-    async handleSignedOut(provider, lease, accountRevision, evidence) {
-        if (!this.scheduler(provider).isCurrent(lease))
+    async handleSignedOut(accountId, lease, accountRevision, evidence) {
+        if (!this.scheduler(accountId).isCurrent(lease))
             return;
-        const invalidated = this.accounts.markReauthRequiredIfRevision(provider, accountRevision, new Date(), {
+        const invalidated = this.accounts.markReauthRequiredIfRevision(accountId, accountRevision, new Date(), {
             observedAt: new Date().toISOString(),
             evidence,
         });
         if (invalidated === undefined)
             return;
-        this.scheduler(provider).invalidate(new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`));
-        void this.scheduler(provider)
-            .runExclusive(() => this.closeBrowser(provider))
+        this.scheduler(accountId).invalidate(new InternetError("login_required", `Sign in to ${accountId} first with the internet_browser login action.`));
+        void this.scheduler(accountId)
+            .runExclusive(() => this.closeBrowser(accountId))
             .catch(() => { });
     }
     /** Open local or SSH-forwarded normal Chrome for sign-in. */
-    async login(provider, options = {}) {
-        return this.runProviderExclusive(provider, () => this.loginProvider(provider, options));
+    async login(accountId, options = {}) {
+        return this.runAccountExclusive(accountId, () => this.loginAccount(accountId, options));
     }
-    async loginProvider(provider, options) {
-        const active = this.remoteLogins.get(provider);
+    async loginAccount(accountId, options) {
+        const active = this.remoteLogins.get(accountId);
         if (active?.status().state === "waiting" || active?.status().state === "finalizing") {
-            return this.providerStatus(provider);
+            return this.accountStatus(accountId);
         }
         if (active !== undefined) {
-            this.remoteLogins.delete(provider);
+            this.remoteLogins.delete(accountId);
             await active.dispose();
         }
-        await this.closeProviderResources(provider);
-        ensureLoginProfileDirectory(this.config.dataDir, provider);
+        await this.closeAccountResources(accountId);
+        ensureLoginProfileDirectory(this.config.dataDir, accountId);
         const remote = options.remote === true || !this.display.hasInteractiveDisplay();
         if (!remote) {
             this.display.requireInteractiveDisplay();
-            await this.launchNormalLogin(provider);
-            await this.persistLoginProfile(provider);
-            return this.providerStatus(provider);
+            await this.launchNormalLogin(accountId);
+            await this.persistLoginProfile(accountId);
+            return this.accountStatus(accountId);
         }
         if (process.platform !== "linux") {
             throw new InternetError("browser_unavailable", "SSH-forwarded remote login is supported only on Linux.");
         }
-        await this.startRemoteLogin(provider);
-        return this.providerStatus(provider);
+        await this.startRemoteLogin(accountId);
+        return this.accountStatus(accountId);
     }
-    async startRemoteLogin(provider) {
-        const locations = this.locations(provider);
+    async startRemoteLogin(accountId) {
+        const provider = this.provider(accountId);
+        const locations = this.locations(accountId);
         let session;
         session = await RemoteLoginSession.start({
             provider,
@@ -538,34 +552,37 @@ export class BrowserManager {
             profileDir: locations.profileDir,
             homeUrl: this.homeUrl(provider),
             timeoutMs: this.config.loginTimeoutMs,
-            port: this.config.remoteLoginPort + (provider === "gemini-web" ? 1 : 0),
-            finalize: () => this.runProviderExclusive(provider, async () => {
-                if (this.remoteLogins.get(provider) !== session || session.status().state !== "finalizing") {
+            port: this.config.remoteLoginPort + ACCOUNT_IDS.indexOf(accountId),
+            finalize: () => this.runAccountExclusive(accountId, async () => {
+                if (this.remoteLogins.get(accountId) !== session || session.status().state !== "finalizing") {
                     throw new InternetError("aborted", "Remote login was cancelled before finalization.");
                 }
-                await this.persistLoginProfile(provider);
+                await this.persistLoginProfile(accountId);
             }),
             onClosed: () => {
-                if (this.remoteLogins.get(provider) === session)
-                    this.remoteLogins.delete(provider);
+                if (this.remoteLogins.get(accountId) === session)
+                    this.remoteLogins.delete(accountId);
             },
         });
-        this.remoteLogins.set(provider, session);
+        this.remoteLogins.set(accountId, session);
     }
-    async persistLoginProfile(provider) {
-        await this.waitForProfileUnlock(this.locations(provider).profileDir);
-        const bootstrapState = await this.captureLoginState(provider);
+    async persistLoginProfile(accountId) {
+        const provider = this.provider(accountId);
+        await this.waitForProfileUnlock(this.locations(accountId).profileDir);
+        const bootstrapState = await this.captureLoginState(accountId);
         const storageState = await this.verifyStorageState(provider, bootstrapState);
-        this.accounts.writeReady(provider, storageState);
+        this.accounts.writeReady(accountId, storageState);
     }
     /** Report persisted account and active remote-login state. */
-    async status(provider) {
-        return this.providerStatus(provider);
+    async status(accountId) {
+        return this.accountStatus(accountId);
     }
-    providerStatus(provider) {
-        const inspection = this.accounts.inspect(provider);
-        const remoteLogin = this.remoteLogins.get(provider)?.status();
+    accountStatus(accountId) {
+        const provider = this.provider(accountId);
+        const inspection = this.accounts.inspect(accountId);
+        const remoteLogin = this.remoteLogins.get(accountId)?.status();
         return {
+            accountId,
             provider,
             state: inspection.state,
             accountPath: inspection.path,
@@ -584,43 +601,41 @@ export class BrowserManager {
         };
     }
     /** Run one long provider Deep Research request in an isolated durable conversation. */
-    async research(provider, request) {
-        return this.chat(provider, { ...request, research: true, timeoutMs: this.config.researchTimeoutMs });
+    async research(accountId, request) {
+        return this.chat(accountId, { ...request, research: true, timeoutMs: this.config.researchTimeoutMs });
     }
-    /** Run one browser chat turn against the provider and return rendered markdown. */
-    async chat(provider, request) {
+    /** Run one browser chat turn against an authenticated account and return rendered markdown. */
+    async chat(accountId, request) {
         if (this.disposed)
             throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
-        this.cancelPendingClose(provider);
-        const scheduler = this.scheduler(provider);
+        this.cancelPendingClose(accountId);
+        const scheduler = this.scheduler(accountId);
         try {
             return request.visible === true
-                ? await scheduler.runExclusive((lease) => this.chatProvider(provider, request, lease), request.signal)
-                : await scheduler.runTurn(request.sessionId, request.signal, (lease) => this.chatProvider(provider, request, lease));
+                ? await scheduler.runExclusive((lease) => this.chatAccount(accountId, request, lease), request.signal)
+                : await scheduler.runTurn(request.sessionId, request.signal, (lease) => this.chatAccount(accountId, request, lease));
         }
         finally {
-            this.scheduleCloseWhenIdle(provider);
+            this.scheduleCloseWhenIdle(accountId);
         }
     }
-    async chatProvider(provider, request, lease) {
-        const remoteState = this.remoteLogins.get(provider)?.status().state;
+    async chatAccount(accountId, request, lease) {
+        const provider = this.provider(accountId);
+        const remoteState = this.remoteLogins.get(accountId)?.status().state;
         if (remoteState === "waiting" || remoteState === "finalizing") {
-            throw new InternetError("login_required", `${provider} remote login is ${remoteState}; save or stop it first.`);
+            throw new InternetError("login_required", `${accountId} remote login is ${remoteState}; save or stop it first.`);
         }
-        this.cancelPendingClose(provider);
+        this.cancelPendingClose(accountId);
         const visible = request.visible === true;
         const headless = visible ? false : this.config.headless;
-        const { context, accountRevision, storageState: previousStorageState, } = await this.ensureContext(provider, headless, visible);
-        const untrackContext = this.trackContext(provider, lease, context);
+        const { context, accountRevision, storageState: previousStorageState, } = await this.ensureContext(accountId, headless, visible);
+        const untrackContext = this.trackContext(accountId, lease, context);
         let page;
         try {
             page = await this.activePage(context);
             let binding;
             try {
-                binding =
-                    provider === "chatgpt-web"
-                        ? this.chatGptConversations.read(request.sessionId)
-                        : this.geminiConversations.read(request.sessionId);
+                binding = this.conversationStore(accountId).read(request.sessionId);
             }
             catch (error) {
                 throw new InternetError("provider_error", error instanceof Error ? error.message : `Failed to read the ${provider} conversation binding.`);
@@ -634,8 +649,8 @@ export class BrowserManager {
             const authentication = await this.assessAuthentication(provider, page, 30_000, lease.signal);
             if (authentication.state !== "authenticated") {
                 if (authentication.state === "signed-out") {
-                    await this.handleSignedOut(provider, lease, accountRevision, authentication.evidence);
-                    throw new InternetError("login_required", `Sign in to ${provider} first with the internet_browser login action.`);
+                    await this.handleSignedOut(accountId, lease, accountRevision, authentication.evidence);
+                    throw new InternetError("login_required", `Sign in to ${accountId} first with the internet_browser login action.`);
                 }
                 throw new InternetError("provider_error", `${provider} authentication could not be confirmed (${authentication.state}; ${authentication.evidence}). Retry the turn or inspect the provider visibly before signing in again.`);
             }
@@ -677,7 +692,7 @@ export class BrowserManager {
                 // Deep Research can be inspected or recovered if observation is cancelled.
                 const conversation = await this.waitForChatGptConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), lease.signal);
                 try {
-                    binding = this.chatGptConversations.bind(request.sessionId, conversation.url);
+                    binding = this.conversationStore(accountId).bind(request.sessionId, conversation.url);
                 }
                 catch (error) {
                     throw new InternetError("provider_error", error instanceof Error ? error.message : "Failed to persist the ChatGPT conversation binding.");
@@ -699,7 +714,7 @@ export class BrowserManager {
                 // Deep Research can be inspected or recovered if observation is cancelled.
                 const conversation = await this.waitForGeminiConversationUrl(page, Math.min(this.config.turnTimeoutMs, 30_000), lease.signal);
                 try {
-                    binding = this.geminiConversations.bind(request.sessionId, conversation.url);
+                    binding = this.conversationStore(accountId).bind(request.sessionId, conversation.url);
                 }
                 catch (error) {
                     throw new InternetError("provider_error", error instanceof Error ? error.message : "Failed to persist the Gemini conversation binding.");
@@ -712,7 +727,7 @@ export class BrowserManager {
                     : geminiSnapshot(page, previousTurnText), waitOptions);
             }
             const storageState = await this.captureAccountSnapshot(context, previousStorageState);
-            await this.commitAccountSnapshot(provider, lease, accountRevision, storageState);
+            await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
             return {
                 text: text.slice(0, this.config.maxOutputChars),
                 url: page.url(),
@@ -721,7 +736,7 @@ export class BrowserManager {
         }
         catch (error) {
             if (page !== undefined) {
-                await this.recoverAuthenticatedSnapshot(provider, page, context, lease, accountRevision, previousStorageState);
+                await this.recoverAuthenticatedSnapshot(accountId, provider, page, context, lease, accountRevision, previousStorageState);
             }
             throw error;
         }
@@ -730,20 +745,20 @@ export class BrowserManager {
             await context.close().catch(() => { });
         }
     }
-    /** Close the provider's managed inference browser, if one is open. */
-    async stop(provider) {
-        await this.runProviderExclusive(provider, () => this.closeProviderResources(provider));
+    /** Close the account's managed inference browser, if one is open. */
+    async stop(accountId) {
+        await this.runAccountExclusive(accountId, () => this.closeAccountResources(accountId));
     }
-    async closeProviderResources(provider) {
-        this.cancelPendingClose(provider);
-        const remote = this.remoteLogins.get(provider);
+    async closeAccountResources(accountId) {
+        this.cancelPendingClose(accountId);
+        const remote = this.remoteLogins.get(accountId);
         if (remote !== undefined) {
             await remote.waitForFinalization();
-            if (this.remoteLogins.get(provider) === remote)
-                this.remoteLogins.delete(provider);
+            if (this.remoteLogins.get(accountId) === remote)
+                this.remoteLogins.delete(accountId);
             await remote.cancel();
         }
-        await this.closeBrowser(provider);
+        await this.closeBrowser(accountId);
     }
     /** Close every managed inference browser (no leaked Chrome processes). */
     async dispose() {
@@ -761,7 +776,7 @@ export class BrowserManager {
             const remoteLogins = [...this.remoteLogins.values()];
             this.remoteLogins.clear();
             await Promise.all(remoteLogins.map((session) => session.dispose()));
-            await Promise.all([...this.browsers.keys()].map((provider) => this.closeBrowser(provider)));
+            await Promise.all([...this.browsers.keys()].map((accountId) => this.closeBrowser(accountId)));
         }
         finally {
             await this.display.dispose();

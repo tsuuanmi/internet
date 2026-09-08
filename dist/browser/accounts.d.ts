@@ -1,5 +1,6 @@
 import type { BrowserContext } from "patchright-core";
 import type { AuthenticationEvidence } from "#internet/browser/authentication";
+import type { AccountId } from "#internet/core/accounts";
 import type { WebProvider } from "#internet/core/config";
 declare const ACCOUNT_SCHEMA = "@tsuuanmi/internet-account";
 type NativeStorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
@@ -20,11 +21,12 @@ export interface ReauthDiagnostic {
 }
 export interface AccountFile {
     schema: typeof ACCOUNT_SCHEMA;
-    version: 1;
+    version: 2;
+    accountId: AccountId;
     provider: WebProvider;
     status: "ready" | "reauth-required";
     verifiedAt: string;
-    /** Monotonic canonical snapshot version; legacy version-1 files normalize to 0. */
+    /** Monotonic canonical snapshot version for this account identity. */
     revision: number;
     invalidatedAt?: string;
     reauthDiagnostic?: ReauthDiagnostic;
@@ -54,28 +56,28 @@ export declare function preserveIndexedDb(storageState: PortableStorageState, pr
  * the verified fresh context performs the authoritative portable-state capture.
  */
 export declare function captureProfileBootstrapState(context: BrowserContext): Promise<PortableStorageState>;
-/** Owns the canonical portable account files for all configured providers. */
+/** Owns canonical portable account files keyed strictly by semantic account ID. */
 export declare class AccountStore {
     private readonly dataDir;
     constructor(dataDir: string);
-    inspect(provider: WebProvider): AccountInspection;
-    writeReady(provider: WebProvider, storageState: PortableStorageState, verifiedAt?: Date): AccountFile;
+    inspect(accountId: AccountId): AccountInspection;
+    writeReady(accountId: AccountId, storageState: PortableStorageState, verifiedAt?: Date): AccountFile;
     /**
      * Commit an inference snapshot only if it was bootstrapped from the current
      * canonical revision. Storage state is opaque (including IndexedDB), so a
      * stale full snapshot is discarded rather than unsafely merged.
      */
-    writeReadyIfRevision(provider: WebProvider, expectedRevision: number, storageState: PortableStorageState, verifiedAt?: Date): AccountFile | undefined;
-    markReauthRequired(provider: WebProvider, invalidatedAt?: Date, reauthDiagnostic?: ReauthDiagnostic): AccountFile | undefined;
+    writeReadyIfRevision(accountId: AccountId, expectedRevision: number, storageState: PortableStorageState, verifiedAt?: Date): AccountFile | undefined;
+    markReauthRequired(accountId: AccountId, invalidatedAt?: Date, reauthDiagnostic?: ReauthDiagnostic): AccountFile | undefined;
     /**
      * Invalidate only if the canonical account is still the bootstrapped
      * revision. This prevents a stale or cancelled turn from overwriting a
      * newer login or refreshed snapshot made through a different lease.
      */
-    markReauthRequiredIfRevision(provider: WebProvider, expectedRevision: number, invalidatedAt?: Date, reauthDiagnostic?: ReauthDiagnostic): AccountFile | undefined;
+    markReauthRequiredIfRevision(accountId: AccountId, expectedRevision: number, invalidatedAt?: Date, reauthDiagnostic?: ReauthDiagnostic): AccountFile | undefined;
     private nextRevision;
     private write;
 }
-export declare function parseAccountFile(value: unknown, provider: WebProvider): AccountFile;
+export declare function parseAccountFile(value: unknown, accountId: AccountId): AccountFile;
 export {};
 //# sourceMappingURL=accounts.d.ts.map
