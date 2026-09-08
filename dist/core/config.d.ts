@@ -4,7 +4,7 @@ export type WebProvider = "chatgpt-web" | "gemini-web";
 export declare const WEB_PROVIDERS: readonly WebProvider[];
 /**
  * ChatGPT Web reasoning-effort levels, ordered by the UI index the model
- * switcher exposes (Instant=0, Medium=1, High=2). "Medium" is the default
+ * switcher exposes (Instant=0, Medium=1, High=2). "High" is the default
  * unless the profile explicitly overrides it.
  */
 export type ChatGptThinkingLevel = "instant" | "medium" | "high";
@@ -44,6 +44,8 @@ export interface BrowserConfig {
     teamTranscriptMaxChars: number;
     /** Whether the `internet_team` tool appends a final synthesis turn. */
     teamSynthesis: boolean;
+    /** Provider that performs the final team synthesis, independent of speaking order. */
+    teamSynthesizer: WebProvider;
     /** Register the ChatGPT Web provider. */
     enableChatgpt: boolean;
     /** Register the Gemini Web provider. */
@@ -73,6 +75,7 @@ export declare const Config: import("@deepseek-ai/schemastery").Schema<{
     teamMaxRounds: number;
     teamTranscriptMaxChars: number;
     teamSynthesis: boolean;
+    teamSynthesizer: string;
     enableChatgpt: boolean;
     enableGemini: boolean;
     chatgptThinkingLevel: string;

@@ -27,9 +27,10 @@ export const DEFAULT_CONFIG = {
     teamMaxRounds: 4,
     teamTranscriptMaxChars: 50_000,
     teamSynthesis: true,
+    teamSynthesizer: "chatgpt-web",
     enableChatgpt: true,
     enableGemini: true,
-    chatgptThinkingLevel: "medium",
+    chatgptThinkingLevel: "high",
 };
 /**
  * Plugin `Config` export: a Schemastery object schema. DSH validates the
@@ -52,6 +53,7 @@ export const Config = S.object({
     teamMaxRounds: S.number().default(DEFAULT_CONFIG.teamMaxRounds),
     teamTranscriptMaxChars: S.number().default(DEFAULT_CONFIG.teamTranscriptMaxChars),
     teamSynthesis: S.boolean().default(DEFAULT_CONFIG.teamSynthesis),
+    teamSynthesizer: S.string().default(DEFAULT_CONFIG.teamSynthesizer),
     enableChatgpt: S.boolean().default(DEFAULT_CONFIG.enableChatgpt),
     enableGemini: S.boolean().default(DEFAULT_CONFIG.enableGemini),
     chatgptThinkingLevel: S.string().default(DEFAULT_CONFIG.chatgptThinkingLevel),
@@ -73,6 +75,14 @@ function asPositiveInteger(value, fallback, name) {
         throw new InternetError("config_error", `browser config ${name} must be at least 1`);
     }
     return typeof value === "number" ? Math.floor(value) : fallback;
+}
+function asWebProvider(value, fallback, name) {
+    if (value === undefined)
+        return fallback;
+    if (typeof value === "string" && WEB_PROVIDERS.includes(value)) {
+        return value;
+    }
+    throw new InternetError("config_error", `browser config ${name} must be one of ${WEB_PROVIDERS.join(", ")}`);
 }
 function asChatGptThinkingLevel(value) {
     if (value === undefined)
@@ -118,6 +128,7 @@ export function resolveBrowserConfig(raw) {
         teamMaxRounds,
         teamTranscriptMaxChars: asPositiveInteger(input.teamTranscriptMaxChars, DEFAULT_CONFIG.teamTranscriptMaxChars, "teamTranscriptMaxChars"),
         teamSynthesis: asBoolean(input.teamSynthesis, DEFAULT_CONFIG.teamSynthesis),
+        teamSynthesizer: asWebProvider(input.teamSynthesizer, DEFAULT_CONFIG.teamSynthesizer, "teamSynthesizer"),
         enableChatgpt: asBoolean(input.enableChatgpt, DEFAULT_CONFIG.enableChatgpt),
         enableGemini: asBoolean(input.enableGemini, DEFAULT_CONFIG.enableGemini),
         chatgptThinkingLevel: asChatGptThinkingLevel(input.chatgptThinkingLevel),
