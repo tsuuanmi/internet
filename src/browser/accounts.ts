@@ -1,7 +1,9 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import type { BrowserContext } from "patchright-core";
 import type { AuthenticationEvidence } from "#internet/browser/authentication";
-import { providerLocations } from "#internet/browser/storage";
+import { accountLocations } from "#internet/browser/storage";
+import type { AccountId } from "#internet/core/accounts";
+import { getAccountDefinition } from "#internet/core/accounts";
 import type { WebProvider } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";
 import { writePrivateJson } from "#internet/core/private-json";
@@ -28,11 +30,12 @@ export interface ReauthDiagnostic {
 
 export interface AccountFile {
 	schema: typeof ACCOUNT_SCHEMA;
-	version: 1;
+	version: 2;
+	accountId: AccountId;
 	provider: WebProvider;
 	status: "ready" | "reauth-required";
 	verifiedAt: string;
-	/** Monotonic canonical snapshot version; legacy version-1 files normalize to 0. */
+	/** Monotonic canonical snapshot version for this account identity. */
 	revision: number;
 	invalidatedAt?: string;
 	reauthDiagnostic?: ReauthDiagnostic;
@@ -125,7 +128,7 @@ export async function captureProfileBootstrapState(context: BrowserContext): Pro
 	return { cookies, origins };
 }
 
-/** Owns the canonical portable account files for all configured providers. */
+/** Owns canonical portable account files keyed strictly by semantic account ID. */
 export class AccountStore {
 	private readonly dataDir: string;
 
@@ -133,8 +136,8 @@ export class AccountStore {
 		this.dataDir = dataDir;
 	}
 
-	inspect(provider: WebProvider): AccountInspection {
-		const path = providerLocations(this.dataDir, provider).accountPath;
+	inspect(accountId: AccountId): AccountInspection {
+		const path = accountLocations(this.dataDir, accountId).accountPath;
 		if (!existsSync(path)) return { state: "missing", path };
 		try {
 			const stat = lstatSync(path);
@@ -142,7 +145,7 @@ export class AccountStore {
 			if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) {
 				throw new Error("account file permissions must be 0600");
 			}
-			const account = parseAccountFile(JSON.parse(readFileSync(path, "utf8")), provider);
+			const account = parseAccountFile(JSON.parse(readFileSync(path, "utf8")), accountId);
 			return { state: account.status, path, account };
 		} catch (error) {
 			return {
@@ -153,17 +156,18 @@ export class AccountStore {
 		}
 	}
 
-	writeReady(provider: WebProvider, storageState: PortableStorageState, verifiedAt = new Date()): AccountFile {
+	writeReady(accountId: AccountId, storageState: PortableStorageState, verifiedAt = new Date()): AccountFile {
 		const account: AccountFile = {
 			schema: ACCOUNT_SCHEMA,
-			version: 1,
-			provider,
+			version: 2,
+			accountId,
+			provider: getAccountDefinition(accountId).provider,
 			status: "ready",
 			verifiedAt: verifiedAt.toISOString(),
-			revision: this.nextRevision(provider),
+			revision: this.nextRevision(accountId),
 			storageState,
 		};
-		this.write(provider, account);
+		this.write(accountId, account);
 		return account;
 	}
 
@@ -173,12 +177,12 @@ export class AccountStore {
 	 * stale full snapshot is discarded rather than unsafely merged.
 	 */
 	writeReadyIfRevision(
-		provider: WebProvider,
+		accountId: AccountId,
 		expectedRevision: number,
 		storageState: PortableStorageState,
 		verifiedAt = new Date(),
 	): AccountFile | undefined {
-		const inspection = this.inspect(provider);
+		const inspection = this.inspect(accountId);
 		if (inspection.state !== "ready" || inspection.account?.revision !== expectedRevision) return undefined;
 		const account: AccountFile = {
 			...inspection.account,
@@ -187,16 +191,16 @@ export class AccountStore {
 			revision: expectedRevision + 1,
 			storageState,
 		};
-		this.write(provider, account);
+		this.write(accountId, account);
 		return account;
 	}
 
 	markReauthRequired(
-		provider: WebProvider,
+		accountId: AccountId,
 		invalidatedAt = new Date(),
 		reauthDiagnostic?: ReauthDiagnostic,
 	): AccountFile | undefined {
-		const inspection = this.inspect(provider);
+		const inspection = this.inspect(accountId);
 		if (inspection.account === undefined) return undefined;
 		const account: AccountFile = {
 			...inspection.account,
@@ -205,7 +209,7 @@ export class AccountStore {
 			reauthDiagnostic,
 			revision: inspection.account.revision + 1,
 		};
-		this.write(provider, account);
+		this.write(accountId, account);
 		return account;
 	}
 
@@ -215,12 +219,12 @@ export class AccountStore {
 	 * newer login or refreshed snapshot made through a different lease.
 	 */
 	markReauthRequiredIfRevision(
-		provider: WebProvider,
+		accountId: AccountId,
 		expectedRevision: number,
 		invalidatedAt = new Date(),
 		reauthDiagnostic?: ReauthDiagnostic,
 	): AccountFile | undefined {
-		const inspection = this.inspect(provider);
+		const inspection = this.inspect(accountId);
 		if (inspection.account === undefined || inspection.account.revision !== expectedRevision) return undefined;
 		const account: AccountFile = {
 			...inspection.account,
@@ -229,30 +233,29 @@ export class AccountStore {
 			reauthDiagnostic,
 			revision: inspection.account.revision + 1,
 		};
-		this.write(provider, account);
+		this.write(accountId, account);
 		return account;
 	}
 
-	private nextRevision(provider: WebProvider): number {
-		const revision = this.inspect(provider).account?.revision;
+	private nextRevision(accountId: AccountId): number {
+		const revision = this.inspect(accountId).account?.revision;
 		return (revision ?? 0) + 1;
 	}
 
-	private write(provider: WebProvider, account: AccountFile): void {
-		writePrivateJson(providerLocations(this.dataDir, provider).accountPath, account);
+	private write(accountId: AccountId, account: AccountFile): void {
+		writePrivateJson(accountLocations(this.dataDir, accountId).accountPath, account);
 	}
 }
 
-export function parseAccountFile(value: unknown, provider: WebProvider): AccountFile {
+export function parseAccountFile(value: unknown, accountId: AccountId): AccountFile {
 	if (!isRecord(value)) throw new Error("account file must be an object");
-	if (value.schema !== ACCOUNT_SCHEMA || value.version !== 1) throw new Error("unsupported account file schema");
-	if (value.provider !== provider) throw new Error(`account file belongs to ${String(value.provider)}`);
+	if (value.schema !== ACCOUNT_SCHEMA || value.version !== 2) throw new Error("unsupported account file schema");
+	if (value.accountId !== accountId) throw new Error(`account file belongs to ${String(value.accountId)}`);
+	const provider = getAccountDefinition(accountId).provider;
+	if (value.provider !== provider) throw new Error(`account file provider must be ${provider}`);
 	if (value.status !== "ready" && value.status !== "reauth-required") throw new Error("invalid account status");
 	if (!isTimestamp(value.verifiedAt)) throw new Error("invalid account verification timestamp");
-	if (
-		value.revision !== undefined &&
-		(typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 0)
-	) {
+	if (typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 1) {
 		throw new Error("invalid account revision");
 	}
 	if (value.status === "ready" && (value.invalidatedAt !== undefined || value.reauthDiagnostic !== undefined)) {
@@ -265,7 +268,7 @@ export function parseAccountFile(value: unknown, provider: WebProvider): Account
 		throw new Error("invalid account reauthentication diagnostic");
 	}
 	if (!isPortableStorageState(value.storageState)) throw new Error("invalid account storage state");
-	return { ...value, revision: value.revision ?? 0 } as unknown as AccountFile;
+	return value as unknown as AccountFile;
 }
 
 function isPortableStorageState(value: unknown): value is PortableStorageState {
