@@ -162,9 +162,7 @@ describe("runTeam", () => {
 
 	it("honors an explicit synthesizer independently of speaking order", async () => {
 		const { chat, calls } = fakeChat(["A1", "B1", "A2", "B2", "FINAL"]);
-		const result = expectTeamSuccess(
-			await runTeam(chat, { task: "T", sessionId: "s", synthesizer: "gemini-web" }),
-		);
+		const result = expectTeamSuccess(await runTeam(chat, { task: "T", sessionId: "s", synthesizer: "gemini-web" }));
 		expect(calls.map((c) => c.provider)).toEqual([
 			"chatgpt-web",
 			"gemini-web",
