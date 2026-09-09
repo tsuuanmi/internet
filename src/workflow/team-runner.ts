@@ -19,15 +19,15 @@ export type WorkflowTeamRunResult =
 			readonly finalAnswer: string;
 			readonly finalAccountId: AccountId;
 			readonly finalProvider: WebProvider;
-			readonly transcript: readonly TeamTurn[];
+			readonly transcript?: readonly TeamTurn[];
 	  }
 	| {
 			readonly ok: false;
 			readonly error: string;
 			readonly failedAccountId: AccountId;
 			readonly failedProvider: WebProvider;
-			readonly failure: TeamFailureDetail;
-			readonly transcript: readonly TeamTurn[];
+			readonly failure?: TeamFailureDetail;
+			readonly transcript?: readonly TeamTurn[];
 	  };
 
 export interface WorkflowTeamRunner {
@@ -36,10 +36,7 @@ export interface WorkflowTeamRunner {
 
 type TeamManager = Pick<BrowserManager, "chat">;
 
-/**
- * Workflow-owned adapter over the single shared team engine. The workflow owns
- * durable session identity and observation; the team core owns rounds/synthesis.
- */
+/** Workflow-owned adapter over the single shared team engine. */
 export class BrowserWorkflowTeamRunner implements WorkflowTeamRunner {
 	private readonly manager: TeamManager;
 	private readonly config: BrowserConfig;
