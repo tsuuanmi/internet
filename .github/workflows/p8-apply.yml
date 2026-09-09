@@ -1,4 +1,4 @@
-name: P8 apply
+name: P8 finalize
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  finalize:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -18,21 +18,21 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: python3 scripts/p8-apply.py
+      - run: python3 scripts/p8-finalize.py
       - run: npm ci
       - run: npx biome check --write src test scripts
       - run: npm run check
       - run: npm test
       - run: npm run build
       - run: npm run verify-package
-      - name: Commit P8 implementation
+      - name: Commit finalized P8 implementation
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src test dist
+          git add src test dist README.md docs
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m 'feat: add compact workflow Local events'
+          git commit -m 'feat: finalize compact workflow Local events'
           git push
