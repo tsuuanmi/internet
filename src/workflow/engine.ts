@@ -539,7 +539,12 @@ export class WorkflowEngine {
 				? current
 				: this.update(jobId, (state) => ({
 						...withState(state, "WRITER_REMEDIATING"),
-						lastEvent: { type: "APPLY_REVIEWS_READY", class: "INTERNAL", at: now() },
+						lastEvent: {
+							type: "REMEDIATION_STARTED",
+							class: "PROGRESS",
+							at: now(),
+							message: state.pullRequest?.url,
+						},
 					}));
 		return { job, control: createWorkflowControlMessage("APPLY_REVIEWS", jobId, job.pullRequest?.headSha) };
 	}
@@ -700,7 +705,13 @@ export class WorkflowEngine {
 				prior.class !== event.class ||
 				prior.at !== event.at ||
 				prior.message !== event.message;
-			if (changed) this.events?.publish(updated, event);
+			if (changed && this.events !== undefined) {
+				try {
+					this.events.publish(updated, event);
+				} catch {
+					// Notification delivery is never part of workflow correctness.
+				}
+			}
 		}
 		return updated;
 	}

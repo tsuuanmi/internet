@@ -174,9 +174,13 @@ new head again. The default review limit is three cycles; exhaustion becomes `RE
 Scoped Website confirmation handling remains fail-closed throughout implementation and remediation: only a
 recognized GitHub confirmation matching the active writer session, repository, workflow state, allowlisted
 action, and expected branch/PR identity can be auto-confirmed. Unknown or ambiguous confirmations become
-`UNKNOWN_CONFIRMATION`; merge is never auto-authorized. Compact Local event injection and the explicit
-head-SHA-bound merge gate remain later phases. The workflow is registered only when both thinker accounts are
-enabled; the writer path additionally requires a ready `chatgpt-writer` account when implementation is driven.
+`UNKNOWN_CONFIRMATION`; merge is never auto-authorized. The engine now publishes compact workflow events: `INTERNAL`
+records stay inside the control plane, while `PROGRESS` and `ACTION_REQUIRED` records are injected into the live
+owner Agent through DSH's native `agent.inject()` path. This adds durable model-facing context for Local's next
+admitted step without waking an idle Local, and never includes research/reviewer payloads. `internet_workflow status`
+also exposes payload-free team, handoff, writer, PR, review-cycle, pending-action, last-event, and last-error summaries.
+The explicit head-SHA-bound merge gate remains a later phase. The workflow is registered only when both thinker
+accounts are enabled; the writer path additionally requires a ready `chatgpt-writer` account when implementation is driven.
 
 ## Install
 

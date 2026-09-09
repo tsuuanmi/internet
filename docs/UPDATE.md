@@ -248,3 +248,18 @@ control instructs the writer to remediate the same PR. The engine requires uncha
 SHA before starting the next review cycle. Review conversations remain stable per job, the default cycle limit is three,
 and limit exhaustion or writer/confirmation failures surface as explicit action-required states. Website memory remains
 a deferred optimization; it is not used for review correctness.
+
+### 8. Local integration uses compact host-native Agent injection
+
+P8 connects durable workflow events to the Local owner without restoring the old child-agent transformation layer.
+Each job persists its exact `ownerSessionId`. New `PROGRESS` and `ACTION_REQUIRED` records are formatted from
+control-plane metadata only and injected through DSH `agent.inject()` with plugin source `internet`; `INTERNAL`
+records are not injected. DSH injection does not wake an idle Agent, so the notification becomes context for the
+next admitted Local step rather than forcing an extra model turn.
+
+Notification delivery is best-effort after the durable state transition. A missing/disposed Local Agent or a broken
+event sink cannot roll back or fail committed workflow work. The `internet_workflow status` projection now exposes
+team/run state, handoff hashes and receipts, writer state, PR/head, review cycle, pending action, last event, and last
+error without returning research or reviewer payloads. `wait(job_id)` remains deferred until a concrete synchronous
+caller needs it.
+

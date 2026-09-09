@@ -86,4 +86,66 @@ describe("workflow Local events", () => {
 		engine.cancel(job.jobId);
 		expect(seen).toEqual([]);
 	});
+
+	it("publishes an ACTION_REQUIRED engine event without exposing team output", async () => {
+		const root = mkdtempSync(join(tmpdir(), "internet-events-research-"));
+		const seen: WorkflowEventRecord[] = [];
+		const teams = {
+			async run() {
+				return {
+					ok: false as const,
+					error: "provider unavailable",
+					failedAccountId: "chatgpt-thinker" as const,
+					failedProvider: "chatgpt-web" as const,
+				};
+			},
+		};
+		const events: WorkflowEventSink = {
+			publish(_job, event) {
+				seen.push(event);
+			},
+		};
+		const engine = new WorkflowEngine(new WorkflowJobStore(root), teams, undefined, undefined, undefined, 3, events);
+		const job = engine.start({
+			objective: "secret team objective",
+			repository: "https://github.com/example/repo",
+			baseRevision: "0123456789abcdef0123456789abcdef01234567",
+			ownerSessionId: "local-agent",
+		});
+		const result = await engine.runResearch(job.jobId);
+		expect(result.state).toBe("FAILED_RETRYABLE");
+		expect(seen.some((event) => event.type === "RESEARCH_RETRY_REQUIRED" && event.class === "ACTION_REQUIRED")).toBe(
+			true,
+		);
+		expect(JSON.stringify(seen)).not.toContain("secret team objective");
+	});
+
+	it("keeps committed workflow state when an event sink throws", async () => {
+		const root = mkdtempSync(join(tmpdir(), "internet-events-throwing-"));
+		const teams = {
+			async run() {
+				return {
+					ok: false as const,
+					error: "provider unavailable",
+					failedAccountId: "chatgpt-thinker" as const,
+					failedProvider: "chatgpt-web" as const,
+				};
+			},
+		};
+		const events: WorkflowEventSink = {
+			publish() {
+				throw new Error("notification transport failed");
+			},
+		};
+		const engine = new WorkflowEngine(new WorkflowJobStore(root), teams, undefined, undefined, undefined, 3, events);
+		const job = engine.start({
+			objective: "x",
+			repository: "https://github.com/example/repo",
+			baseRevision: "0123456789abcdef0123456789abcdef01234567",
+			ownerSessionId: "local-agent",
+		});
+		const result = await engine.runResearch(job.jobId);
+		expect(result.state).toBe("FAILED_RETRYABLE");
+		expect(engine.status(job.jobId).state).toBe("FAILED_RETRYABLE");
+	});
 });

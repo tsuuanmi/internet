@@ -158,8 +158,20 @@ remediation resets only review-run results/status and returns to `PR_OPEN`; the 
 the new head. The default maximum is three review cycles. Exhaustion becomes `REVIEW_LIMIT_REACHED`; writer or
 Website-confirmation exceptions keep their explicit remediation resume state.
 
-Compact Local event injection and the head-SHA-bound user merge authorization/execution gate remain later workflow
-phases and are not implied by reaching `READY_FOR_MERGE_AUTHORIZATION`.
+Every durable engine mutation that installs a new `lastEvent` passes through one event-publication boundary.
+`INTERNAL` events remain control-plane-only. `PROGRESS` and `ACTION_REQUIRED` events are projected by
+`DshWorkflowEventSink` into compact text containing only job/state/repository/review-cycle/PR/head/pending-action
+metadata and the compact event message; team and reviewer payloads are never copied into Local. The job persists
+its exact `ownerSessionId`, so notification routing never reverse-parses a derived writer session ID. The sink looks
+up that live owner through DSH's `ctx.agents` registry and uses `agent.inject()` with plugin source `internet`. DSH
+injection is durable model-facing context for the next admitted step and deliberately does not wake an idle Local.
+A missing/disposed owner or a notification transport failure is ignored after the workflow state commit, because
+observability is not part of workflow correctness.
+
+`internet_workflow status` projects payload-free debug summaries for research/review lanes, handoff hashes and
+delivery state, writer identity, PR/head, review cycle, pending action, last event, and last error. A polling-style
+`wait(job_id)` remains optional and is not part of orchestration. The head-SHA-bound user merge authorization and
+execution gate remains P9 and is not implied by reaching `READY_FOR_MERGE_AUTHORIZATION`.
 
 ## Deep Research request flow
 
