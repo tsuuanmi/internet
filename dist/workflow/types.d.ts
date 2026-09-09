@@ -42,6 +42,16 @@ export interface WorkflowPullRequestReceipt {
     readonly head: string;
     readonly headSha: string;
 }
+export declare const WORKFLOW_CI_STATUSES: readonly ["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"];
+export type WorkflowCiStatus = (typeof WORKFLOW_CI_STATUSES)[number];
+export interface WorkflowCiReceipt {
+    readonly repository: string;
+    readonly number: number;
+    readonly url: string;
+    readonly headSha: string;
+    readonly status: WorkflowCiStatus;
+    readonly checkedAt: string;
+}
 export interface WorkflowMergeAuthorization {
     readonly repository: string;
     readonly number: number;
@@ -62,7 +72,7 @@ export interface WorkflowMergeReceipt {
     readonly mergedAt: string;
 }
 export interface WorkflowPendingAction {
-    readonly kind: "MERGE_AUTHORIZATION_REQUIRED" | "WRITER_BLOCKED" | "UNKNOWN_CONFIRMATION" | "REVIEW_LIMIT_REACHED" | "ACCOUNT_REAUTH_REQUIRED" | "RETRY_REQUIRED";
+    readonly kind: "MERGE_AUTHORIZATION_REQUIRED" | "WRITER_BLOCKED" | "UNKNOWN_CONFIRMATION" | "REVIEW_LIMIT_REACHED" | "ACCOUNT_REAUTH_REQUIRED" | "CI_HEALTH_FAILED" | "CI_HEALTH_UNKNOWN" | "RETRY_REQUIRED";
     readonly message: string;
     readonly expectedHeadSha?: string;
     /** State to resume after a manually handled non-terminal exception. */
@@ -95,6 +105,7 @@ export interface WorkflowJob {
         readonly accountId: "chatgpt-writer";
     };
     readonly pullRequest?: WorkflowPullRequestReceipt;
+    readonly ciReceipt?: WorkflowCiReceipt;
     readonly mergeAuthorization?: WorkflowMergeAuthorization;
     readonly mergeReceipt?: WorkflowMergeReceipt;
     readonly reviewCycle: number;

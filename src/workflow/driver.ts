@@ -1,3 +1,4 @@
+import { normalizeGitHubRepository } from "#internet/workflow/approval-policy";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import { TERMINAL_WORKFLOW_STATES, type WorkflowJob, type WorkflowState } from "#internet/workflow/types";
 
@@ -7,6 +8,7 @@ export interface WorkflowDriverEngine {
 	runWriterImplementation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
 	runReview(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
 	runWriterRemediation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
+	runPrHealthCheck(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
 	requestMergeAuthorization(jobId: string): WorkflowJob;
 	runWriterMerge(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
 	markRetryRequired(jobId: string, message: string, resumeState: WorkflowState): WorkflowJob;
@@ -128,7 +130,18 @@ export class WorkflowDriver {
 					break;
 				case "READY_FOR_MERGE_AUTHORIZATION":
 					if (before.lastEvent?.type === "MERGE_AUTHORIZATION_REJECTED") return;
-					after = this.engine.requestMergeAuthorization(jobId);
+					if (
+						before.pullRequest !== undefined &&
+						before.ciReceipt !== undefined &&
+						normalizeGitHubRepository(before.ciReceipt.repository) ===
+							normalizeGitHubRepository(before.pullRequest.repository) &&
+						before.ciReceipt.number === before.pullRequest.number &&
+						before.ciReceipt.url === before.pullRequest.url &&
+						before.ciReceipt.headSha === before.pullRequest.headSha &&
+						(before.ciReceipt.status === "PASS" || before.ciReceipt.status === "NONE")
+					)
+						after = this.engine.requestMergeAuthorization(jobId);
+					else after = await this.engine.runPrHealthCheck(jobId, signal);
 					break;
 				case "MERGING":
 					after = await this.engine.runWriterMerge(jobId, signal);

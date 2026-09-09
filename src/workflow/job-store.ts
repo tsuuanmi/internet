@@ -250,6 +250,19 @@ function assertPullRequest(value: unknown): void {
 	if (!isFullSha(value.headSha)) throw new Error("invalid pull request head SHA");
 }
 
+function assertCiReceipt(value: unknown): void {
+	if (value === undefined) return;
+	if (!isRecord(value)) throw new Error("invalid CI receipt");
+	if (typeof value.repository !== "string" || value.repository.trim() === "") throw new Error("invalid CI repository");
+	if (!isPositiveInteger(value.number)) throw new Error("invalid CI PR number");
+	if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url))
+		throw new Error("invalid CI PR URL");
+	if (!isFullSha(value.headSha)) throw new Error("invalid CI head SHA");
+	if (!["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"].includes(String(value.status)))
+		throw new Error("invalid CI status");
+	if (!isTimestamp(value.checkedAt)) throw new Error("invalid CI checked timestamp");
+}
+
 function assertPendingAction(value: unknown): void {
 	if (value === undefined) return;
 	if (!isRecord(value)) throw new Error("invalid pending action");
@@ -260,6 +273,8 @@ function assertPendingAction(value: unknown): void {
 			"UNKNOWN_CONFIRMATION",
 			"REVIEW_LIMIT_REACHED",
 			"ACCOUNT_REAUTH_REQUIRED",
+			"CI_HEALTH_FAILED",
+			"CI_HEALTH_UNKNOWN",
 			"RETRY_REQUIRED",
 		].includes(String(value.kind))
 	)
@@ -306,6 +321,7 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 	assertWriterConversation(value.writerConversation, value.ownerSessionId, value.jobId);
 	assertHandoffReceipts(value.handoffReceipts);
 	assertPullRequest(value.pullRequest);
+	assertCiReceipt(value.ciReceipt);
 	assertPendingAction(value.pendingAction);
 	assertEvent(value.lastEvent);
 	if (typeof value.reviewCycle !== "number" || !Number.isSafeInteger(value.reviewCycle) || value.reviewCycle < 0) {
@@ -322,8 +338,20 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 			throw new Error("FAILED_RETRYABLE workflow requires an explicit retry action and resume state");
 		}
 	}
+	if (value.ciReceipt !== undefined) {
+		const ci = value.ciReceipt;
+		if (!isRecord(ci) || !isRecord(value.pullRequest)) throw new Error("CI receipt requires a pull request receipt");
+		if (
+			ci.number !== value.pullRequest.number ||
+			ci.url !== value.pullRequest.url ||
+			ci.headSha !== value.pullRequest.headSha
+		)
+			throw new Error("CI receipt does not match pull request receipt");
+	}
 	if (value.mergeAuthorization !== undefined) {
 		const authorization = value.mergeAuthorization;
+		if (!isRecord(value.ciReceipt) || (value.ciReceipt.status !== "PASS" && value.ciReceipt.status !== "NONE"))
+			throw new Error("merge authorization requires an acceptable exact-head CI receipt");
 		if (!isRecord(authorization)) throw new Error("invalid merge authorization");
 		if (!isRecord(value.pullRequest)) throw new Error("merge authorization requires a pull request receipt");
 		if (

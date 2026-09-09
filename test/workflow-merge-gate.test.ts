@@ -60,6 +60,14 @@ function readyJob(): WorkflowJob {
 			head: `internet-workflow/${jobId}`,
 			headSha,
 		},
+		ciReceipt: {
+			repository: "example/repo",
+			number: 7,
+			url: "https://github.com/example/repo/pull/7",
+			headSha,
+			status: "PASS",
+			checkedAt: timestamp,
+		},
 		reviewCycle: 1,
 		createdAt: timestamp,
 		updatedAt: timestamp,
@@ -121,9 +129,21 @@ describe("workflow merge gate", () => {
 	});
 
 	it("records a merge receipt only when writer revalidates the authorized head", async () => {
+		let calls = 0;
 		const writer: WorkflowWriterRunner = {
 			async deliverExact() {},
 			async runControl(request) {
+				calls += 1;
+				if (request.control.kind === "CHECK_PR_HEALTH") {
+					return {
+						status: "PR_HEALTH",
+						repository: "example/repo",
+						number: 7,
+						url: "https://github.com/example/repo/pull/7",
+						headSha,
+						health: "PASS",
+					};
+				}
 				expect(request.control.kind).toBe("MERGE_AUTHORIZED");
 				expect(request.control.expectedHeadSha).toBe(headSha);
 				return {
@@ -141,13 +161,25 @@ describe("workflow merge gate", () => {
 		engine.approve({ jobId, expectedHeadSha: headSha });
 		const done = await engine.runWriterMerge(jobId);
 		expect(done.state).toBe("DONE");
+		expect(calls).toBe(2);
 		expect(done.mergeReceipt).toMatchObject({ headSha, mergedSha, executorAccountId: "chatgpt-writer" });
 	});
 
 	it("fails closed when writer reports a different pre-merge head", async () => {
+		let calls = 0;
 		const writer: WorkflowWriterRunner = {
 			async deliverExact() {},
 			async runControl() {
+				calls += 1;
+				if (calls === 1)
+					return {
+						status: "PR_HEALTH",
+						repository: "example/repo",
+						number: 7,
+						url: "https://github.com/example/repo/pull/7",
+						headSha,
+						health: "PASS",
+					};
 				return {
 					status: "MERGED",
 					repository: "example/repo",

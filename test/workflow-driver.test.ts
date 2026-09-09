@@ -69,6 +69,29 @@ describe("WorkflowDriver", () => {
 				current = advance(current, "READY_FOR_MERGE_AUTHORIZATION", "REVIEW_GATE_PASSED");
 				return current;
 			},
+			async runPrHealthCheck() {
+				calls.push("health");
+				current = {
+					...advance(current, "READY_FOR_MERGE_AUTHORIZATION"),
+					ciReceipt: {
+						repository: current.repository,
+						number: 1,
+						url: "https://github.com/example/repo/pull/1",
+						headSha: sha,
+						status: "PASS",
+						checkedAt: new Date().toISOString(),
+					},
+					pullRequest: {
+						repository: current.repository,
+						number: 1,
+						url: "https://github.com/example/repo/pull/1",
+						base: "main",
+						head: "branch",
+						headSha: sha,
+					},
+				};
+				return current;
+			},
 			requestMergeAuthorization() {
 				calls.push("request-merge");
 				current = advance(current, "AWAITING_MERGE_AUTHORIZATION");
@@ -88,7 +111,7 @@ describe("WorkflowDriver", () => {
 		const driver = new WorkflowDriver(engine, jobs);
 		driver.enqueue(current.jobId);
 		await vi.waitFor(() => expect(driver.isActive(current.jobId)).toBe(false));
-		expect(calls).toEqual(["research", "writer", "review", "gate", "request-merge"]);
+		expect(calls).toEqual(["research", "writer", "review", "gate", "health", "request-merge"]);
 		expect(current.state).toBe("AWAITING_MERGE_AUTHORIZATION");
 	});
 
@@ -214,6 +237,9 @@ describe("WorkflowDriver", () => {
 				return current;
 			},
 			async runWriterRemediation() {
+				return current;
+			},
+			async runPrHealthCheck() {
 				return current;
 			},
 			requestMergeAuthorization() {

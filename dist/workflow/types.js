@@ -18,5 +18,6 @@ export const WORKFLOW_STATES = [
     "CANCELLED",
 ];
 export const WORKFLOW_TEAM_STATUSES = ["pending", "running", "completed", "failed"];
+export const WORKFLOW_CI_STATUSES = ["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"];
 export const TERMINAL_WORKFLOW_STATES = new Set(["DONE", "FAILED_TERMINAL", "CANCELLED"]);
 //# sourceMappingURL=types.js.map

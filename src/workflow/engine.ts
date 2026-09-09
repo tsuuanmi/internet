@@ -11,6 +11,7 @@ import type { WorkflowTeamRunner, WorkflowTeamRunResult } from "#internet/workfl
 import {
 	type StartWorkflowInput,
 	TERMINAL_WORKFLOW_STATES,
+	type WorkflowCiReceipt,
 	type WorkflowDecisionInput,
 	type WorkflowHandoffReceipt,
 	type WorkflowJob,
@@ -664,6 +665,7 @@ export class WorkflowEngine {
 		return this.update(jobId, (current) => ({
 			...withState(current, "PR_OPEN"),
 			pullRequest: result.pullRequest,
+			ciReceipt: undefined,
 			teamRuns: {
 				...current.teamRuns,
 				review: current.teamRuns.review.map((run) => ({
@@ -678,7 +680,118 @@ export class WorkflowEngine {
 		}));
 	}
 
-	/** Move a fully reviewed PR into the explicit user-authorization gate. */
+	private ciReceiptMatches(job: WorkflowJob, receipt: WorkflowCiReceipt | undefined): receipt is WorkflowCiReceipt {
+		const pr = job.pullRequest;
+		return (
+			pr !== undefined &&
+			receipt !== undefined &&
+			normalizeGitHubRepository(receipt.repository) === normalizeGitHubRepository(pr.repository) &&
+			receipt.number === pr.number &&
+			receipt.url === pr.url &&
+			receipt.headSha === pr.headSha
+		);
+	}
+
+	async runPrHealthCheck(jobId: string, signal?: AbortSignal): Promise<WorkflowJob> {
+		if (this.writer === undefined) throw new WorkflowEngineError("workflow writer runner is not configured");
+		const job = this.status(jobId);
+		if (job.state !== "READY_FOR_MERGE_AUTHORIZATION" && job.state !== "MERGING")
+			throw new WorkflowEngineError(`workflow job ${jobId} cannot check PR health from ${job.state}`);
+		if (job.pullRequest === undefined)
+			throw new WorkflowEngineError("PR health check requires a persisted pull request");
+		const pr = job.pullRequest;
+		const control = createWorkflowControlMessage("CHECK_PR_HEALTH", jobId, pr.headSha);
+		const result = await this.writer.runControl({
+			sessionId: job.writerConversation.sessionId,
+			job,
+			control,
+			signal,
+		});
+		if (result.status === "UNKNOWN_CONFIRMATION") {
+			return this.update(jobId, (current) => ({
+				...withState(current, "UNKNOWN_CONFIRMATION"),
+				mergeAuthorization: undefined,
+				pendingAction: {
+					kind: "UNKNOWN_CONFIRMATION",
+					message: result.message,
+					resumeState: "READY_FOR_MERGE_AUTHORIZATION",
+				},
+				lastEvent: { type: "UNKNOWN_CONFIRMATION", class: "ACTION_REQUIRED", at: now(), message: result.message },
+			}));
+		}
+		if (result.status === "BLOCKED")
+			return this.writerBlocked(jobId, result.message, "READY_FOR_MERGE_AUTHORIZATION");
+		if (result.status !== "PR_HEALTH")
+			throw new WorkflowEngineError("writer did not return PR health during health-check phase");
+		if (
+			normalizeGitHubRepository(result.repository) !== normalizeGitHubRepository(pr.repository) ||
+			result.number !== pr.number ||
+			result.url !== pr.url ||
+			result.headSha !== pr.headSha
+		)
+			return this.writerBlocked(
+				jobId,
+				"PR health result does not match the authoritative PR/head",
+				"READY_FOR_MERGE_AUTHORIZATION",
+			);
+		const ciReceipt: WorkflowCiReceipt = {
+			repository: result.repository,
+			number: result.number,
+			url: result.url,
+			headSha: result.headSha,
+			status: result.health,
+			checkedAt: now(),
+		};
+		if (result.health === "PASS" || result.health === "NONE") {
+			return this.update(jobId, (current) => ({
+				...current,
+				revision: current.revision + 1,
+				ciReceipt,
+				pendingAction: undefined,
+				updatedAt: now(),
+				lastEvent: {
+					type: "CI_HEALTH_VERIFIED",
+					class: "PROGRESS",
+					at: now(),
+					message: `ci=${result.health} head=${result.headSha}`,
+				},
+			}));
+		}
+		if (result.health === "PENDING") {
+			const message = `Required PR checks are still pending for exact head ${result.headSha}`;
+			return this.update(jobId, (current) => ({
+				...withState(current, "FAILED_RETRYABLE"),
+				ciReceipt,
+				mergeAuthorization: undefined,
+				pendingAction: {
+					kind: "RETRY_REQUIRED",
+					message,
+					expectedHeadSha: result.headSha,
+					resumeState: "READY_FOR_MERGE_AUTHORIZATION",
+				},
+				lastEvent: { type: "CI_HEALTH_PENDING", class: "ACTION_REQUIRED", at: now(), message },
+			}));
+		}
+		const kind = result.health === "FAIL" ? ("CI_HEALTH_FAILED" as const) : ("CI_HEALTH_UNKNOWN" as const);
+		const message =
+			result.health === "FAIL"
+				? `Required PR checks failed for exact head ${result.headSha}`
+				: `Required PR check policy/health is unknown for exact head ${result.headSha}`;
+		return this.update(jobId, (current) => ({
+			...withState(current, "BLOCKED"),
+			ciReceipt,
+			mergeAuthorization: undefined,
+			pendingAction: {
+				kind,
+				message,
+				expectedHeadSha: result.headSha,
+				resumeState: "READY_FOR_MERGE_AUTHORIZATION",
+			},
+			lastEvent: { type: kind, class: "ACTION_REQUIRED", at: now(), message },
+		}));
+	}
+
+	/** Move a fully reviewed, exact-head healthy PR into the explicit user-authorization gate. */
 	requestMergeAuthorization(jobId: string): WorkflowJob {
 		const current = this.status(jobId);
 		if (current.state !== "READY_FOR_MERGE_AUTHORIZATION") {
@@ -697,19 +810,25 @@ export class WorkflowEngine {
 			throw new WorkflowEngineError("merge authorization requires both reviewers to PASS the current exact PR head");
 		}
 		const pr = current.pullRequest;
+		if (!this.ciReceiptMatches(current, current.ciReceipt) || !["PASS", "NONE"].includes(current.ciReceipt.status)) {
+			throw new WorkflowEngineError(
+				"merge authorization requires an acceptable CI receipt for the current exact PR head",
+			);
+		}
+		const ci = current.ciReceipt.status;
 		return this.update(jobId, (state) => ({
 			...withState(state, "AWAITING_MERGE_AUTHORIZATION"),
 			pendingAction: {
 				kind: "MERGE_AUTHORIZATION_REQUIRED",
 				expectedHeadSha: pr.headSha,
-				message: `Merge authorization required: pr=${pr.url} reviews=PASS/PASS ci=unknown expected_head=${pr.headSha}`,
+				message: `Merge authorization required: pr=${pr.url} reviews=PASS/PASS ci=${ci} expected_head=${pr.headSha}`,
 			},
 			mergeAuthorization: undefined,
 			lastEvent: {
 				type: "MERGE_AUTHORIZATION_REQUIRED",
 				class: "ACTION_REQUIRED",
 				at: now(),
-				message: `pr=${pr.url} reviews=PASS/PASS ci=unknown expected_head=${pr.headSha}`,
+				message: `pr=${pr.url} reviews=PASS/PASS ci=${ci} expected_head=${pr.headSha}`,
 			},
 		}));
 	}
@@ -738,6 +857,10 @@ export class WorkflowEngine {
 				"READY_FOR_MERGE_AUTHORIZATION",
 			);
 		}
+		const health = await this.runPrHealthCheck(jobId, signal);
+		if (health.state !== "MERGING") return health;
+		if (!this.ciReceiptMatches(health, health.ciReceipt) || !["PASS", "NONE"].includes(health.ciReceipt.status))
+			return this.writerBlocked(jobId, "PR health is no longer merge-eligible", "READY_FOR_MERGE_AUTHORIZATION");
 		const control = createWorkflowControlMessage("MERGE_AUTHORIZED", jobId, authorization.headSha);
 		const result = await this.writer.runControl({
 			sessionId: job.writerConversation.sessionId,
