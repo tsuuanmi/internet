@@ -5,7 +5,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -20,15 +20,5 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Sync generated dist on branch push
-        if: github.event_name == 'push'
-        run: |
-          if ! git diff --quiet -- dist; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add dist
-            git commit -m "build: sync generated dist"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
       - run: git diff --exit-code -- dist
       - run: npm run verify-package
