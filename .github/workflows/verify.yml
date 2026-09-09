@@ -20,15 +20,12 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Capture generated dist patch
-        run: |
-          git diff -- dist > dist.patch
-          git status --short -- dist > dist-status.txt
+      - run: git status --short -- dist > dist-status.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: generated-dist-patch
+          name: generated-dist
           path: |
-            dist.patch
+            dist
             dist-status.txt
       - run: git diff --exit-code -- dist
       - run: npm run verify-package
