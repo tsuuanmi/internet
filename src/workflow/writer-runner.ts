@@ -4,7 +4,7 @@ import {
 	workflowWriterBranch,
 } from "#internet/workflow/approval-policy";
 import type { WorkflowControlMessage } from "#internet/workflow/control";
-import type { WorkflowJob, WorkflowPullRequestReceipt } from "#internet/workflow/types";
+import type { WorkflowCiStatus, WorkflowJob, WorkflowPullRequestReceipt } from "#internet/workflow/types";
 
 export interface WorkflowWriterRunner {
 	deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void>;
@@ -40,6 +40,14 @@ export interface WorkflowWriterControlRequest {
 export type WorkflowWriterResult =
 	| { readonly status: "PR_OPEN"; readonly pullRequest: WorkflowPullRequestReceipt }
 	| {
+			readonly status: "PR_HEALTH";
+			readonly repository: string;
+			readonly number: number;
+			readonly url: string;
+			readonly headSha: string;
+			readonly health: WorkflowCiStatus;
+	  }
+	| {
 			readonly status: "MERGED";
 			readonly repository: string;
 			readonly number: number;
@@ -71,6 +79,29 @@ function controlPrompt(job: WorkflowJob, control: WorkflowControlMessage): strin
 			"Return exactly one JSON object and no markdown or surrounding prose.",
 			'On success: {"status":"PR_OPEN","repository":"owner/repo or repository URL","number":123,"url":"https://github.com/owner/repo/pull/123","base":"base-ref","head":"head-ref","headSha":"40-lowercase-hex"}',
 			'On block: {"status":"BLOCKED","message":"concise reason"}',
+		].join("\n");
+	}
+	if (control.kind === "CHECK_PR_HEALTH") {
+		if (pullRequest === undefined || control.expectedHeadSha === undefined) {
+			throw new Error("CHECK_PR_HEALTH requires a persisted PR and expected head SHA");
+		}
+		return [
+			"You are the workflow writer/executor. This is a trusted read-only workflow control message.",
+			`Control: ${control.kind}`,
+			`Workflow job: ${job.jobId}`,
+			`Target repository: ${job.repository}`,
+			`Pull request: ${pullRequest.url}`,
+			`PR number: ${pullRequest.number}`,
+			`Required exact head SHA: ${control.expectedHeadSha}`,
+			"",
+			"Read the actual current pull request and GitHub check/status information. Do not modify files, branches, PR metadata, checks, settings, or merge state.",
+			"First verify repository, PR number, and exact current head SHA. If the live head differs, return BLOCKED.",
+			"Classify required merge health deterministically as: PASS when configured required checks/statuses are all successful; FAIL when any required check/status is failed/cancelled/timed out; PENDING when required checks/statuses are still queued/in progress; NONE only when the repository/PR truly has no required checks/statuses configured; UNKNOWN when you cannot determine required-check policy or health reliably.",
+			"Do not infer PASS from a green-looking page if required-check policy cannot be established. Do not treat NONE as PASS unless absence of required checks is actually established.",
+			"",
+			"Return exactly one JSON object and no markdown or surrounding prose.",
+			'On success: {"status":"PR_HEALTH","repository":"owner/repo or repository URL","number":123,"url":"https://github.com/owner/repo/pull/123","headSha":"40-lowercase-hex","health":"PASS|FAIL|PENDING|NONE|UNKNOWN"}',
+			'On authority conflict: {"status":"BLOCKED","message":"concise reason"}',
 		].join("\n");
 	}
 	if (control.kind === "MERGE_AUTHORIZED") {
@@ -141,6 +172,26 @@ export function parseWorkflowWriterResult(text: string): WorkflowWriterResult {
 			throw new Error("workflow writer BLOCKED result requires a message");
 		}
 		return { status: "BLOCKED", message: value.message };
+	}
+	if (value.status === "PR_HEALTH") {
+		if (typeof value.repository !== "string" || value.repository.trim() === "")
+			throw new Error("writer health repository is required");
+		if (typeof value.number !== "number" || !Number.isSafeInteger(value.number) || value.number < 1)
+			throw new Error("writer health PR number is invalid");
+		if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url))
+			throw new Error("writer health PR URL is invalid");
+		if (typeof value.headSha !== "string" || !/^[0-9a-f]{40}$/u.test(value.headSha))
+			throw new Error("writer health head SHA is invalid");
+		if (!["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"].includes(String(value.health)))
+			throw new Error("writer health status is invalid");
+		return {
+			status: "PR_HEALTH",
+			repository: value.repository,
+			number: value.number,
+			url: value.url,
+			headSha: value.headSha,
+			health: value.health as WorkflowCiStatus,
+		};
 	}
 	if (value.status === "MERGED") {
 		if (typeof value.repository !== "string" || value.repository.trim() === "")

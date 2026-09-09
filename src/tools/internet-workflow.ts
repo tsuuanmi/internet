@@ -70,6 +70,9 @@ function project(job: WorkflowJob) {
 					pendingAction: job.pendingAction.kind,
 					pendingMessage: job.pendingAction.message,
 				}),
+		...(job.ciReceipt === undefined
+			? {}
+			: { ciStatus: job.ciReceipt.status, ciHeadSha: job.ciReceipt.headSha, ciCheckedAt: job.ciReceipt.checkedAt }),
 		...(job.mergeAuthorization === undefined ? {} : { authorizedHeadSha: job.mergeAuthorization.headSha }),
 		...(job.mergeReceipt === undefined
 			? {}
@@ -125,6 +128,9 @@ export function defineInternetWorkflowTool(
 					prHeadSha: { type: "string" },
 					pendingAction: { type: "string" },
 					pendingMessage: { type: "string" },
+					ciStatus: { type: "string" },
+					ciHeadSha: { type: "string" },
+					ciCheckedAt: { type: "string" },
 					authorizedHeadSha: { type: "string" },
 					mergedSha: { type: "string" },
 					mergeExecutor: { type: "string" },
@@ -173,8 +179,10 @@ export function defineInternetWorkflowTool(
 				const expectedHeadSha = typeof args.expectedHeadSha === "string" ? args.expectedHeadSha : undefined;
 				let job: WorkflowJob;
 				if (operation === "status") job = engine.status(args.jobId);
-				else if (operation === "request_merge") job = engine.requestMergeAuthorization(args.jobId);
-				else if (operation === "merge") job = await engine.runWriterMerge(args.jobId, exec.signal);
+				else if (operation === "request_merge") {
+					job = await engine.runPrHealthCheck(args.jobId, exec.signal);
+					if (job.state === "READY_FOR_MERGE_AUTHORIZATION") job = engine.requestMergeAuthorization(args.jobId);
+				} else if (operation === "merge") job = await engine.runWriterMerge(args.jobId, exec.signal);
 				else if (operation === "cancel") job = await driver.cancel(args.jobId);
 				else if (operation === "continue") {
 					job = engine.continue(args.jobId);

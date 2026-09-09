@@ -469,6 +469,8 @@ Unexpected driver/orchestration errors must become a durable retry-required acti
 
 ## P12 — Exact-head CI / PR health gate
 
+**Status:** implementation in progress on `impl/p12-ci-health-gate`.
+
 **ROI:** very high  
 **Risk:** medium  
 **Dependency:** P11 automatic driver.

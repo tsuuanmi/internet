@@ -276,3 +276,7 @@ P11 is now the highest-ROI next phase. A deterministic `WorkflowDriver` advances
 The driver deduplicates active work by job ID, resumes safe runnable jobs discovered from durable storage after plugin restart, leaves action-required/human-authority states stopped, and keeps a rejected merge request quiet until explicitly requested again. Unexpected driver errors become durable retry-required actions with an exact resume state. Exact-head approval resumes MERGING automatically; cancellation aborts and settles an active driver turn before persisting CANCELLED.
 
 Intentional plugin shutdowns preserve runnable durable states: aborted research/review turns propagate the abort instead of being recorded as user-facing retry failures. This allows startup discovery to rerun only incomplete lanes after restart.
+
+## P12 exact-head PR health gate
+
+The merge path now models PR health as an authoritative exact-head receipt instead of the prior `ci=unknown` placeholder. The Website writer performs a read-only GitHub check-policy/status inspection and returns one deterministic `PASS`, `FAIL`, `PENDING`, `NONE`, or `UNKNOWN` classification bound to repository + PR + exact head SHA. `PASS` and verified `NONE` are merge-eligible; failures/unknown state stop with action-required context; pending checks are retryable. The writer re-checks the exact authorized head immediately before merge, so an old green receipt cannot authorize a changed or newly unhealthy head.
