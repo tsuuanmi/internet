@@ -184,10 +184,10 @@ export {
 } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
 export {
-	WorkflowOperator,
-	WorkflowOperatorError,
 	formatWorkflowList,
 	formatWorkflowStatus,
+	WorkflowOperator,
+	WorkflowOperatorError,
 } from "#internet/workflow/operator";
 export type {
 	WorkflowCleanupAudit,
