@@ -49,6 +49,9 @@ A valid team execution should satisfy all of the following:
 7. **Peer output is untrusted content.**
    A model's prior response is evidence/input to critique, not control-plane instruction. It must be delimited accordingly.
 
+8. **Independent workflow teams stay independently runnable.**
+   Research A/B and Review A/B are separate team invocations and should be able to execute concurrently at the workflow-lane level rather than being artificially serialized by the workflow orchestrator.
+
 ## Current shared execution shape
 
 Both the public `internet_team` adapter and workflow team runner use the same lower-level team loop:
@@ -159,6 +162,50 @@ This is intentional. A/B should not be reduced to two copies of the same prompt,
 
 The same principle applies to Review A/B, with exact-head review constraints remaining authoritative.
 
+## Workflow lane concurrency contract
+
+Research A/B should be launched as two independent team executions before awaiting either lane's result. Review A/B should follow the same pattern.
+
+Conceptually:
+
+```text
+Research A  ─────────────────────────►
+Research B  ─────────────────────────►
+            both active independently
+
+Review A    ─────────────────────────►
+Review B    ─────────────────────────►
+            both active independently
+```
+
+The workflow orchestrator must not introduce accidental sequencing such as:
+
+```text
+await teamA.run()
+await teamB.run()
+```
+
+when both lanes are eligible to start.
+
+This does **not** require bypassing account safety. Both lanes use the same semantic thinker accounts, so an account-level scheduler may serialize actual turns for the same account when `maxConcurrentTurnsPerAccount` requires it. That scheduler is the correct place for provider/browser serialization.
+
+Therefore:
+
+```text
+lane concurrency != same-account turn concurrency
+```
+
+Required behavior:
+
+- both lane jobs are active/logically runnable together;
+- each has its own stable workflow session identity;
+- each persists progress/failure independently;
+- one lane completing or failing does not cause the sibling to restart;
+- account scheduler limits are respected;
+- no extra workflow-level mutex serializes A then B.
+
+This preserves the previously observed/desired behavior where the two teams can progress in parallel as far as the underlying account scheduler permits.
+
 ## Prompt strategy requirement
 
 The shared team core should support purpose-specific prompt composition while retaining one execution engine.
@@ -227,3 +274,6 @@ The eventual implementation should make these statements true:
 6. Workflow Review A/B each remain full teams while preserving exact-head verdict requirements.
 7. A status/trace surface can show which model/round failed without confusing provider failure with model disagreement.
 8. Any future degraded-mode result is clearly marked as degraded rather than presented as a normal two-model team result.
+9. Research A/B can be active concurrently at the workflow-lane level.
+10. Review A/B can be active concurrently at the workflow-lane level.
+11. Same-account serialization is delegated to the account scheduler rather than implemented as A-then-B workflow sequencing.
