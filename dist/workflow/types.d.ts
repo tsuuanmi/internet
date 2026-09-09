@@ -62,7 +62,7 @@ export interface WorkflowMergeReceipt {
     readonly mergedAt: string;
 }
 export interface WorkflowPendingAction {
-    readonly kind: "MERGE_AUTHORIZATION_REQUIRED" | "WRITER_BLOCKED" | "UNKNOWN_CONFIRMATION" | "REVIEW_LIMIT_REACHED" | "ACCOUNT_REAUTH_REQUIRED";
+    readonly kind: "MERGE_AUTHORIZATION_REQUIRED" | "WRITER_BLOCKED" | "UNKNOWN_CONFIRMATION" | "REVIEW_LIMIT_REACHED" | "ACCOUNT_REAUTH_REQUIRED" | "RETRY_REQUIRED";
     readonly message: string;
     readonly expectedHeadSha?: string;
     /** State to resume after a manually handled non-terminal exception. */

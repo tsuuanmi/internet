@@ -145,7 +145,7 @@ export function defineWorkflowCommand(dependencies) {
     const runGit = dependencies.runGit ?? runGitCommand;
     return {
         name: "workflow",
-        description: "start a durable reviewed implementation workflow",
+        description: "start an automatically driven durable reviewed implementation workflow",
         input: { hint: "<objective>" },
         async handler(invocation) {
             const objective = invocation.rawInput.trim();
@@ -162,9 +162,10 @@ export function defineWorkflowCommand(dependencies) {
                     baseRevision: repository.revision,
                     ownerSessionId: String(invocation.agent.id),
                 });
+                dependencies.driver.enqueue(job.jobId);
                 return {
                     kind: "success",
-                    text: `Workflow ${job.jobId} created for ${repository.url} at ${repository.revision.slice(0, 12)}.`,
+                    text: `Workflow ${job.jobId} started for ${repository.url} at ${repository.revision.slice(0, 12)}.`,
                 };
             }
             catch (error) {

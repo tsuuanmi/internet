@@ -425,9 +425,71 @@ The existing scoped approval suite plus P9 merge-gate tests cover exact writer a
 
 The account catalog, storage, stale-write, reauthentication, scheduler, browser-runtime, and workflow routing tests collectively cover thinker/writer isolation even when both ChatGPT accounts share the same provider implementation. P10 strict job parsing additionally rejects altered writer/lane session identities during restart.
 
+## P11 — Automatic workflow driver
+
+**Status:** implemented on `impl/p11-workflow-driver`; pending review/merge after P10.
+
+**ROI:** critical  
+**Risk:** medium-high  
+**Goal:** make `/workflow <task>` a real hand-off: create one durable job, drive it automatically to the next human/action-required boundary, and resume safe in-flight work after plugin restart.
+
+### 46. Add deterministic `WorkflowDriver`
+
+Drive only code-owned state transitions; do not add another LLM orchestration layer. The driver should advance runnable states through existing `WorkflowEngine` primitives, deduplicate concurrent runs by `jobId`, and stop at explicit human/error boundaries.
+
+Target automatic path:
+
+```text
+CREATED
+-> research
+-> exact research handoffs
+-> writer implementation
+-> PR_OPEN
+-> review
+-> exact review handoffs
+-> remediation/re-review as needed
+-> READY_FOR_MERGE_AUTHORIZATION
+-> request exact-head merge authorization
+-> AWAITING_MERGE_AUTHORIZATION
+```
+
+After exact-head approval, the driver resumes `MERGING -> DONE`. It must never bypass `BLOCKED`, `UNKNOWN_CONFIRMATION`, retry-required, review-limit, or merge-authorization boundaries.
+
+### 47. Make `/workflow` and `internet_workflow` enqueue execution
+
+`/workflow <task>` and tool `start` should create the durable job and immediately enqueue it. `continue` should resume the exact persisted `resumeState`; `approve` should enqueue the authorized merge; `cancel` should abort/settle any active driver turn before persisting `CANCELLED`. `reject` must not immediately re-request merge authorization.
+
+### 48. Add durable active-job discovery and restart resume
+
+Add strict job-store enumeration and resume only states that can safely continue. Restart recovery must not wake jobs waiting on user authority or known action-required failures. A rejected merge authorization in `READY_FOR_MERGE_AUTHORIZATION` must remain quiet after restart until explicitly requested again.
+
+### 49. Add driver failure boundary and tests
+
+Unexpected driver/orchestration errors must become a durable retry-required action with an explicit resume state rather than leaving a job looking active forever. Add tests for state driving, duplicate enqueue, restart during research/review/writer work, review retry stop, merge rejection quietness, approval-to-merge continuation, cancellation ordering, and driver disposal.
+
+## P12 — Exact-head CI / PR health gate
+
+**ROI:** very high  
+**Risk:** medium  
+**Dependency:** P11 automatic driver.
+
+### 50. Persist exact-head CI/check receipt
+
+Bind PR health to repository + PR + exact head SHA. Distinguish `PASS`, `FAIL`, `PENDING`, `NONE`, and `UNKNOWN`; do not collapse repositories with no configured checks into failure.
+
+### 51. Gate merge authorization on current PR health
+
+Required checks failing or pending must block/wait. `NONE` may be merge-eligible when no checks are configured. `UNKNOWN` must be surfaced explicitly to the user rather than silently treated as pass. A changed head invalidates the old CI receipt exactly like review and merge authorization.
+
+### 52. Re-check health immediately before merge
+
+The authorized merge path should verify that the exact authorized head still has acceptable PR/check health immediately before merge.
+
+## P13 — Operations / retention
+
 ### 45. Audit/retention/cleanup policy — ROI: medium
 
-Define explicit retention windows, audit metadata, safe cleanup eligibility, and operator-visible cleanup commands only after correctness-critical restart/idempotency hardening is stable. No automatic deletion should be introduced implicitly.
+Define explicit retention windows, audit metadata, safe terminal-job cleanup eligibility, and operator-visible cleanup commands after the automatic driver and CI gate are stable. Start with explicit operator actions only; no implicit automatic deletion.
 
 ## Defer until needed
 

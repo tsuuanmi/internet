@@ -1,4 +1,5 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
+import type { WorkflowDriver } from "#internet/workflow/driver";
 import type { WorkflowEngine } from "#internet/workflow/engine";
 import { WorkflowEngineError } from "#internet/workflow/engine";
 import type { WorkflowJob } from "#internet/workflow/types";
@@ -78,11 +79,14 @@ function project(job: WorkflowJob) {
 }
 
 /** Define the deterministic workflow control-plane tool. */
-export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<typeof defineTool> {
+export function defineInternetWorkflowTool(
+	engine: WorkflowEngine,
+	driver: Pick<WorkflowDriver, "enqueue" | "cancel">,
+): ReturnType<typeof defineTool> {
 	return defineTool({
 		name: "internet_workflow",
 		description:
-			"Create and control durable deterministic coding workflow jobs. start persists authoritative repository/objective state; status/approve/reject/cancel/continue operate by job ID.",
+			"Create and control automatically driven durable coding workflow jobs. start persists authoritative state and enqueues execution; status/approve/reject/cancel/continue operate by job ID.",
 		parameters: {
 			operation: {
 				type: "string",
@@ -162,24 +166,23 @@ export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<t
 						baseRevision: args.baseRevision,
 						ownerSessionId: String(exec.agent?.id ?? ""),
 					});
+					driver.enqueue(job.jobId);
 					return { ok: true, operation, ...project(job) };
 				}
 				if (typeof args.jobId !== "string") return { ok: false, operation, message: `${operation} requires jobId` };
 				const expectedHeadSha = typeof args.expectedHeadSha === "string" ? args.expectedHeadSha : undefined;
-				const job =
-					operation === "status"
-						? engine.status(args.jobId)
-						: operation === "request_merge"
-							? engine.requestMergeAuthorization(args.jobId)
-							: operation === "merge"
-								? await engine.runWriterMerge(args.jobId, exec.signal)
-								: operation === "cancel"
-									? engine.cancel(args.jobId)
-									: operation === "continue"
-										? engine.continue(args.jobId)
-										: operation === "approve"
-											? engine.approve({ jobId: args.jobId, expectedHeadSha })
-											: engine.reject({ jobId: args.jobId, expectedHeadSha });
+				let job: WorkflowJob;
+				if (operation === "status") job = engine.status(args.jobId);
+				else if (operation === "request_merge") job = engine.requestMergeAuthorization(args.jobId);
+				else if (operation === "merge") job = await engine.runWriterMerge(args.jobId, exec.signal);
+				else if (operation === "cancel") job = await driver.cancel(args.jobId);
+				else if (operation === "continue") {
+					job = engine.continue(args.jobId);
+					driver.enqueue(job.jobId);
+				} else if (operation === "approve") {
+					job = engine.approve({ jobId: args.jobId, expectedHeadSha });
+					driver.enqueue(job.jobId);
+				} else job = engine.reject({ jobId: args.jobId, expectedHeadSha });
 				return { ok: true, operation, ...project(job) };
 			} catch (error) {
 				if (error instanceof WorkflowEngineError) return { ok: false, operation, message: error.message };

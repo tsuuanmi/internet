@@ -8,6 +8,7 @@ import { defineInternetChatTool } from "#internet/tools/internet-chat";
 import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
+import { WorkflowDriver } from "#internet/workflow/driver";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { DshWorkflowEventSink } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
@@ -36,7 +37,8 @@ const INTERNET_TEAM_GUIDANCE = [
     "internet_team cannot search the web or read files. Paste all source material into task, and use web_search or web_fetch before the debate when current information is required.",
 ].join(" ");
 const INTERNET_WORKFLOW_GUIDANCE = [
-    "Use internet_workflow as the deterministic control-plane surface for durable coding jobs. /workflow <task> is the normal user entry point and creates the same durable engine job after resolving the current Git repository and exact revision.",
+    "Use internet_workflow as the deterministic control-plane surface for durable coding jobs. /workflow <task> is the normal user entry point: it resolves the current Git repository and exact revision, creates the durable job, and immediately enqueues deterministic background execution.",
+    "WorkflowDriver advances runnable engine states automatically through research, exact handoffs, writer implementation, PR review/remediation, and the explicit merge-authorization boundary. It is code-owned orchestration, not another LLM layer. Safe in-flight states are rediscovered after plugin restart; action-required and rejected-merge states remain stopped until explicit user/operator action.",
     "Workflow state, account routing, team lane identities, writer conversation identity, handoff receipts, PR receipt, review cycle, pending action, and compact last event are persisted outside model context.",
     "Workflow-owned team execution calls the lower-level team runtime directly with deterministic prompts and per-job lanes; no free-form child agent is needed merely to call internet_team.",
     "Research finals are materialized as exact SHA-256-bound durable handoffs. Data-plane payloads are separate from trusted control messages, and START_IMPLEMENTATION is gated on delivery of both research handoffs.",
@@ -67,9 +69,13 @@ export function apply(ctx, rawConfig) {
         ctx.systemPrompt?.section?.({ name: "tool:internet_chat", order: 120, text: INTERNET_CHAT_GUIDANCE });
     }
     if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker") && accounts.has("chatgpt-writer")) {
-        const workflowEngine = new WorkflowEngine(new WorkflowJobStore(config.dataDir), new BrowserWorkflowTeamRunner(manager, config), new WorkflowTeamPromptBuilder(), new WorkflowHandoffStore(config.dataDir), new BrowserWorkflowWriterRunner(manager), 3, new DshWorkflowEventSink(ctx.agents));
-        ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine }));
-        ctx.tools.register(defineInternetWorkflowTool(workflowEngine));
+        const workflowJobs = new WorkflowJobStore(config.dataDir);
+        const workflowEngine = new WorkflowEngine(workflowJobs, new BrowserWorkflowTeamRunner(manager, config), new WorkflowTeamPromptBuilder(), new WorkflowHandoffStore(config.dataDir), new BrowserWorkflowWriterRunner(manager), 3, new DshWorkflowEventSink(ctx.agents));
+        const workflowDriver = new WorkflowDriver(workflowEngine, workflowJobs);
+        ctx.effect(() => () => workflowDriver.dispose());
+        workflowDriver.resumeActive();
+        ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine, driver: workflowDriver }));
+        ctx.tools.register(defineInternetWorkflowTool(workflowEngine, workflowDriver));
         ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
         ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
         ctx.systemPrompt?.section?.({ name: "tool:internet_team", order: 122, text: INTERNET_TEAM_GUIDANCE });
@@ -83,6 +89,7 @@ export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
+export { WorkflowDriver } from "#internet/workflow/driver";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
 export { DshWorkflowEventSink, formatWorkflowEvent } from "#internet/workflow/events";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";

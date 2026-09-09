@@ -4,8 +4,12 @@ export type GitRunner = (cwd: string, args: readonly string[], signal: AbortSign
 export interface WorkflowStarter {
     start(input: StartWorkflowInput): WorkflowJob;
 }
+export interface WorkflowEnqueuer {
+    enqueue(jobId: string): void;
+}
 export interface WorkflowCommandDependencies {
     readonly engine: WorkflowStarter;
+    readonly driver: WorkflowEnqueuer;
     readonly runGit?: GitRunner;
 }
 /** Convert a standard public Git remote into a credential-free HTTPS repository URL. */

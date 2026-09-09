@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAccountDefinition, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
@@ -26,6 +26,22 @@ export class WorkflowJobStore {
         ensurePrivateDirectory(this.jobsDir);
         writePrivateJson(path, job);
         return job;
+    }
+    list() {
+        if (!existsSync(this.jobsDir))
+            return [];
+        const stat = lstatSync(this.jobsDir);
+        if (!stat.isDirectory())
+            throw new WorkflowJobStoreError("workflow jobs path is not a directory");
+        return readdirSync(this.jobsDir)
+            .filter((name) => /^[0-9a-f]{32}\.json$/u.test(name))
+            .sort()
+            .map((name) => {
+            const job = this.get(name.slice(0, -5));
+            if (job === undefined)
+                throw new WorkflowJobStoreError(`workflow job ${name} disappeared during enumeration`);
+            return job;
+        });
     }
     get(jobId) {
         const path = this.pathFor(jobId);
@@ -252,6 +268,7 @@ function assertPendingAction(value) {
         "UNKNOWN_CONFIRMATION",
         "REVIEW_LIMIT_REACHED",
         "ACCOUNT_REAUTH_REQUIRED",
+        "RETRY_REQUIRED",
     ].includes(String(value.kind)))
         throw new Error("invalid pending action kind");
     if (typeof value.message !== "string" || value.message.trim() === "")
@@ -312,6 +329,13 @@ export function parseWorkflowJob(value) {
     }
     assertMergeAuthorization(value.mergeAuthorization);
     assertMergeReceipt(value.mergeReceipt);
+    if (value.state === "FAILED_RETRYABLE") {
+        if (!isRecord(value.pendingAction) ||
+            value.pendingAction.kind !== "RETRY_REQUIRED" ||
+            value.pendingAction.resumeState === undefined) {
+            throw new Error("FAILED_RETRYABLE workflow requires an explicit retry action and resume state");
+        }
+    }
     if (value.mergeAuthorization !== undefined) {
         const authorization = value.mergeAuthorization;
         if (!isRecord(authorization))

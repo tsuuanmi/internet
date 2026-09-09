@@ -276,6 +276,7 @@ export class WorkflowEngine {
 						signal,
 					});
 				} catch (error) {
+					if (signal?.aborted) throw error;
 					result = {
 						ok: false,
 						error: error instanceof Error ? error.message : String(error),
@@ -289,15 +290,17 @@ export class WorkflowEngine {
 
 		return this.update(jobId, (current) => {
 			const completed = allCompleted(current.teamRuns.research);
+			const message = "One or more research lanes failed; retry runs only incomplete lanes.";
 			return {
 				...withState(current, completed ? "RESEARCH_HANDOFFS_DELIVERING" : "FAILED_RETRYABLE"),
+				pendingAction: completed
+					? undefined
+					: { kind: "RETRY_REQUIRED" as const, message, resumeState: "RESEARCH_RUNNING" as const },
 				lastEvent: {
 					type: completed ? "RESEARCH_COMPLETED" : "RESEARCH_RETRY_REQUIRED",
 					class: completed ? "INTERNAL" : "ACTION_REQUIRED",
 					at: now(),
-					...(completed
-						? {}
-						: { message: "One or more research lanes failed; retry runs only incomplete lanes." }),
+					...(completed ? {} : { message }),
 				},
 			};
 		});
@@ -490,6 +493,7 @@ export class WorkflowEngine {
 						}
 					}
 				} catch (error) {
+					if (signal?.aborted) throw error;
 					result = {
 						ok: false,
 						error: error instanceof Error ? error.message : String(error),
@@ -505,13 +509,17 @@ export class WorkflowEngine {
 			const completed =
 				allCompleted(current.teamRuns.review) &&
 				current.teamRuns.review.every((run) => run.result?.reviewedHeadSha === current.pullRequest?.headSha);
+			const message = "One or more review lanes failed; rerun only incomplete lanes.";
 			return {
-				...withState(current, completed ? "REVIEW_HANDOFFS_DELIVERING" : "REVIEW_RUNNING"),
+				...withState(current, completed ? "REVIEW_HANDOFFS_DELIVERING" : "FAILED_RETRYABLE"),
+				pendingAction: completed
+					? undefined
+					: { kind: "RETRY_REQUIRED" as const, message, resumeState: "REVIEW_RUNNING" as const },
 				lastEvent: {
 					type: completed ? "REVIEW_COMPLETED" : "REVIEW_RETRY_REQUIRED",
 					class: completed ? "INTERNAL" : "ACTION_REQUIRED",
 					at: now(),
-					...(completed ? {} : { message: "One or more review lanes failed; rerun only incomplete lanes." }),
+					...(completed ? {} : { message }),
 				},
 			};
 		});
@@ -861,6 +869,15 @@ export class WorkflowEngine {
 		return updated;
 	}
 
+	markRetryRequired(jobId: string, message: string, resumeState: WorkflowState): WorkflowJob {
+		if (message.trim() === "") throw new WorkflowEngineError("retry-required message is required");
+		return this.update(jobId, (current) => ({
+			...withState(current, "FAILED_RETRYABLE"),
+			pendingAction: { kind: "RETRY_REQUIRED", message, resumeState },
+			lastEvent: { type: "DRIVER_RETRY_REQUIRED", class: "ACTION_REQUIRED", at: now(), message },
+		}));
+	}
+
 	cancel(jobId: string): WorkflowJob {
 		return this.update(jobId, (current) => {
 			if (TERMINAL_WORKFLOW_STATES.has(current.state))
@@ -873,9 +890,6 @@ export class WorkflowEngine {
 		return this.update(jobId, (current) => {
 			if (!new Set<WorkflowState>(["BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE"]).has(current.state)) {
 				throw new WorkflowEngineError(`workflow job ${jobId} cannot continue from ${current.state}`);
-			}
-			if (current.state === "FAILED_RETRYABLE") {
-				return { ...withState(current, "RESEARCH_RUNNING"), pendingAction: undefined };
 			}
 			const resumeState = current.pendingAction?.resumeState;
 			if (resumeState === undefined)

@@ -34,6 +34,8 @@ export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
+export type { WorkflowDriverEngine } from "#internet/workflow/driver";
+export { WorkflowDriver } from "#internet/workflow/driver";
 export type { WorkflowControlStep } from "#internet/workflow/engine";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
 export type { WorkflowAgentRegistry, WorkflowEventSink, WorkflowLocalAgent } from "#internet/workflow/events";

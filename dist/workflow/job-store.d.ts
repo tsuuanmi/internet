@@ -8,6 +8,7 @@ export declare class WorkflowJobStore {
     constructor(dataDir: string);
     pathFor(jobId: string): string;
     create(job: WorkflowJob): WorkflowJob;
+    list(): readonly WorkflowJob[];
     get(jobId: string): WorkflowJob | undefined;
     update(jobId: string, mutate: (current: WorkflowJob) => WorkflowJob): WorkflowJob;
 }

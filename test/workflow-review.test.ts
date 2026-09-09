@@ -145,8 +145,9 @@ describe("workflow PR review/remediation", () => {
 			writer,
 		);
 		const reviewed = await engine.runReview(jobId);
-		expect(reviewed.state).toBe("REVIEW_RUNNING");
+		expect(reviewed.state).toBe("FAILED_RETRYABLE");
 		expect(reviewed.teamRuns.review.some((run) => run.status === "failed")).toBe(true);
+		expect(reviewed.pendingAction).toMatchObject({ kind: "RETRY_REQUIRED", resumeState: "REVIEW_RUNNING" });
 	});
 
 	it("blocks when remediation changes PR identity or does not advance the head", async () => {

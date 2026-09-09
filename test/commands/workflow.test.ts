@@ -61,6 +61,10 @@ function engine() {
 	return { start: vi.fn((input: StartWorkflowInput) => fakeJob(input)) };
 }
 
+function driver() {
+	return { enqueue: vi.fn() };
+}
+
 function invocation(rawInput: string, cwd = "/repo") {
 	return {
 		agent: {
@@ -76,12 +80,13 @@ describe("defineWorkflowCommand", () => {
 	it("resolves Git context and creates one durable engine job", async () => {
 		const runGit = vi.fn(createRunner());
 		const workflow = engine();
-		const command = defineWorkflowCommand({ engine: workflow, runGit });
+		const enqueuer = driver();
+		const command = defineWorkflowCommand({ engine: workflow, driver: enqueuer, runGit });
 		const input = invocation("  Correct the login redirect.  ");
 
 		await expect(command.handler(input as never)).resolves.toEqual({
 			kind: "success",
-			text: `Workflow ${JOB_ID} created for https://github.com/example/signal at 0123456789ab.`,
+			text: `Workflow ${JOB_ID} started for https://github.com/example/signal at 0123456789ab.`,
 		});
 		expect(runGit).toHaveBeenCalledWith("/repo", ["rev-parse", "--show-toplevel"], input.signal);
 		expect(runGit).toHaveBeenCalledWith("/repo", ["remote", "get-url", "--", "origin"], input.signal);
@@ -91,12 +96,13 @@ describe("defineWorkflowCommand", () => {
 			baseRevision: REVISION,
 			ownerSessionId: "1-1",
 		});
+		expect(enqueuer.enqueue).toHaveBeenCalledWith(JOB_ID);
 	});
 
 	it("does not inspect Git or start a job without an objective", async () => {
 		const runGit = vi.fn(createRunner());
 		const workflow = engine();
-		const command = defineWorkflowCommand({ engine: workflow, runGit });
+		const command = defineWorkflowCommand({ engine: workflow, driver: driver(), runGit });
 		const input = invocation("  ");
 
 		await expect(command.handler(input as never)).resolves.toEqual({
@@ -110,7 +116,7 @@ describe("defineWorkflowCommand", () => {
 	it("requires the session working directory", async () => {
 		const runGit = vi.fn(createRunner());
 		const workflow = engine();
-		const command = defineWorkflowCommand({ engine: workflow, runGit });
+		const command = defineWorkflowCommand({ engine: workflow, driver: driver(), runGit });
 		const input = invocation("Fix it", "");
 
 		await expect(command.handler(input as never)).resolves.toEqual({
@@ -125,6 +131,7 @@ describe("defineWorkflowCommand", () => {
 		const workflow = engine();
 		const command = defineWorkflowCommand({
 			engine: workflow,
+			driver: driver(),
 			runGit: createRunner({ "rev-parse --show-toplevel": new Error("not a git repository") }),
 		});
 		const input = invocation("Fix it");
@@ -140,6 +147,7 @@ describe("defineWorkflowCommand", () => {
 		const workflow = engine();
 		const command = defineWorkflowCommand({
 			engine: workflow,
+			driver: driver(),
 			runGit: createRunner({
 				remote: "fork\nupstream\n",
 				"config --get branch.main.remote": new Error("missing"),
@@ -158,6 +166,7 @@ describe("defineWorkflowCommand", () => {
 		const workflow = engine();
 		const command = defineWorkflowCommand({
 			engine: workflow,
+			driver: driver(),
 			runGit: createRunner({ "remote get-url -- origin": "file:///private/repository\n" }),
 		});
 		const input = invocation("Fix it");
