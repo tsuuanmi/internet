@@ -122,15 +122,26 @@ async function runAcceptanceTest(
 	exec: { agent?: unknown; signal: AbortSignal },
 ) {
 	if (dependencies.browser === undefined) {
-		return { ok: false, operation: "test", result: "FAIL", message: "workflow test requires browser account status access" };
+		return {
+			ok: false,
+			operation: "test",
+			result: "FAIL",
+			message: "workflow test requires browser account status access",
+		};
 	}
 	const agent = exec.agent as { id?: unknown; session?: { header?: { cwd?: unknown } } } | undefined;
 	const cwd = agent?.session?.header?.cwd;
 	if (typeof cwd !== "string" || cwd.trim() === "") {
-		return { ok: false, operation: "test", result: "FAIL", message: "workflow test requires a session working directory" };
+		return {
+			ok: false,
+			operation: "test",
+			result: "FAIL",
+			message: "workflow test requires a session working directory",
+		};
 	}
 	const ownerSessionId = String(agent?.id ?? "");
-	if (ownerSessionId === "") return { ok: false, operation: "test", result: "FAIL", message: "workflow test requires an owner session" };
+	if (ownerSessionId === "")
+		return { ok: false, operation: "test", result: "FAIL", message: "workflow test requires an owner session" };
 
 	const statuses = await Promise.all(ACCOUNT_IDS.map((accountId) => dependencies.browser!.status(accountId)));
 	const accountPreflight = statuses.map((status) => `${status.accountId}=${status.state}`).join(", ");
@@ -185,7 +196,10 @@ async function runAcceptanceTest(
 					(run) => run.result?.reviewVerdict === "PASS" && run.result.reviewedHeadSha === expectedHeadSha,
 				)
 			) {
-				return testFailure(current, "acceptance controller refused merge authorization because exact-head evidence was incomplete");
+				return testFailure(
+					current,
+					"acceptance controller refused merge authorization because exact-head evidence was incomplete",
+				);
 			}
 			current = engine.approve({ jobId: current.jobId, expectedHeadSha });
 			driver.enqueue(current.jobId);
@@ -201,7 +215,10 @@ async function runAcceptanceTest(
 			current.state === "FAILED_TERMINAL" ||
 			current.state === "CANCELLED"
 		) {
-			return testFailure(current, current.pendingAction?.message ?? `workflow acceptance test stopped in ${current.state}`);
+			return testFailure(
+				current,
+				current.pendingAction?.message ?? `workflow acceptance test stopped in ${current.state}`,
+			);
 		} else if (TERMINAL_WORKFLOW_STATES.has(current.state)) {
 			return testFailure(current, `workflow acceptance test ended in ${current.state}`);
 		}
