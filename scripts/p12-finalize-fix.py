@@ -8,8 +8,11 @@ if old not in text:
     raise SystemExit('expected raw test block not found')
 text = text.replace(old, new, 1)
 
-misplaced = '''# Use the state returned by the immediate health recheck for the subsequent merge control.\nreplace(\n    'src/workflow/engine.ts',\n    '''\\t\\tconst result = await this.writer.runControl({\\n\\t\\t\\tsessionId: job.writerConversation.sessionId,\\n\\t\\t\\tjob,\\n\\t\\t\\tcontrol,\\n\\t\\t\\tsignal,\\n\\t\\t});\\n''',\n    '''\\t\\tconst result = await this.writer.runControl({\\n\\t\\t\\tsessionId: health.writerConversation.sessionId,\\n\\t\\t\\tjob: health,\\n\\t\\t\\tcontrol,\\n\\t\\t\\tsignal,\\n\\t\\t});\\n''',\n    1,\n)\n\n'''
-if misplaced not in text:
-    raise SystemExit('misplaced merge-control rewrite not found')
-text = text.replace(misplaced, '', 1)
+start_marker = '# Use the state returned by the immediate health recheck for the subsequent merge control.\n'
+end_marker = '# Tighten driver fast path to the complete persisted PR identity, not SHA alone.\n'
+start = text.find(start_marker)
+end = text.find(end_marker)
+if start < 0 or end < 0 or end <= start:
+    raise SystemExit('misplaced merge-control rewrite markers not found')
+text = text[:start] + text[end:]
 p.write_text(text)
