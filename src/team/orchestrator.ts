@@ -2,10 +2,7 @@ import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import type { AccountId } from "#internet/core/accounts";
 import { getAccountDefinition } from "#internet/core/accounts";
 import { InternetError, isInternetError } from "#internet/core/errors";
-import {
-	getTeamPromptStrategy,
-	type TeamPromptStrategyId,
-} from "#internet/team/prompt-strategy";
+import { getTeamPromptStrategy, type TeamPromptStrategyId } from "#internet/team/prompt-strategy";
 import type {
 	OtherContribution,
 	TeamFailureDetail,
@@ -15,8 +12,14 @@ import type {
 	TeamTurn,
 } from "#internet/team/types";
 
-export type { OtherContribution, TeamFailureDetail, TeamProgressEvent, TeamStage, TeamTurn } from "#internet/team/types";
 export type { TeamPromptStrategyId } from "#internet/team/prompt-strategy";
+export type {
+	OtherContribution,
+	TeamFailureDetail,
+	TeamProgressEvent,
+	TeamStage,
+	TeamTurn,
+} from "#internet/team/types";
 
 /** Successful result of a team debate. */
 export interface TeamSuccess {
@@ -102,12 +105,7 @@ function retryable(kind: TeamFailureKind): boolean {
 	return kind === "browser_unavailable" || kind === "provider_error" || kind === "timeout";
 }
 
-function failureDetail(
-	error: unknown,
-	accountId: AccountId,
-	stage: TeamStage,
-	round?: number,
-): TeamFailureDetail {
+function failureDetail(error: unknown, accountId: AccountId, stage: TeamStage, round?: number): TeamFailureDetail {
 	const kind = failureKind(error);
 	return {
 		accountId,
@@ -180,7 +178,14 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 				activeStage = "prepare_prompt";
 				emit(options.onProgress, { at: now(), stage: activeStage, status: "started", round, accountId, provider });
 				const prompt = prompts.turn({ task: options.task, accountId, others, round });
-				emit(options.onProgress, { at: now(), stage: activeStage, status: "completed", round, accountId, provider });
+				emit(options.onProgress, {
+					at: now(),
+					stage: activeStage,
+					status: "completed",
+					round,
+					accountId,
+					provider,
+				});
 
 				activeStage = "provider_turn";
 				emit(options.onProgress, { at: now(), stage: activeStage, status: "started", round, accountId, provider });
@@ -210,7 +215,13 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 			activeRound = undefined;
 			activeStage = "synthesis";
 			const provider = getAccountDefinition(synthesizer).provider;
-			emit(options.onProgress, { at: now(), stage: activeStage, status: "started", accountId: synthesizer, provider });
+			emit(options.onProgress, {
+				at: now(),
+				stage: activeStage,
+				status: "started",
+				accountId: synthesizer,
+				provider,
+			});
 			const prompt = prompts.synthesis({ task: options.task, transcript });
 			const result = await chat(synthesizer, {
 				prompt,
@@ -226,7 +237,13 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 				provider,
 				text: result.text,
 			});
-			emit(options.onProgress, { at: now(), stage: "complete", status: "completed", accountId: synthesizer, provider });
+			emit(options.onProgress, {
+				at: now(),
+				stage: "complete",
+				status: "completed",
+				accountId: synthesizer,
+				provider,
+			});
 			return {
 				finalAnswer: result.text,
 				finalAccountId: synthesizer,
