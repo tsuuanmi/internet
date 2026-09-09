@@ -92,7 +92,7 @@ text = text.replace(
 )
 p.write_text(text)
 
-# Focused tests: no raw payload injection, INTERNAL suppression, and engine event delivery.
+# Focused tests: no raw payload injection, INTERNAL suppression, and engine event boundary behavior.
 Path("test/workflow-events.test.ts").write_text(r'''import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -136,19 +136,18 @@ describe("workflow Local events", () => {
 
 	it("formats only control-plane job facts", () => {
 		const text = formatWorkflowEvent(minimalJob(), { type: "WRITER_BLOCKED", class: "ACTION_REQUIRED", at: new Date().toISOString(), message: "needs user action" });
-		expect(text).toContain("pending_action").not;
+		expect(text).not.toContain("pending_action=");
 		expect(text).not.toContain("test objective");
 		expect(text).toContain("needs user action");
 	});
 
-	it("publishes changed lastEvent records from engine mutations", () => {
+	it("does not fabricate an event for a mutation that leaves lastEvent unchanged", () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-events-engine-"));
 		const seen: Array<{ job: string; event: string; klass: string }> = [];
 		const events: WorkflowEventSink = { publish(job, event) { seen.push({ job: job.jobId, event: event.type, klass: event.class }); } };
 		const engine = new WorkflowEngine(new WorkflowJobStore(root), undefined, undefined, undefined, undefined, 3, events);
 		const job = engine.start({ objective: "x", repository: "https://github.com/example/repo", baseRevision: "0123456789abcdef0123456789abcdef01234567", ownerSessionId: "local-agent" });
 		engine.cancel(job.jobId);
-		// cancel currently has no new event; the publisher never fabricates one from a state change.
 		expect(seen).toEqual([]);
 	});
 });
