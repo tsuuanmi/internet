@@ -3,10 +3,4 @@
 > node scripts/verify-browser-vendor.mjs && biome check src test scripts && tsgo -p tsconfig.json
 
 verified bundled browser runtime (448 files)
-Checked 92 files in 118ms. No fixes applied.
-src/tools/internet-workflow-maintenance.ts(49,3): error TS2322: Type '(args: { expectedUpdatedAt?: string | undefined; jobId?: string | undefined; operation: "cleanup" | "preview"; }, exec: ToolRunContext) => { ok: boolean; operation: "preview"; eligibleCount: number; candidates: string; message?: undefined; } | { ...; } | { ...; }' is not assignable to type '(args: { expectedUpdatedAt?: string | undefined; jobId?: string | undefined; operation: "cleanup" | "preview"; }, exec: ToolRunContext) => Promise<{ auditId?: string | undefined; ... 8 more ...; status?: string | undefined; }>'.
-  Type '{ ok: boolean; operation: "preview"; eligibleCount: number; candidates: string; message?: undefined; } | { eligibleCount?: undefined; candidates?: undefined; ok: boolean; operation: "cleanup"; ... 5 more ...; message?: undefined; } | { ...; }' is not assignable to type 'Promise<{ auditId?: string | undefined; candidates?: string | undefined; completedAt?: string | undefined; deletedHandoffFiles?: number | undefined; eligibleCount?: number | undefined; ... 4 more ...; status?: string | undefined; }>'.
-    Type '{ ok: boolean; operation: "preview"; eligibleCount: number; candidates: string; message?: undefined; }' is missing the following properties from type 'Promise<{ auditId?: string | undefined; candidates?: string | undefined; completedAt?: string | undefined; deletedHandoffFiles?: number | undefined; eligibleCount?: number | undefined; ... 4 more ...; status?: string | undefined; }>': then, catch, [Symbol.toStringTag], finally
-src/workflow/retention.ts(108,3): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
-src/workflow/retention.ts(109,3): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
-src/workflow/retention.ts(110,3): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+Checked 92 files in 121ms. No fixes applied.
