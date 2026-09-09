@@ -1,7 +1,13 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { getAccountDefinition, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
-import { WORKFLOW_STATES, type WorkflowJob, type WorkflowState } from "#internet/workflow/types";
+import {
+	WORKFLOW_STATES,
+	WORKFLOW_TEAM_STATUSES,
+	type WorkflowJob,
+	type WorkflowState,
+} from "#internet/workflow/types";
 
 const JOB_SCHEMA = "@tsuuanmi/internet-workflow-job" as const;
 
@@ -118,6 +124,150 @@ function assertMergeReceipt(value: unknown): void {
 	if (!isTimestamp(value.mergedAt)) throw new Error("invalid merge receipt timestamp");
 }
 
+function assertTeamResult(value: unknown, phase: "research" | "review"): void {
+	if (!isRecord(value)) throw new Error("invalid team result");
+	if (typeof value.finalAnswer !== "string") throw new Error("invalid team final answer");
+	if (!isAccountId(value.finalAccountId)) throw new Error("invalid team final account");
+	const provider = getAccountDefinition(value.finalAccountId).provider;
+	if (value.finalProvider !== provider) throw new Error("team final provider does not match account identity");
+	if (!isTimestamp(value.completedAt)) throw new Error("invalid team completion timestamp");
+	if (phase === "review") {
+		if (!isFullSha(value.reviewedHeadSha)) throw new Error("review result requires exact reviewed head SHA");
+		if (value.reviewVerdict !== "PASS" && value.reviewVerdict !== "CHANGES_REQUIRED") {
+			throw new Error("invalid review verdict");
+		}
+	} else if (value.reviewedHeadSha !== undefined || value.reviewVerdict !== undefined) {
+		throw new Error("research result cannot carry review metadata");
+	}
+}
+
+function assertTeamRun(
+	value: unknown,
+	phase: "research" | "review",
+	expectedLane: "A" | "B",
+	expectedSessionId: string,
+): void {
+	if (!isRecord(value)) throw new Error(`invalid ${phase} team run`);
+	if (value.lane !== expectedLane) throw new Error(`invalid ${phase} lane order`);
+	if (typeof value.status !== "string" || !(WORKFLOW_TEAM_STATUSES as readonly string[]).includes(value.status)) {
+		throw new Error(`invalid ${phase} team status`);
+	}
+	if (typeof value.attempts !== "number" || !Number.isSafeInteger(value.attempts) || value.attempts < 0) {
+		throw new Error(`invalid ${phase} team attempts`);
+	}
+	if (value.sessionId !== expectedSessionId) throw new Error(`${phase} team session identity mismatch`);
+	if (value.error !== undefined && (typeof value.error !== "string" || value.error.trim() === "")) {
+		throw new Error(`invalid ${phase} team error`);
+	}
+	if (value.status === "completed") {
+		assertTeamResult(value.result, phase);
+		if (value.error !== undefined) throw new Error(`completed ${phase} run cannot carry an error`);
+	} else {
+		if (value.result !== undefined) throw new Error(`incomplete ${phase} run cannot carry a result`);
+		if (value.status === "failed" && value.error === undefined)
+			throw new Error(`failed ${phase} run requires an error`);
+		if (value.status !== "failed" && value.error !== undefined)
+			throw new Error(`non-failed ${phase} run cannot carry an error`);
+	}
+}
+
+function assertTeamRuns(value: unknown, ownerSessionId: string, jobId: string): void {
+	if (!isRecord(value) || !Array.isArray(value.research) || !Array.isArray(value.review)) {
+		throw new Error("invalid team run state");
+	}
+	if (value.research.length !== 2 || value.review.length !== 2)
+		throw new Error("workflow requires exactly two lanes per phase");
+	for (const phase of ["research", "review"] as const) {
+		const runs = value[phase] as unknown[];
+		assertTeamRun(runs[0], phase, "A", `${ownerSessionId}:workflow:${jobId}:${phase}:A`);
+		assertTeamRun(runs[1], phase, "B", `${ownerSessionId}:workflow:${jobId}:${phase}:B`);
+	}
+}
+
+function assertAccountRouting(value: unknown): void {
+	if (!isRecord(value) || !Array.isArray(value.thinkerAccounts)) throw new Error("invalid account routing");
+	if (
+		value.thinkerAccounts.length !== 2 ||
+		value.thinkerAccounts[0] !== "chatgpt-thinker" ||
+		value.thinkerAccounts[1] !== "gemini-thinker" ||
+		value.writerAccount !== "chatgpt-writer" ||
+		value.synthesizerAccount !== "chatgpt-thinker"
+	) {
+		throw new Error("workflow account routing authority mismatch");
+	}
+}
+
+function assertWriterConversation(value: unknown, ownerSessionId: string, jobId: string): void {
+	if (!isRecord(value) || value.accountId !== "chatgpt-writer") throw new Error("invalid writer conversation account");
+	if (value.sessionId !== `${ownerSessionId}:workflow:${jobId}:writer`)
+		throw new Error("writer conversation identity mismatch");
+}
+
+function assertHandoffReceipts(value: unknown): void {
+	if (!Array.isArray(value)) throw new Error("invalid handoff receipts");
+	const ids = new Set<string>();
+	for (const item of value) {
+		if (!isRecord(item)) throw new Error("invalid handoff receipt");
+		if (typeof item.handoffId !== "string" || !/^[0-9a-f]{64}$/u.test(item.handoffId))
+			throw new Error("invalid handoff receipt id");
+		if (ids.has(item.handoffId)) throw new Error("duplicate handoff receipt id");
+		ids.add(item.handoffId);
+		if (typeof item.source !== "string" || item.source.trim() === "")
+			throw new Error("invalid handoff receipt source");
+		if (!isAccountId(item.recipient)) throw new Error("invalid handoff receipt recipient");
+		if (!isPositiveInteger(item.sequence)) throw new Error("invalid handoff receipt sequence");
+		if (typeof item.payloadHash !== "string" || !/^[0-9a-f]{64}$/u.test(item.payloadHash))
+			throw new Error("invalid handoff receipt hash");
+		if (item.status !== "pending" && item.status !== "delivered") throw new Error("invalid handoff receipt status");
+	}
+}
+
+function assertPullRequest(value: unknown): void {
+	if (value === undefined) return;
+	if (!isRecord(value)) throw new Error("invalid pull request receipt");
+	if (typeof value.repository !== "string" || value.repository.trim() === "")
+		throw new Error("invalid pull request repository");
+	if (!isPositiveInteger(value.number)) throw new Error("invalid pull request number");
+	if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url))
+		throw new Error("invalid pull request URL");
+	if (typeof value.base !== "string" || value.base.trim() === "") throw new Error("invalid pull request base");
+	if (typeof value.head !== "string" || value.head.trim() === "") throw new Error("invalid pull request head");
+	if (!isFullSha(value.headSha)) throw new Error("invalid pull request head SHA");
+}
+
+function assertPendingAction(value: unknown): void {
+	if (value === undefined) return;
+	if (!isRecord(value)) throw new Error("invalid pending action");
+	if (
+		![
+			"MERGE_AUTHORIZATION_REQUIRED",
+			"WRITER_BLOCKED",
+			"UNKNOWN_CONFIRMATION",
+			"REVIEW_LIMIT_REACHED",
+			"ACCOUNT_REAUTH_REQUIRED",
+		].includes(String(value.kind))
+	)
+		throw new Error("invalid pending action kind");
+	if (typeof value.message !== "string" || value.message.trim() === "")
+		throw new Error("invalid pending action message");
+	if (value.expectedHeadSha !== undefined && !isFullSha(value.expectedHeadSha))
+		throw new Error("invalid pending action head SHA");
+	if (value.resumeState !== undefined && !isState(value.resumeState))
+		throw new Error("invalid pending action resume state");
+}
+
+function assertEvent(value: unknown): void {
+	if (value === undefined) return;
+	if (!isRecord(value)) throw new Error("invalid workflow event");
+	if (typeof value.type !== "string" || value.type.trim() === "") throw new Error("invalid workflow event type");
+	if (value.class !== "INTERNAL" && value.class !== "PROGRESS" && value.class !== "ACTION_REQUIRED") {
+		throw new Error("invalid workflow event class");
+	}
+	if (!isTimestamp(value.at)) throw new Error("invalid workflow event timestamp");
+	if (value.message !== undefined && typeof value.message !== "string")
+		throw new Error("invalid workflow event message");
+}
+
 export function parseWorkflowJob(value: unknown): WorkflowJob {
 	if (!isRecord(value)) throw new Error("job must be an object");
 	if (value.schema !== JOB_SCHEMA || value.version !== 1) throw new Error("unsupported workflow job schema");
@@ -135,17 +285,43 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 	}
 	if (!isState(value.state)) throw new Error("invalid workflow state");
 	if (!isTimestamp(value.createdAt) || !isTimestamp(value.updatedAt)) throw new Error("invalid timestamps");
-	if (!isRecord(value.teamRuns) || !Array.isArray(value.teamRuns.research) || !Array.isArray(value.teamRuns.review)) {
-		throw new Error("invalid team run state");
-	}
-	if (!isRecord(value.accountRouting) || !isRecord(value.writerConversation))
-		throw new Error("invalid account routing");
-	if (!Array.isArray(value.handoffReceipts)) throw new Error("invalid handoff receipts");
+	assertTeamRuns(value.teamRuns, value.ownerSessionId, value.jobId);
+	assertAccountRouting(value.accountRouting);
+	assertWriterConversation(value.writerConversation, value.ownerSessionId, value.jobId);
+	assertHandoffReceipts(value.handoffReceipts);
+	assertPullRequest(value.pullRequest);
+	assertPendingAction(value.pendingAction);
+	assertEvent(value.lastEvent);
 	if (typeof value.reviewCycle !== "number" || !Number.isSafeInteger(value.reviewCycle) || value.reviewCycle < 0) {
 		throw new Error("invalid review cycle");
 	}
 	assertMergeAuthorization(value.mergeAuthorization);
 	assertMergeReceipt(value.mergeReceipt);
-	if (value.mergeReceipt !== undefined && value.state !== "DONE") throw new Error("merge receipt requires DONE state");
+	if (value.mergeAuthorization !== undefined) {
+		const authorization = value.mergeAuthorization;
+		if (!isRecord(authorization)) throw new Error("invalid merge authorization");
+		if (!isRecord(value.pullRequest)) throw new Error("merge authorization requires a pull request receipt");
+		if (
+			authorization.number !== value.pullRequest.number ||
+			authorization.url !== value.pullRequest.url ||
+			authorization.head !== value.pullRequest.head ||
+			authorization.headSha !== value.pullRequest.headSha
+		)
+			throw new Error("merge authorization does not match pull request receipt");
+	}
+	if (value.mergeReceipt !== undefined) {
+		const mergeReceipt = value.mergeReceipt;
+		if (!isRecord(mergeReceipt)) throw new Error("invalid merge receipt");
+		if (value.state !== "DONE") throw new Error("merge receipt requires DONE state");
+		if (!isRecord(value.pullRequest)) throw new Error("merge receipt requires a pull request receipt");
+		if (
+			mergeReceipt.number !== value.pullRequest.number ||
+			mergeReceipt.url !== value.pullRequest.url ||
+			mergeReceipt.headSha !== value.pullRequest.headSha
+		)
+			throw new Error("merge receipt does not match pull request receipt");
+	}
+	if (value.state === "DONE" && value.mergeReceipt === undefined)
+		throw new Error("DONE workflow requires a merge receipt");
 	return value as unknown as WorkflowJob;
 }

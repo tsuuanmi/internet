@@ -263,3 +263,7 @@ team/run state, handoff hashes and receipts, writer state, PR/head, review cycle
 error without returning research or reviewer payloads. `wait(job_id)` remains deferred until a concrete synchronous
 caller needs it.
 
+
+## P10 ROI hardening
+
+The first P10 hardening pass follows ROI rather than TODO number order. Durable restart recovery and PR idempotency are treated as correctness-critical, followed by transition and handoff integrity. Durable job parsing now validates nested account/session/team/handoff/PR/pending/event authority, exact handoff parsing verifies its deterministic logical identity, and engine handoff receipts are revision-idempotent. START_IMPLEMENTATION retries reconcile an exact deterministic head branch before creating a PR. Existing account-isolation and scoped-approval suites were audited as sufficient closure coverage; retention/cleanup remains the lower-ROI residual item.

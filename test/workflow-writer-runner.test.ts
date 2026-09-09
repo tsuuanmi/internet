@@ -92,4 +92,24 @@ describe("BrowserWorkflowWriterRunner", () => {
 			expect(result).toEqual({ status, message: `confirmation: ${kind}` });
 		}
 	});
+
+	it("makes START_IMPLEMENTATION PR creation retry-safe by exact workflow branch", async () => {
+		let prompt = "";
+		const browser: WorkflowWriterBrowser = {
+			async chat(_accountId, request) {
+				prompt = request.prompt;
+				return {
+					text: '{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}',
+				};
+			},
+		};
+		await new BrowserWorkflowWriterRunner(browser).runControl({
+			sessionId: writerSessionId,
+			job: job(),
+			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
+		});
+		expect(prompt).toContain("PR idempotency key");
+		expect(prompt).toContain("If exactly one open PR exists, reuse/update that PR");
+		expect(prompt).toContain("Never create a second PR for the same workflow job/branch");
+	});
 });
