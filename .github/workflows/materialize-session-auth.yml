@@ -1,0 +1,48 @@
+name: Materialize session auth patch
+
+on:
+  push:
+    branches:
+      - fix/session-backed-chatgpt-auth
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Apply patch embedded in temporary Verify workflow
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/verify.yml').read_text()
+          start_marker = "          python3 - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          script = workflow[start:end]
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in script.splitlines())
+          exec(compile(script, '<session-auth-patch>', 'exec'))
+          PY
+      - run: npx biome check --write src/browser/authentication.ts src/browser/chatgpt.ts src/browser/runtime.ts test/chatgpt.test.ts test/browser-runtime.test.ts
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run verify-package
+      - name: Commit source, tests, and generated dist
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src test dist
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: use ChatGPT session proof for login verification"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
