@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { normalizeGitHubRepository } from "#internet/workflow/approval-policy";
 import { createWorkflowControlMessage, type WorkflowControlMessage } from "#internet/workflow/control";
+import type { WorkflowEventSink } from "#internet/workflow/events";
 import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowReviewResult } from "#internet/workflow/review-result";
@@ -120,6 +121,7 @@ export class WorkflowEngine {
 	private readonly handoffs?: WorkflowHandoffStore;
 	private readonly writer?: WorkflowWriterRunner;
 	private readonly maxReviewCycles: number;
+	private readonly events?: WorkflowEventSink;
 
 	constructor(
 		jobs: WorkflowJobStore,
@@ -128,6 +130,7 @@ export class WorkflowEngine {
 		handoffs?: WorkflowHandoffStore,
 		writer?: WorkflowWriterRunner,
 		maxReviewCycles = 3,
+		events?: WorkflowEventSink,
 	) {
 		this.jobs = jobs;
 		this.teams = teams;
@@ -137,6 +140,7 @@ export class WorkflowEngine {
 		if (!Number.isSafeInteger(maxReviewCycles) || maxReviewCycles < 1)
 			throw new WorkflowEngineError("max review cycles must be a positive integer");
 		this.maxReviewCycles = maxReviewCycles;
+		this.events = events;
 	}
 
 	start(input: StartWorkflowInput): WorkflowJob {
@@ -154,6 +158,7 @@ export class WorkflowEngine {
 			version: 1,
 			revision: 1,
 			jobId: id,
+			ownerSessionId: input.ownerSessionId,
 			objective,
 			repository: input.repository,
 			baseRevision: input.baseRevision,
@@ -216,10 +221,10 @@ export class WorkflowEngine {
 		const lanes = before.teamRuns.research.filter((run) => run.status !== "completed").map((run) => run.lane);
 		if (lanes.length === 0) {
 			if (before.state === "RESEARCH_HANDOFFS_DELIVERING") return before;
-			return this.jobs.update(jobId, (current) => withState(current, "RESEARCH_HANDOFFS_DELIVERING"));
+			return this.update(jobId, (current) => withState(current, "RESEARCH_HANDOFFS_DELIVERING"));
 		}
 
-		const running = this.jobs.update(jobId, (current) => {
+		const running = this.update(jobId, (current) => {
 			let research = current.teamRuns.research;
 			for (const lane of lanes) {
 				research = replaceLane(research, lane, (run) => ({
@@ -261,7 +266,7 @@ export class WorkflowEngine {
 			}),
 		);
 
-		return this.jobs.update(jobId, (current) => {
+		return this.update(jobId, (current) => {
 			const completed = allCompleted(current.teamRuns.research);
 			return {
 				...withState(current, completed ? "RESEARCH_HANDOFFS_DELIVERING" : "FAILED_RETRYABLE"),
@@ -295,7 +300,7 @@ export class WorkflowEngine {
 				payload: run.result.finalAnswer,
 			});
 		});
-		this.jobs.update(jobId, (current) => ({
+		this.update(jobId, (current) => ({
 			...current,
 			revision: current.revision + 1,
 			handoffReceipts: upsertReceipts(current.handoffReceipts, handoffs.map(receipt)),
@@ -308,7 +313,7 @@ export class WorkflowEngine {
 	markHandoffDelivered(jobId: string, handoffId: string, expectedPayloadHash: string): WorkflowJob {
 		if (this.handoffs === undefined) throw new WorkflowEngineError("workflow handoff store is not configured");
 		const delivered = this.handoffs.markDelivered(jobId, handoffId, expectedPayloadHash);
-		return this.jobs.update(jobId, (current) => {
+		return this.update(jobId, (current) => {
 			if (!current.handoffReceipts.some((item) => item.handoffId === handoffId)) {
 				throw new WorkflowEngineError(`handoff ${handoffId} is not registered on workflow job ${jobId}`);
 			}
@@ -334,7 +339,7 @@ export class WorkflowEngine {
 		const job =
 			current.state === "WRITER_RUNNING"
 				? current
-				: this.jobs.update(jobId, (state) => ({
+				: this.update(jobId, (state) => ({
 						...withState(state, "WRITER_RUNNING"),
 						lastEvent: { type: "START_IMPLEMENTATION_READY", class: "INTERNAL", at: now() },
 					}));
@@ -373,7 +378,7 @@ export class WorkflowEngine {
 			signal,
 		});
 		if (result.status === "UNKNOWN_CONFIRMATION") {
-			return this.jobs.update(jobId, (current) => ({
+			return this.update(jobId, (current) => ({
 				...withState(current, "UNKNOWN_CONFIRMATION"),
 				pendingAction: {
 					kind: "UNKNOWN_CONFIRMATION",
@@ -384,13 +389,13 @@ export class WorkflowEngine {
 			}));
 		}
 		if (result.status === "BLOCKED") {
-			return this.jobs.update(jobId, (current) => ({
+			return this.update(jobId, (current) => ({
 				...withState(current, "BLOCKED"),
 				pendingAction: { kind: "WRITER_BLOCKED", message: result.message, resumeState: "WRITER_RUNNING" },
 				lastEvent: { type: "WRITER_BLOCKED", class: "ACTION_REQUIRED", at: now(), message: result.message },
 			}));
 		}
-		return this.jobs.update(jobId, (current) => ({
+		return this.update(jobId, (current) => ({
 			...withState(current, "PR_OPEN"),
 			pullRequest: result.pullRequest,
 			pendingAction: undefined,
@@ -412,10 +417,10 @@ export class WorkflowEngine {
 		if (cycle > this.maxReviewCycles) return this.reviewLimitReached(jobId, before.pullRequest.headSha);
 		const lanes = before.teamRuns.review.filter((run) => run.status !== "completed").map((run) => run.lane);
 		if (lanes.length === 0) {
-			return this.jobs.update(jobId, (current) => withState(current, "REVIEW_HANDOFFS_DELIVERING"));
+			return this.update(jobId, (current) => withState(current, "REVIEW_HANDOFFS_DELIVERING"));
 		}
 
-		const running = this.jobs.update(jobId, (current) => {
+		const running = this.update(jobId, (current) => {
 			let review = current.teamRuns.review;
 			for (const lane of lanes) {
 				review = replaceLane(review, lane, (run) => ({
@@ -468,7 +473,7 @@ export class WorkflowEngine {
 			}),
 		);
 
-		return this.jobs.update(jobId, (current) => {
+		return this.update(jobId, (current) => {
 			const completed =
 				allCompleted(current.teamRuns.review) &&
 				current.teamRuns.review.every((run) => run.result?.reviewedHeadSha === current.pullRequest?.headSha);
@@ -510,7 +515,7 @@ export class WorkflowEngine {
 				payload: run.result.finalAnswer,
 			});
 		});
-		this.jobs.update(jobId, (current) => ({
+		this.update(jobId, (current) => ({
 			...current,
 			revision: current.revision + 1,
 			handoffReceipts: upsertReceipts(current.handoffReceipts, handoffs.map(receipt)),
@@ -532,9 +537,14 @@ export class WorkflowEngine {
 		const job =
 			current.state === "WRITER_REMEDIATING"
 				? current
-				: this.jobs.update(jobId, (state) => ({
+				: this.update(jobId, (state) => ({
 						...withState(state, "WRITER_REMEDIATING"),
-						lastEvent: { type: "APPLY_REVIEWS_READY", class: "INTERNAL", at: now() },
+						lastEvent: {
+							type: "REMEDIATION_STARTED",
+							class: "PROGRESS",
+							at: now(),
+							message: state.pullRequest?.url,
+						},
 					}));
 		return { job, control: createWorkflowControlMessage("APPLY_REVIEWS", jobId, job.pullRequest?.headSha) };
 	}
@@ -567,7 +577,7 @@ export class WorkflowEngine {
 
 		const verdicts = job.teamRuns.review.map((run) => run.result?.reviewVerdict);
 		if (verdicts.every((verdict) => verdict === "PASS")) {
-			return this.jobs.update(jobId, (current) => ({
+			return this.update(jobId, (current) => ({
 				...withState(current, "READY_FOR_MERGE_AUTHORIZATION"),
 				pendingAction: undefined,
 				lastEvent: { type: "REVIEW_GATE_PASSED", class: "PROGRESS", at: now(), message: current.pullRequest?.url },
@@ -583,14 +593,14 @@ export class WorkflowEngine {
 			signal,
 		});
 		if (result.status === "UNKNOWN_CONFIRMATION") {
-			return this.jobs.update(jobId, (current) => ({
+			return this.update(jobId, (current) => ({
 				...withState(current, "UNKNOWN_CONFIRMATION"),
 				pendingAction: { kind: "UNKNOWN_CONFIRMATION", message: result.message, resumeState: "WRITER_REMEDIATING" },
 				lastEvent: { type: "UNKNOWN_CONFIRMATION", class: "ACTION_REQUIRED", at: now(), message: result.message },
 			}));
 		}
 		if (result.status === "BLOCKED") {
-			return this.jobs.update(jobId, (current) => ({
+			return this.update(jobId, (current) => ({
 				...withState(current, "BLOCKED"),
 				pendingAction: { kind: "WRITER_BLOCKED", message: result.message, resumeState: "WRITER_REMEDIATING" },
 				lastEvent: { type: "WRITER_BLOCKED", class: "ACTION_REQUIRED", at: now(), message: result.message },
@@ -610,7 +620,7 @@ export class WorkflowEngine {
 				"WRITER_REMEDIATING",
 			);
 		}
-		return this.jobs.update(jobId, (current) => ({
+		return this.update(jobId, (current) => ({
 			...withState(current, "PR_OPEN"),
 			pullRequest: result.pullRequest,
 			teamRuns: {
@@ -628,7 +638,7 @@ export class WorkflowEngine {
 	}
 
 	private reviewLimitReached(jobId: string, expectedHeadSha: string): WorkflowJob {
-		return this.jobs.update(jobId, (current) => ({
+		return this.update(jobId, (current) => ({
 			...withState(current, "BLOCKED"),
 			pendingAction: {
 				kind: "REVIEW_LIMIT_REACHED",
@@ -640,7 +650,7 @@ export class WorkflowEngine {
 	}
 
 	private writerBlocked(jobId: string, message: string, resumeState: WorkflowState): WorkflowJob {
-		return this.jobs.update(jobId, (current) => ({
+		return this.update(jobId, (current) => ({
 			...withState(current, "BLOCKED"),
 			pendingAction: { kind: "WRITER_BLOCKED", message, resumeState },
 			lastEvent: { type: "WRITER_BLOCKED", class: "ACTION_REQUIRED", at: now(), message },
@@ -654,7 +664,7 @@ export class WorkflowEngine {
 		result: WorkflowTeamRunResult,
 		reviewResult?: WorkflowReviewResult,
 	): void {
-		this.jobs.update(jobId, (current) => {
+		this.update(jobId, (current) => {
 			const runs = current.teamRuns[phase];
 			const updated = replaceLane(runs, lane, (run) =>
 				result.ok
@@ -683,8 +693,31 @@ export class WorkflowEngine {
 		});
 	}
 
+	private update(jobId: string, mutate: (current: WorkflowJob) => WorkflowJob): WorkflowJob {
+		const before = this.jobs.get(jobId);
+		const updated = this.jobs.update(jobId, mutate);
+		const event = updated.lastEvent;
+		if (event !== undefined) {
+			const prior = before?.lastEvent;
+			const changed =
+				prior === undefined ||
+				prior.type !== event.type ||
+				prior.class !== event.class ||
+				prior.at !== event.at ||
+				prior.message !== event.message;
+			if (changed && this.events !== undefined) {
+				try {
+					this.events.publish(updated, event);
+				} catch {
+					// Notification delivery is never part of workflow correctness.
+				}
+			}
+		}
+		return updated;
+	}
+
 	cancel(jobId: string): WorkflowJob {
-		return this.jobs.update(jobId, (current) => {
+		return this.update(jobId, (current) => {
 			if (TERMINAL_WORKFLOW_STATES.has(current.state))
 				throw new WorkflowEngineError(`workflow job ${jobId} is already terminal (${current.state})`);
 			return withState(current, "CANCELLED");
@@ -692,7 +725,7 @@ export class WorkflowEngine {
 	}
 
 	continue(jobId: string): WorkflowJob {
-		return this.jobs.update(jobId, (current) => {
+		return this.update(jobId, (current) => {
 			if (!new Set<WorkflowState>(["BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE"]).has(current.state)) {
 				throw new WorkflowEngineError(`workflow job ${jobId} cannot continue from ${current.state}`);
 			}
@@ -701,7 +734,7 @@ export class WorkflowEngine {
 	}
 
 	approve(input: WorkflowDecisionInput): WorkflowJob {
-		return this.jobs.update(input.jobId, (current) => {
+		return this.update(input.jobId, (current) => {
 			if (
 				current.state !== "AWAITING_MERGE_AUTHORIZATION" ||
 				current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED"
@@ -719,7 +752,7 @@ export class WorkflowEngine {
 	}
 
 	reject(input: WorkflowDecisionInput): WorkflowJob {
-		return this.jobs.update(input.jobId, (current) => {
+		return this.update(input.jobId, (current) => {
 			if (current.pendingAction === undefined)
 				throw new WorkflowEngineError(`workflow job ${input.jobId} has no pending action to reject`);
 			return { ...withState(current, "BLOCKED"), pendingAction: undefined };

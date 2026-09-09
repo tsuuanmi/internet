@@ -29,6 +29,7 @@ function fakeJob(input: StartWorkflowInput): WorkflowJob {
 		version: 1,
 		revision: 1,
 		jobId: JOB_ID,
+		ownerSessionId: "agent",
 		objective: input.objective,
 		repository: input.repository,
 		baseRevision: input.baseRevision,

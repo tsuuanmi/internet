@@ -1,13 +1,39 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { WorkflowEngineError } from "#internet/workflow/engine";
 export const WORKFLOW_OPERATIONS = ["start", "status", "approve", "reject", "cancel", "continue"];
+function runsSummary(runs) {
+    return runs
+        .map((run) => `${run.lane}:${run.status}:attempts=${run.attempts}${run.error === undefined ? "" : `:error=${run.error}`}`)
+        .join(", ");
+}
+function handoffSummary(job) {
+    return job.handoffReceipts
+        .map((item) => `${item.sequence}:${item.source}->${item.recipient}:${item.status}:${item.payloadHash}`)
+        .join(", ");
+}
+function lastError(job) {
+    const failed = [...job.teamRuns.research, ...job.teamRuns.review].find((run) => run.status === "failed" && run.error !== undefined);
+    return failed?.error ?? job.pendingAction?.message;
+}
 function project(job) {
     return {
         jobId: job.jobId,
         state: job.state,
         repository: job.repository,
         baseRevision: job.baseRevision,
+        researchRuns: runsSummary(job.teamRuns.research),
+        reviewRuns: runsSummary(job.teamRuns.review),
+        handoffs: handoffSummary(job),
+        writerState: `account=${job.writerConversation.accountId} session=${job.writerConversation.sessionId}`,
         reviewCycle: job.reviewCycle,
+        ...(job.lastEvent === undefined
+            ? {}
+            : {
+                lastEventClass: job.lastEvent.class,
+                lastEventType: job.lastEvent.type,
+                lastEventMessage: job.lastEvent.message,
+            }),
+        ...(lastError(job) === undefined ? {} : { lastError: lastError(job) }),
         ...(job.pullRequest === undefined
             ? {}
             : {
@@ -53,7 +79,15 @@ export function defineInternetWorkflowTool(engine) {
                     state: { type: "string" },
                     repository: { type: "string" },
                     baseRevision: { type: "string" },
+                    researchRuns: { type: "string" },
+                    reviewRuns: { type: "string" },
+                    handoffs: { type: "string" },
+                    writerState: { type: "string" },
                     reviewCycle: { type: "number" },
+                    lastEventClass: { type: "string" },
+                    lastEventType: { type: "string" },
+                    lastEventMessage: { type: "string" },
+                    lastError: { type: "string" },
                     prNumber: { type: "number" },
                     prUrl: { type: "string" },
                     prHeadSha: { type: "string" },

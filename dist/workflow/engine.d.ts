@@ -1,4 +1,5 @@
 import { type WorkflowControlMessage } from "#internet/workflow/control";
+import type { WorkflowEventSink } from "#internet/workflow/events";
 import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
@@ -19,7 +20,8 @@ export declare class WorkflowEngine {
     private readonly handoffs?;
     private readonly writer?;
     private readonly maxReviewCycles;
-    constructor(jobs: WorkflowJobStore, teams?: WorkflowTeamRunner, prompts?: WorkflowTeamPromptBuilder, handoffs?: WorkflowHandoffStore, writer?: WorkflowWriterRunner, maxReviewCycles?: number);
+    private readonly events?;
+    constructor(jobs: WorkflowJobStore, teams?: WorkflowTeamRunner, prompts?: WorkflowTeamPromptBuilder, handoffs?: WorkflowHandoffStore, writer?: WorkflowWriterRunner, maxReviewCycles?: number, events?: WorkflowEventSink);
     start(input: StartWorkflowInput): WorkflowJob;
     status(jobId: string): WorkflowJob;
     runResearch(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
@@ -37,6 +39,7 @@ export declare class WorkflowEngine {
     private reviewLimitReached;
     private writerBlocked;
     private recordTeamResult;
+    private update;
     cancel(jobId: string): WorkflowJob;
     continue(jobId: string): WorkflowJob;
     approve(input: WorkflowDecisionInput): WorkflowJob;

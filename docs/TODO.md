@@ -333,32 +333,45 @@ identities, then reviews the new exact head. Both reviewers passing the same hea
 
 ## P8 — Events and Local integration
 
-### 30. Add INTERNAL / PROGRESS / ACTION_REQUIRED events
+**Status:** implemented with compact host-native Local context injection and a payload-free status/debug projection.
+Notification delivery is explicitly best-effort and never part of workflow correctness.
 
-Do not inject raw team/reviewer outputs into Local by default.
+### 30. ✅ Add INTERNAL / PROGRESS / ACTION_REQUIRED events
 
-### 31. Integrate with host-native DSH completion/event injection
+The existing durable `lastEvent` classification is now connected to a workflow event sink. `INTERNAL` records remain
+inside the engine; `PROGRESS` and `ACTION_REQUIRED` are eligible for Local notification. Research/reviewer finals are
+never projected into these events. Remediation now emits an explicit `REMEDIATION_STARTED` progress event.
 
-Preserve the useful current behavior where background work can notify the parent when finished, but inject compact workflow events rather than transformed reasoning payloads.
+### 31. ✅ Integrate with host-native DSH completion/event injection
 
-### 32. Add workflow status/debug surface
+Each job persists its exact Local `ownerSessionId`. `DshWorkflowEventSink` resolves that live Agent through
+`ctx.agents` and uses `agent.inject()` with plugin source `internet`. Injection adds compact durable model-facing context
+for Local's next admitted step without waking an idle agent. Missing/disposed Local agents and notification failures
+do not affect committed workflow state.
 
-Show:
+### 32. ✅ Add workflow status/debug surface
+
+`internet_workflow status` now projects payload-free summaries for:
 
 ```text
 job state
-team runs
-handoffs
-writer state
-PR
+research/review lane status + attempts/errors
+handoff source/recipient/hash/delivery state
+writer account/session
+PR URL/head SHA
 review cycle
 pending action
+last event
 last error
 ```
 
-### 33. Optional wait convenience
+Exact team/reviewer payloads remain in their dedicated stores and are not returned by status.
 
-`wait(job_id)` may exist, but never as the core orchestration model.
+### 33. Optional wait convenience — deferred
+
+`wait(job_id)` is intentionally not added. Host-native event injection plus explicit `status(job_id)` provides the
+needed UX without turning polling/waiting into the orchestration model. Add it only if a concrete caller needs a
+synchronous convenience later.
 
 ## P9 — Merge gate
 

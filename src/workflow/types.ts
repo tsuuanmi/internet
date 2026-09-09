@@ -94,6 +94,7 @@ export interface WorkflowJob {
 	readonly version: 1;
 	readonly revision: number;
 	readonly jobId: string;
+	readonly ownerSessionId: string;
 	readonly objective: string;
 	readonly repository: string;
 	readonly baseRevision: string;

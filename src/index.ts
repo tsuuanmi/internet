@@ -11,6 +11,7 @@ import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { WorkflowEngine } from "#internet/workflow/engine";
+import { DshWorkflowEventSink, type WorkflowAgentRegistry } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
@@ -18,7 +19,7 @@ import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
 
 export const name = "internet";
-export const inject = ["tools", "systemPrompt", "commands"] as const;
+export const inject = ["tools", "systemPrompt", "commands", "agents"] as const;
 
 const INTERNET_CHAT_GUIDANCE = [
 	"Use internet_chat for one answer or a durable multi-turn exchange through an explicitly selected thinker account: chatgpt-thinker or gemini-thinker.",
@@ -48,10 +49,11 @@ const INTERNET_WORKFLOW_GUIDANCE = [
 	"Workflow-owned team execution calls the lower-level team runtime directly with deterministic prompts and per-job lanes; no free-form child agent is needed merely to call internet_team.",
 	"Research finals are materialized as exact SHA-256-bound durable handoffs. Data-plane payloads are separate from trusted control messages, and START_IMPLEMENTATION is gated on delivery of both research handoffs.",
 	"The workflow writer is the separate chatgpt-writer account. It receives both research finals verbatim in one persistent per-job conversation, then a separate trusted START_IMPLEMENTATION control. The writer must open/update one PR and return a compact machine-validated PR receipt; merge is never part of this phase.",
-	"Scoped Website confirmation classification is fail-closed and auto-confirms only exact in-scope writer actions; merge is explicitly excluded. Actual PR review now runs two independent exact-head reviewer lanes, delivers both finals verbatim to the persistent writer, applies remediation to the same PR, and re-reviews changed heads for up to three cycles. Local event injection and explicit merge binding remain later workflow phases.",
+	"Scoped Website confirmation classification is fail-closed and auto-confirms only exact in-scope writer actions; merge is explicitly excluded. Actual PR review runs two independent exact-head reviewer lanes, delivers both finals verbatim to the persistent writer, applies remediation to the same PR, and re-reviews changed heads for up to three cycles. PROGRESS and ACTION_REQUIRED workflow events are injected as compact host-native DSH context for Local without raw team/reviewer payloads; INTERNAL events remain engine-only. Explicit head-SHA-bound merge authorization remains a later workflow phase.",
 ].join(" ");
 
 export interface PluginContext {
+	agents: WorkflowAgentRegistry;
 	tools: { register(tool: ReturnType<typeof defineTool>): void };
 	commands: { register(command: CommandDefinition): void };
 	systemPrompt?: { section(options: { name: string; order: number; text: string }): void };
@@ -92,6 +94,8 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 			new WorkflowTeamPromptBuilder(),
 			new WorkflowHandoffStore(config.dataDir),
 			new BrowserWorkflowWriterRunner(manager),
+			3,
+			new DshWorkflowEventSink(ctx.agents),
 		);
 		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine }));
 		ctx.tools.register(defineInternetWorkflowTool(workflowEngine));
@@ -133,6 +137,8 @@ export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/work
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowControlStep } from "#internet/workflow/engine";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
+export type { WorkflowAgentRegistry, WorkflowEventSink, WorkflowLocalAgent } from "#internet/workflow/events";
+export { DshWorkflowEventSink, formatWorkflowEvent } from "#internet/workflow/events";
 export type {
 	CreateWorkflowHandoffInput,
 	WorkflowHandoff,
