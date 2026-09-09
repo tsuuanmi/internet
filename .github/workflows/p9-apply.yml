@@ -19,6 +19,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: python3 scripts/p9-apply.py
+      - run: python3 scripts/p9-fix.py
       - run: npm ci
       - run: npx biome check --write src test scripts
       - run: npm run check
