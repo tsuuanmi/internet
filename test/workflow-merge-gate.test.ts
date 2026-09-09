@@ -165,4 +165,13 @@ describe("workflow merge gate", () => {
 		expect(blocked.state).toBe("BLOCKED");
 		expect(blocked.mergeReceipt).toBeUndefined();
 	});
+
+	it("keeps a denied merge request ready but unauthorized", () => {
+		const engine = setup();
+		engine.requestMergeAuthorization(jobId);
+		const denied = engine.reject({ jobId, expectedHeadSha: headSha });
+		expect(denied.state).toBe("READY_FOR_MERGE_AUTHORIZATION");
+		expect(denied.pendingAction).toBeUndefined();
+		expect(denied.mergeAuthorization).toBeUndefined();
+	});
 });

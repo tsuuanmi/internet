@@ -387,7 +387,7 @@ The ACTION_REQUIRED event includes the exact PR URL, `PASS/PASS` review state, `
 
 ### 36. ✅ Bind user authorization to exact PR head
 
-`approve(job_id, expectedHeadSha)` requires the exact pending head and persists a `mergeAuthorization` bound to repository, PR number/URL, head branch, head SHA, review cycle, authorization time, and owner session.
+`approve(job_id, expectedHeadSha)` requires the exact pending head and persists a `mergeAuthorization` bound to repository, PR number/URL, head branch, head SHA, review cycle, authorization time, and owner session. Rejecting the request simply returns the job to `READY_FOR_MERGE_AUTHORIZATION` with no authorization; it does not mark the workflow broken. Persisted merge authorization/receipt structures are validated on load rather than shallow-cast.
 
 ### 37. ✅ Revalidate head immediately before merge
 

@@ -887,6 +887,14 @@ export class WorkflowEngine {
 		return this.update(input.jobId, (current) => {
 			if (current.pendingAction === undefined)
 				throw new WorkflowEngineError(`workflow job ${input.jobId} has no pending action to reject`);
+			if (current.pendingAction.kind === "MERGE_AUTHORIZATION_REQUIRED") {
+				return {
+					...withState(current, "READY_FOR_MERGE_AUTHORIZATION"),
+					pendingAction: undefined,
+					mergeAuthorization: undefined,
+					lastEvent: { type: "MERGE_AUTHORIZATION_REJECTED", class: "INTERNAL", at: now() },
+				};
+			}
 			return { ...withState(current, "BLOCKED"), pendingAction: undefined };
 		});
 	}
