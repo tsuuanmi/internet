@@ -23,8 +23,41 @@ function batchAccounts(allowed: ReadonlySet<AccountId>): AccountId[] {
 	return ACCOUNT_IDS.filter((accountId) => allowed.has(accountId));
 }
 
+function summarizeStatus(status: AccountStatus): string {
+	const remoteLogin = status.remoteLogin;
+	if (remoteLogin !== undefined) {
+		const port = remoteLogin.port === undefined ? "" : `(port=${remoteLogin.port})`;
+		return `${status.accountId}=login-${remoteLogin.state}${port}`;
+	}
+	return `${status.accountId}=${status.state}`;
+}
+
 function summarizeStatuses(statuses: readonly AccountStatus[]): string {
-	return statuses.map((status) => `${status.accountId}=${status.state}`).join(", ");
+	return statuses.map(summarizeStatus).join(", ");
+}
+
+function loginManifest(statuses: readonly AccountStatus[]): string | undefined {
+	const entries = statuses.flatMap((status) => {
+		const remoteLogin = status.remoteLogin;
+		if (remoteLogin === undefined) return [];
+		return [
+			[
+				`${status.accountId}: state=${remoteLogin.state}${remoteLogin.port === undefined ? "" : ` port=${remoteLogin.port}`}`,
+				...(remoteLogin.url === undefined ? [] : [`  URL: ${remoteLogin.url}`]),
+				...(remoteLogin.expiresAt === undefined ? [] : [`  Expires: ${remoteLogin.expiresAt}`]),
+			].join("\n"),
+		];
+	});
+	return entries.length === 0 ? undefined : entries.join("\n");
+}
+
+function batchSshCommand(statuses: readonly AccountStatus[]): string | undefined {
+	const ports = statuses.flatMap((status) => {
+		const port = status.remoteLogin?.port;
+		return port === undefined ? [] : [port];
+	});
+	if (ports.length === 0) return undefined;
+	return `ssh -N ${ports.map((port) => `-L ${port}:127.0.0.1:${port}`).join(" ")} <user>@<server>`;
 }
 
 function singleResult(accountId: AccountId, status: AccountStatus, message?: string) {
@@ -41,7 +74,7 @@ function singleResult(accountId: AccountId, status: AccountStatus, message?: str
 		message:
 			message ??
 			(remoteLogin?.state === "waiting"
-				? `First run ${remoteLogin.sshCommand}, then open ${remoteLogin.url}, sign in to ${accountId}, and press Save account. This login expires at ${remoteLogin.expiresAt}.`
+				? `Open ${remoteLogin.url} on this server, or forward port ${String(remoteLogin.port)} with ${remoteLogin.sshCommand} from another machine and open the same URL there. Sign in to ${accountId}, then press Save account. Do not close Chrome manually; Save account closes the login desktop and verifies the portable account. This login expires at ${remoteLogin.expiresAt}.`
 				: (remoteLogin?.message ?? `${accountId} portable account is verified and ready.`)),
 	};
 }
@@ -54,7 +87,7 @@ export function defineInternetBrowserTool(
 	return defineTool({
 		name: "internet_browser",
 		description:
-			"Manage isolated browser-backed authenticated accounts. login/status/stop target one account; login_all/status_all/stop_all operate on all enabled semantic accounts in parallel while preserving per-account lifecycle locks.",
+			"Manage isolated browser-backed authenticated accounts. Every login uses a loopback noVNC desktop on a stable account-specific port; open it directly on the server or through SSH port forwarding from another machine. login_all/status_all/stop_all operate on all enabled semantic accounts in parallel while preserving per-account lifecycle locks.",
 		parameters: {
 			action: {
 				type: "string",
@@ -66,11 +99,6 @@ export function defineInternetBrowserTool(
 				type: "string",
 				enum: [...ACCOUNT_IDS],
 				description: "Exact authenticated account identity for non-batch actions.",
-			},
-			remote: {
-				type: "boolean",
-				description:
-					"Force SSH-forwarded noVNC login for login/login_all; displayless Linux selects it automatically.",
 			},
 		},
 		output: {
@@ -85,6 +113,8 @@ export function defineInternetBrowserTool(
 					state: { type: "string", enum: [...ACCOUNT_STATES] },
 					accountPath: { type: "string" },
 					accounts: { type: "string" },
+					remoteLogins: { type: "string" },
+					batchSshCommand: { type: "string" },
 					account: {
 						type: "object",
 						additionalProperties: false,
@@ -124,6 +154,8 @@ export function defineInternetBrowserTool(
 					provider?: unknown;
 					state?: unknown;
 					accounts?: unknown;
+					remoteLogins?: unknown;
+					batchSshCommand?: unknown;
 					remoteLogin?: { state?: unknown; url?: unknown; sshCommand?: unknown };
 					message?: unknown;
 				};
@@ -133,10 +165,12 @@ export function defineInternetBrowserTool(
 				if (v.provider !== undefined) summary.push(`provider=${String(v.provider)}`);
 				if (v.state !== undefined) summary.push(`state=${String(v.state)}`);
 				if (v.accounts !== undefined) summary.push(String(v.accounts));
-				if (v.remoteLogin?.state !== undefined) summary.push(`remote=${String(v.remoteLogin.state)}`);
+				if (v.remoteLogin?.state !== undefined) summary.push(`login=${String(v.remoteLogin.state)}`);
 				const lines = [summary.join(" · ")];
-				if (v.remoteLogin?.sshCommand !== undefined) lines.push(`SSH: ${String(v.remoteLogin.sshCommand)}`);
 				if (v.remoteLogin?.url !== undefined) lines.push(`URL: ${String(v.remoteLogin.url)}`);
+				if (v.remoteLogin?.sshCommand !== undefined) lines.push(`SSH: ${String(v.remoteLogin.sshCommand)}`);
+				if (v.remoteLogins !== undefined) lines.push(String(v.remoteLogins));
+				if (v.batchSshCommand !== undefined) lines.push(`SSH all: ${String(v.batchSshCommand)}`);
 				if (v.message !== undefined) lines.push(String(v.message));
 				return [{ type: "text", text: lines.join("\n") }];
 			},
@@ -149,22 +183,13 @@ export function defineInternetBrowserTool(
 				return { ok: false, action: String(action), message: `unknown action ${String(action)}` };
 			}
 			const typedAction = action as InternetBrowserAction;
-			const remote = args.remote;
-			if (remote !== undefined && typeof remote !== "boolean") {
-				return { ok: false, action, message: "remote must be a boolean" };
-			}
-			if (remote !== undefined && typedAction !== "login" && typedAction !== "login_all") {
-				return { ok: false, action, message: "remote is valid only for login and login_all" };
-			}
-
 			if (isBatchAction(typedAction)) {
 				const accounts = batchAccounts(allowed);
 				if (accounts.length === 0) return { ok: false, action, message: "no enabled internet accounts" };
 				const results = await Promise.all(
 					accounts.map(async (accountId) => {
 						try {
-							if (typedAction === "login_all")
-								return await manager.login(accountId, { remote: remote === true });
+							if (typedAction === "login_all") return await manager.login(accountId);
 							if (typedAction === "stop_all") {
 								await manager.stop(accountId);
 								return await manager.status(accountId);
@@ -184,14 +209,23 @@ export function defineInternetBrowserTool(
 					...(statuses.length === 0 ? [] : [summarizeStatuses(statuses)]),
 					...failures.map((failure) => `${failure.accountId}=error:${failure.error}`),
 				].join(", ");
+				const remoteLogins = loginManifest(statuses);
+				const sshAll = batchSshCommand(statuses);
+				const waitingLogins = statuses.filter(
+					(status) => status.remoteLogin?.state === "waiting" || status.remoteLogin?.state === "finalizing",
+				).length;
 				return {
 					ok: failures.length === 0,
 					action,
 					accounts: summary,
+					...(remoteLogins === undefined ? {} : { remoteLogins }),
+					...(sshAll === undefined ? {} : { batchSshCommand: sshAll }),
 					message:
-						failures.length === 0
-							? `${typedAction} completed for ${accounts.length} enabled accounts.`
-							: `${typedAction} completed with ${failures.length} account failure(s).`,
+						failures.length > 0
+							? `${typedAction} completed with ${failures.length} account failure(s).`
+							: typedAction === "login_all" && waitingLogins > 0
+								? `Invisible login is ready for ${waitingLogins} account(s). On this server, open each URL above directly. From another machine, run the SSH all command once and open the same URLs locally. Sign in to the named account in each desktop, then press Save account. Do not close Chrome manually.`
+								: `${typedAction} completed for ${accounts.length} enabled accounts.`,
 				};
 			}
 
@@ -217,11 +251,12 @@ export function defineInternetBrowserTool(
 				};
 			}
 			try {
-				if (typedAction === "login")
+				if (typedAction === "login") {
 					return {
 						action,
-						...singleResult(accountId, await manager.login(accountId, { remote: remote === true })),
+						...singleResult(accountId, await manager.login(accountId)),
 					};
+				}
 				if (typedAction === "stop") {
 					await manager.stop(accountId);
 					return { ok: true, action, accountId, provider, message: `${accountId} browser stopped.` };
