@@ -55,6 +55,7 @@ const INTERNET_WORKFLOW_GUIDANCE = [
 	"The workflow writer is the separate chatgpt-writer account. It receives both research finals verbatim in one persistent per-job conversation, then a separate trusted START_IMPLEMENTATION control. The writer must open/update one PR and return a compact machine-validated PR receipt; merge is never part of this phase.",
 	"Scoped Website confirmation classification is fail-closed. Implementation/remediation actions auto-confirm only in exact writer scope. Before merge authorization, the writer performs a read-only live GitHub health check bound to repository + PR + exact head SHA and classifies required-check health as PASS, FAIL, PENDING, NONE, or UNKNOWN; only PASS or verified NONE is merge-eligible. request_merge emits a concrete ACTION_REQUIRED request only after that exact-head health gate, approve binds repository + PR + branch + exact head SHA, and MERGING re-checks live PR health immediately before the writer revalidates and merges the exact authorized head. Successful merge records the merge SHA/executor and completes the job. PROGRESS and ACTION_REQUIRED events remain compact Local context without raw team/reviewer payloads.",
 	"Workflow retention is explicit operator maintenance only: internet_workflow_maintenance preview reports aged terminal candidates, and cleanup requires the exact unchanged updatedAt from preview. DONE jobs retain 30 days, CANCELLED jobs 14 days, cleanup is never automatic, and durable audit receipts remain after job/handoff deletion.",
+	"Use internet_workflow test for a full real acceptance run against the current Git repository. It first checks all semantic accounts are ready, then runs the production workflow end to end and auto-authorizes only the exact reviewed healthy PR head.",
 ].join(" ");
 
 export interface PluginContext {
@@ -107,7 +108,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		ctx.effect(() => () => workflowDriver.dispose());
 		workflowDriver.resumeActive();
 		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine, driver: workflowDriver }));
-		ctx.tools.register(defineInternetWorkflowTool(workflowEngine, workflowDriver));
+		ctx.tools.register(defineInternetWorkflowTool(workflowEngine, workflowDriver, { browser: manager }));
 		ctx.tools.register(
 			defineInternetWorkflowMaintenanceTool(new WorkflowRetentionManager(config.dataDir, workflowJobs)),
 		);
