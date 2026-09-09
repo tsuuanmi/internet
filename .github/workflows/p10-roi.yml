@@ -18,6 +18,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - run: python3 scripts/p10-fix.py
       - run: python3 scripts/p10-roi.py
       - run: npm ci
       - run: npx biome check --write src test scripts
