@@ -32,6 +32,7 @@ export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#
 export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
+export { defineInternetWorkflowMaintenanceTool, WORKFLOW_MAINTENANCE_OPERATIONS, } from "#internet/tools/internet-workflow-maintenance";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -43,6 +44,8 @@ export { DshWorkflowEventSink, formatWorkflowEvent } from "#internet/workflow/ev
 export type { CreateWorkflowHandoffInput, WorkflowHandoff, WorkflowHandoffStatus, } from "#internet/workflow/handoff-store";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export type { WorkflowCleanupAudit, WorkflowCleanupCandidate, WorkflowRetentionPolicy, } from "#internet/workflow/retention";
+export { DEFAULT_WORKFLOW_RETENTION_POLICY, WORKFLOW_RETENTION_AUDIT_SCHEMA, WorkflowRetentionError, WorkflowRetentionManager, } from "#internet/workflow/retention";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
 export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";
