@@ -3,6 +3,7 @@ import { waitForSendReady } from "#internet/browser/submission";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
 export const CHATGPT_HOME_URL = "https://chatgpt.com/";
+export const CHATGPT_SESSION_PATH = "/api/auth/session";
 export const CHATGPT_COMPOSER_SELECTOR = [
     '[data-testid="prompt-textarea"]',
     "#prompt-textarea",
@@ -70,26 +71,108 @@ async function hasVisibleSurface(page, selector) {
         return false;
     }
 }
+function chatgptOriginPath(url) {
+    try {
+        const parsed = new URL(url);
+        return `${parsed.origin}${parsed.pathname}`;
+    }
+    catch {
+        return undefined;
+    }
+}
+function isChatGptOrigin(url) {
+    try {
+        return new URL(url).origin === new URL(CHATGPT_HOME_URL).origin;
+    }
+    catch {
+        return false;
+    }
+}
+/** Probe only non-secret ChatGPT session facts from the signed-in browser context. */
+export async function chatgptSessionProbe(page) {
+    if (!isChatGptOrigin(page.url()))
+        return { available: false, authenticated: false };
+    try {
+        return await page.evaluate(async (sessionPath) => {
+            try {
+                const response = await fetch(sessionPath, {
+                    cache: "no-store",
+                    credentials: "include",
+                    headers: { accept: "application/json" },
+                });
+                const status = response.status;
+                if (!response.ok)
+                    return { available: true, authenticated: false, status };
+                const body = await response.json().catch(() => null);
+                const record = body !== null && typeof body === "object" ? body : undefined;
+                const accessToken = record?.accessToken;
+                const user = record?.user;
+                return {
+                    available: true,
+                    authenticated: (typeof accessToken === "string" && accessToken.length > 0) ||
+                        (user !== null && typeof user === "object"),
+                    status,
+                };
+            }
+            catch {
+                return { available: false, authenticated: false };
+            }
+        }, CHATGPT_SESSION_PATH);
+    }
+    catch {
+        return { available: false, authenticated: false };
+    }
+}
+/** Sanitized auth diagnostics: no cookies, token, email, query string, or session payload. */
+export async function chatgptAuthenticationDiagnostic(page) {
+    const [session, composerCount, accountControlCount, loginSurface, challengeSurface] = await Promise.all([
+        chatgptSessionProbe(page),
+        page
+            .locator(CHATGPT_COMPOSER_SELECTOR)
+            .filter({ visible: true })
+            .count()
+            .catch(() => 0),
+        page
+            .locator(CHATGPT_ACCOUNT_SELECTOR)
+            .filter({ visible: true })
+            .count()
+            .catch(() => 0),
+        hasVisibleSurface(page, CHATGPT_LOGIN_SURFACE_SELECTOR),
+        hasVisibleSurface(page, CHATGPT_CHALLENGE_SURFACE_SELECTOR),
+    ]);
+    const originPath = chatgptOriginPath(page.url());
+    return {
+        ...(originPath === undefined ? {} : { originPath }),
+        session,
+        composerCount,
+        accountControlCount,
+        loginSurface,
+        challengeSurface,
+    };
+}
 function urlContainsChallenge(url) {
     return /(?:captcha|challenge|verify)(?:[/?#]|$)/i.test(url);
 }
 function urlIsLogin(url) {
     return /^https:\/\/(?:auth\.openai\.com|chatgpt\.com\/auth(?:\/|$))/i.test(url);
 }
-/** Assess ChatGPT auth without treating a missing composer as proof of logout. */
+/** Assess ChatGPT auth without treating missing or drifting DOM as proof of logout. */
 export async function chatgptAuthenticationAssessment(page) {
     const url = page.url();
+    if (urlContainsChallenge(url))
+        return { state: "challenge", evidence: "challenge-url" };
+    if (await hasVisibleSurface(page, CHATGPT_CHALLENGE_SURFACE_SELECTOR)) {
+        return { state: "challenge", evidence: "challenge-surface" };
+    }
+    const session = await chatgptSessionProbe(page);
+    if (session.authenticated)
+        return { state: "authenticated", evidence: "authenticated-session" };
     try {
         if (await chatgptIsAuthenticated(page))
             return { state: "authenticated", evidence: "authenticated-surface" };
     }
     catch {
         // Navigation may replace the document between locator checks.
-    }
-    if (urlContainsChallenge(url))
-        return { state: "challenge", evidence: "challenge-url" };
-    if (await hasVisibleSurface(page, CHATGPT_CHALLENGE_SURFACE_SELECTOR)) {
-        return { state: "challenge", evidence: "challenge-surface" };
     }
     if (urlIsLogin(url))
         return { state: "signed-out", evidence: "login-url" };

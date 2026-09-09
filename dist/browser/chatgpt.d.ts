@@ -3,6 +3,20 @@ import { type AuthenticationAssessment } from "#internet/browser/authentication"
 import type { CompletionSnapshot } from "#internet/browser/completion";
 import type { ChatGptThinkingLevel } from "#internet/core/config";
 export declare const CHATGPT_HOME_URL = "https://chatgpt.com/";
+export declare const CHATGPT_SESSION_PATH = "/api/auth/session";
+export interface ChatGptSessionProbe {
+    available: boolean;
+    authenticated: boolean;
+    status?: number;
+}
+export interface ChatGptAuthenticationDiagnostic {
+    originPath?: string;
+    session: ChatGptSessionProbe;
+    composerCount: number;
+    accountControlCount: number;
+    loginSurface: boolean;
+    challengeSurface: boolean;
+}
 export declare const CHATGPT_COMPOSER_SELECTOR: string;
 export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button[data-testid=\"send-button\"][aria-label=\"Send prompt\"]";
 export declare const CHATGPT_STOP_BUTTON_SELECTOR = "[data-testid=\"stop-button\"]";
@@ -25,7 +39,11 @@ export declare const CHATGPT_THINKING_LEVEL_INDEX: Record<ChatGptThinkingLevel, 
 export declare const CHATGPT_ASSISTANT_TURN_SELECTOR: string;
 /** True when ChatGPT exposes both its composer and signed-in account control. */
 export declare function chatgptIsAuthenticated(page: Page): Promise<boolean>;
-/** Assess ChatGPT auth without treating a missing composer as proof of logout. */
+/** Probe only non-secret ChatGPT session facts from the signed-in browser context. */
+export declare function chatgptSessionProbe(page: Page): Promise<ChatGptSessionProbe>;
+/** Sanitized auth diagnostics: no cookies, token, email, query string, or session payload. */
+export declare function chatgptAuthenticationDiagnostic(page: Page): Promise<ChatGptAuthenticationDiagnostic>;
+/** Assess ChatGPT auth without treating missing or drifting DOM as proof of logout. */
 export declare function chatgptAuthenticationAssessment(page: Page): Promise<AuthenticationAssessment>;
 /** Wait for a conclusive ChatGPT auth surface or return the latest conclusive observation. */
 export declare function chatgptWaitAuthenticationAssessment(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<AuthenticationAssessment>;

@@ -67,11 +67,13 @@ export declare class BrowserManager {
     private runAccountExclusive;
     private homeUrl;
     private activePage;
+    private authenticationAssessment;
     private assessAuthentication;
     private isAuthenticated;
     private waitForChatGptConversationUrl;
     private waitForGeminiConversationUrl;
     private waitForAuthenticatedPage;
+    private loginAuthenticationDiagnostic;
     private clearProfileSingleton;
     private profileOwnerPid;
     private processIsAlive;

@@ -13,7 +13,8 @@ import {
 import type { AuthenticationAssessment } from "#internet/browser/authentication";
 import {
 	CHATGPT_HOME_URL,
-	chatgptIsAuthenticated,
+	chatgptAuthenticationAssessment,
+	chatgptAuthenticationDiagnostic,
 	chatgptLastAssistantTurnText,
 	chatgptSelectThinkingLevel,
 	chatgptSend,
@@ -37,8 +38,8 @@ import {
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import {
 	GEMINI_HOME_URL,
+	geminiAuthenticationAssessment,
 	geminiDeepResearchSnapshot,
-	geminiIsAuthenticated,
 	geminiLastDeepResearchReportText,
 	geminiLastResponseText,
 	geminiSelectDefaultMode,
@@ -198,6 +199,10 @@ export class BrowserManager {
 		return context.newPage();
 	}
 
+	private async authenticationAssessment(provider: WebProvider, page: Page): Promise<AuthenticationAssessment> {
+		return provider === "chatgpt-web" ? chatgptAuthenticationAssessment(page) : geminiAuthenticationAssessment(page);
+	}
+
 	private async assessAuthentication(
 		provider: WebProvider,
 		page: Page,
@@ -266,9 +271,7 @@ export class BrowserManager {
 			for (const page of context.pages()) {
 				if (page.isClosed()) continue;
 				try {
-					const authenticated =
-						provider === "chatgpt-web" ? await chatgptIsAuthenticated(page) : await geminiIsAuthenticated(page);
-					if (authenticated) return page;
+					if ((await this.authenticationAssessment(provider, page)).state === "authenticated") return page;
 				} catch {
 					// A redirect can replace or close a page; inspect the context again.
 				}
@@ -276,6 +279,34 @@ export class BrowserManager {
 			await sleep(250);
 		}
 		return undefined;
+	}
+
+	private async loginAuthenticationDiagnostic(
+		provider: WebProvider,
+		context: BrowserContext,
+	): Promise<Record<string, unknown>> {
+		const pages: Array<Record<string, unknown>> = [];
+		for (const page of context.pages()) {
+			if (page.isClosed()) continue;
+			try {
+				if (provider === "chatgpt-web") {
+					pages.push({ ...(await chatgptAuthenticationDiagnostic(page)) });
+					continue;
+				}
+				let originPath: string | undefined;
+				try {
+					const url = new URL(page.url());
+					originPath = `${url.origin}${url.pathname}`;
+				} catch {
+					// Ignore an unstable navigation URL.
+				}
+				const assessment = await geminiAuthenticationAssessment(page);
+				pages.push({ ...(originPath === undefined ? {} : { originPath }), assessment });
+			} catch {
+				pages.push({ diagnostic: "unavailable" });
+			}
+		}
+		return { provider, pages };
 	}
 
 	private clearProfileSingleton(profileDir: string): void {
@@ -343,7 +374,11 @@ export class BrowserManager {
 				Math.min(this.config.loginTimeoutMs, 60_000),
 			);
 			if (authenticatedPage === undefined) {
-				throw new InternetError("login_failed", `${provider} did not expose an authenticated page after sign-in.`);
+				const diagnostic = await this.loginAuthenticationDiagnostic(provider, context);
+				throw new InternetError(
+					"login_failed",
+					`${provider} authentication remained unconfirmed after profile reopen; diagnostic: ${JSON.stringify(diagnostic)}`,
+				);
 			}
 			return captureProfileBootstrapState(context);
 		} finally {

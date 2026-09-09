@@ -2,14 +2,14 @@ import { lstatSync, readlinkSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "patchright-core";
 import { AccountStore, capturePortableStorageState, captureProfileBootstrapState, preserveIndexedDb, } from "#internet/browser/accounts";
-import { CHATGPT_HOME_URL, chatgptIsAuthenticated, chatgptLastAssistantTurnText, chatgptSelectThinkingLevel, chatgptSend, chatgptSnapshot, chatgptWaitAuthenticationAssessment, } from "#internet/browser/chatgpt";
+import { CHATGPT_HOME_URL, chatgptAuthenticationAssessment, chatgptAuthenticationDiagnostic, chatgptLastAssistantTurnText, chatgptSelectThinkingLevel, chatgptSend, chatgptSnapshot, chatgptWaitAuthenticationAssessment, } from "#internet/browser/chatgpt";
 import { chatgptHandleWorkflowConfirmation } from "#internet/browser/chatgpt-confirmation";
 import { chatgptDeepResearchSnapshot, chatgptEnableDeepResearch, chatgptSendDeepResearch, } from "#internet/browser/chatgpt-research";
 import { discoverChrome } from "#internet/browser/chrome";
 import { waitForStableCompletion } from "#internet/browser/completion";
 import { ConversationStore, parseChatGptConversationUrl, parseGeminiConversationUrl, } from "#internet/browser/conversations";
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
-import { GEMINI_HOME_URL, geminiDeepResearchSnapshot, geminiIsAuthenticated, geminiLastDeepResearchReportText, geminiLastResponseText, geminiSelectDefaultMode, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
+import { GEMINI_HOME_URL, geminiAuthenticationAssessment, geminiDeepResearchSnapshot, geminiLastDeepResearchReportText, geminiLastResponseText, geminiSelectDefaultMode, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
 import { geminiEnableDeepResearch, geminiStartResearchPlan } from "#internet/browser/gemini-research";
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
@@ -94,6 +94,9 @@ export class BrowserManager {
             return pages[0];
         return context.newPage();
     }
+    async authenticationAssessment(provider, page) {
+        return provider === "chatgpt-web" ? chatgptAuthenticationAssessment(page) : geminiAuthenticationAssessment(page);
+    }
     async assessAuthentication(provider, page, timeoutMs, signal) {
         return provider === "chatgpt-web"
             ? chatgptWaitAuthenticationAssessment(page, timeoutMs, signal)
@@ -139,8 +142,7 @@ export class BrowserManager {
                 if (page.isClosed())
                     continue;
                 try {
-                    const authenticated = provider === "chatgpt-web" ? await chatgptIsAuthenticated(page) : await geminiIsAuthenticated(page);
-                    if (authenticated)
+                    if ((await this.authenticationAssessment(provider, page)).state === "authenticated")
                         return page;
                 }
                 catch {
@@ -150,6 +152,33 @@ export class BrowserManager {
             await sleep(250);
         }
         return undefined;
+    }
+    async loginAuthenticationDiagnostic(provider, context) {
+        const pages = [];
+        for (const page of context.pages()) {
+            if (page.isClosed())
+                continue;
+            try {
+                if (provider === "chatgpt-web") {
+                    pages.push({ ...(await chatgptAuthenticationDiagnostic(page)) });
+                    continue;
+                }
+                let originPath;
+                try {
+                    const url = new URL(page.url());
+                    originPath = `${url.origin}${url.pathname}`;
+                }
+                catch {
+                    // Ignore an unstable navigation URL.
+                }
+                const assessment = await geminiAuthenticationAssessment(page);
+                pages.push({ ...(originPath === undefined ? {} : { originPath }), assessment });
+            }
+            catch {
+                pages.push({ diagnostic: "unavailable" });
+            }
+        }
+        return { provider, pages };
     }
     clearProfileSingleton(profileDir) {
         for (const filename of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
@@ -210,7 +239,8 @@ export class BrowserManager {
             await page.goto(this.homeUrl(provider), { waitUntil: "domcontentloaded", timeout: 60_000 });
             const authenticatedPage = await this.waitForAuthenticatedPage(provider, context, Math.min(this.config.loginTimeoutMs, 60_000));
             if (authenticatedPage === undefined) {
-                throw new InternetError("login_failed", `${provider} did not expose an authenticated page after sign-in.`);
+                const diagnostic = await this.loginAuthenticationDiagnostic(provider, context);
+                throw new InternetError("login_failed", `${provider} authentication remained unconfirmed after profile reopen; diagnostic: ${JSON.stringify(diagnostic)}`);
             }
             return captureProfileBootstrapState(context);
         }

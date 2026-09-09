@@ -116,6 +116,21 @@ describe("BrowserManager account serialization", () => {
 	});
 });
 
+describe("BrowserManager login verification", () => {
+	it("accepts a reopened ChatGPT profile from provider session proof without account-control DOM", async () => {
+		const browser = manager();
+		const page = {
+			isClosed: () => false,
+			url: () => "https://chatgpt.com/",
+			evaluate: async () => ({ available: true, authenticated: true, status: 200 }),
+			locator: () => ({ filter: () => ({ count: async () => 0 }) }),
+		};
+		const context = { pages: () => [page] };
+		await expect((browser as any).waitForAuthenticatedPage("chatgpt-web", context, 50)).resolves.toBe(page);
+		await browser.dispose();
+	});
+});
+
 describe("BrowserManager account state boundaries", () => {
 	it("commits concurrent snapshots against only the selected account revision", async () => {
 		const browser = manager();
