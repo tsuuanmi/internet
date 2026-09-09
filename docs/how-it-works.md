@@ -11,7 +11,7 @@
 
 `BrowserManager` owns account-scoped Chrome lifecycle, portable auth state refresh, scheduler leases, conversation binding, visible/hidden displays, and remote login.
 
-Important account identities:
+Semantic accounts:
 
 ```text
 chatgpt-thinker
@@ -19,19 +19,33 @@ gemini-thinker
 chatgpt-writer
 ```
 
-Every authenticated runtime path requires explicit account identity. Provider is derived implementation metadata only.
+Provider is implementation metadata; authenticated runtime state is account-scoped.
 
 ### Provider adapters
 
-- ChatGPT adapter: auth verification, reasoning-level selection, prompt submission, completion, Website GitHub confirmation detection.
-- Gemini adapter: auth verification, model/thinking selection, prompt submission and completion.
-- provider-native Deep Research adapters: activate/verify research mode before submitting.
+- ChatGPT: auth verification, reasoning-level selection, prompt submission, completion, Website GitHub confirmation detection.
+- Gemini: auth verification, model/thinking selection, prompt submission and completion.
+- Provider-native Deep Research adapters: activate/verify research mode before submission.
+
+Provider execution errors are raised as runtime errors rather than returned as valid model content.
 
 ### Team layer
 
-The lower-level team runtime executes ordered ChatGPT/Gemini debate turns and optional final synthesis. `chatgpt-thinker` is the default explicit synthesizer.
+One shared `runTeam(...)` core serves both `internet_team` and workflow research/review.
 
-Public `internet_team` owns its own `<agent>:team:<name>` namespace. The workflow runtime passes exact workflow-owned session IDs directly to the lower-level team primitive.
+The core owns ordered rounds, prompt strategy, provider calls, synthesis, structured progress/failures, completed-turn transcript capture, and cancellation propagation.
+
+Prompt strategies:
+
+```text
+generic-debate
+workflow-research
+workflow-review
+```
+
+The generic strategy is used by `internet_team`; workflow selects research/review strategies from deterministic session identity.
+
+All strategies treat peer model output as delimited untrusted evidence. Synthesis explicitly targets the strongest supported combined answer rather than a neutral or 50/50 merge.
 
 ### Workflow layer
 
@@ -44,17 +58,20 @@ WorkflowJobStore
 WorkflowHandoffStore
 WorkflowTeamPromptBuilder
 BrowserWorkflowTeamRunner
+WorkflowTeamTraceStore
+DurableWorkflowTeamObserver
+WorkflowOperator
 BrowserWorkflowWriterRunner
 approval policy / confirmation parser
 WorkflowEventSink / DshWorkflowEventSink
 WorkflowRetentionManager
 ```
 
-The engine owns deterministic correctness; the driver owns automatic progression through safe runnable states.
+The engine owns deterministic correctness; the driver owns automatic progression; the team observer owns bounded execution evidence; the operator exposes user-facing views/actions over authoritative durable state.
 
 ## Plugin registration
 
-When enabled, the plugin registers browser-backed tools according to available providers/accounts:
+When both thinker providers and the writer account are enabled, the plugin registers:
 
 ```text
 internet_chat
@@ -65,60 +82,49 @@ internet_workflow
 internet_workflow_maintenance
 ```
 
-It also registers `/internet` for direct ChatGPT conversation use and `/workflow` when both thinker providers needed by the coding workflow are available.
+It also registers `/internet` and the `/workflow` command family.
 
-## Direct chat flow
+## Direct chat and research
 
-```text
-internet_chat { account, prompt, visible? }
--> validate explicit thinker account
--> acquire account scheduler lease
--> verify portable account is ready
--> launch/reuse account browser
--> load account-scoped durable conversation binding
--> verify provider auth surface
--> select required reasoning/model mode
--> insert prompt and verify editor content
--> submit via semantic send control
--> wait for a changed, stopped, stable response
--> refresh durable conversation URL
--> refresh portable auth state when safe
--> return markdown + provider conversation metadata
-```
+`internet_chat` validates an explicit thinker account, acquires that account's scheduler lease, verifies portable account state/auth, resumes an account-scoped durable conversation, selects the required provider mode, submits the prompt, waits for a stable changed response, refreshes durable conversation identity, and returns markdown + provider metadata.
 
-`chatgpt-thinker` and `chatgpt-writer` use the same Website implementation but never share authentication files, schedulers or conversation bindings.
-
-## Direct research flow
-
-`internet_research` derives a research-specific owner namespace and invokes selected thinker accounts. Each provider must successfully enter its native Deep Research mode; the tool does not silently downgrade to ordinary chat.
-
-Provider runs may complete independently. One completed provider result is preserved if another fails.
+`internet_research` uses provider-native research modes. Selected provider runs are independent; a completed provider result may be preserved when another fails.
 
 ## Direct team flow
 
-`internet_team` runs configured thinker accounts in deterministic speaking order. Each round gives the current task and prior team contributions to the next speaker. If synthesis is enabled, the explicit synthesizer receives the full current-call transcript and returns the final answer.
+`internet_team` uses its own `<agent>:team:<name>` session namespace and calls the shared team core.
 
-The public tool may return a bounded transcript when requested; transcript truncation is explicit.
+Default two-round shape:
 
-## `/workflow` admission
+```text
+round 1: ChatGPT -> Gemini critique/refinement
+round 2: ChatGPT critique/refinement -> Gemini critique/refinement
+synthesis: configured synthesizer -> best combined final
+```
 
-`/workflow <objective>` is a command-plane operation.
+The tool may return a bounded current-call transcript when requested.
 
-It:
+## Workflow admission and operator commands
 
-1. reads the current DSH session worktree;
-2. resolves the checked-out branch remote, then `origin`, then one unambiguous configured remote;
-3. converts supported SSH/HTTPS GitHub remotes to a credential-free repository identity;
-4. verifies the exact current `HEAD`;
-5. calls `WorkflowEngine.start(...)` with owner session, objective, repository and exact base revision;
-6. enqueues the new job in `WorkflowDriver`;
-7. returns the durable job ID.
+`/workflow <objective>` resolves the current Git worktree, authoritative remote repository identity, and exact `HEAD`; it then starts a durable job and enqueues `WorkflowDriver`.
 
-If repository authority cannot be resolved safely, no job is created.
+The same command family exposes routine operator actions:
+
+```text
+/workflow list
+/workflow status [jobId]
+/workflow watch [jobId]
+/workflow stop [jobId]
+/workflow continue [jobId]
+```
+
+Operator job selection is scoped to the owning Local session and fails on ambiguity rather than guessing.
+
+`watch` returns the authoritative current snapshot; live progress continues through the existing `PROGRESS` event stream instead of a second polling state machine.
 
 ## Workflow sessions
 
-Stable session IDs are derived from owner session + job:
+Stable Website session IDs:
 
 ```text
 <owner>:workflow:<job>:research:A
@@ -128,96 +134,87 @@ Stable session IDs are derived from owner session + job:
 <owner>:workflow:<job>:writer
 ```
 
-Reviewer sessions persist across cycles. The exact cycle and head SHA are durable state and prompt inputs.
+Reviewer sessions persist across cycles; exact cycle/head facts remain durable state and prompt inputs.
 
-## Research fan-out
+## Concurrent research and review fan-out
 
-`WorkflowDriver` advances a newly created job into research. `WorkflowEngine.runResearch()` starts incomplete A/B lanes logically together.
+`WorkflowEngine.runResearch()` and `runReview()` launch both incomplete A/B lane promises before awaiting either sibling.
 
-`WorkflowTeamPromptBuilder` creates lane-specific tasks from authoritative objective/repository/base facts. `BrowserWorkflowTeamRunner` invokes the lower-level team runtime directly. A completed lane is persisted and is not rerun merely because its sibling failed.
+```text
+Research A  ─────────────────►
+Research B  ─────────────────►
+
+Review A    ─────────────────►
+Review B    ─────────────────►
+```
+
+Each lane is a full ChatGPT+Gemini team invocation. One lane failing or completing does not restart its sibling.
+
+The account scheduler may serialize turns that use the same authenticated account. This is intentionally separate from workflow-lane concurrency; workflow adds no A-then-B mutex.
+
+## Structured team traces
+
+`BrowserWorkflowTeamRunner` wraps shared team execution with `DurableWorkflowTeamObserver`.
+
+The observer persists bounded trace evidence under:
+
+```text
+<workflow data>/workflows/team-traces/<jobId>.json
+```
+
+Trace events identify:
+
+```text
+phase
+lane
+attempt
+round
+accountId
+provider
+stage
+status
+failure kind/message/retryability
+bounded completed-turn text
+```
+
+Stages include `prepare_prompt`, `provider_turn`, `synthesis`, and `complete`; the trace also records team-level attempt markers.
+
+The trace is deliberately separate from compact job JSON. It is private, bounded, and used by workflow status to show the exact latest turn/failure without dumping full payloads into Local progress context.
 
 ## Exact handoffs
 
-Completed team finals become durable handoffs:
+Completed research/review finals become durable exact handoffs containing source/recipient/sequence, verbatim payload, SHA-256 payload hash, and delivery state/timestamps.
 
-```text
-handoff_id
-job_id
-source
-recipient
-sequence
-payload
-payload_hash
-delivery state/timestamps
-```
+Research handoffs are delivered to the writer in deterministic A-then-B order. Website delivery is modeled as at-least-once with idempotent durable acknowledgement.
 
-`payload_hash` is SHA-256 over the exact UTF-8 payload. Parsing recomputes deterministic identity/hash and rejects tampering.
-
-Research handoffs are prepared/delivered in deterministic A-then-B order. Website delivery is modeled as at-least-once; durable acknowledgement makes repeated delivery attempts idempotent.
-
-No control instruction is injected into the payload.
+Trusted controls are separate from data payloads.
 
 ## Writer implementation
 
-After both research handoffs are acknowledged, the engine sends separate `START_IMPLEMENTATION` to the stable `chatgpt-writer` conversation.
+After both research handoffs are acknowledged, the stable `chatgpt-writer` conversation receives `START_IMPLEMENTATION`.
 
-The writer is instructed to:
+The writer verifies repository/base, inspects code, implements and validates the requested change, uses the deterministic workflow branch, reconciles an existing exact matching open PR before creating a new one, and never merges during implementation.
 
-- verify repository and exact base revision;
-- inspect current code;
-- use the delivered research finals;
-- implement and validate the requested change;
-- use the deterministic workflow branch;
-- reconcile an existing exact matching open PR before creating a new one;
-- return strict `PR_OPEN` or `BLOCKED`;
-- never merge during implementation.
+Successful output becomes a durable PR receipt bound to repository, PR number/URL, base, head branch, and exact head SHA.
 
-Successful output is parsed into a durable PR receipt:
+## Exact-head review and remediation
 
-```text
-repository
-PR number / URL
-base branch
-head branch
-head SHA
-```
+Review A/B inspect the actual PR at the exact persisted head SHA. The workflow review prompt strategy keeps the strict output contract authoritative.
 
-Retry does not resend acknowledged handoffs or blindly create duplicate PRs.
-
-## Website GitHub confirmation handling
-
-The ChatGPT adapter inspects only narrow confirmation surfaces. A visible generic `Allow` string is not enough.
-
-The controller extracts supported action/repository/branch/PR identity and evaluates it against actual runtime account/session plus authoritative workflow state.
-
-Implementation/remediation may auto-Allow only when all scope checks match. Unknown/malformed/ambiguous/cross-scope prompts become `UNKNOWN_CONFIRMATION` and stop the driver.
-
-Premature merge is not part of implementation authority.
-
-## Exact-head review
-
-Once a PR exists, Review A/B inspect the actual PR and exact persisted head SHA.
-
-Each reviewer must return one strict JSON result whose control fields include:
+Each final result must contain:
 
 ```text
 verdict: PASS | CHANGES_REQUIRED
 reviewedHeadSha: <exact requested SHA>
 ```
 
-The engine rejects malformed or wrong-head results. The complete reviewer JSON remains the exact data-plane payload.
-
-## Same-PR remediation
-
-Reviewer handoffs are delivered to the same writer conversation. If either verdict requires changes, the engine sends separate `APPLY_REVIEWS` only after both review handoffs are acknowledged.
-
-The writer must preserve the exact PR identity, remediate it and return a different head SHA. The engine resets review-run state for the new head and reuses the same reviewer sessions.
+Malformed/wrong-head results fail the lane. If changes are required, exact reviewer handoffs go to the same writer, which receives `APPLY_REVIEWS`, preserves the same PR, advances the head, and triggers a new review cycle.
 
 Default maximum review cycles: `3`.
 
 ## Workflow events
 
-Durable events are classified:
+Events are classified:
 
 ```text
 INTERNAL
@@ -225,79 +222,49 @@ PROGRESS
 ACTION_REQUIRED
 ```
 
-Only new `PROGRESS` / `ACTION_REQUIRED` events are eligible for `DshWorkflowEventSink` publication. The sink resolves the exact persisted Local owner session and calls DSH `agent.inject()` with compact job/state/PR/head/pending-action metadata.
+Team progress is persisted to trace first and then published as compact phase/lane/attempt/round/account/stage metadata. Full model payloads are not injected into Local progress context.
 
-Full team/reviewer payloads are never projected into Local progress context. Event delivery is best-effort after state commit; notification failure cannot roll back workflow work.
+Notification failure cannot roll back durable workflow correctness.
+
+## Status, stop, and explicit recovery
+
+`WorkflowOperator.status()` combines compact durable job state with the latest trace event for each lane, plus writer, PR/head, review cycle, CI/health, pending action, and update time.
+
+`WorkflowOperator.stop()` delegates to `WorkflowDriver.cancel()`, which aborts active work, waits for settlement, then persists terminal `CANCELLED`. Cancelled jobs are not rediscovered as runnable after restart.
+
+`WorkflowOperator.continue()` delegates to the engine's explicit retry/recovery transition and re-enqueues only a valid resumable job. It does not reset a job to the beginning.
 
 ## Automatic driver and restart recovery
 
-`WorkflowDriver` maintains one active run per job ID and repeatedly invokes engine primitives until a stop boundary is reached.
+`WorkflowDriver` maintains at most one active run per job ID and repeatedly invokes engine primitives until a stop boundary is reached.
 
-Safe restart discovery resumes runnable durable states but does not wake jobs waiting on user authority or known exception handling.
+Safe restart discovery resumes runnable durable states but does not wake terminal/action-required jobs. Unexpected driver errors become explicit retry-required state with a persisted resume target.
 
-Unexpected driver errors become explicit retry-required state with a persisted resume target. There is no generic reset to `CREATED`.
+## PR health, merge authorization, and execution
 
-Cancellation aborts/settles active work before `CANCELLED` is persisted.
-
-## Exact-head PR health
-
-After Review A/B both pass the same head, the writer receives read-only `CHECK_PR_HEALTH`.
-
-The resulting durable health receipt is bound to repository + PR + exact head and classified:
+After Review A/B both pass the same exact head, the writer performs read-only `CHECK_PR_HEALTH` and persists an exact-head receipt classified as:
 
 ```text
-PASS
-FAIL
-PENDING
-NONE
-UNKNOWN
+PASS | FAIL | PENDING | NONE | UNKNOWN
 ```
 
-`PASS` is acceptable. `NONE` is acceptable only when absence of required checks/status policy is established. `PENDING` is retryable. `FAIL` cannot advance. `UNKNOWN` fails closed.
+Only `PASS`, or verified `NONE` when no required checks/statuses exist, may advance toward authorization. A new head invalidates prior review/health evidence.
 
-A new PR head invalidates the prior receipt.
-
-## Merge authorization and execution
-
-With PASS/PASS review and acceptable current-head health, the workflow can request merge authorization.
-
-The action-required request contains the exact PR and expected head. `approve(jobId, expectedHeadSha)` must exactly match the pending head and persists authorization bound to repository, PR, head branch/SHA, review cycle, owner session and time.
-
-Approval transitions to `MERGING`.
-
-Immediately before merge, the writer re-reads the live PR and PR health. Changed head or unacceptable health invalidates stale authority. Only then does `MERGE_AUTHORIZED` execute.
-
-Website merge confirmation may auto-Allow only when the job is in exact authorized `MERGING` state and all durable scope still matches.
-
-Success persists a merge receipt and transitions to `DONE`.
-
-## Workflow status/control surface
-
-`internet_workflow` exposes deterministic operations including start/status/continue/cancel, merge request/approval/rejection and the engine controls needed by the driver.
-
-The normal user path is still `/workflow <task>` rather than manually driving every operation.
-
-Status is intentionally payload-free: it reports control state, lane status/errors, handoff hashes/delivery state, writer/PR/head, review cycle, health, pending action, last event and last error.
+Merge authorization is explicit and bound to repository + PR + exact head. Immediately before merge, the writer re-reads live PR/head/health. Stale authority fails closed.
 
 ## Retention maintenance
 
-`internet_workflow_maintenance` is operator-only and never called automatically by the driver.
-
-Retention eligibility:
+`internet_workflow_maintenance` is operator-only and never runs automatically.
 
 ```text
-DONE      -> 30 days after authoritative updatedAt
-CANCELLED -> 14 days after authoritative updatedAt
+DONE      -> eligible after 30 days
+CANCELLED -> eligible after 14 days
 ```
 
-`preview` returns eligible terminal candidates only. `cleanup` requires exact `jobId + updatedAt` from preview. Before deleting anything it validates the selected job's handoff directory structure/files/permissions.
+Cleanup requires exact `jobId + updatedAt`, validates private workflow artifacts, removes only the selected job/handoffs/team trace, and retains a private durable audit receipt.
 
-Cleanup removes only that job record and its exact handoffs, then retains a private durable audit receipt. Repeating the same exact completed cleanup is audit-idempotent.
+## Correctness boundary
 
-There is no background cleanup, startup sweep or scheduled deletion.
+Website conversation continuity is useful tactical context, but Website cross-conversation/project memory is not workflow correctness state.
 
-## Durable correctness does not depend on Website memory
-
-Website conversation continuity is useful tactical context, especially for the writer and reviewer sessions, but account-level cross-conversation/project memory is not part of the workflow correctness/data plane.
-
-All correctness-bearing facts are persisted explicitly in job, handoff, PR, review, health and authorization state.
+Correctness-bearing facts are explicitly persisted in job, handoff, team trace, PR, review, health, authorization, and merge receipts.
