@@ -1,11 +1,11 @@
 import type { CommandDefinition } from "@deepseek-ai/dsh-commands";
+import { WorkflowOperatorError } from "#internet/workflow/operator";
 import {
 	type GitRunner,
 	resolveWorkflowRepository,
 	runGitCommand,
 	WorkflowRepositoryError,
 } from "#internet/workflow/repository-context";
-import { WorkflowOperatorError } from "#internet/workflow/operator";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 
 const USAGE = "Usage: /workflow <objective> | list | status [jobId] | watch [jobId] | stop [jobId] | continue [jobId]";
