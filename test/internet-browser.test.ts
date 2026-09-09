@@ -66,7 +66,8 @@ describe("internet_browser", () => {
 		const result = await tool.execute({ action: "login", account: "chatgpt-writer", remote: true }, {} as never);
 		expect(browser.login).toHaveBeenCalledWith("chatgpt-writer", { remote: true });
 		expect(result).toMatchObject({ ok: true, accountId: "chatgpt-writer", provider: "chatgpt-web", remoteLogin });
-		expect((result as { message: string }).message).toContain("chatgpt-writer");
+		expect((result as { message: string }).message).toContain("Save account");
+		expect((result as { message: string }).message).toContain("Do not close Chrome manually");
 	});
 
 	it("starts login for all enabled accounts without sharing lifecycle identity", async () => {
@@ -86,6 +87,47 @@ describe("internet_browser", () => {
 		expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker", { remote: false });
 		expect(browser.login).toHaveBeenCalledWith("chatgpt-writer", { remote: false });
 		expect(browser.login).toHaveBeenCalledWith("gemini-thinker", { remote: false });
+	});
+
+	it("returns an account-to-port manifest for login_all remote sessions even when persisted state is ready", async () => {
+		const ports = {
+			"chatgpt-thinker": 39000,
+			"chatgpt-writer": 39001,
+			"gemini-thinker": 39002,
+		} as const;
+		const browser = {
+			login: vi.fn(async (accountId: keyof typeof ports) => {
+				const port = ports[accountId];
+				return {
+					accountId,
+					provider: accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
+					state: accountId === "chatgpt-writer" ? ("ready" as const) : ("missing" as const),
+					accountPath: `/accounts/${accountId}.json`,
+					remoteLogin: {
+						state: "waiting" as const,
+						message: "Remote desktop ready.",
+						port,
+						sshCommand: `ssh -N -L ${port}:127.0.0.1:${port} <user>@<server>`,
+						url: `http://127.0.0.1:${port}/token-${accountId}/`,
+						expiresAt: "2026-01-01T00:03:00.000Z",
+					},
+				} satisfies AccountStatus;
+			}),
+			status: vi.fn(),
+			stop: vi.fn(),
+		};
+		const tool = defineInternetBrowserTool(browser as never, allowed);
+		const result = await tool.execute({ action: "login_all", remote: true }, {} as never);
+		const output = result as { accounts: string; remoteLogins: string; message: string };
+
+		expect(output.accounts).toContain("chatgpt-thinker=remote-waiting(port=39000)");
+		expect(output.accounts).toContain("chatgpt-writer=remote-waiting(port=39001)");
+		expect(output.accounts).toContain("gemini-thinker=remote-waiting(port=39002)");
+		expect(output.remoteLogins).toContain("chatgpt-thinker: remote=waiting port=39000");
+		expect(output.remoteLogins).toContain("URL: http://127.0.0.1:39001/token-chatgpt-writer/");
+		expect(output.remoteLogins).toContain("gemini-thinker: remote=waiting port=39002");
+		expect(output.message).toContain("Save account");
+		expect(output.message).toContain("Do not close Chrome manually");
 	});
 
 	it("reports all account states in one status call", async () => {
