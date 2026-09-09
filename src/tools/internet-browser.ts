@@ -23,8 +23,33 @@ function batchAccounts(allowed: ReadonlySet<AccountId>): AccountId[] {
 	return ACCOUNT_IDS.filter((accountId) => allowed.has(accountId));
 }
 
+function summarizeStatus(status: AccountStatus): string {
+	const remoteLogin = status.remoteLogin;
+	if (remoteLogin !== undefined) {
+		const port = remoteLogin.port === undefined ? "" : `(port=${remoteLogin.port})`;
+		return `${status.accountId}=remote-${remoteLogin.state}${port}`;
+	}
+	return `${status.accountId}=${status.state}`;
+}
+
 function summarizeStatuses(statuses: readonly AccountStatus[]): string {
-	return statuses.map((status) => `${status.accountId}=${status.state}`).join(", ");
+	return statuses.map(summarizeStatus).join(", ");
+}
+
+function remoteLoginManifest(statuses: readonly AccountStatus[]): string | undefined {
+	const entries = statuses.flatMap((status) => {
+		const remoteLogin = status.remoteLogin;
+		if (remoteLogin === undefined) return [];
+		return [
+			[
+				`${status.accountId}: remote=${remoteLogin.state}${remoteLogin.port === undefined ? "" : ` port=${remoteLogin.port}`}`,
+				...(remoteLogin.sshCommand === undefined ? [] : [`  SSH: ${remoteLogin.sshCommand}`]),
+				...(remoteLogin.url === undefined ? [] : [`  URL: ${remoteLogin.url}`]),
+				...(remoteLogin.expiresAt === undefined ? [] : [`  Expires: ${remoteLogin.expiresAt}`]),
+			].join("\n"),
+		];
+	});
+	return entries.length === 0 ? undefined : entries.join("\n");
 }
 
 function singleResult(accountId: AccountId, status: AccountStatus, message?: string) {
@@ -41,7 +66,7 @@ function singleResult(accountId: AccountId, status: AccountStatus, message?: str
 		message:
 			message ??
 			(remoteLogin?.state === "waiting"
-				? `First run ${remoteLogin.sshCommand}, then open ${remoteLogin.url}, sign in to ${accountId}, and press Save account. This login expires at ${remoteLogin.expiresAt}.`
+				? `First run ${remoteLogin.sshCommand}, then open ${remoteLogin.url}, sign in to ${accountId}, and press Save account. Do not close Chrome manually; Save account closes the login desktop and verifies the portable account. This login expires at ${remoteLogin.expiresAt}.`
 				: (remoteLogin?.message ?? `${accountId} portable account is verified and ready.`)),
 	};
 }
@@ -85,6 +110,7 @@ export function defineInternetBrowserTool(
 					state: { type: "string", enum: [...ACCOUNT_STATES] },
 					accountPath: { type: "string" },
 					accounts: { type: "string" },
+					remoteLogins: { type: "string" },
 					account: {
 						type: "object",
 						additionalProperties: false,
@@ -124,6 +150,7 @@ export function defineInternetBrowserTool(
 					provider?: unknown;
 					state?: unknown;
 					accounts?: unknown;
+					remoteLogins?: unknown;
 					remoteLogin?: { state?: unknown; url?: unknown; sshCommand?: unknown };
 					message?: unknown;
 				};
@@ -137,6 +164,7 @@ export function defineInternetBrowserTool(
 				const lines = [summary.join(" · ")];
 				if (v.remoteLogin?.sshCommand !== undefined) lines.push(`SSH: ${String(v.remoteLogin.sshCommand)}`);
 				if (v.remoteLogin?.url !== undefined) lines.push(`URL: ${String(v.remoteLogin.url)}`);
+				if (v.remoteLogins !== undefined) lines.push(String(v.remoteLogins));
 				if (v.message !== undefined) lines.push(String(v.message));
 				return [{ type: "text", text: lines.join("\n") }];
 			},
@@ -176,7 +204,7 @@ export function defineInternetBrowserTool(
 								error: isInternetError(error) ? `${error.kind}: ${error.message}` : String(error),
 							};
 						}
-					}),
+				}),
 				);
 				const failures = results.filter((item): item is { accountId: AccountId; error: string } => "error" in item);
 				const statuses = results.filter((item): item is AccountStatus => "state" in item);
@@ -184,14 +212,21 @@ export function defineInternetBrowserTool(
 					...(statuses.length === 0 ? [] : [summarizeStatuses(statuses)]),
 					...failures.map((failure) => `${failure.accountId}=error:${failure.error}`),
 				].join(", ");
+				const remoteLogins = remoteLoginManifest(statuses);
+				const waitingRemoteLogins = statuses.filter(
+					(status) => status.remoteLogin?.state === "waiting" || status.remoteLogin?.state === "finalizing",
+				).length;
 				return {
 					ok: failures.length === 0,
 					action,
 					accounts: summary,
+					...(remoteLogins === undefined ? {} : { remoteLogins }),
 					message:
-						failures.length === 0
-							? `${typedAction} completed for ${accounts.length} enabled accounts.`
-							: `${typedAction} completed with ${failures.length} account failure(s).`,
+						failures.length > 0
+							? `${typedAction} completed with ${failures.length} account failure(s).`
+							: typedAction === "login_all" && waitingRemoteLogins > 0
+								? `Remote login is ready for ${waitingRemoteLogins} account(s). Use the account/port/URL mapping above, sign in to the named account in each noVNC desktop, then press Save account. Do not close Chrome manually; Save account closes and verifies the login for you.`
+								: `${typedAction} completed for ${accounts.length} enabled accounts.`,
 				};
 			}
 
