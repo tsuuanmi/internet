@@ -408,6 +408,10 @@ debate requires current information.
 - **Updated package behaves like the old build** — restart the existing DSH host after updating the
   profile dependency.
 
+## Workflow retention
+
+Workflow history is not deleted automatically. `internet_workflow_maintenance` provides an explicit two-step operator path: `preview` lists only terminal jobs that have exceeded the fixed retention window (DONE: 30 days, CANCELLED: 14 days), then `cleanup` requires the exact job ID and unchanged `updatedAt` from that preview. Cleanup removes that job plus its durable handoff payloads and preserves a private audit receipt; active/recent jobs and stale previews fail closed.
+
 ## Development
 
 ```bash

@@ -10,11 +10,13 @@ import { defineInternetChatTool } from "#internet/tools/internet-chat";
 import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
+import { defineInternetWorkflowMaintenanceTool } from "#internet/tools/internet-workflow-maintenance";
 import { WorkflowDriver } from "#internet/workflow/driver";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { DshWorkflowEventSink, type WorkflowAgentRegistry } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
+import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
@@ -52,6 +54,7 @@ const INTERNET_WORKFLOW_GUIDANCE = [
 	"Research finals are materialized as exact SHA-256-bound durable handoffs. Data-plane payloads are separate from trusted control messages, and START_IMPLEMENTATION is gated on delivery of both research handoffs.",
 	"The workflow writer is the separate chatgpt-writer account. It receives both research finals verbatim in one persistent per-job conversation, then a separate trusted START_IMPLEMENTATION control. The writer must open/update one PR and return a compact machine-validated PR receipt; merge is never part of this phase.",
 	"Scoped Website confirmation classification is fail-closed. Implementation/remediation actions auto-confirm only in exact writer scope. Before merge authorization, the writer performs a read-only live GitHub health check bound to repository + PR + exact head SHA and classifies required-check health as PASS, FAIL, PENDING, NONE, or UNKNOWN; only PASS or verified NONE is merge-eligible. request_merge emits a concrete ACTION_REQUIRED request only after that exact-head health gate, approve binds repository + PR + branch + exact head SHA, and MERGING re-checks live PR health immediately before the writer revalidates and merges the exact authorized head. Successful merge records the merge SHA/executor and completes the job. PROGRESS and ACTION_REQUIRED events remain compact Local context without raw team/reviewer payloads.",
+	"Workflow retention is explicit operator maintenance only: internet_workflow_maintenance preview reports aged terminal candidates, and cleanup requires the exact unchanged updatedAt from preview. DONE jobs retain 30 days, CANCELLED jobs 14 days, cleanup is never automatic, and durable audit receipts remain after job/handoff deletion.",
 ].join(" ");
 
 export interface PluginContext {
@@ -105,6 +108,9 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		workflowDriver.resumeActive();
 		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine, driver: workflowDriver }));
 		ctx.tools.register(defineInternetWorkflowTool(workflowEngine, workflowDriver));
+		ctx.tools.register(
+			defineInternetWorkflowMaintenanceTool(new WorkflowRetentionManager(config.dataDir, workflowJobs)),
+		);
 		ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
 		ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
 		ctx.systemPrompt?.section?.({ name: "tool:internet_team", order: 122, text: INTERNET_TEAM_GUIDANCE });
@@ -139,6 +145,10 @@ export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#
 export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
+export {
+	defineInternetWorkflowMaintenanceTool,
+	WORKFLOW_MAINTENANCE_OPERATIONS,
+} from "#internet/tools/internet-workflow-maintenance";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -160,6 +170,17 @@ export {
 	WorkflowHandoffStoreError,
 } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export type {
+	WorkflowCleanupAudit,
+	WorkflowCleanupCandidate,
+	WorkflowRetentionPolicy,
+} from "#internet/workflow/retention";
+export {
+	DEFAULT_WORKFLOW_RETENTION_POLICY,
+	WORKFLOW_RETENTION_AUDIT_SCHEMA,
+	WorkflowRetentionError,
+	WorkflowRetentionManager,
+} from "#internet/workflow/retention";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
 export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";

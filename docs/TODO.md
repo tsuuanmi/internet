@@ -489,9 +489,11 @@ The authorized merge path should verify that the exact authorized head still has
 
 ## P13 — Operations / retention
 
-### 45. Audit/retention/cleanup policy — ROI: medium
+**Status:** implemented with explicit operator-only cleanup; no background deletion exists.
 
-Define explicit retention windows, audit metadata, safe terminal-job cleanup eligibility, and operator-visible cleanup commands after the automatic driver and CI gate are stable. Start with explicit operator actions only; no implicit automatic deletion.
+### 45. ✅ Audit/retention/cleanup policy — ROI: medium
+
+DONE jobs become eligible after 30 days and CANCELLED jobs after 14 days, measured from authoritative `updatedAt`. `internet_workflow_maintenance preview` exposes only aged terminal candidates. `cleanup` requires the exact `jobId` + unchanged `updatedAt` returned by preview, fails closed on unexpected handoff files/permissions, removes only that job and its exact durable handoffs, and leaves a private durable cleanup audit receipt containing repository/state/retention/operator/timestamps/deletion count. Repeating the same exact cleanup is audit-idempotent. There is deliberately no implicit or scheduled deletion.
 
 ## Defer until needed
 

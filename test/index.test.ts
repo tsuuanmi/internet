@@ -43,6 +43,7 @@ describe("account-aware plugin registration", () => {
 			"internet_chat",
 			"internet_research",
 			"internet_workflow",
+			"internet_workflow_maintenance",
 			"internet_team",
 		]);
 		expect(commands).toEqual(["internet", "workflow"]);

@@ -59,6 +59,8 @@ try {
 		"dist/tools/internet-team.d.ts",
 		"dist/tools/internet-workflow.js",
 		"dist/tools/internet-workflow.d.ts",
+		"dist/tools/internet-workflow-maintenance.js",
+		"dist/tools/internet-workflow-maintenance.d.ts",
 		"dist/workflow/engine.js",
 		"dist/workflow/engine.d.ts",
 		"dist/workflow/job-store.js",
@@ -78,7 +80,14 @@ try {
 	const scenarios = [
 		{
 			config: {},
-			tools: ["internet_browser", "internet_chat", "internet_research", "internet_workflow", "internet_team"],
+			tools: [
+				"internet_browser",
+				"internet_chat",
+				"internet_research",
+				"internet_workflow",
+				"internet_workflow_maintenance",
+				"internet_team",
+			],
 			commands: ["internet", "workflow"],
 			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_workflow", "tool:internet_team"],
 		},
