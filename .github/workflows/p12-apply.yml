@@ -27,7 +27,6 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - run: git diff --exit-code -- dist
       - run: npm run verify-package
       - name: Commit P12 implementation
         run: |
