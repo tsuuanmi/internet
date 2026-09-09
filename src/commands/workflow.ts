@@ -1,7 +1,6 @@
 import type { CommandDefinition } from "@deepseek-ai/dsh-commands";
 import {
 	type GitRunner,
-	normalizeRepositoryUrl,
 	resolveWorkflowRepository,
 	runGitCommand,
 	WorkflowRepositoryError,
