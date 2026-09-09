@@ -5,89 +5,57 @@
 
 [1m[46m RUN [49m[22m [36mv3.2.6 [39m[90m/home/runner/work/internet/internet[39m
 
- [32m✓[39m test/display.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 33[2mms[22m[39m
- [32m✓[39m test/workflow-driver.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 254[2mms[22m[39m
- [32m✓[39m test/gemini.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1229[2mms[22m[39m
-   [33m[2m✓[22m[39m geminiWaitAuthenticationAssessment[2m > [22mretains a challenge over an earlier signed-out observation [33m 601[2mms[22m[39m
-   [33m[2m✓[22m[39m geminiWaitAuthenticationAssessment[2m > [22mrecognizes a final signed-out page after an earlier challenge [33m 605[2mms[22m[39m
- [32m✓[39m test/chatgpt.test.ts [2m([22m[2m22 tests[22m[2m)[22m[33m 1242[2mms[22m[39m
-   [33m[2m✓[22m[39m chatgptWaitAuthenticationAssessment[2m > [22mretains a challenge over an earlier signed-out observation [33m 615[2mms[22m[39m
-   [33m[2m✓[22m[39m chatgptWaitAuthenticationAssessment[2m > [22mrecognizes a final signed-out page after an earlier challenge [33m 600[2mms[22m[39m
- [32m✓[39m test/workflow-engine.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 101[2mms[22m[39m
- [32m✓[39m test/workflow-review.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 157[2mms[22m[39m
- [32m✓[39m test/workflow-writer.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 134[2mms[22m[39m
- [32m✓[39m test/browser-runtime.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 216[2mms[22m[39m
- [32m✓[39m test/workflow-p10-hardening.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 52[2mms[22m[39m
- [32m✓[39m test/workflow-merge-gate.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 43[2mms[22m[39m
- [32m✓[39m test/commands/workflow.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 17[2mms[22m[39m
- [32m✓[39m test/workflow-approval-policy.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 18[2mms[22m[39m
- [32m✓[39m test/workflow-events.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 32[2mms[22m[39m
- [32m✓[39m test/config.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 11[2mms[22m[39m
- [32m✓[39m test/internet-team.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 14[2mms[22m[39m
- [32m✓[39m test/accounts.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 27[2mms[22m[39m
- [32m✓[39m test/team.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
- [32m✓[39m test/workflow-writer-runner.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
- [32m✓[39m test/workflow-ci-health.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 44[2mms[22m[39m
- [32m✓[39m test/conversations.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 26[2mms[22m[39m
- [32m✓[39m test/workflow-handoff.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 27[2mms[22m[39m
- [32m✓[39m test/workflow-retention.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 30[2mms[22m[39m
- [32m✓[39m test/provider-scheduler.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 63[2mms[22m[39m
- [32m✓[39m test/package-contract.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 28[2mms[22m[39m
- [32m✓[39m test/internet-browser.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 20[2mms[22m[39m
- [32m✓[39m test/workflow-team-runtime.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
- [32m✓[39m test/internet-research.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 15[2mms[22m[39m
- [32m✓[39m test/internet-workflow.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 20[2mms[22m[39m
- [31m❯[39m test/index.test.ts [2m([22m[2m2 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 36[2mms[22m[39m
-[31m   [31m×[31m account-aware plugin registration[2m > [22mregisters canonical tools, workflow engine surface, and account isolation guidance[39m[32m 31[2mms[22m[39m
-[31m     → expected [ 'internet_browser', …(5) ] to deeply equal [ 'internet_browser', …(4) ][39m
-   [32m✓[39m account-aware plugin registration[2m > [22momits workflow and internet_team when Gemini is disabled while keeping ChatGPT account lifecycle[32m 4[2mms[22m[39m
- [32m✓[39m test/xvfb.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
- [32m✓[39m test/accounts-identity.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m test/display.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m test/workflow-driver.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 215[2mms[22m[39m
+ [32m✓[39m test/workflow-engine.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 85[2mms[22m[39m
+ [32m✓[39m test/gemini.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1226[2mms[22m[39m
+   [33m[2m✓[22m[39m geminiWaitAuthenticationAssessment[2m > [22mretains a challenge over an earlier signed-out observation [33m 602[2mms[22m[39m
+   [33m[2m✓[22m[39m geminiWaitAuthenticationAssessment[2m > [22mrecognizes a final signed-out page after an earlier challenge [33m 601[2mms[22m[39m
+ [32m✓[39m test/chatgpt.test.ts [2m([22m[2m22 tests[22m[2m)[22m[33m 1234[2mms[22m[39m
+   [33m[2m✓[22m[39m chatgptWaitAuthenticationAssessment[2m > [22mretains a challenge over an earlier signed-out observation [33m 604[2mms[22m[39m
+   [33m[2m✓[22m[39m chatgptWaitAuthenticationAssessment[2m > [22mrecognizes a final signed-out page after an earlier challenge [33m 605[2mms[22m[39m
+ [32m✓[39m test/workflow-review.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 164[2mms[22m[39m
+ [32m✓[39m test/workflow-writer.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 150[2mms[22m[39m
+ [32m✓[39m test/workflow-p10-hardening.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 71[2mms[22m[39m
+ [32m✓[39m test/browser-runtime.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 242[2mms[22m[39m
+ [32m✓[39m test/commands/workflow.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m test/workflow-approval-policy.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m test/workflow-merge-gate.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 612[2mms[22m[39m
+   [33m[2m✓[22m[39m workflow merge gate[2m > [22mrecords a merge receipt only when writer revalidates the authorized head [33m 393[2mms[22m[39m
+ [32m✓[39m test/workflow-events.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 139[2mms[22m[39m
+ [32m✓[39m test/config.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m test/internet-team.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m test/accounts.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m test/team.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m test/workflow-ci-health.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m test/workflow-writer-runner.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m test/conversations.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m test/workflow-handoff.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m test/workflow-retention.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m test/provider-scheduler.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 58[2mms[22m[39m
+ [32m✓[39m test/package-contract.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m test/internet-browser.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m test/workflow-team-runtime.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m test/internet-research.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m test/internet-workflow.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m test/index.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32m✓[39m test/xvfb.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m test/accounts-identity.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
  [32m✓[39m test/commands/internet.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
- [32m✓[39m test/completion.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 200[2mms[22m[39m
- [32m✓[39m test/vnc.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
- [32m✓[39m test/remote-login.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 5069[2mms[22m[39m
-   [33m[2m✓[22m[39m RemoteLoginSession[2m > [22mserves a tokenized loopback page and finalizes once [33m 1355[2mms[22m[39m
-   [33m[2m✓[22m[39m RemoteLoginSession[2m > [22mserves the generated remote-login client by default [33m 1176[2mms[22m[39m
-   [33m[2m✓[22m[39m RemoteLoginSession[2m > [22mreturns tunnel instructions before it launches Chrome [33m 1131[2mms[22m[39m
-   [33m[2m✓[22m[39m RemoteLoginSession[2m > [22mexpires and cleans a login that was not saved [33m 1121[2mms[22m[39m
- [32m✓[39m test/internet-chat.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
- [32m✓[39m test/markdown.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 19[2mms[22m[39m
- [32m✓[39m test/submission.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 310[2mms[22m[39m
- [32m✓[39m test/storage.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m test/completion.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 202[2mms[22m[39m
+ [32m✓[39m test/vnc.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m test/internet-chat.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m test/remote-login.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 5251[2mms[22m[39m
+   [33m[2m✓[22m[39m RemoteLoginSession[2m > [22mserves a tokenized loopback page and finalizes once [33m 1468[2mms[22m[39m
+   [33m[2m✓[22m[39m RemoteLoginSession[2m > [22mserves the generated remote-login client by default [33m 1281[2mms[22m[39m
+   [33m[2m✓[22m[39m RemoteLoginSession[2m > [22mreturns tunnel instructions before it launches Chrome [33m 1124[2mms[22m[39m
+   [33m[2m✓[22m[39m RemoteLoginSession[2m > [22mexpires and cleans a login that was not saved [33m 1108[2mms[22m[39m
+ [32m✓[39m test/submission.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 306[2mms[22m[39m
+ [32m✓[39m test/markdown.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m test/storage.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
 
-[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+[2m Test Files [22m [1m[32m39 passed[39m[22m[90m (39)[39m
+[2m      Tests [22m [1m[32m235 passed[39m[22m[90m (235)[39m
+[2m   Start at [22m 06:30:40
+[2m   Duration [22m 7.61s[2m (transform 983ms, setup 0ms, collect 3.17s, tests 10.39s, environment 8ms, prepare 2.94s)[22m
 
-[41m[1m FAIL [22m[49m test/index.test.ts[2m > [22maccount-aware plugin registration[2m > [22mregisters canonical tools, workflow engine surface, and account isolation guidance
-[31m[1mAssertionError[22m: expected [ 'internet_browser', …(5) ] to deeply equal [ 'internet_browser', …(4) ][39m
-
-[32m- Expected[39m
-[31m+ Received[39m
-
-[2m  [[22m
-[2m    "internet_browser",[22m
-[2m    "internet_chat",[22m
-[2m    "internet_research",[22m
-[2m    "internet_workflow",[22m
-[31m+   "internet_workflow_maintenance",[39m
-[2m    "internet_team",[22m
-[2m  ][22m
-
-[36m [2m❯[22m test/index.test.ts:[2m41:17[22m[39m
-    [90m 39| [39m  expect(workflow?.text).toContain("calls the lower-level team runtime…
-    [90m 40| [39m  [34mexpect[39m(workflow[33m?.[39mtext)[33m.[39m[34mtoContain[39m([32m"no free-form child agent"[39m)[33m;[39m
-    [90m 41| [39m  [34mexpect[39m(tools)[33m.[39m[34mtoEqual[39m([
-    [90m   | [39m                [31m^[39m
-    [90m 42| [39m   [32m"internet_browser"[39m[33m,[39m
-    [90m 43| [39m   [32m"internet_chat"[39m[33m,[39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
-
-
-[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m38 passed[39m[22m[90m (39)[39m
-[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m234 passed[39m[22m[90m (235)[39m
-[2m   Start at [22m 06:28:08
-[2m   Duration [22m 7.72s[2m (transform 1.17s, setup 0ms, collect 3.71s, tests 9.55s, environment 9ms, prepare 3.45s)[22m
-
-
-::error file=/home/runner/work/internet/internet/test/index.test.ts,title=test/index.test.ts > account-aware plugin registration > registers canonical tools%2C workflow engine surface%2C and account isolation guidance,line=41,column=17::AssertionError: expected [ 'internet_browser', …(5) ] to deeply equal [ 'internet_browser', …(4) ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A    "internet_browser",%0A    "internet_chat",%0A    "internet_research",%0A    "internet_workflow",%0A+   "internet_workflow_maintenance",%0A    "internet_team",%0A  ]%0A%0A ❯ test/index.test.ts:41:17%0A%0A
