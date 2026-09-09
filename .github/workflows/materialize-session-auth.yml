@@ -31,6 +31,13 @@ jobs:
           script = workflow[start:end]
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in script.splitlines())
           exec(compile(script, '<session-auth-patch>', 'exec'))
+
+          runtime = Path('src/browser/runtime.ts')
+          text = runtime.read_text()
+          old = 'pages.push(await chatgptAuthenticationDiagnostic(page));'
+          new = 'pages.push({ ...(await chatgptAuthenticationDiagnostic(page)) });'
+          assert old in text
+          runtime.write_text(text.replace(old, new, 1))
           PY
       - run: npx biome check --write src/browser/authentication.ts src/browser/chatgpt.ts src/browser/runtime.ts test/chatgpt.test.ts test/browser-runtime.test.ts
       - run: npm run check
