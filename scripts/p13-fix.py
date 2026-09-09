@@ -16,9 +16,12 @@ maintenance = Path("src/tools/internet-workflow-maintenance.ts")
 m = maintenance.read_text().replace("\t\texecute(args, exec) {", "\t\tasync execute(args, exec) {")
 maintenance.write_text(m)
 
-index_test = Path("test/index.test.ts")
-i = index_test.read_text()
-i = i.replace(
+for path in [Path("test/index.test.ts"), Path("scripts/verify-package.mjs")]:
+    text = path.read_text()
+    text = text.replace(
 '''\t\t\t"internet_workflow",\n\t\t\t"internet_team",''',
 '''\t\t\t"internet_workflow",\n\t\t\t"internet_workflow_maintenance",\n\t\t\t"internet_team",''')
-index_test.write_text(i)
+    text = text.replace(
+'''"internet_browser", "internet_chat", "internet_research", "internet_workflow", "internet_team"''',
+'''"internet_browser", "internet_chat", "internet_research", "internet_workflow", "internet_workflow_maintenance", "internet_team"''')
+    path.write_text(text)
