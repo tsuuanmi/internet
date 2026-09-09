@@ -1,5 +1,7 @@
 # ChatGPT UI inspection contract
 
+> **Workflow-doc sync review:** 2026-09-09 — unchanged by P13. Selector observations remain provider/entitlement sensitive and must be re-inspected before changing automation behavior.
+
 Follow the shared [provider UI inspection guide](./provider-ui-inspection.md) before changing this contract. These observations are entitlement- and locale-sensitive, not a public provider API. Missing controls or confirmations must fail with `provider_error`; never use blind text clicking or a standard-chat fallback.
 
 ## Deep Research
