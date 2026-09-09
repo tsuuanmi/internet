@@ -64,7 +64,11 @@ function assertPolicy(policy: WorkflowRetentionPolicy): void {
 	}
 }
 
-function candidateFor(job: WorkflowJob, nowMs: number, policy: WorkflowRetentionPolicy): WorkflowCleanupCandidate | undefined {
+function candidateFor(
+	job: WorkflowJob,
+	nowMs: number,
+	policy: WorkflowRetentionPolicy,
+): WorkflowCleanupCandidate | undefined {
 	const retentionDays = retentionDaysFor(job.state, policy);
 	if (retentionDays === undefined) return undefined;
 	const updatedMs = Date.parse(job.updatedAt);
