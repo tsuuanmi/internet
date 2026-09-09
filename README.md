@@ -243,9 +243,8 @@ Default final synthesizer: `chatgpt-thinker`, independent of speaking order.
 
 ```text
 internet_browser {
-  action: "login" | "status" | "stop",
+  action: "login" | "status" | "stop" | "login_all" | "status_all" | "stop_all",
   account: "chatgpt-thinker" | "chatgpt-writer" | "gemini-thinker",
-  remote?: boolean
 }
 ```
 
@@ -289,7 +288,7 @@ internet_browser { action: "login", account: "chatgpt-writer" }
 internet_browser { action: "login", account: "gemini-thinker" }
 ```
 
-On displayless Linux, remote login uses a tokenized loopback noVNC page intended for SSH port forwarding. Default stable ports are:
+Every login uses a tokenized loopback noVNC page on the server. Open the returned loopback URL directly when working on that server, or SSH-forward the port and open the same URL from another machine. After sign-in, press **Save account**; do not close Chrome manually. Default stable ports are:
 
 ```text
 39000 chatgpt-thinker

@@ -85,10 +85,6 @@ export function defineInternetBrowserTool(manager, allowed) {
                 enum: [...ACCOUNT_IDS],
                 description: "Exact authenticated account identity for non-batch actions.",
             },
-            remote: {
-                type: "boolean",
-                description: "Deprecated compatibility flag. Login always uses the same invisible loopback noVNC port flow whether the operator is local or connecting through SSH forwarding.",
-            },
         },
         output: {
             schema: {
@@ -172,13 +168,6 @@ export function defineInternetBrowserTool(manager, allowed) {
                 return { ok: false, action: String(action), message: `unknown action ${String(action)}` };
             }
             const typedAction = action;
-            const remote = args.remote;
-            if (remote !== undefined && typeof remote !== "boolean") {
-                return { ok: false, action, message: "remote must be a boolean" };
-            }
-            if (remote !== undefined && typedAction !== "login" && typedAction !== "login_all") {
-                return { ok: false, action, message: "remote is valid only for login and login_all" };
-            }
             if (isBatchAction(typedAction)) {
                 const accounts = batchAccounts(allowed);
                 if (accounts.length === 0)
@@ -186,7 +175,7 @@ export function defineInternetBrowserTool(manager, allowed) {
                 const results = await Promise.all(accounts.map(async (accountId) => {
                     try {
                         if (typedAction === "login_all")
-                            return await manager.login(accountId, { remote: true });
+                            return await manager.login(accountId);
                         if (typedAction === "stop_all") {
                             await manager.stop(accountId);
                             return await manager.status(accountId);
@@ -247,7 +236,7 @@ export function defineInternetBrowserTool(manager, allowed) {
                 if (typedAction === "login") {
                     return {
                         action,
-                        ...singleResult(accountId, await manager.login(accountId, { remote: true })),
+                        ...singleResult(accountId, await manager.login(accountId)),
                     };
                 }
                 if (typedAction === "stop") {

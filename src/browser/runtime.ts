@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { lstatSync, readlinkSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, chromium, type Page } from "patchright-core";
@@ -76,10 +75,6 @@ export interface ChatResult {
 	text: string;
 	url: string;
 	conversationId?: string;
-}
-
-export interface LoginOptions {
-	remote?: boolean;
 }
 
 export interface AccountStatus {
@@ -325,58 +320,6 @@ export class BrowserManager {
 			"login_failed",
 			"Normal Chrome is still using the login profile. Close the dedicated Chrome window completely.",
 		);
-	}
-
-	private async launchNormalLogin(accountId: AccountId): Promise<void> {
-		const provider = this.provider(accountId);
-		const { profileDir } = this.locations(accountId);
-		const child = spawn(
-			this.chromeExecutable(),
-			[
-				`--user-data-dir=${profileDir}`,
-				"--new-window",
-				"--disable-background-mode",
-				"--no-first-run",
-				"--no-default-browser-check",
-				this.homeUrl(provider),
-			],
-			{ env: process.env, stdio: "ignore" },
-		);
-
-		await new Promise<void>((resolve, reject) => {
-			let settled = false;
-			const finish = (action: () => void): void => {
-				if (settled) return;
-				settled = true;
-				clearTimeout(timer);
-				action();
-			};
-			const timer = setTimeout(() => {
-				child.kill("SIGTERM");
-				finish(() =>
-					reject(
-						new InternetError(
-							"timeout",
-							`Sign in to ${provider} and close the dedicated Chrome window within the login timeout.`,
-						),
-					),
-				);
-			}, this.config.loginTimeoutMs);
-			child.once("error", (error) => finish(() => reject(error)));
-			child.once("exit", (code, signal) => {
-				if (signal !== null) {
-					finish(() =>
-						reject(new InternetError("login_failed", `${provider} login Chrome exited from signal ${signal}`)),
-					);
-				} else if (code !== 0) {
-					finish(() =>
-						reject(new InternetError("login_failed", `${provider} login Chrome exited with status ${code}`)),
-					);
-				} else {
-					finish(resolve);
-				}
-			});
-		});
 	}
 
 	private async captureLoginState(accountId: AccountId): Promise<PortableStorageState> {
@@ -698,12 +641,12 @@ export class BrowserManager {
 			.catch(() => {});
 	}
 
-	/** Open local or SSH-forwarded normal Chrome for sign-in. */
-	async login(accountId: AccountId, options: LoginOptions = {}): Promise<AccountStatus> {
-		return this.runAccountExclusive(accountId, () => this.loginAccount(accountId, options));
+	/** Open the account's loopback noVNC login desktop for sign-in. */
+	async login(accountId: AccountId): Promise<AccountStatus> {
+		return this.runAccountExclusive(accountId, () => this.loginAccount(accountId));
 	}
 
-	private async loginAccount(accountId: AccountId, options: LoginOptions): Promise<AccountStatus> {
+	private async loginAccount(accountId: AccountId): Promise<AccountStatus> {
 		const active = this.remoteLogins.get(accountId);
 		if (active?.status().state === "waiting" || active?.status().state === "finalizing") {
 			return this.accountStatus(accountId);
@@ -714,13 +657,6 @@ export class BrowserManager {
 		}
 		await this.closeAccountResources(accountId);
 		ensureLoginProfileDirectory(this.config.dataDir, accountId);
-		const remote = options.remote === true || !this.display.hasInteractiveDisplay();
-		if (!remote) {
-			this.display.requireInteractiveDisplay();
-			await this.launchNormalLogin(accountId);
-			await this.persistLoginProfile(accountId);
-			return this.accountStatus(accountId);
-		}
 		if (process.platform !== "linux") {
 			throw new InternetError("browser_unavailable", "SSH-forwarded remote login is supported only on Linux.");
 		}

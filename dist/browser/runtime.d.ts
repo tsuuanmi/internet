@@ -22,9 +22,6 @@ export interface ChatResult {
     url: string;
     conversationId?: string;
 }
-export interface LoginOptions {
-    remote?: boolean;
-}
 export interface AccountStatus {
     accountId: AccountId;
     provider: WebProvider;
@@ -79,7 +76,6 @@ export declare class BrowserManager {
     private profileOwnerPid;
     private processIsAlive;
     private waitForProfileUnlock;
-    private launchNormalLogin;
     private captureLoginState;
     private inferenceArgs;
     private verifyStorageState;
@@ -105,8 +101,8 @@ export declare class BrowserManager {
      * bootstrapped revision and the lease is current, then invalidate turns.
      */
     private handleSignedOut;
-    /** Open local or SSH-forwarded normal Chrome for sign-in. */
-    login(accountId: AccountId, options?: LoginOptions): Promise<AccountStatus>;
+    /** Open the account's loopback noVNC login desktop for sign-in. */
+    login(accountId: AccountId): Promise<AccountStatus>;
     private loginAccount;
     private startRemoteLogin;
     private persistLoginProfile;

@@ -32,7 +32,7 @@ describe("internet_browser", () => {
 		const tool = defineInternetBrowserTool(browser as never, allowed);
 
 		const result = await tool.execute({ action: "login", account: "chatgpt-thinker" }, {} as never);
-		expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker", { remote: true });
+		expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker");
 		expect(result).toMatchObject({
 			action: "login",
 			ok: true,
@@ -56,18 +56,6 @@ describe("internet_browser", () => {
 		expect(browser.status).toHaveBeenCalledWith("chatgpt-writer");
 	});
 
-	it("ignores the legacy remote flag value and still uses invisible login", async () => {
-		const browser = manager({
-			accountId: "chatgpt-writer",
-			provider: "chatgpt-web",
-			state: "missing",
-			accountPath: "/account.json",
-		});
-		const tool = defineInternetBrowserTool(browser as never, allowed);
-		await tool.execute({ action: "login", account: "chatgpt-writer", remote: false }, {} as never);
-		expect(browser.login).toHaveBeenCalledWith("chatgpt-writer", { remote: true });
-	});
-
 	it("starts invisible login for all enabled accounts without sharing lifecycle identity", async () => {
 		const browser = manager({
 			accountId: "chatgpt-thinker",
@@ -82,9 +70,9 @@ describe("internet_browser", () => {
 			accounts: expect.stringContaining("chatgpt-writer=ready"),
 		});
 		expect(browser.login).toHaveBeenCalledTimes(3);
-		expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker", { remote: true });
-		expect(browser.login).toHaveBeenCalledWith("chatgpt-writer", { remote: true });
-		expect(browser.login).toHaveBeenCalledWith("gemini-thinker", { remote: true });
+		expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker");
+		expect(browser.login).toHaveBeenCalledWith("chatgpt-writer");
+		expect(browser.login).toHaveBeenCalledWith("gemini-thinker");
 	});
 
 	it("returns account ports, URLs, and one combined SSH command for login_all", async () => {
