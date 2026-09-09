@@ -49,8 +49,8 @@ export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/tea
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export type { WorkflowTeamRunner, WorkflowTeamRunRequest, WorkflowTeamRunResult } from "#internet/workflow/team-runner";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
-export type { StartWorkflowInput, WorkflowAccountRouting, WorkflowDecisionInput, WorkflowEventRecord, WorkflowHandoffReceipt, WorkflowJob, WorkflowPendingAction, WorkflowPullRequestReceipt, WorkflowState, WorkflowTeamResult, WorkflowTeamRun, WorkflowTeamStatus, } from "#internet/workflow/types";
-export { TERMINAL_WORKFLOW_STATES, WORKFLOW_STATES, WORKFLOW_TEAM_STATUSES } from "#internet/workflow/types";
+export type { StartWorkflowInput, WorkflowAccountRouting, WorkflowCiReceipt, WorkflowCiStatus, WorkflowDecisionInput, WorkflowEventRecord, WorkflowHandoffReceipt, WorkflowJob, WorkflowPendingAction, WorkflowPullRequestReceipt, WorkflowState, WorkflowTeamResult, WorkflowTeamRun, WorkflowTeamStatus, } from "#internet/workflow/types";
+export { TERMINAL_WORKFLOW_STATES, WORKFLOW_CI_STATUSES, WORKFLOW_STATES, WORKFLOW_TEAM_STATUSES, } from "#internet/workflow/types";
 export type { WorkflowWriterControlRequest, WorkflowWriterDeliveryRequest, WorkflowWriterResult, WorkflowWriterRunner, } from "#internet/workflow/writer-runner";
 export { BrowserWorkflowWriterRunner, parseWorkflowWriterResult } from "#internet/workflow/writer-runner";
 //# sourceMappingURL=index.d.ts.map

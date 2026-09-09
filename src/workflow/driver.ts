@@ -1,3 +1,4 @@
+import { normalizeGitHubRepository } from "#internet/workflow/approval-policy";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import { TERMINAL_WORKFLOW_STATES, type WorkflowJob, type WorkflowState } from "#internet/workflow/types";
 
@@ -131,7 +132,12 @@ export class WorkflowDriver {
 					if (before.lastEvent?.type === "MERGE_AUTHORIZATION_REJECTED") return;
 					if (
 						before.pullRequest !== undefined &&
-						before.ciReceipt?.headSha === before.pullRequest.headSha &&
+						before.ciReceipt !== undefined &&
+						normalizeGitHubRepository(before.ciReceipt.repository) ===
+							normalizeGitHubRepository(before.pullRequest.repository) &&
+						before.ciReceipt.number === before.pullRequest.number &&
+						before.ciReceipt.url === before.pullRequest.url &&
+						before.ciReceipt.headSha === before.pullRequest.headSha &&
 						(before.ciReceipt.status === "PASS" || before.ciReceipt.status === "NONE")
 					)
 						after = this.engine.requestMergeAuthorization(jobId);

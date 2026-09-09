@@ -105,6 +105,17 @@ describe("exact-head PR health gate", () => {
 		expect(blocked.pendingAction?.kind).toBe("CI_HEALTH_UNKNOWN");
 	});
 
+	it("preserves unknown Website confirmation as its own fail-closed boundary", async () => {
+		const { engine, jobId } = ready({ status: "UNKNOWN_CONFIRMATION", message: "unexpected GitHub confirmation" });
+		const blocked = await engine.runPrHealthCheck(jobId);
+		expect(blocked.state).toBe("UNKNOWN_CONFIRMATION");
+		expect(blocked.pendingAction).toMatchObject({
+			kind: "UNKNOWN_CONFIRMATION",
+			resumeState: "READY_FOR_MERGE_AUTHORIZATION",
+		});
+		expect(blocked.mergeAuthorization).toBeUndefined();
+	});
+
 	it("keeps pending checks retryable and rejects stale-head health", async () => {
 		const pending = ready({
 			status: "PR_HEALTH",

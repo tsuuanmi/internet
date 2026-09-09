@@ -350,6 +350,8 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 	}
 	if (value.mergeAuthorization !== undefined) {
 		const authorization = value.mergeAuthorization;
+		if (!isRecord(value.ciReceipt) || (value.ciReceipt.status !== "PASS" && value.ciReceipt.status !== "NONE"))
+			throw new Error("merge authorization requires an acceptable exact-head CI receipt");
 		if (!isRecord(authorization)) throw new Error("invalid merge authorization");
 		if (!isRecord(value.pullRequest)) throw new Error("merge authorization requires a pull request receipt");
 		if (

@@ -707,8 +707,18 @@ export class WorkflowEngine {
 			control,
 			signal,
 		});
-		if (result.status === "UNKNOWN_CONFIRMATION")
-			return this.writerBlocked(jobId, result.message, "READY_FOR_MERGE_AUTHORIZATION");
+		if (result.status === "UNKNOWN_CONFIRMATION") {
+			return this.update(jobId, (current) => ({
+				...withState(current, "UNKNOWN_CONFIRMATION"),
+				mergeAuthorization: undefined,
+				pendingAction: {
+					kind: "UNKNOWN_CONFIRMATION",
+					message: result.message,
+					resumeState: "READY_FOR_MERGE_AUTHORIZATION",
+				},
+				lastEvent: { type: "UNKNOWN_CONFIRMATION", class: "ACTION_REQUIRED", at: now(), message: result.message },
+			}));
+		}
 		if (result.status === "BLOCKED")
 			return this.writerBlocked(jobId, result.message, "READY_FOR_MERGE_AUTHORIZATION");
 		if (result.status !== "PR_HEALTH")
