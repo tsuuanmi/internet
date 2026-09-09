@@ -6,7 +6,7 @@ export declare const CHATGPT_HOME_URL = "https://chatgpt.com/";
 export declare const CHATGPT_COMPOSER_SELECTOR: string;
 export declare const CHATGPT_SEND_BUTTON_SELECTOR = "button[data-testid=\"send-button\"][aria-label=\"Send prompt\"]";
 export declare const CHATGPT_STOP_BUTTON_SELECTOR = "[data-testid=\"stop-button\"]";
-export declare const CHATGPT_ACCOUNT_SELECTOR = "[data-testid=\"accounts-profile-button\"]";
+export declare const CHATGPT_ACCOUNT_SELECTOR: string;
 /** The reasoning-level composer pill in the current ChatGPT UI. */
 export declare const CHATGPT_EFFORT_CONTROL_SELECTOR = "button.__composer-pill.__composer-pill--neutral[aria-haspopup=\"menu\"][data-tone=\"neutral\"]";
 /** The open model/effort menu, whose stable root is separate from its variable contents. */

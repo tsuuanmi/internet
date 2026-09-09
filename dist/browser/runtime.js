@@ -191,7 +191,7 @@ export class BrowserManager {
             }
             await sleep(100);
         }
-        throw new InternetError("login_failed", "Normal Chrome is still using the login profile. Close the dedicated Chrome window completely.");
+        throw new InternetError("login_failed", "Login Chrome did not release the profile after Save account; retry the login session.");
     }
     async captureLoginState(accountId) {
         const provider = this.provider(accountId);

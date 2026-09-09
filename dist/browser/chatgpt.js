@@ -10,7 +10,13 @@ export const CHATGPT_COMPOSER_SELECTOR = [
 ].join(", ");
 export const CHATGPT_SEND_BUTTON_SELECTOR = 'button[data-testid="send-button"][aria-label="Send prompt"]';
 export const CHATGPT_STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';
-export const CHATGPT_ACCOUNT_SELECTOR = '[data-testid="accounts-profile-button"]';
+export const CHATGPT_ACCOUNT_SELECTOR = [
+    '[data-testid="accounts-profile-button"]',
+    '[data-testid="profile-button"]',
+    '[data-testid="user-menu-button"]',
+    'button[aria-label*="profile" i]',
+    'button[aria-label*="account" i]',
+].join(", ");
 /** The reasoning-level composer pill in the current ChatGPT UI. */
 export const CHATGPT_EFFORT_CONTROL_SELECTOR = 'button.__composer-pill.__composer-pill--neutral[aria-haspopup="menu"][data-tone="neutral"]';
 /** The open model/effort menu, whose stable root is separate from its variable contents. */
@@ -47,7 +53,7 @@ export const CHATGPT_ASSISTANT_TURN_SELECTOR = [
 export async function chatgptIsAuthenticated(page) {
     const composers = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true });
     const accounts = page.locator(CHATGPT_ACCOUNT_SELECTOR).filter({ visible: true });
-    return (await composers.count()) === 1 && (await accounts.count()) > 0;
+    return (await composers.count()) > 0 && (await accounts.count()) > 0;
 }
 const CHATGPT_LOGIN_SURFACE_SELECTOR = ['a[href*="/auth/login"]', '[data-testid="login-button"]'].join(", ");
 const CHATGPT_CHALLENGE_SURFACE_SELECTOR = [

@@ -10,8 +10,8 @@ describe("resolveBrowserConfig", () => {
 		expect(config).toEqual(DEFAULT_CONFIG);
 	});
 
-	it("defaults remote login to three minutes, account turns to five minutes, and browser idling to 30 minutes", () => {
-		expect(resolveBrowserConfig({}).loginTimeoutMs).toBe(180_000);
+	it("defaults manual login to 30 minutes, account turns to five minutes, and browser idling to 30 minutes", () => {
+		expect(resolveBrowserConfig({}).loginTimeoutMs).toBe(1_800_000);
 		expect(resolveBrowserConfig({}).turnTimeoutMs).toBe(300_000);
 		expect(resolveBrowserConfig({}).researchTimeoutMs).toBe(1_800_000);
 		expect(resolveBrowserConfig({}).closeAfterMs).toBe(1_800_000);

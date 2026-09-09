@@ -19,6 +19,8 @@ const password = root.dataset.password ?? "";
 if (!token || !password) throw new Error("remote login page is incomplete");
 const screen = requiredElement<HTMLElement>("#screen");
 const status = requiredElement<HTMLElement>("#status");
+const hostText = requiredElement<HTMLInputElement>("#host-text");
+const typeText = requiredElement<HTMLButtonElement>("#type-text");
 const save = requiredElement<HTMLButtonElement>("#save");
 const cancel = requiredElement<HTMLButtonElement>("#cancel");
 
@@ -27,11 +29,46 @@ const socketUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location
 const rfb = new RFB(screen, socketUrl, { credentials: { password }, shared: true });
 rfb.scaleViewport = true;
 rfb.resizeSession = false;
+let connected = false;
 rfb.addEventListener("connect", () => {
+	connected = true;
+	typeText.disabled = false;
 	status.textContent = "Connected. Sign in, then press Save account.";
 });
 rfb.addEventListener("disconnect", () => {
+	connected = false;
+	typeText.disabled = true;
 	if (!save.disabled) status.textContent = "Remote desktop disconnected. Check status or cancel this login.";
+});
+
+function keysymForCharacter(character: string): number {
+	const codePoint = character.codePointAt(0);
+	if (codePoint === undefined) return 0;
+	if ((codePoint >= 0x20 && codePoint <= 0x7e) || (codePoint >= 0xa0 && codePoint <= 0xff)) return codePoint;
+	return 0x01000000 | codePoint;
+}
+
+function typeHostText(): void {
+	const text = hostText.value;
+	if (text.length === 0) {
+		status.textContent = "Paste text from the host into the field first.";
+		return;
+	}
+	if (!connected) {
+		status.textContent = "Remote desktop is not connected yet.";
+		return;
+	}
+	rfb.focus();
+	for (const character of text) rfb.sendKey(keysymForCharacter(character), null);
+	hostText.value = "";
+	status.textContent = `Typed ${Array.from(text).length} character(s) into the focused remote field.`;
+}
+
+typeText.addEventListener("click", typeHostText);
+hostText.addEventListener("keydown", (event) => {
+	if (event.key !== "Enter") return;
+	event.preventDefault();
+	typeHostText();
 });
 
 async function readStatus(): Promise<RemoteStatus> {

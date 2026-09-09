@@ -28,7 +28,7 @@ export interface BrowserConfig {
 	dataDir: string;
 	/** Native headless when true; otherwise headed (managed Xvfb first on Linux). */
 	headless: boolean;
-	/** Max time to wait for an interactive login to reach the authenticated surface (ms). */
+	/** Max time to keep one manual noVNC login session open before it expires (ms). */
 	loginTimeoutMs: number;
 	/** Stable loopback base port; each semantic account receives a deterministic offset. */
 	remoteLoginPort: number;
@@ -72,7 +72,7 @@ function dshHome(): string {
 export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	dataDir: join(dshHome(), "internet"),
 	headless: false,
-	loginTimeoutMs: 180_000,
+	loginTimeoutMs: 1_800_000,
 	remoteLoginPort: 39_000,
 	turnTimeoutMs: 300_000,
 	researchTimeoutMs: 1_800_000,

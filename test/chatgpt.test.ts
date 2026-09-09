@@ -137,6 +137,17 @@ describe("latestConclusiveAssessment", () => {
 });
 
 describe("chatgptAuthenticationAssessment", () => {
+	it("accepts current ChatGPT account-control variants and duplicate visible composers", async () => {
+		expect(CHATGPT_ACCOUNT_SELECTOR).toContain('[data-testid="accounts-profile-button"]');
+		expect(CHATGPT_ACCOUNT_SELECTOR).toContain('[data-testid="profile-button"]');
+		expect(CHATGPT_ACCOUNT_SELECTOR).toContain('[data-testid="user-menu-button"]');
+		await expect(
+			chatgptAuthenticationAssessment(authenticationPage("https://chatgpt.com/", 2, 1)),
+		).resolves.toMatchObject({
+			state: "authenticated",
+		});
+	});
+
 	it("distinguishes authenticated, signed-out, challenge, and unconfirmed pages", async () => {
 		await expect(
 			chatgptAuthenticationAssessment(authenticationPage("https://chatgpt.com/", 1, 1)),

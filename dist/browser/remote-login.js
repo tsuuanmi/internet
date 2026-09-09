@@ -11,7 +11,8 @@ import { InternetError } from "#internet/core/errors";
 import { ensurePrivateDirectory } from "#internet/core/private-json";
 const LOOPBACK = "127.0.0.1";
 const STARTUP_TIMEOUT_MS = 5_000;
-const SHUTDOWN_TIMEOUT_MS = 2_000;
+const VNC_SHUTDOWN_TIMEOUT_MS = 2_000;
+const CHROME_SHUTDOWN_TIMEOUT_MS = 10_000;
 const SETTLED_GRACE_MS = 15_000;
 const MAX_DIAGNOSTIC_CHARS = 4_096;
 function childRunning(child) {
@@ -145,17 +146,15 @@ export class RemoteLoginSession {
         return this.finalization ?? Promise.resolve();
     }
     async finalizeAccount() {
-        const accountFinalization = this.options.finalize().then(() => ({ ok: true }), (error) => ({ ok: false, error }));
         try {
+            // Chrome owns the profile while the user signs in. Let it exit cleanly
+            // and flush cookies/storage before Patchright reopens the profile.
             await this.closeDesktop();
-            const result = await accountFinalization;
-            if (!result.ok)
-                throw result.error;
+            await this.options.finalize();
             this.state = "complete";
             this.message = `${this.options.provider} account saved successfully.`;
         }
         catch (error) {
-            await accountFinalization;
             this.state = "failed";
             this.message = error instanceof Error ? error.message : "Remote login finalization failed.";
         }
@@ -245,7 +244,7 @@ export class RemoteLoginSession {
                 return;
             }
             catch (error) {
-                await this.terminate(child);
+                await this.terminate(child, VNC_SHUTDOWN_TIMEOUT_MS);
                 failures.push(`${candidate.source}: ${diagnostic.trim() || (error instanceof Error ? error.message : String(error))}`);
                 rmSync(passwordFile, { force: true });
             }
@@ -372,7 +371,7 @@ export class RemoteLoginSession {
         response.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:");
     }
     page() {
-        return `<!doctype html><html data-token="${html(this.token)}" data-password="${html(this.password)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Remote browser login</title><style>html,body{height:100%;margin:0;background:#111;color:#eee;font:14px system-ui}body{display:grid;grid-template-rows:auto 1fr}header{display:flex;gap:12px;align-items:center;padding:10px;background:#202124}#status{flex:1}button{padding:8px 14px}#screen{overflow:hidden}</style></head><body><header><span id="status">Connecting…</span><button id="save">Save account</button><button id="cancel">Cancel</button></header><main id="screen"></main><script type="module" src="/${html(this.token)}/client.js"></script></body></html>`;
+        return `<!doctype html><html data-token="${html(this.token)}" data-password="${html(this.password)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Remote browser login</title><style>html,body{height:100%;margin:0;background:#111;color:#eee;font:14px system-ui}body{display:grid;grid-template-rows:auto 1fr}header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;background:#202124}#status{flex:1}button{padding:8px 14px}#host-text{min-width:240px;flex:0 1 360px;padding:8px;border:1px solid #555;border-radius:4px;background:#111;color:#eee}#screen{overflow:hidden}</style></head><body><header><span id="status">Connecting…</span><input id="host-text" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste text from host"><button id="type-text" disabled>Type into focused field</button><button id="save">Save account</button><button id="cancel">Cancel</button></header><main id="screen"></main><script type="module" src="/${html(this.token)}/client.js"></script></body></html>`;
     }
     bridgeVnc(client) {
         if (this.vncPort === undefined) {
@@ -424,8 +423,8 @@ export class RemoteLoginSession {
         if (this.chromeStartTimer !== undefined)
             clearImmediate(this.chromeStartTimer);
         this.chromeStartTimer = undefined;
-        await this.terminate(this.chrome);
-        await this.terminate(this.vnc);
+        await this.terminate(this.chrome, CHROME_SHUTDOWN_TIMEOUT_MS);
+        await this.terminate(this.vnc, VNC_SHUTDOWN_TIMEOUT_MS);
         this.chrome = undefined;
         this.vnc = undefined;
         await this.display.dispose().catch(() => { });
@@ -433,14 +432,14 @@ export class RemoteLoginSession {
             rmSync(this.tempDir, { recursive: true, force: true });
         this.tempDir = undefined;
     }
-    async terminate(child) {
+    async terminate(child, timeoutMs) {
         if (!childRunning(child))
             return;
         child.kill("SIGTERM");
-        if (await waitForExit(child, SHUTDOWN_TIMEOUT_MS))
+        if (await waitForExit(child, timeoutMs))
             return;
         child.kill("SIGKILL");
-        await waitForExit(child, SHUTDOWN_TIMEOUT_MS);
+        await waitForExit(child, VNC_SHUTDOWN_TIMEOUT_MS);
     }
     scheduleClose() {
         if (this.closeTimer !== undefined)
