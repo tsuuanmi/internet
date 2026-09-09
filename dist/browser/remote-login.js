@@ -146,15 +146,19 @@ export class RemoteLoginSession {
         return this.finalization ?? Promise.resolve();
     }
     async finalizeAccount() {
+        // Start profile capture before terminating Chrome: its profile-unlock wait
+        // overlaps shutdown, then Patchright can reopen the released profile.
+        const accountFinalization = this.options.finalize().then(() => ({ ok: true }), (error) => ({ ok: false, error }));
         try {
-            // Chrome owns the profile while the user signs in. Let it exit cleanly
-            // and flush cookies/storage before Patchright reopens the profile.
             await this.closeDesktop();
-            await this.options.finalize();
+            const result = await accountFinalization;
+            if (!result.ok)
+                throw result.error;
             this.state = "complete";
             this.message = `${this.options.provider} account saved successfully.`;
         }
         catch (error) {
+            await accountFinalization;
             this.state = "failed";
             this.message = error instanceof Error ? error.message : "Remote login finalization failed.";
         }
