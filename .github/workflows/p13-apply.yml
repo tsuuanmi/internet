@@ -22,16 +22,35 @@ jobs:
       - run: python3 scripts/p13-apply.py
       - run: npm ci
       - run: npx biome check --write src test scripts
-      - run: npm run check
+      - name: Check
+        shell: bash
+        run: |
+          set +e
+          npm run check > p13-check.log 2>&1
+          status=$?
+          cat p13-check.log
+          exit $status
       - run: npm test
       - run: npm run build
       - run: npm run verify-package
       - name: Commit P13 implementation
+        if: success()
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f p13-check.log
           git add src test dist docs README.md
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'feat: add explicit workflow retention cleanup'
+          git push
+      - name: Commit diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add p13-check.log
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'chore: capture P13 check diagnostics'
           git push
