@@ -4,7 +4,8 @@
 > **Last synchronized:** 2026-09-09  
 > **Implementation:** [`how-it-works.md`](./how-it-works.md)  
 > **Operational flow:** [`WORKFLOW.md`](./WORKFLOW.md)  
-> **Runtime state machine:** [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md)
+> **Runtime state machine:** [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md)  
+> **Proposed hardening:** [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md)
 
 ## Goal
 
@@ -58,6 +59,38 @@ chatgpt-writer
   -> read-only PR health inspection
   -> exact authorized merge
 ```
+
+## Shared team execution boundary
+
+The public `internet_team` tool and workflow research/review do **not** maintain separate debate engines. They are adapters over the same lower-level team runtime:
+
+```text
+                         lower-level team runtime
+                               runTeam(...)
+                              /            \
+                             /              \
+                  internet_team        workflow team runner
+                  public adapter       deterministic adapter
+```
+
+The shared runtime owns ordered thinker turns, peer contribution passing, synthesis, provider `chat(...)` calls, transcript accumulation and AbortSignal handling.
+
+The adapters intentionally remain separate because they own different control concerns:
+
+```text
+internet_team
+  - model/user-facing tool args and output rendering
+  - <agent>:team:<name> conversation namespace
+  - optional rounds/accounts/visibility/transcript projection
+
+workflow team runner
+  - authoritative workflow-generated task
+  - <owner>:workflow:<job>:<phase>:<lane> namespace
+  - workflow-owned account/synthesis policy
+  - workflow AbortSignal and durable engine result
+```
+
+Workflow should therefore continue to use the shared lower-level team runtime directly rather than invoking the public `internet_team` tool as an internal RPC. Proposed follow-up work may enrich this common runtime with prompt strategies, progress callbacks and structured failures; those changes are documented separately in `WORKFLOW-HARDENING.md` and are not yet current behavior.
 
 ## Account identities
 
@@ -192,4 +225,4 @@ Preview is read-only. Cleanup requires exact `jobId + updatedAt`, validates the 
 
 ## Deferred boundary
 
-No next phase is implied after P13. Automatic task detection, Website cross-conversation/project memory as correctness state, generic DAG workflows, multi-writer pooling, sophisticated artifact storage, autonomous production deployment and broad non-coding generalization remain deferred until a concrete use case justifies them.
+No next phase is implied after P13. Concrete observed problems may still justify focused hardening without restarting phase numbering. Automatic task detection, Website cross-conversation/project memory as correctness state, generic DAG workflows, multi-writer pooling, sophisticated artifact storage, autonomous production deployment and broad non-coding generalization remain deferred until a concrete use case justifies them.

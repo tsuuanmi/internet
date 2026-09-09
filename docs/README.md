@@ -1,10 +1,12 @@
 # Internet Runtime Documentation
 
-- **Status:** current as-built documentation
+- **Status:** current as-built documentation plus explicitly marked follow-up proposals
 - **Last synchronized:** 2026-09-09
 - **Baseline:** `main` after P13 operations/retention (`eaa8f15baea0ea6b153599f7c259864a4e482a43`)
 
 This directory documents the current `@tsuuanmi/internet` runtime after the P0-P13 workflow roadmap was completed. The coding workflow is no longer a target-only design: the durable engine, automatic driver, exact handoffs, writer path, PR review/remediation loop, exact-head health gate, explicit merge authorization, and operator-only retention cleanup are implemented.
+
+A small number of follow-up documents may describe concrete observed problems and proposed hardening. Those documents are explicitly marked **proposed** and must not be read as current implementation until the corresponding code lands.
 
 ## Start here
 
@@ -12,9 +14,12 @@ This directory documents the current `@tsuuanmi/internet` runtime after the P0-P
 - [`how-it-works.md`](./how-it-works.md) — current server-side implementation and runtime behavior.
 - [`WORKFLOW.md`](./WORKFLOW.md) — user-visible `/workflow <task>` behavior and stop boundaries.
 - [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic state machine, driver, durable receipts, retries, health and merge gates.
+- [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md) — **proposed** workflow-team observability/control/prompt/concurrency hardening based on a real provider failure.
+- [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md) — **proposed** best-of-both ChatGPT+Gemini team quality contract and workflow-lane concurrency contract.
+- [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md) — **proposed** start/list/status/watch/stop/continue operator semantics.
 - [`SRS.md`](./SRS.md) — normative requirements satisfied by the current coding workflow.
 - [`ROADMAP.md`](./ROADMAP.md) — completed P0-P13 roadmap and explicitly deferred directions.
-- [`TODO.md`](./TODO.md) — closed implementation checklist plus deferred work that is intentionally not scheduled.
+- [`TODO.md`](./TODO.md) — completed checklist plus concrete follow-up work and intentionally deferred items.
 - [`UPDATE.md`](./UPDATE.md) — consolidated implementation delta through P13.
 
 ## Architecture decisions
@@ -48,11 +53,16 @@ These documents describe observed Website surfaces used by browser automation. T
 | `WORKFLOW.md` | end-to-end user flow | operational contract |
 | `WORKFLOW-ENGINE.md` | deterministic runtime/state | runtime design contract |
 | `internet-team-architecture.md` | concise architecture | architecture overview |
+| `WORKFLOW-HARDENING.md` | concrete follow-up proposal; not current behavior | proposed hardening contract |
+| `AGENT-TEAM-DESIGN.md` | best-of-both team quality + parallel lane requirements | proposed team contract |
+| `WORKFLOW-OPERATOR-CONTRACT.md` | user-facing workflow control/inspection semantics | proposed operator contract |
 | ADRs | why accepted choices exist | historical design authority |
 | `ROADMAP.md` | completed phases / deferred directions | planning history |
-| `TODO.md` | implementation closure / deferred items | working backlog boundary |
-| `UPDATE.md` | consolidated changes through latest phase | implementation delta |
+| `TODO.md` | implementation closure / concrete follow-up / deferred items | working backlog boundary |
+| `UPDATE.md` | consolidated changes through latest implemented phase | implementation delta |
 
 ## Current completion boundary
 
-The explicit coding-workflow roadmap is complete through P13. No P14 is implied. The following remain deliberately deferred until a concrete need justifies them: automatic task detection, Website-level cross-conversation/project memory as a correctness dependency, generic arbitrary DAG workflows, multi-writer pooling, a sophisticated artifact database, autonomous production deployment, and broad non-coding generalization.
+The explicit coding-workflow roadmap is complete through P13. No P14 is implied. Concrete observed problems may still justify focused fixes without restarting phase numbering; `WORKFLOW-HARDENING.md` is one such follow-up proposal.
+
+The following remain deliberately deferred until a concrete need justifies them: automatic task detection, Website-level cross-conversation/project memory as a correctness dependency, generic arbitrary DAG workflows, multi-writer pooling, a sophisticated artifact database, autonomous production deployment, and broad non-coding generalization.

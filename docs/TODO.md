@@ -1,9 +1,9 @@
 # Internet Runtime TODO
 
-- **Status:** coding-workflow roadmap complete through P13
+- **Status:** coding-workflow roadmap complete through P13; concrete post-roadmap hardening proposed from observed failures
 - **Last synchronized:** 2026-09-09
 
-This file is now a closure checklist, not an instruction to keep adding phases. All planned correctness-critical coding-workflow work through P13 has landed.
+This file remains a closure checklist, not an instruction to keep adding phases. All planned correctness-critical coding-workflow work through P13 has landed. New work is added only when a concrete observed problem justifies it.
 
 ## Completed
 
@@ -73,6 +73,56 @@ DONE
 ```
 
 `PENDING` health remains retryable; `FAIL` and `UNKNOWN` health do not silently pass.
+
+## Concrete follow-up — workflow team observability/control hardening
+
+A real research lane exposed a provider execution failure on `gemini-thinker`. Detection worked, but the durable workflow view only retained a flattened lane-level error, making it difficult to see the exact failed round/account/stage without opening the provider UI or reading internal files.
+
+The detailed proposal and acceptance criteria live in [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md). Agent-team quality semantics are in [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md), and user-facing operation semantics are in [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md).
+
+### P0 operator UX and concurrency protection
+
+- [ ] Add `/workflow status [jobId]`.
+- [ ] Add `/workflow list`.
+- [ ] Add `/workflow stop [jobId]` backed by the existing driver cancellation path.
+- [ ] Add `/workflow continue [jobId]` only for explicit retry-required recovery.
+- [ ] Resolve an omitted `jobId` safely from the current owner session; fail on ambiguity instead of guessing.
+- [ ] Render phase/lane/attempt/PR/CI/pending-action state without dumping full model payloads.
+- [ ] Preserve concurrent Research A/B launch semantics; both lanes must start before either is awaited.
+- [ ] Preserve concurrent Review A/B launch semantics; both lanes must start before either is awaited.
+- [ ] Do not add workflow-level A-then-B serialization on top of account scheduler limits.
+- [ ] Add regression tests proving lane concurrency remains intact.
+
+### P1 structured team evidence
+
+- [ ] Extend the shared team core with per-turn progress callbacks/events.
+- [ ] Preserve `phase/lane/attempt/round/accountId/provider/stage/status` for workflow team execution.
+- [ ] Replace flattened provider failures with structured failure metadata while keeping a compact user-facing message.
+- [ ] Retain bounded completed-turn evidence on team failure.
+- [ ] Persist detailed trace data outside the compact main job record.
+- [ ] Make workflow status show the current or last exact team turn.
+- [ ] Make A/B interleaved progress safe and explicitly lane-tagged.
+
+### P1 agent-team quality and prompt strategy
+
+- [ ] Keep one shared team engine for `internet_team` and workflow research/review.
+- [ ] Do **not** make workflow call the public `internet_team` tool as an internal dependency.
+- [ ] Keep every normal workflow lane as a full ChatGPT + Gemini team.
+- [ ] Make synthesis explicitly target the **best combined answer**, not averaging or neutral summarization.
+- [ ] Add explicit prompt strategies for generic debate, workflow research and workflow review.
+- [ ] Delimit peer model output as untrusted content/evidence rather than instruction authority.
+- [ ] Preserve the exact-head strict JSON review contract.
+
+### P2 convenience monitoring
+
+- [ ] Consider `/workflow watch [jobId]` after one-shot status is stable.
+- [ ] `watch` must consume durable state/events and must not become a second correctness source.
+
+### Retry follow-up
+
+- [ ] Classify provider execution failures as retryable/non-retryable in structured state.
+- [ ] Measure failure frequency before adding automatic provider-turn retry.
+- [ ] If automatic retry is added, make it bounded, durable, cancellation-aware and incapable of duplicating acknowledged handoffs or GitHub mutations.
 
 ## Deferred — do not implement without a concrete request
 
