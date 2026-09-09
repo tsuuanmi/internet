@@ -18,7 +18,8 @@ export declare class WorkflowEngine {
     private readonly prompts;
     private readonly handoffs?;
     private readonly writer?;
-    constructor(jobs: WorkflowJobStore, teams?: WorkflowTeamRunner, prompts?: WorkflowTeamPromptBuilder, handoffs?: WorkflowHandoffStore, writer?: WorkflowWriterRunner);
+    private readonly maxReviewCycles;
+    constructor(jobs: WorkflowJobStore, teams?: WorkflowTeamRunner, prompts?: WorkflowTeamPromptBuilder, handoffs?: WorkflowHandoffStore, writer?: WorkflowWriterRunner, maxReviewCycles?: number);
     start(input: StartWorkflowInput): WorkflowJob;
     status(jobId: string): WorkflowJob;
     runResearch(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
@@ -27,6 +28,14 @@ export declare class WorkflowEngine {
     startImplementationControl(jobId: string): WorkflowControlStep;
     /** Deliver exact research payloads to the persistent writer conversation, then execute START_IMPLEMENTATION. */
     runWriterImplementation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
+    /** Run the two independent reviewer lanes against the exact persisted PR head. */
+    runReview(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
+    prepareReviewHandoffs(jobId: string): readonly WorkflowHandoff[];
+    startApplyReviewsControl(jobId: string): WorkflowControlStep;
+    /** Deliver reviewer finals verbatim, then either pass the review gate or remediate the same PR. */
+    runWriterRemediation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
+    private reviewLimitReached;
+    private writerBlocked;
     private recordTeamResult;
     cancel(jobId: string): WorkflowJob;
     continue(jobId: string): WorkflowJob;

@@ -29,6 +29,7 @@ provider interaction contracts, durable conversations, team orchestration, and t
   `internet_browser`, and the `internet_workflow` control surface.
 - `src/workflow/types.ts`, `job-store.ts`, and `engine.ts` — authoritative workflow state, private atomic job persistence, and deterministic transitions.
 - `src/workflow/team-runner.ts` and `team-prompt-builder.ts` — direct lower-level team execution and deterministic research/review tasks.
+- `src/workflow/review-result.ts` — strict reviewer verdict and reviewer-asserted PR-head binding.
 - `src/workflow/handoff-store.ts` and `control.ts` — exact SHA-256-bound data-plane handoffs and separate trusted control messages.
 - `src/workflow/writer-runner.ts` — persistent `chatgpt-writer` routing, strict writer result parsing, and implementation/PR control.
 - `src/workflow/approval-policy.ts` and `src/browser/chatgpt-confirmation.ts` — deterministic writer-action scope checks plus conservative Website confirmation recognition/handling.
@@ -92,7 +93,7 @@ to a credential-free HTTPS URL. It verifies the worktree and exact `HEAD` first.
 direct command error and creates no job. On success it calls `WorkflowEngine.start(...)` and returns the
 durable job ID; no giant workflow prompt is injected into Local.
 
-The implemented engine path through P6 is:
+The implemented engine path through P7 is:
 
 ```text
 CREATED
@@ -100,6 +101,10 @@ CREATED
   -> RESEARCH_HANDOFFS_DELIVERING
   -> WRITER_RUNNING
   -> PR_OPEN
+  -> REVIEW_RUNNING
+  -> REVIEW_HANDOFFS_DELIVERING
+  -> READY_FOR_MERGE_AUTHORIZATION              # both reviewers PASS
+  -> WRITER_REMEDIATING -> PR_OPEN -> ...        # otherwise, review the new head again
 ```
 
 Research A/B run directly through `BrowserWorkflowTeamRunner` with deterministic per-job lanes. Their final
@@ -135,8 +140,26 @@ merge prompt is also unknown rather than a user-authorization request. The engin
 exception with the writer phase as the explicit resume state. A correctly scoped premature merge confirmation
 is never clicked and becomes ordinary writer `BLOCKED`; the later merge gate owns actual user authorization.
 
-Actual PR review/remediation loops, Local event injection, and the head-SHA-bound user merge authorization gate
-remain later workflow phases and are not implied by the current `/workflow` admission command.
+Once a PR receipt exists, `runReview()` starts the two durable review lanes logically concurrently. Both lanes
+receive the PR URL, review cycle, objective, and exact current PR head SHA. Their stable per-job conversation IDs
+are reused across cycles, but every final result must be one strict JSON object containing a control-plane verdict
+(`PASS` or `CHANGES_REQUIRED`) and a `reviewedHeadSha` equal to the exact head requested by the engine. The engine
+rejects malformed or wrong-head results rather than stamping its expected SHA onto unverified reviewer output.
+The complete reviewer JSON remains the exact data-plane payload.
+
+Completed Review A/B outputs are materialized as cycle-scoped handoffs (`review:<cycle>:A/B`) and delivered
+verbatim, in deterministic order, to the same persistent writer conversation. If both results pass the same head,
+the job moves directly to `READY_FOR_MERGE_AUTHORIZATION`; no remediation control is sent. If either reviewer
+requires changes, both handoffs must first be acknowledged, then the engine emits separate `APPLY_REVIEWS` control.
+The writer must remediate exactly the persisted PR, preserve its repository/number/URL/base/head identity, produce
+a different head SHA, and never merge. Repository identity comparison accepts the canonical GitHub URL and
+`owner/repo` forms as the same authority, while every other PR identity field must remain exact. A successful
+remediation resets only review-run results/status and returns to `PR_OPEN`; the same reviewer sessions then inspect
+the new head. The default maximum is three review cycles. Exhaustion becomes `REVIEW_LIMIT_REACHED`; writer or
+Website-confirmation exceptions keep their explicit remediation resume state.
+
+Compact Local event injection and the head-SHA-bound user merge authorization/execution gate remain later workflow
+phases and are not implied by reaching `READY_FOR_MERGE_AUTHORIZATION`.
 
 ## Deep Research request flow
 

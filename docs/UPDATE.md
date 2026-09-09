@@ -235,3 +235,16 @@ Normative/design details now live in:
 - `TODO.md`
 
 `internet-team-architecture.md` remains a concise overview rather than accumulating implementation detail.
+
+
+## P7 — Exact-head PR review and remediation
+
+P7 now drives two independent reviewer lanes against the actual persisted pull request and exact head SHA. Reviewer
+finals are strict JSON carrying `PASS` / `CHANGES_REQUIRED` plus an asserted `reviewedHeadSha`; malformed or stale-head
+results fail closed. Both complete reviewer payloads are stored and delivered verbatim to the persistent writer.
+
+If both reviewers pass, the workflow stops at `READY_FOR_MERGE_AUTHORIZATION`. Otherwise a separate `APPLY_REVIEWS`
+control instructs the writer to remediate the same PR. The engine requires unchanged PR identity and an advanced head
+SHA before starting the next review cycle. Review conversations remain stable per job, the default cycle limit is three,
+and limit exhaustion or writer/confirmation failures surface as explicit action-required states. Website memory remains
+a deferred optimization; it is not used for review correctness.

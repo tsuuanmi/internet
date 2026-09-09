@@ -1,5 +1,6 @@
 import type { AccountId } from "#internet/core/accounts";
 import type { WebProvider } from "#internet/core/config";
+import type { WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export declare const WORKFLOW_STATES: readonly ["CREATED", "RESEARCH_RUNNING", "RESEARCH_HANDOFFS_DELIVERING", "WRITER_RUNNING", "PR_OPEN", "REVIEW_RUNNING", "REVIEW_HANDOFFS_DELIVERING", "WRITER_REMEDIATING", "READY_FOR_MERGE_AUTHORIZATION", "AWAITING_MERGE_AUTHORIZATION", "MERGING", "DONE", "BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"];
 export type WorkflowState = (typeof WORKFLOW_STATES)[number];
 export declare const WORKFLOW_TEAM_STATUSES: readonly ["pending", "running", "completed", "failed"];
@@ -10,6 +11,7 @@ export interface WorkflowTeamResult {
     readonly finalProvider: WebProvider;
     readonly completedAt: string;
     readonly reviewedHeadSha?: string;
+    readonly reviewVerdict?: WorkflowReviewVerdict;
 }
 export interface WorkflowTeamRun {
     readonly lane: "A" | "B";

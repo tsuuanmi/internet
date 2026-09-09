@@ -37,6 +37,8 @@ export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
 export type { CreateWorkflowHandoffInput, WorkflowHandoff, WorkflowHandoffStatus, } from "#internet/workflow/handoff-store";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
+export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
 export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export type { WorkflowTeamRunner, WorkflowTeamRunRequest, WorkflowTeamRunResult } from "#internet/workflow/team-runner";

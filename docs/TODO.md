@@ -303,25 +303,33 @@ Repository authority is validated before merge classification. A correctly scope
 
 ## P7 — PR review/remediation
 
-### 26. Run two independent PR review teams directly
+**Status:** implemented as an exact-head, same-PR remediation loop. Reviewer outputs remain data-plane payloads;
+control-plane verdict/head metadata is parsed deterministically without Local summarization.
 
-Review the actual PR through workflow-owned TeamRunner.
+### 26. ✅ Run two independent PR review teams directly
 
-### 27. Deliver review finals verbatim to writer
+`WorkflowEngine.runReview()` drives A/B through the workflow-owned TeamRunner against the actual persisted PR. Each
+strict reviewer JSON result includes `PASS` or `CHANGES_REQUIRED` plus the exact reviewer-asserted `reviewedHeadSha`.
+Wrong-head or malformed output fails that lane instead of being treated as a valid review. Stable review session IDs
+are reused across cycles while the exact head SHA and cycle remain authoritative prompt/state inputs.
 
-No Local summarization.
+### 27. ✅ Deliver review finals verbatim to writer
 
-### 28. Add separate APPLY_REVIEWS control step
+Cycle-scoped `review:<cycle>:A/B` handoffs preserve each complete reviewer JSON payload exactly and deliver A then B
+to the same persistent `chatgpt-writer` conversation. Delivery keeps the existing durable hash/receipt semantics and
+never passes through Local summarization.
 
-### 29. Re-review updated PR
+### 28. ✅ Add separate APPLY_REVIEWS control step
 
-Initial recommended default:
+`APPLY_REVIEWS` is emitted only after both current-cycle review handoffs are delivered and at least one reviewer
+requires changes. The writer must update exactly the persisted PR, preserve PR identity, validate remediation, return
+a new head SHA, and never merge. Material conflict or authority/safety failure returns `BLOCKED`.
 
-```text
-max_review_cycles = 3
-```
+### 29. ✅ Re-review updated PR
 
-Escalate material conflict, writer `BLOCKED`, or exhausted review limit.
+A successful remediation returns to `PR_OPEN`, resets review run results/status without changing reviewer session
+identities, then reviews the new exact head. Both reviewers passing the same head moves the job to
+`READY_FOR_MERGE_AUTHORIZATION`. `maxReviewCycles` defaults to `3`; exhaustion becomes `REVIEW_LIMIT_REACHED`.
 
 ## P8 — Events and Local integration
 
