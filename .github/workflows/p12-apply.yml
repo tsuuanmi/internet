@@ -22,6 +22,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: python3 scripts/p12-apply.py
+      - run: python3 scripts/p12-fix.py
       - run: npx biome check --write src test scripts
       - run: npm run check
       - run: npm test
