@@ -14,7 +14,9 @@ A small number of follow-up documents may describe concrete observed problems an
 - [`how-it-works.md`](./how-it-works.md) — current server-side implementation and runtime behavior.
 - [`WORKFLOW.md`](./WORKFLOW.md) — user-visible `/workflow <task>` behavior and stop boundaries.
 - [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic state machine, driver, durable receipts, retries, health and merge gates.
-- [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md) — **proposed** workflow-team observability/control/prompt hardening based on a real provider failure.
+- [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md) — **proposed** workflow-team observability/control/prompt/concurrency hardening based on a real provider failure.
+- [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md) — **proposed** best-of-both ChatGPT+Gemini team quality contract and workflow-lane concurrency contract.
+- [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md) — **proposed** start/list/status/watch/stop/continue operator semantics.
 - [`SRS.md`](./SRS.md) — normative requirements satisfied by the current coding workflow.
 - [`ROADMAP.md`](./ROADMAP.md) — completed P0-P13 roadmap and explicitly deferred directions.
 - [`TODO.md`](./TODO.md) — completed checklist plus concrete follow-up work and intentionally deferred items.
@@ -52,6 +54,8 @@ These documents describe observed Website surfaces used by browser automation. T
 | `WORKFLOW-ENGINE.md` | deterministic runtime/state | runtime design contract |
 | `internet-team-architecture.md` | concise architecture | architecture overview |
 | `WORKFLOW-HARDENING.md` | concrete follow-up proposal; not current behavior | proposed hardening contract |
+| `AGENT-TEAM-DESIGN.md` | best-of-both team quality + parallel lane requirements | proposed team contract |
+| `WORKFLOW-OPERATOR-CONTRACT.md` | user-facing workflow control/inspection semantics | proposed operator contract |
 | ADRs | why accepted choices exist | historical design authority |
 | `ROADMAP.md` | completed phases / deferred directions | planning history |
 | `TODO.md` | implementation closure / concrete follow-up / deferred items | working backlog boundary |
