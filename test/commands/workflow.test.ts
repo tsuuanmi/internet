@@ -145,7 +145,12 @@ describe("defineWorkflowCommand", () => {
 	});
 
 	it("rejects malformed operator syntax", async () => {
-		const command = defineWorkflowCommand({ engine: engine(), driver: driver(), operator: operator(), runGit: createRunner() });
+		const command = defineWorkflowCommand({
+			engine: engine(),
+			driver: driver(),
+			operator: operator(),
+			runGit: createRunner(),
+		});
 		await expect(command.handler(invocation("list extra") as never)).resolves.toMatchObject({
 			kind: "error",
 			text: expect.stringContaining("does not accept"),
