@@ -40,7 +40,6 @@ text = text.replace(
     "\t\t\tjobId: id,\n\t\t\townerSessionId: input.ownerSessionId,\n\t\t\tobjective,",
     1,
 )
-# Existing mutations already attach lastEvent where a Local-visible event is meaningful.
 text = text.replace("this.jobs.update(", "this.update(")
 marker = "\n\tcancel(jobId: string): WorkflowJob {"
 helper = '''\n\tprivate update(jobId: string, mutate: (current: WorkflowJob) => WorkflowJob): WorkflowJob {\n\t\tconst before = this.jobs.get(jobId);\n\t\tconst updated = this.jobs.update(jobId, mutate);\n\t\tconst event = updated.lastEvent;\n\t\tif (event !== undefined) {\n\t\t\tconst prior = before?.lastEvent;\n\t\t\tconst changed =\n\t\t\t\tprior === undefined ||\n\t\t\t\tprior.type !== event.type ||\n\t\t\t\tprior.class !== event.class ||\n\t\t\t\tprior.at !== event.at ||\n\t\t\t\tprior.message !== event.message;\n\t\t\tif (changed) this.events?.publish(updated, event);\n\t\t}\n\t\treturn updated;\n\t}\n'''
@@ -70,7 +69,6 @@ replace(
     "\t\t\tnew BrowserWorkflowWriterRunner(manager),\n\t\t);",
     "\t\t\tnew BrowserWorkflowWriterRunner(manager),\n\t\t\t3,\n\t\t\tnew DshWorkflowEventSink(ctx.agents),\n\t\t);",
 )
-# Public event integration contract.
 replace(
     "src/index.ts",
     'export type { WorkflowControlStep } from "#internet/workflow/engine";\nexport { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";',
@@ -91,6 +89,32 @@ text = text.replace(
     1,
 )
 p.write_text(text)
+
+# Existing static WorkflowJob fixtures now carry the explicit owner identity.
+for fixture in [
+    "test/commands/workflow.test.ts",
+    "test/workflow-team-runtime.test.ts",
+    "test/workflow-writer-runner.test.ts",
+]:
+    p = Path(fixture)
+    lines = p.read_text().splitlines()
+    out = []
+    inserted = False
+    for line in lines:
+        out.append(line)
+        if not inserted and "jobId:" in line:
+            indent = line[: len(line) - len(line.lstrip())]
+            out.append(f'{indent}ownerSessionId: "agent",')
+            inserted = True
+    if not inserted:
+        raise SystemExit(f"jobId fixture marker missing in {fixture}")
+    p.write_text("\n".join(out) + "\n")
+
+replace(
+    "test/index.test.ts",
+    "\tconst context: PluginContext = {\n\t\ttools:",
+    "\tconst context: PluginContext = {\n\t\tagents: { get: () => undefined },\n\t\ttools:",
+)
 
 # Focused tests: no raw payload injection, INTERNAL suppression, and engine event boundary behavior.
 Path("test/workflow-events.test.ts").write_text(r'''import { mkdtempSync } from "node:fs";
