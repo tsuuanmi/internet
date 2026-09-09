@@ -6,6 +6,7 @@ export interface WorkflowDriverEngine {
     runWriterImplementation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
     runReview(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
     runWriterRemediation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
+    runPrHealthGate(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
     requestMergeAuthorization(jobId: string): WorkflowJob;
     runWriterMerge(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
     markRetryRequired(jobId: string, message: string, resumeState: WorkflowState): WorkflowJob;

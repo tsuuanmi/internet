@@ -24,6 +24,9 @@ export const WORKFLOW_STATES = [
 
 export type WorkflowState = (typeof WORKFLOW_STATES)[number];
 
+export const WORKFLOW_PR_HEALTH_STATUSES = ["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"] as const;
+export type WorkflowPrHealthStatus = (typeof WORKFLOW_PR_HEALTH_STATUSES)[number];
+
 export const WORKFLOW_TEAM_STATUSES = ["pending", "running", "completed", "failed"] as const;
 export type WorkflowTeamStatus = (typeof WORKFLOW_TEAM_STATUSES)[number];
 
@@ -69,6 +72,16 @@ export interface WorkflowPullRequestReceipt {
 	readonly headSha: string;
 }
 
+export interface WorkflowPrHealthReceipt {
+	readonly repository: string;
+	readonly number: number;
+	readonly url: string;
+	readonly headSha: string;
+	readonly status: WorkflowPrHealthStatus;
+	readonly summary: string;
+	readonly checkedAt: string;
+}
+
 export interface WorkflowMergeAuthorization {
 	readonly repository: string;
 	readonly number: number;
@@ -97,6 +110,7 @@ export interface WorkflowPendingAction {
 		| "UNKNOWN_CONFIRMATION"
 		| "REVIEW_LIMIT_REACHED"
 		| "ACCOUNT_REAUTH_REQUIRED"
+		| "PR_HEALTH_REQUIRED"
 		| "RETRY_REQUIRED";
 	readonly message: string;
 	readonly expectedHeadSha?: string;
@@ -132,6 +146,7 @@ export interface WorkflowJob {
 		readonly accountId: "chatgpt-writer";
 	};
 	readonly pullRequest?: WorkflowPullRequestReceipt;
+	readonly prHealth?: WorkflowPrHealthReceipt;
 	readonly mergeAuthorization?: WorkflowMergeAuthorization;
 	readonly mergeReceipt?: WorkflowMergeReceipt;
 	readonly reviewCycle: number;

@@ -60,6 +60,15 @@ function readyJob(): WorkflowJob {
 			head: `internet-workflow/${jobId}`,
 			headSha,
 		},
+		prHealth: {
+			repository: "example/repo",
+			number: 7,
+			url: "https://github.com/example/repo/pull/7",
+			headSha,
+			status: "PASS",
+			summary: "all required checks passed",
+			checkedAt: timestamp,
+		},
 		reviewCycle: 1,
 		createdAt: timestamp,
 		updatedAt: timestamp,
@@ -124,6 +133,17 @@ describe("workflow merge gate", () => {
 		const writer: WorkflowWriterRunner = {
 			async deliverExact() {},
 			async runControl(request) {
+				if (request.control.kind === "CHECK_PR_HEALTH") {
+					return {
+						status: "PR_HEALTH",
+						repository: "example/repo",
+						number: 7,
+						url: "https://github.com/example/repo/pull/7",
+						headSha,
+						health: "PASS",
+						summary: "all required checks passed",
+					};
+				}
 				expect(request.control.kind).toBe("MERGE_AUTHORIZED");
 				expect(request.control.expectedHeadSha).toBe(headSha);
 				return {
@@ -147,7 +167,18 @@ describe("workflow merge gate", () => {
 	it("fails closed when writer reports a different pre-merge head", async () => {
 		const writer: WorkflowWriterRunner = {
 			async deliverExact() {},
-			async runControl() {
+			async runControl(request) {
+				if (request.control.kind === "CHECK_PR_HEALTH") {
+					return {
+						status: "PR_HEALTH",
+						repository: "example/repo",
+						number: 7,
+						url: "https://github.com/example/repo/pull/7",
+						headSha,
+						health: "PASS",
+						summary: "all required checks passed",
+					};
+				}
 				return {
 					status: "MERGED",
 					repository: "example/repo",

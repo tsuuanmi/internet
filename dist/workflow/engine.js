@@ -77,6 +77,9 @@ function samePullRequestIdentity(a, b) {
         a.base === b.base &&
         a.head === b.head);
 }
+function mergeEligibleHealth(receipt, headSha) {
+    return (receipt !== undefined && receipt.headSha === headSha && (receipt.status === "PASS" || receipt.status === "NONE"));
+}
 export class WorkflowEngine {
     constructor(jobs, teams, prompts = new WorkflowTeamPromptBuilder(), handoffs, writer, maxReviewCycles = 3, events) {
         this.jobs = jobs;
@@ -578,6 +581,8 @@ export class WorkflowEngine {
         return this.update(jobId, (current) => ({
             ...withState(current, "PR_OPEN"),
             pullRequest: result.pullRequest,
+            prHealth: undefined,
+            mergeAuthorization: undefined,
             teamRuns: {
                 ...current.teamRuns,
                 review: current.teamRuns.review.map((run) => ({
@@ -589,6 +594,81 @@ export class WorkflowEngine {
             },
             pendingAction: undefined,
             lastEvent: { type: "REMEDIATION_COMPLETED", class: "PROGRESS", at: now(), message: result.pullRequest.url },
+        }));
+    }
+    /** Read and persist exact-head PR/check health before merge authorization. */
+    async runPrHealthGate(jobId, signal) {
+        if (this.writer === undefined)
+            throw new WorkflowEngineError("workflow writer runner is not configured");
+        const job = this.status(jobId);
+        if (job.state !== "READY_FOR_MERGE_AUTHORIZATION")
+            throw new WorkflowEngineError(`workflow job ${jobId} cannot check PR health from ${job.state}`);
+        if (job.pullRequest === undefined)
+            throw new WorkflowEngineError("PR health check requires a persisted pull request");
+        const pr = job.pullRequest;
+        const result = await this.writer.runControl({
+            sessionId: job.writerConversation.sessionId,
+            job,
+            control: createWorkflowControlMessage("CHECK_PR_HEALTH", jobId, pr.headSha),
+            signal,
+        });
+        if (result.status === "UNKNOWN_CONFIRMATION") {
+            return this.update(jobId, (current) => ({
+                ...withState(current, "UNKNOWN_CONFIRMATION"),
+                pendingAction: {
+                    kind: "UNKNOWN_CONFIRMATION",
+                    message: result.message,
+                    resumeState: "READY_FOR_MERGE_AUTHORIZATION",
+                },
+                lastEvent: { type: "UNKNOWN_CONFIRMATION", class: "ACTION_REQUIRED", at: now(), message: result.message },
+            }));
+        }
+        if (result.status === "BLOCKED")
+            return this.writerBlocked(jobId, result.message, "READY_FOR_MERGE_AUTHORIZATION");
+        if (result.status !== "PR_HEALTH")
+            throw new WorkflowEngineError("writer did not return PR health during health gate");
+        if (normalizeGitHubRepository(result.repository) !== normalizeGitHubRepository(pr.repository) ||
+            result.number !== pr.number ||
+            result.url !== pr.url ||
+            result.headSha !== pr.headSha) {
+            return this.writerBlocked(jobId, "PR health result does not match the authoritative PR/head", "READY_FOR_MERGE_AUTHORIZATION");
+        }
+        const receipt = {
+            repository: result.repository,
+            number: result.number,
+            url: result.url,
+            headSha: result.headSha,
+            status: result.health,
+            summary: result.summary,
+            checkedAt: now(),
+        };
+        if (result.health === "PASS" || result.health === "NONE") {
+            return this.update(jobId, (current) => ({
+                ...current,
+                revision: current.revision + 1,
+                prHealth: receipt,
+                pendingAction: undefined,
+                lastEvent: {
+                    type: "PR_HEALTH_PASSED",
+                    class: "PROGRESS",
+                    at: now(),
+                    message: `ci=${result.health.toLowerCase()} head=${result.headSha}`,
+                },
+                updatedAt: now(),
+            }));
+        }
+        const message = `PR health blocks merge authorization: ci=${result.health.toLowerCase()} head=${result.headSha} summary=${result.summary}`;
+        return this.update(jobId, (current) => ({
+            ...withState(current, "BLOCKED"),
+            prHealth: receipt,
+            mergeAuthorization: undefined,
+            pendingAction: {
+                kind: "PR_HEALTH_REQUIRED",
+                message,
+                expectedHeadSha: result.headSha,
+                resumeState: "READY_FOR_MERGE_AUTHORIZATION",
+            },
+            lastEvent: { type: "PR_HEALTH_REQUIRED", class: "ACTION_REQUIRED", at: now(), message },
         }));
     }
     /** Move a fully reviewed PR into the explicit user-authorization gate. */
@@ -603,19 +683,23 @@ export class WorkflowEngine {
             throw new WorkflowEngineError("merge authorization requires both reviewers to PASS the current exact PR head");
         }
         const pr = current.pullRequest;
+        if (!mergeEligibleHealth(current.prHealth, pr.headSha)) {
+            throw new WorkflowEngineError("merge authorization requires exact-head PR health PASS or NONE");
+        }
+        const ci = current.prHealth.status.toLowerCase();
         return this.update(jobId, (state) => ({
             ...withState(state, "AWAITING_MERGE_AUTHORIZATION"),
             pendingAction: {
                 kind: "MERGE_AUTHORIZATION_REQUIRED",
                 expectedHeadSha: pr.headSha,
-                message: `Merge authorization required: pr=${pr.url} reviews=PASS/PASS ci=unknown expected_head=${pr.headSha}`,
+                message: `Merge authorization required: pr=${pr.url} reviews=PASS/PASS ci=${ci} expected_head=${pr.headSha}`,
             },
             mergeAuthorization: undefined,
             lastEvent: {
                 type: "MERGE_AUTHORIZATION_REQUIRED",
                 class: "ACTION_REQUIRED",
                 at: now(),
-                message: `pr=${pr.url} reviews=PASS/PASS ci=unknown expected_head=${pr.headSha}`,
+                message: `pr=${pr.url} reviews=PASS/PASS ci=${ci} expected_head=${pr.headSha}`,
             },
         }));
     }
@@ -623,7 +707,7 @@ export class WorkflowEngine {
     async runWriterMerge(jobId, signal) {
         if (this.writer === undefined)
             throw new WorkflowEngineError("workflow writer runner is not configured");
-        const job = this.status(jobId);
+        let job = this.status(jobId);
         if (job.state !== "MERGING")
             throw new WorkflowEngineError(`workflow job ${jobId} cannot merge from ${job.state}`);
         if (job.pullRequest === undefined || job.mergeAuthorization === undefined) {
@@ -638,6 +722,66 @@ export class WorkflowEngine {
             authorization.headSha !== pr.headSha) {
             return this.writerBlocked(jobId, "merge authorization is stale or no longer matches the authoritative PR", "READY_FOR_MERGE_AUTHORIZATION");
         }
+        const healthResult = await this.writer.runControl({
+            sessionId: job.writerConversation.sessionId,
+            job,
+            control: createWorkflowControlMessage("CHECK_PR_HEALTH", jobId, authorization.headSha),
+            signal,
+        });
+        if (healthResult.status === "UNKNOWN_CONFIRMATION") {
+            return this.update(jobId, (current) => ({
+                ...withState(current, "UNKNOWN_CONFIRMATION"),
+                pendingAction: { kind: "UNKNOWN_CONFIRMATION", message: healthResult.message, resumeState: "MERGING" },
+                lastEvent: {
+                    type: "UNKNOWN_CONFIRMATION",
+                    class: "ACTION_REQUIRED",
+                    at: now(),
+                    message: healthResult.message,
+                },
+            }));
+        }
+        if (healthResult.status === "BLOCKED")
+            return this.writerBlocked(jobId, healthResult.message, "READY_FOR_MERGE_AUTHORIZATION");
+        if (healthResult.status !== "PR_HEALTH")
+            throw new WorkflowEngineError("writer did not return PR health before merge");
+        if (normalizeGitHubRepository(healthResult.repository) !== normalizeGitHubRepository(pr.repository) ||
+            healthResult.number !== pr.number ||
+            healthResult.url !== pr.url ||
+            healthResult.headSha !== authorization.headSha) {
+            return this.writerBlocked(jobId, "pre-merge PR health result does not match the authorized PR/head", "READY_FOR_MERGE_AUTHORIZATION");
+        }
+        const refreshedHealth = {
+            repository: healthResult.repository,
+            number: healthResult.number,
+            url: healthResult.url,
+            headSha: healthResult.headSha,
+            status: healthResult.health,
+            summary: healthResult.summary,
+            checkedAt: now(),
+        };
+        if (healthResult.health !== "PASS" && healthResult.health !== "NONE") {
+            const message = `PR health changed before merge: ci=${healthResult.health.toLowerCase()} head=${healthResult.headSha} summary=${healthResult.summary}`;
+            this.update(jobId, (current) => ({
+                ...current,
+                revision: current.revision + 1,
+                prHealth: refreshedHealth,
+                mergeAuthorization: undefined,
+                updatedAt: now(),
+            }));
+            return this.writerBlocked(jobId, message, "READY_FOR_MERGE_AUTHORIZATION");
+        }
+        job = this.update(jobId, (current) => ({
+            ...current,
+            revision: current.revision + 1,
+            prHealth: refreshedHealth,
+            lastEvent: {
+                type: "PR_HEALTH_REVALIDATED",
+                class: "INTERNAL",
+                at: now(),
+                message: `ci=${healthResult.health.toLowerCase()} head=${healthResult.headSha}`,
+            },
+            updatedAt: now(),
+        }));
         const control = createWorkflowControlMessage("MERGE_AUTHORIZED", jobId, authorization.headSha);
         const result = await this.writer.runControl({
             sessionId: job.writerConversation.sessionId,

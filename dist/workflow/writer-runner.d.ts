@@ -1,6 +1,6 @@
 import { type WorkflowApprovalScope } from "#internet/workflow/approval-policy";
 import type { WorkflowControlMessage } from "#internet/workflow/control";
-import type { WorkflowJob, WorkflowPullRequestReceipt } from "#internet/workflow/types";
+import type { WorkflowJob, WorkflowPrHealthStatus, WorkflowPullRequestReceipt } from "#internet/workflow/types";
 export interface WorkflowWriterRunner {
     deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void>;
     runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult>;
@@ -30,6 +30,14 @@ export interface WorkflowWriterControlRequest {
 export type WorkflowWriterResult = {
     readonly status: "PR_OPEN";
     readonly pullRequest: WorkflowPullRequestReceipt;
+} | {
+    readonly status: "PR_HEALTH";
+    readonly repository: string;
+    readonly number: number;
+    readonly url: string;
+    readonly headSha: string;
+    readonly health: WorkflowPrHealthStatus;
+    readonly summary: string;
 } | {
     readonly status: "MERGED";
     readonly repository: string;

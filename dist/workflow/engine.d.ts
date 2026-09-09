@@ -36,6 +36,8 @@ export declare class WorkflowEngine {
     startApplyReviewsControl(jobId: string): WorkflowControlStep;
     /** Deliver reviewer finals verbatim, then either pass the review gate or remediate the same PR. */
     runWriterRemediation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
+    /** Read and persist exact-head PR/check health before merge authorization. */
+    runPrHealthGate(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
     /** Move a fully reviewed PR into the explicit user-authorization gate. */
     requestMergeAuthorization(jobId: string): WorkflowJob;
     /** Execute an already authorized exact-head merge through the persistent Website writer. */

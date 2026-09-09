@@ -127,6 +127,15 @@ describe("P10 durable recovery and transition hardening", () => {
 			revision: current.revision + 1,
 			state: "MERGING",
 			pullRequest: pr,
+			prHealth: {
+				repository: pr.repository,
+				number: pr.number,
+				url: pr.url,
+				headSha: pr.headSha,
+				status: "PASS",
+				summary: "all required checks passed before authorization",
+				checkedAt: new Date().toISOString(),
+			},
 			reviewCycle: 1,
 			mergeAuthorization: {
 				repository: current.repository,
@@ -142,7 +151,18 @@ describe("P10 durable recovery and transition hardening", () => {
 		}));
 		const writer: WorkflowWriterRunner = {
 			async deliverExact() {},
-			async runControl() {
+			async runControl(request) {
+				if (request.control.kind === "CHECK_PR_HEALTH") {
+					return {
+						status: "PR_HEALTH",
+						repository: "example/repo",
+						number: 4,
+						url: pr.url,
+						headSha: prHeadSha,
+						health: "PASS",
+						summary: "all required checks still pass",
+					};
+				}
 				return {
 					status: "MERGED",
 					repository: "example/repo",

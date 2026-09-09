@@ -1,4 +1,10 @@
-export const WORKFLOW_CONTROL_KINDS = ["START_IMPLEMENTATION", "APPLY_REVIEWS", "RETRY", "MERGE_AUTHORIZED"];
+export const WORKFLOW_CONTROL_KINDS = [
+    "START_IMPLEMENTATION",
+    "APPLY_REVIEWS",
+    "CHECK_PR_HEALTH",
+    "RETRY",
+    "MERGE_AUTHORIZED",
+];
 export function createWorkflowControlMessage(kind, jobId, expectedHeadSha) {
     if (!/^[0-9a-f]{32}$/u.test(jobId))
         throw new Error("workflow control message requires a valid job id");

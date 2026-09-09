@@ -56,6 +56,13 @@ function project(job) {
                 pendingAction: job.pendingAction.kind,
                 pendingMessage: job.pendingAction.message,
             }),
+        ...(job.prHealth === undefined
+            ? {}
+            : {
+                prHealthStatus: job.prHealth.status,
+                prHealthHeadSha: job.prHealth.headSha,
+                prHealthCheckedAt: job.prHealth.checkedAt,
+            }),
         ...(job.mergeAuthorization === undefined ? {} : { authorizedHeadSha: job.mergeAuthorization.headSha }),
         ...(job.mergeReceipt === undefined
             ? {}
@@ -104,6 +111,9 @@ export function defineInternetWorkflowTool(engine, driver) {
                     prNumber: { type: "number" },
                     prUrl: { type: "string" },
                     prHeadSha: { type: "string" },
+                    prHealthStatus: { type: "string" },
+                    prHealthHeadSha: { type: "string" },
+                    prHealthCheckedAt: { type: "string" },
                     pendingAction: { type: "string" },
                     pendingMessage: { type: "string" },
                     authorizedHeadSha: { type: "string" },
@@ -151,8 +161,18 @@ export function defineInternetWorkflowTool(engine, driver) {
                 let job;
                 if (operation === "status")
                     job = engine.status(args.jobId);
-                else if (operation === "request_merge")
-                    job = engine.requestMergeAuthorization(args.jobId);
+                else if (operation === "request_merge") {
+                    const current = engine.status(args.jobId);
+                    const checked = current.pullRequest !== undefined &&
+                        current.prHealth?.headSha === current.pullRequest.headSha &&
+                        (current.prHealth.status === "PASS" || current.prHealth.status === "NONE")
+                        ? current
+                        : await engine.runPrHealthGate(args.jobId, exec.signal);
+                    job =
+                        checked.state === "READY_FOR_MERGE_AUTHORIZATION"
+                            ? engine.requestMergeAuthorization(args.jobId)
+                            : checked;
+                }
                 else if (operation === "merge")
                     job = await engine.runWriterMerge(args.jobId, exec.signal);
                 else if (operation === "cancel")

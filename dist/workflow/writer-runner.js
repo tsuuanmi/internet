@@ -22,6 +22,29 @@ function controlPrompt(job, control) {
             'On block: {"status":"BLOCKED","message":"concise reason"}',
         ].join("\n");
     }
+    if (control.kind === "CHECK_PR_HEALTH") {
+        if (pullRequest === undefined || control.expectedHeadSha === undefined) {
+            throw new Error("CHECK_PR_HEALTH requires a persisted PR and expected head SHA");
+        }
+        return [
+            "You are the workflow writer/executor. This is a trusted read-only PR-health control message.",
+            `Control: ${control.kind}`,
+            `Workflow job: ${job.jobId}`,
+            `Target repository: ${job.repository}`,
+            `Pull request: ${pullRequest.url}`,
+            `PR number: ${pullRequest.number}`,
+            `Required PR head branch: ${pullRequest.head}`,
+            `Expected exact head SHA: ${control.expectedHeadSha}`,
+            "",
+            "Read the actual current pull request and its current GitHub checks/statuses. Do not modify repository state and do not merge.",
+            "First verify repository, PR number, head branch, and exact head SHA. If identity/head cannot be established exactly, report UNKNOWN for the actual head you observed when available; never guess.",
+            "Classify the exact head as PASS when configured checks/status contexts relevant to merge are complete and successful; FAIL when any relevant check/status is failed, cancelled, timed out, stale, or action-required; PENDING when at least one relevant check is queued/in-progress/waiting and none has failed; NONE when GitHub shows no configured checks/status contexts for this head; UNKNOWN when health cannot be determined conclusively.",
+            "Use NONE only for a genuinely check-free head, not for missing access or ambiguous UI/API state.",
+            "",
+            "Return exactly one JSON object and no markdown or surrounding prose.",
+            '{"status":"PR_HEALTH","repository":"owner/repo or repository URL","number":123,"url":"https://github.com/owner/repo/pull/123","headSha":"40-lowercase-hex","health":"PASS|FAIL|PENDING|NONE|UNKNOWN","summary":"concise evidence"}',
+        ].join("\n");
+    }
     if (control.kind === "MERGE_AUTHORIZED") {
         if (pullRequest === undefined || job.mergeAuthorization === undefined || control.expectedHeadSha === undefined) {
             throw new Error("MERGE_AUTHORIZED requires a persisted PR, authorization, and expected head SHA");
@@ -91,6 +114,29 @@ export function parseWorkflowWriterResult(text) {
             throw new Error("workflow writer BLOCKED result requires a message");
         }
         return { status: "BLOCKED", message: value.message };
+    }
+    if (value.status === "PR_HEALTH") {
+        if (typeof value.repository !== "string" || value.repository.trim() === "")
+            throw new Error("writer PR health repository is required");
+        if (typeof value.number !== "number" || !Number.isSafeInteger(value.number) || value.number < 1)
+            throw new Error("writer PR health PR number is invalid");
+        if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url))
+            throw new Error("writer PR health URL is invalid");
+        if (typeof value.headSha !== "string" || !/^[0-9a-f]{40}$/u.test(value.headSha))
+            throw new Error("writer PR health head SHA is invalid");
+        if (!["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"].includes(String(value.health)))
+            throw new Error("writer PR health status is invalid");
+        if (typeof value.summary !== "string" || value.summary.trim() === "")
+            throw new Error("writer PR health summary is required");
+        return {
+            status: "PR_HEALTH",
+            repository: value.repository,
+            number: value.number,
+            url: value.url,
+            headSha: value.headSha,
+            health: value.health,
+            summary: value.summary,
+        };
     }
     if (value.status === "MERGED") {
         if (typeof value.repository !== "string" || value.repository.trim() === "")

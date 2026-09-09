@@ -469,19 +469,21 @@ Unexpected driver/orchestration errors must become a durable retry-required acti
 
 ## P12 — Exact-head CI / PR health gate
 
+**Status:** implemented with exact-head durable PR-health receipts, merge-authorization gating, and immediate pre-merge revalidation.
+
 **ROI:** very high  
 **Risk:** medium  
 **Dependency:** P11 automatic driver.
 
-### 50. Persist exact-head CI/check receipt
+### 50. ✅ Persist exact-head CI/check receipt
 
 Bind PR health to repository + PR + exact head SHA. Distinguish `PASS`, `FAIL`, `PENDING`, `NONE`, and `UNKNOWN`; do not collapse repositories with no configured checks into failure.
 
-### 51. Gate merge authorization on current PR health
+### 51. ✅ Gate merge authorization on current PR health
 
 Required checks failing or pending must block/wait. `NONE` may be merge-eligible when no checks are configured. `UNKNOWN` must be surfaced explicitly to the user rather than silently treated as pass. A changed head invalidates the old CI receipt exactly like review and merge authorization.
 
-### 52. Re-check health immediately before merge
+### 52. ✅ Re-check health immediately before merge
 
 The authorized merge path should verify that the exact authorized head still has acceptable PR/check health immediately before merge.
 

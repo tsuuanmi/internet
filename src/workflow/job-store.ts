@@ -109,6 +109,21 @@ function isPositiveInteger(value: unknown): value is number {
 	return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
+function assertPrHealth(value: unknown): void {
+	if (value === undefined) return;
+	if (!isRecord(value)) throw new Error("invalid PR health receipt");
+	if (typeof value.repository !== "string" || value.repository.trim() === "")
+		throw new Error("invalid PR health repository");
+	if (!isPositiveInteger(value.number)) throw new Error("invalid PR health PR number");
+	if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url))
+		throw new Error("invalid PR health URL");
+	if (!isFullSha(value.headSha)) throw new Error("invalid PR health head SHA");
+	if (!["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"].includes(String(value.status)))
+		throw new Error("invalid PR health status");
+	if (typeof value.summary !== "string" || value.summary.trim() === "") throw new Error("invalid PR health summary");
+	if (!isTimestamp(value.checkedAt)) throw new Error("invalid PR health timestamp");
+}
+
 function assertMergeAuthorization(value: unknown): void {
 	if (value === undefined) return;
 	if (!isRecord(value)) throw new Error("invalid merge authorization");
@@ -260,6 +275,7 @@ function assertPendingAction(value: unknown): void {
 			"UNKNOWN_CONFIRMATION",
 			"REVIEW_LIMIT_REACHED",
 			"ACCOUNT_REAUTH_REQUIRED",
+			"PR_HEALTH_REQUIRED",
 			"RETRY_REQUIRED",
 		].includes(String(value.kind))
 	)
@@ -306,6 +322,7 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 	assertWriterConversation(value.writerConversation, value.ownerSessionId, value.jobId);
 	assertHandoffReceipts(value.handoffReceipts);
 	assertPullRequest(value.pullRequest);
+	assertPrHealth(value.prHealth);
 	assertPendingAction(value.pendingAction);
 	assertEvent(value.lastEvent);
 	if (typeof value.reviewCycle !== "number" || !Number.isSafeInteger(value.reviewCycle) || value.reviewCycle < 0) {
@@ -322,6 +339,16 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 			throw new Error("FAILED_RETRYABLE workflow requires an explicit retry action and resume state");
 		}
 	}
+	if (value.prHealth !== undefined) {
+		if (!isRecord(value.prHealth) || !isRecord(value.pullRequest))
+			throw new Error("PR health receipt requires a pull request receipt");
+		if (
+			value.prHealth.number !== value.pullRequest.number ||
+			value.prHealth.url !== value.pullRequest.url ||
+			value.prHealth.headSha !== value.pullRequest.headSha
+		)
+			throw new Error("PR health receipt does not match pull request receipt");
+	}
 	if (value.mergeAuthorization !== undefined) {
 		const authorization = value.mergeAuthorization;
 		if (!isRecord(authorization)) throw new Error("invalid merge authorization");
@@ -333,6 +360,10 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 			authorization.headSha !== value.pullRequest.headSha
 		)
 			throw new Error("merge authorization does not match pull request receipt");
+	}
+	if (value.mergeAuthorization !== undefined) {
+		if (!isRecord(value.prHealth) || (value.prHealth.status !== "PASS" && value.prHealth.status !== "NONE"))
+			throw new Error("merge authorization requires merge-eligible PR health");
 	}
 	if (value.mergeReceipt !== undefined) {
 		const mergeReceipt = value.mergeReceipt;

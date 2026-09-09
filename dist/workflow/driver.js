@@ -104,7 +104,14 @@ export class WorkflowDriver {
                 case "READY_FOR_MERGE_AUTHORIZATION":
                     if (before.lastEvent?.type === "MERGE_AUTHORIZATION_REJECTED")
                         return;
-                    after = this.engine.requestMergeAuthorization(jobId);
+                    if (before.pullRequest !== undefined &&
+                        before.prHealth?.headSha === before.pullRequest.headSha &&
+                        (before.prHealth.status === "PASS" || before.prHealth.status === "NONE")) {
+                        after = this.engine.requestMergeAuthorization(jobId);
+                    }
+                    else {
+                        after = await this.engine.runPrHealthGate(jobId, signal);
+                    }
                     break;
                 case "MERGING":
                     after = await this.engine.runWriterMerge(jobId, signal);

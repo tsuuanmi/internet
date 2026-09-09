@@ -3,6 +3,8 @@ import type { WebProvider } from "#internet/core/config";
 import type { WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export declare const WORKFLOW_STATES: readonly ["CREATED", "RESEARCH_RUNNING", "RESEARCH_HANDOFFS_DELIVERING", "WRITER_RUNNING", "PR_OPEN", "REVIEW_RUNNING", "REVIEW_HANDOFFS_DELIVERING", "WRITER_REMEDIATING", "READY_FOR_MERGE_AUTHORIZATION", "AWAITING_MERGE_AUTHORIZATION", "MERGING", "DONE", "BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"];
 export type WorkflowState = (typeof WORKFLOW_STATES)[number];
+export declare const WORKFLOW_PR_HEALTH_STATUSES: readonly ["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"];
+export type WorkflowPrHealthStatus = (typeof WORKFLOW_PR_HEALTH_STATUSES)[number];
 export declare const WORKFLOW_TEAM_STATUSES: readonly ["pending", "running", "completed", "failed"];
 export type WorkflowTeamStatus = (typeof WORKFLOW_TEAM_STATUSES)[number];
 export interface WorkflowTeamResult {
@@ -42,6 +44,15 @@ export interface WorkflowPullRequestReceipt {
     readonly head: string;
     readonly headSha: string;
 }
+export interface WorkflowPrHealthReceipt {
+    readonly repository: string;
+    readonly number: number;
+    readonly url: string;
+    readonly headSha: string;
+    readonly status: WorkflowPrHealthStatus;
+    readonly summary: string;
+    readonly checkedAt: string;
+}
 export interface WorkflowMergeAuthorization {
     readonly repository: string;
     readonly number: number;
@@ -62,7 +73,7 @@ export interface WorkflowMergeReceipt {
     readonly mergedAt: string;
 }
 export interface WorkflowPendingAction {
-    readonly kind: "MERGE_AUTHORIZATION_REQUIRED" | "WRITER_BLOCKED" | "UNKNOWN_CONFIRMATION" | "REVIEW_LIMIT_REACHED" | "ACCOUNT_REAUTH_REQUIRED" | "RETRY_REQUIRED";
+    readonly kind: "MERGE_AUTHORIZATION_REQUIRED" | "WRITER_BLOCKED" | "UNKNOWN_CONFIRMATION" | "REVIEW_LIMIT_REACHED" | "ACCOUNT_REAUTH_REQUIRED" | "PR_HEALTH_REQUIRED" | "RETRY_REQUIRED";
     readonly message: string;
     readonly expectedHeadSha?: string;
     /** State to resume after a manually handled non-terminal exception. */
@@ -95,6 +106,7 @@ export interface WorkflowJob {
         readonly accountId: "chatgpt-writer";
     };
     readonly pullRequest?: WorkflowPullRequestReceipt;
+    readonly prHealth?: WorkflowPrHealthReceipt;
     readonly mergeAuthorization?: WorkflowMergeAuthorization;
     readonly mergeReceipt?: WorkflowMergeReceipt;
     readonly reviewCycle: number;
