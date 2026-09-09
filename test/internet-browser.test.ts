@@ -6,8 +6,8 @@ const allowed = new Set(["chatgpt-thinker", "chatgpt-writer", "gemini-thinker"] 
 
 function manager(status: AccountStatus) {
 	return {
-		login: vi.fn(async (accountId) => ({ ...status, accountId } as AccountStatus)),
-		status: vi.fn(async (accountId) => ({ ...status, accountId } as AccountStatus)),
+		login: vi.fn(async (accountId) => ({ ...status, accountId }) as AccountStatus),
+		status: vi.fn(async (accountId) => ({ ...status, accountId }) as AccountStatus),
 		stop: vi.fn(async () => {}),
 	};
 }
