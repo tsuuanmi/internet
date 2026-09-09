@@ -1,5 +1,7 @@
 # Provider UI inspection guide
 
+> **Workflow-doc sync review:** 2026-09-09 — unchanged by P13. This remains the current fail-closed discovery/safety protocol for Website UI automation.
+
 Browser-backed provider UIs change frequently. This guide defines the shared discovery and safety protocol for `@tsuuanmi/internet`; provider-specific contracts live separately:
 
 - [Gemini UI inspection contract](./gemini-ui-inspection.md)
