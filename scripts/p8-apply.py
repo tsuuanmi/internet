@@ -102,7 +102,8 @@ for fixture in [
     inserted = False
     for line in lines:
         out.append(line)
-        if not inserted and "jobId:" in line:
+        stripped = line.strip()
+        if not inserted and ("jobId:" in line or stripped == "jobId,"):
             indent = line[: len(line) - len(line.lstrip())]
             out.append(f'{indent}ownerSessionId: "agent",')
             inserted = True
