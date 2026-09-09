@@ -20,9 +20,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - run: npm ci
       - run: python3 scripts/p12-apply.py
       - run: npx biome check --write src test scripts
-      - run: npm ci
       - run: npm run check
       - run: npm test
       - run: npm run build
