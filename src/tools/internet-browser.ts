@@ -69,7 +69,8 @@ export function defineInternetBrowserTool(
 			},
 			remote: {
 				type: "boolean",
-				description: "Force SSH-forwarded noVNC login for login/login_all; displayless Linux selects it automatically.",
+				description:
+					"Force SSH-forwarded noVNC login for login/login_all; displayless Linux selects it automatically.",
 			},
 		},
 		output: {
@@ -162,14 +163,18 @@ export function defineInternetBrowserTool(
 				const results = await Promise.all(
 					accounts.map(async (accountId) => {
 						try {
-							if (typedAction === "login_all") return await manager.login(accountId, { remote: remote === true });
+							if (typedAction === "login_all")
+								return await manager.login(accountId, { remote: remote === true });
 							if (typedAction === "stop_all") {
 								await manager.stop(accountId);
 								return await manager.status(accountId);
 							}
 							return await manager.status(accountId);
 						} catch (error) {
-							return { accountId, error: isInternetError(error) ? `${error.kind}: ${error.message}` : String(error) };
+							return {
+								accountId,
+								error: isInternetError(error) ? `${error.kind}: ${error.message}` : String(error),
+							};
 						}
 					}),
 				);
@@ -192,15 +197,31 @@ export function defineInternetBrowserTool(
 
 			const rawAccount = args.account;
 			if (!isAccountId(rawAccount)) {
-				return { ok: false, action, accountId: String(rawAccount), provider: "unknown", message: "account is required" };
+				return {
+					ok: false,
+					action,
+					accountId: String(rawAccount),
+					provider: "unknown",
+					message: "account is required",
+				};
 			}
 			const accountId = rawAccount;
 			const provider = getAccountDefinition(accountId).provider;
 			if (!allowed.has(accountId)) {
-				return { ok: false, action, accountId, provider, message: `account ${accountId} is disabled in the internet plugin config` };
+				return {
+					ok: false,
+					action,
+					accountId,
+					provider,
+					message: `account ${accountId} is disabled in the internet plugin config`,
+				};
 			}
 			try {
-				if (typedAction === "login") return { action, ...singleResult(accountId, await manager.login(accountId, { remote: remote === true })) };
+				if (typedAction === "login")
+					return {
+						action,
+						...singleResult(accountId, await manager.login(accountId, { remote: remote === true })),
+					};
 				if (typedAction === "stop") {
 					await manager.stop(accountId);
 					return { ok: true, action, accountId, provider, message: `${accountId} browser stopped.` };
@@ -222,7 +243,8 @@ export function defineInternetBrowserTool(
 					),
 				};
 			} catch (error) {
-				if (isInternetError(error)) return { ok: false, action, accountId, provider, message: `${error.kind}: ${error.message}` };
+				if (isInternetError(error))
+					return { ok: false, action, accountId, provider, message: `${error.kind}: ${error.message}` };
 				throw error;
 			}
 		},
