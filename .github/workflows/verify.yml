@@ -79,6 +79,7 @@ jobs:
           readme.write_text(text)
           PY
       - run: npm ci
+      - run: npx biome format --write src/tools/internet-browser.ts src/browser/runtime.ts test/internet-browser.test.ts
       - run: npm run check
       - run: npm test
       - run: npm run build
