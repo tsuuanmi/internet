@@ -33,11 +33,4 @@ old = "The merge gate is head-SHA-bound: a reviewed PR first becomes an ACTION_R
 new = "The merge gate is head-SHA-bound and now includes exact-head PR health. Before Local receives the merge-authorization request, the writer performs a trusted read-only `CHECK_PR_HEALTH` against the persisted PR/head and returns one strict classification: `PASS`, `FAIL`, `PENDING`, `NONE`, or `UNKNOWN`. The engine persists that receipt; only `PASS` or a genuinely check-free `NONE` may advance to user authorization. `FAIL`, `PENDING`, and `UNKNOWN` fail closed as `PR_HEALTH_REQUIRED` instead of being guessed or automatically polled in a loop. Explicit approval then persists the exact repository/PR/head authorization. Immediately before `MERGE_AUTHORIZED`, the engine reads PR health again for that same head; a moved head or newly non-eligible check state invalidates the authorization and blocks the merge. The workflow is registered only when both thinker\naccounts are enabled; the writer path additionally requires a ready `chatgpt-writer` account when implementation is driven.\n"
 replace_once("README.md", old, new)
 
-# TODO should no longer imply P11 is awaiting review now that main contains it.
-replace_once(
-    "docs/TODO.md",
-    "**Status:** implemented on `impl/p11-workflow-driver`; pending review/merge.\n",
-    "**Status:** implemented and merged.\n",
-)
-
 print("P12 finalization applied")
