@@ -16,8 +16,13 @@ export interface WorkflowStarter {
 	start(input: StartWorkflowInput): WorkflowJob;
 }
 
+export interface WorkflowEnqueuer {
+	enqueue(jobId: string): void;
+}
+
 export interface WorkflowCommandDependencies {
 	readonly engine: WorkflowStarter;
+	readonly driver: WorkflowEnqueuer;
 	readonly runGit?: GitRunner;
 }
 
@@ -194,6 +199,7 @@ export function defineWorkflowCommand(dependencies: WorkflowCommandDependencies)
 					baseRevision: repository.revision,
 					ownerSessionId: String(invocation.agent.id),
 				});
+				dependencies.driver.enqueue(job.jobId);
 				return {
 					kind: "success",
 					text: `Workflow ${job.jobId} created for ${repository.url} at ${repository.revision.slice(0, 12)}.`,

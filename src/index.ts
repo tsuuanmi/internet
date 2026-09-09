@@ -10,6 +10,7 @@ import { defineInternetChatTool } from "#internet/tools/internet-chat";
 import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
+import { WorkflowDriver } from "#internet/workflow/driver";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { DshWorkflowEventSink, type WorkflowAgentRegistry } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
@@ -88,8 +89,9 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		ctx.systemPrompt?.section?.({ name: "tool:internet_chat", order: 120, text: INTERNET_CHAT_GUIDANCE });
 	}
 	if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker") && accounts.has("chatgpt-writer")) {
+		const workflowJobs = new WorkflowJobStore(config.dataDir);
 		const workflowEngine = new WorkflowEngine(
-			new WorkflowJobStore(config.dataDir),
+			workflowJobs,
 			new BrowserWorkflowTeamRunner(manager, config),
 			new WorkflowTeamPromptBuilder(),
 			new WorkflowHandoffStore(config.dataDir),
@@ -97,8 +99,11 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 			3,
 			new DshWorkflowEventSink(ctx.agents),
 		);
-		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine }));
-		ctx.tools.register(defineInternetWorkflowTool(workflowEngine));
+		const workflowDriver = new WorkflowDriver(workflowEngine, workflowJobs);
+		ctx.effect(() => () => workflowDriver.dispose());
+		workflowDriver.resumeActive();
+		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine, driver: workflowDriver }));
+		ctx.tools.register(defineInternetWorkflowTool(workflowEngine, workflowDriver));
 		ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
 		ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
 		ctx.systemPrompt?.section?.({ name: "tool:internet_team", order: 122, text: INTERNET_TEAM_GUIDANCE });
@@ -135,6 +140,8 @@ export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
+export type { WorkflowDriverEngine } from "#internet/workflow/driver";
+export { WorkflowDriver } from "#internet/workflow/driver";
 export type { WorkflowControlStep } from "#internet/workflow/engine";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
 export type { WorkflowAgentRegistry, WorkflowEventSink, WorkflowLocalAgent } from "#internet/workflow/events";

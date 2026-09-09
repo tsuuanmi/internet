@@ -96,7 +96,8 @@ export interface WorkflowPendingAction {
 		| "WRITER_BLOCKED"
 		| "UNKNOWN_CONFIRMATION"
 		| "REVIEW_LIMIT_REACHED"
-		| "ACCOUNT_REAUTH_REQUIRED";
+		| "ACCOUNT_REAUTH_REQUIRED"
+		| "RETRY_REQUIRED";
 	readonly message: string;
 	readonly expectedHeadSha?: string;
 	/** State to resume after a manually handled non-terminal exception. */

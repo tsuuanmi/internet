@@ -267,3 +267,10 @@ caller needs it.
 ## P10 ROI hardening
 
 The first P10 hardening pass follows ROI rather than TODO number order. Durable restart recovery and PR idempotency are treated as correctness-critical, followed by transition and handoff integrity. Durable job parsing now validates nested account/session/team/handoff/PR/pending/event authority, exact handoff parsing verifies its deterministic logical identity, and engine handoff receipts are revision-idempotent. START_IMPLEMENTATION retries reconcile an exact deterministic head branch before creating a PR. Existing account-isolation and scoped-approval suites were audited as sufficient closure coverage; retention/cleanup remains the lower-ROI residual item.
+
+
+## P11 automatic workflow driver
+
+P11 is now the highest-ROI next phase. A deterministic `WorkflowDriver` advances existing engine primitives in the background from job creation through research, writer implementation, PR review/remediation, and the explicit merge-authorization boundary. It is deliberately not another model layer: code owns state transitions and stop conditions, while Website models continue to own reasoning and implementation content.
+
+The driver deduplicates active work by job ID, resumes safe runnable jobs discovered from durable storage after plugin restart, leaves action-required/human-authority states stopped, and keeps a rejected merge request quiet until explicitly requested again. Unexpected driver errors become durable retry-required actions with an exact resume state. Exact-head approval resumes MERGING automatically; cancellation aborts and settles an active driver turn before persisting CANCELLED.

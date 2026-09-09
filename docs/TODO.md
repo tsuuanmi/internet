@@ -427,6 +427,8 @@ The account catalog, storage, stale-write, reauthentication, scheduler, browser-
 
 ## P11 — Automatic workflow driver
 
+**Status:** implementation in progress on `impl/p11-workflow-driver`.
+
 **ROI:** critical  
 **Risk:** medium-high  
 **Goal:** make `/workflow <task>` a real hand-off: create one durable job, drive it automatically to the next human/action-required boundary, and resume safe in-flight work after plugin restart.

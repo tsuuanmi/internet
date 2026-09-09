@@ -4,7 +4,7 @@ import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/h
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
-import { type StartWorkflowInput, type WorkflowDecisionInput, type WorkflowJob } from "#internet/workflow/types";
+import { type StartWorkflowInput, type WorkflowDecisionInput, type WorkflowJob, type WorkflowState } from "#internet/workflow/types";
 import type { WorkflowWriterRunner } from "#internet/workflow/writer-runner";
 export declare class WorkflowEngineError extends Error {
     constructor(message: string);
@@ -44,6 +44,7 @@ export declare class WorkflowEngine {
     private writerBlocked;
     private recordTeamResult;
     private update;
+    markRetryRequired(jobId: string, message: string, resumeState: WorkflowState): WorkflowJob;
     cancel(jobId: string): WorkflowJob;
     continue(jobId: string): WorkflowJob;
     approve(input: WorkflowDecisionInput): WorkflowJob;

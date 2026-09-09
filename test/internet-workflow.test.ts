@@ -12,7 +12,15 @@ const roots: string[] = [];
 function tool() {
 	const root = mkdtempSync(join(tmpdir(), "internet-workflow-tool-"));
 	roots.push(root);
-	return defineInternetWorkflowTool(new WorkflowEngine(new WorkflowJobStore(root)));
+	const jobs = new WorkflowJobStore(root);
+	const engine = new WorkflowEngine(jobs);
+	const driver = {
+		enqueue() {},
+		async cancel(jobId: string) {
+			return engine.cancel(jobId);
+		},
+	};
+	return defineInternetWorkflowTool(engine, driver);
 }
 
 const exec = { agent: { id: "agent-11" } } as never;

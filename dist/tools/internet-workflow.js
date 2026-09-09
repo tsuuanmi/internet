@@ -64,7 +64,7 @@ function project(job) {
     };
 }
 /** Define the deterministic workflow control-plane tool. */
-export function defineInternetWorkflowTool(engine) {
+export function defineInternetWorkflowTool(engine, driver) {
     return defineTool({
         name: "internet_workflow",
         description: "Create and control durable deterministic coding workflow jobs. start persists authoritative repository/objective state; status/approve/reject/cancel/continue operate by job ID.",
@@ -142,24 +142,31 @@ export function defineInternetWorkflowTool(engine) {
                         baseRevision: args.baseRevision,
                         ownerSessionId: String(exec.agent?.id ?? ""),
                     });
+                    driver.enqueue(job.jobId);
                     return { ok: true, operation, ...project(job) };
                 }
                 if (typeof args.jobId !== "string")
                     return { ok: false, operation, message: `${operation} requires jobId` };
                 const expectedHeadSha = typeof args.expectedHeadSha === "string" ? args.expectedHeadSha : undefined;
-                const job = operation === "status"
-                    ? engine.status(args.jobId)
-                    : operation === "request_merge"
-                        ? engine.requestMergeAuthorization(args.jobId)
-                        : operation === "merge"
-                            ? await engine.runWriterMerge(args.jobId, exec.signal)
-                            : operation === "cancel"
-                                ? engine.cancel(args.jobId)
-                                : operation === "continue"
-                                    ? engine.continue(args.jobId)
-                                    : operation === "approve"
-                                        ? engine.approve({ jobId: args.jobId, expectedHeadSha })
-                                        : engine.reject({ jobId: args.jobId, expectedHeadSha });
+                let job;
+                if (operation === "status")
+                    job = engine.status(args.jobId);
+                else if (operation === "request_merge")
+                    job = engine.requestMergeAuthorization(args.jobId);
+                else if (operation === "merge")
+                    job = await engine.runWriterMerge(args.jobId, exec.signal);
+                else if (operation === "cancel")
+                    job = await driver.cancel(args.jobId);
+                else if (operation === "continue") {
+                    job = engine.continue(args.jobId);
+                    driver.enqueue(job.jobId);
+                }
+                else if (operation === "approve") {
+                    job = engine.approve({ jobId: args.jobId, expectedHeadSha });
+                    driver.enqueue(job.jobId);
+                }
+                else
+                    job = engine.reject({ jobId: args.jobId, expectedHeadSha });
                 return { ok: true, operation, ...project(job) };
             }
             catch (error) {

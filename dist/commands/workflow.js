@@ -162,6 +162,7 @@ export function defineWorkflowCommand(dependencies) {
                     baseRevision: repository.revision,
                     ownerSessionId: String(invocation.agent.id),
                 });
+                dependencies.driver.enqueue(job.jobId);
                 return {
                     kind: "success",
                     text: `Workflow ${job.jobId} created for ${repository.url} at ${repository.revision.slice(0, 12)}.`,
