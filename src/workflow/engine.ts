@@ -276,6 +276,7 @@ export class WorkflowEngine {
 						signal,
 					});
 				} catch (error) {
+					if (signal?.aborted) throw error;
 					result = {
 						ok: false,
 						error: error instanceof Error ? error.message : String(error),
@@ -492,6 +493,7 @@ export class WorkflowEngine {
 						}
 					}
 				} catch (error) {
+					if (signal?.aborted) throw error;
 					result = {
 						ok: false,
 						error: error instanceof Error ? error.message : String(error),

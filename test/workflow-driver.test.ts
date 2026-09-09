@@ -158,6 +158,36 @@ describe("WorkflowDriver", () => {
 		expect(failed.pendingAction).toMatchObject({ kind: "RETRY_REQUIRED", resumeState: "RESEARCH_RUNNING" });
 	});
 
+	it("keeps an intentionally aborted research phase resumable across driver disposal", async () => {
+		const dataDir = root();
+		const jobs = new WorkflowJobStore(dataDir);
+		const created = start(jobs);
+		const team = {
+			async run(request: { signal?: AbortSignal }) {
+				await new Promise<void>((_resolve, reject) => {
+					request.signal?.addEventListener(
+						"abort",
+						() => reject(Object.assign(new Error("shutdown"), { name: "AbortError" })),
+						{ once: true },
+					);
+				});
+				throw new Error("unreachable");
+			},
+		};
+		const engine = new WorkflowEngine(jobs, team);
+		const driver = new WorkflowDriver(engine, jobs);
+		driver.enqueue(created.jobId);
+		await vi.waitFor(() => expect(engine.status(created.jobId).state).toBe("RESEARCH_RUNNING"));
+		await driver.dispose();
+		const persisted = engine.status(created.jobId);
+		expect(persisted.state).toBe("RESEARCH_RUNNING");
+		expect(persisted.pendingAction).toBeUndefined();
+		const restarted = new WorkflowDriver(engine, jobs);
+		restarted.resumeActive();
+		expect(restarted.isActive(created.jobId)).toBe(true);
+		await restarted.dispose();
+	});
+
 	it("aborts and settles active work before persisting cancellation", async () => {
 		const jobs = new WorkflowJobStore(root());
 		let current = start(jobs);

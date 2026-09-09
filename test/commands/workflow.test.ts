@@ -86,7 +86,7 @@ describe("defineWorkflowCommand", () => {
 
 		await expect(command.handler(input as never)).resolves.toEqual({
 			kind: "success",
-			text: `Workflow ${JOB_ID} created for https://github.com/example/signal at 0123456789ab.`,
+			text: `Workflow ${JOB_ID} started for https://github.com/example/signal at 0123456789ab.`,
 		});
 		expect(runGit).toHaveBeenCalledWith("/repo", ["rev-parse", "--show-toplevel"], input.signal);
 		expect(runGit).toHaveBeenCalledWith("/repo", ["remote", "get-url", "--", "origin"], input.signal);

@@ -86,7 +86,7 @@ export function defineInternetWorkflowTool(
 	return defineTool({
 		name: "internet_workflow",
 		description:
-			"Create and control durable deterministic coding workflow jobs. start persists authoritative repository/objective state; status/approve/reject/cancel/continue operate by job ID.",
+			"Create and control automatically driven durable coding workflow jobs. start persists authoritative state and enqueues execution; status/approve/reject/cancel/continue operate by job ID.",
 		parameters: {
 			operation: {
 				type: "string",

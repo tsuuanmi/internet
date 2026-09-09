@@ -427,7 +427,7 @@ The account catalog, storage, stale-write, reauthentication, scheduler, browser-
 
 ## P11 — Automatic workflow driver
 
-**Status:** implementation in progress on `impl/p11-workflow-driver`.
+**Status:** implemented on `impl/p11-workflow-driver`; pending review/merge after P10.
 
 **ROI:** critical  
 **Risk:** medium-high  
