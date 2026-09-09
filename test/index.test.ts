@@ -11,6 +11,7 @@ function fakeContext(): {
 	const tools: string[] = [];
 	const commands: string[] = [];
 	const context: PluginContext = {
+		agents: { get: () => undefined },
 		tools: { register: (tool) => tools.push(tool.name) },
 		commands: { register: (command) => commands.push(command.name) },
 		systemPrompt: { section: (options) => sections.push(options) },

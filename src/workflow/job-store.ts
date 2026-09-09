@@ -88,6 +88,8 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 	if (typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 1) {
 		throw new Error("invalid job revision");
 	}
+	if (typeof value.ownerSessionId !== "string" || value.ownerSessionId.trim() === "")
+		throw new Error("invalid owner session id");
 	if (typeof value.objective !== "string" || value.objective.trim() === "") throw new Error("invalid objective");
 	if (typeof value.repository !== "string" || value.repository.trim() === "") throw new Error("invalid repository");
 	if (typeof value.baseRevision !== "string" || !/^[0-9a-f]{40}$/u.test(value.baseRevision)) {

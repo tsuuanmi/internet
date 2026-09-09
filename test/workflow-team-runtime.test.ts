@@ -8,6 +8,7 @@ function job(): WorkflowJob {
 		version: 1,
 		revision: 1,
 		jobId: "0123456789abcdef0123456789abcdef",
+		ownerSessionId: "agent",
 		objective: "Fix concurrent account state corruption.",
 		repository: "https://github.com/example/repo",
 		baseRevision: "0123456789abcdef0123456789abcdef01234567",

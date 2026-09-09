@@ -1,8 +1,10 @@
 import type { CommandDefinition } from "@deepseek-ai/dsh-commands";
 import type { defineTool } from "@deepseek-ai/dsh-tools";
+import { type WorkflowAgentRegistry } from "#internet/workflow/events";
 export declare const name = "internet";
-export declare const inject: readonly ["tools", "systemPrompt", "commands"];
+export declare const inject: readonly ["tools", "systemPrompt", "commands", "agents"];
 export interface PluginContext {
+    agents: WorkflowAgentRegistry;
     tools: {
         register(tool: ReturnType<typeof defineTool>): void;
     };
@@ -34,6 +36,8 @@ export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/work
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowControlStep } from "#internet/workflow/engine";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
+export type { WorkflowAgentRegistry, WorkflowEventSink, WorkflowLocalAgent } from "#internet/workflow/events";
+export { DshWorkflowEventSink, formatWorkflowEvent } from "#internet/workflow/events";
 export type { CreateWorkflowHandoffInput, WorkflowHandoff, WorkflowHandoffStatus, } from "#internet/workflow/handoff-store";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";

@@ -11,6 +11,7 @@ import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { WorkflowEngine } from "#internet/workflow/engine";
+import { DshWorkflowEventSink, type WorkflowAgentRegistry } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
@@ -18,7 +19,7 @@ import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
 
 export const name = "internet";
-export const inject = ["tools", "systemPrompt", "commands"] as const;
+export const inject = ["tools", "systemPrompt", "commands", "agents"] as const;
 
 const INTERNET_CHAT_GUIDANCE = [
 	"Use internet_chat for one answer or a durable multi-turn exchange through an explicitly selected thinker account: chatgpt-thinker or gemini-thinker.",
@@ -52,6 +53,7 @@ const INTERNET_WORKFLOW_GUIDANCE = [
 ].join(" ");
 
 export interface PluginContext {
+	agents: WorkflowAgentRegistry;
 	tools: { register(tool: ReturnType<typeof defineTool>): void };
 	commands: { register(command: CommandDefinition): void };
 	systemPrompt?: { section(options: { name: string; order: number; text: string }): void };
@@ -92,6 +94,8 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 			new WorkflowTeamPromptBuilder(),
 			new WorkflowHandoffStore(config.dataDir),
 			new BrowserWorkflowWriterRunner(manager),
+			3,
+			new DshWorkflowEventSink(ctx.agents),
 		);
 		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine }));
 		ctx.tools.register(defineInternetWorkflowTool(workflowEngine));
@@ -133,6 +137,8 @@ export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/work
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowControlStep } from "#internet/workflow/engine";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
+export type { WorkflowAgentRegistry, WorkflowEventSink, WorkflowLocalAgent } from "#internet/workflow/events";
+export { DshWorkflowEventSink, formatWorkflowEvent } from "#internet/workflow/events";
 export type {
 	CreateWorkflowHandoffInput,
 	WorkflowHandoff,

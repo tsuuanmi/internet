@@ -30,7 +30,9 @@ export function formatWorkflowEvent(job: WorkflowJob, event: WorkflowEventRecord
 	}
 	if (job.pendingAction !== undefined) lines.push(`pending_action=${job.pendingAction.kind}`);
 	if (event.message !== undefined && event.message.trim() !== "") lines.push(`message=${event.message}`);
-	lines.push("This is compact workflow control-plane context. It intentionally excludes research and review payloads.");
+	lines.push(
+		"This is compact workflow control-plane context. It intentionally excludes research and review payloads.",
+	);
 	return lines.join("\n");
 }
 

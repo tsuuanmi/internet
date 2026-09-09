@@ -20,6 +20,7 @@ function job(): WorkflowJob {
 		version: 1,
 		revision: 1,
 		jobId,
+		ownerSessionId: "agent",
 		objective: "Fix the race.",
 		repository: "https://github.com/example/repo",
 		baseRevision: "0123456789abcdef0123456789abcdef01234567",

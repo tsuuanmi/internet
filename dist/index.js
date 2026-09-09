@@ -9,13 +9,14 @@ import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { WorkflowEngine } from "#internet/workflow/engine";
+import { DshWorkflowEventSink } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
 export const name = "internet";
-export const inject = ["tools", "systemPrompt", "commands"];
+export const inject = ["tools", "systemPrompt", "commands", "agents"];
 const INTERNET_CHAT_GUIDANCE = [
     "Use internet_chat for one answer or a durable multi-turn exchange through an explicitly selected thinker account: chatgpt-thinker or gemini-thinker.",
     "Each account resumes one native conversation for the current DSH session. The automated browser is hidden by default on the managed display; set visible: true only when the user asks to watch or when live UI inspection is needed.",
@@ -66,7 +67,7 @@ export function apply(ctx, rawConfig) {
         ctx.systemPrompt?.section?.({ name: "tool:internet_chat", order: 120, text: INTERNET_CHAT_GUIDANCE });
     }
     if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker") && accounts.has("chatgpt-writer")) {
-        const workflowEngine = new WorkflowEngine(new WorkflowJobStore(config.dataDir), new BrowserWorkflowTeamRunner(manager, config), new WorkflowTeamPromptBuilder(), new WorkflowHandoffStore(config.dataDir), new BrowserWorkflowWriterRunner(manager));
+        const workflowEngine = new WorkflowEngine(new WorkflowJobStore(config.dataDir), new BrowserWorkflowTeamRunner(manager, config), new WorkflowTeamPromptBuilder(), new WorkflowHandoffStore(config.dataDir), new BrowserWorkflowWriterRunner(manager), 3, new DshWorkflowEventSink(ctx.agents));
         ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine }));
         ctx.tools.register(defineInternetWorkflowTool(workflowEngine));
         ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
@@ -83,6 +84,7 @@ export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
+export { DshWorkflowEventSink, formatWorkflowEvent } from "#internet/workflow/events";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
