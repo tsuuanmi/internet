@@ -1,22 +1,60 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { ACCOUNT_STATES } from "#internet/browser/accounts";
-import type { BrowserManager } from "#internet/browser/runtime";
+import type { AccountStatus, BrowserManager } from "#internet/browser/runtime";
 import { ACCOUNT_IDS, type AccountId, getAccountDefinition, isAccountId } from "#internet/core/accounts";
 import { isInternetError } from "#internet/core/errors";
 
-export type InternetBrowserAction = "login" | "status" | "stop";
+export type InternetBrowserAction = "login" | "status" | "stop" | "login_all" | "status_all" | "stop_all";
 
-const INTERNET_BROWSER_ACTIONS: readonly InternetBrowserAction[] = ["login", "status", "stop"];
+const INTERNET_BROWSER_ACTIONS: readonly InternetBrowserAction[] = [
+	"login",
+	"status",
+	"stop",
+	"login_all",
+	"status_all",
+	"stop_all",
+];
 
-/** Define the `internet_browser` lifecycle tool (login / status / stop) per account. */
+function isBatchAction(action: InternetBrowserAction): boolean {
+	return action.endsWith("_all");
+}
+
+function batchAccounts(allowed: ReadonlySet<AccountId>): AccountId[] {
+	return ACCOUNT_IDS.filter((accountId) => allowed.has(accountId));
+}
+
+function summarizeStatuses(statuses: readonly AccountStatus[]): string {
+	return statuses.map((status) => `${status.accountId}=${status.state}`).join(", ");
+}
+
+function singleResult(accountId: AccountId, status: AccountStatus, message?: string) {
+	const provider = getAccountDefinition(accountId).provider;
+	const remoteLogin = status.remoteLogin;
+	return {
+		ok: true,
+		accountId,
+		provider,
+		state: status.state,
+		accountPath: status.accountPath,
+		...(status.account === undefined ? {} : { account: status.account }),
+		...(remoteLogin === undefined ? {} : { remoteLogin }),
+		message:
+			message ??
+			(remoteLogin?.state === "waiting"
+				? `First run ${remoteLogin.sshCommand}, then open ${remoteLogin.url}, sign in to ${accountId}, and press Save account. This login expires at ${remoteLogin.expiresAt}.`
+				: (remoteLogin?.message ?? `${accountId} portable account is verified and ready.`)),
+	};
+}
+
+/** Define the `internet_browser` lifecycle tool, including batch account bootstrap/status/stop. */
 export function defineInternetBrowserTool(
-	manager: BrowserManager,
+	manager: Pick<BrowserManager, "login" | "status" | "stop">,
 	allowed: ReadonlySet<AccountId>,
 ): ReturnType<typeof defineTool> {
 	return defineTool({
 		name: "internet_browser",
 		description:
-			"Manage browser-backed authenticated accounts. login opens a dedicated normal Chrome profile for the exact account locally or returns an SSH-forwarded noVNC session; status and stop are also account-scoped.",
+			"Manage isolated browser-backed authenticated accounts. login/status/stop target one account; login_all/status_all/stop_all operate on all enabled semantic accounts in parallel while preserving per-account lifecycle locks.",
 		parameters: {
 			action: {
 				type: "string",
@@ -26,13 +64,12 @@ export function defineInternetBrowserTool(
 			},
 			account: {
 				type: "string",
-				required: true,
 				enum: [...ACCOUNT_IDS],
-				description: "Exact authenticated account identity.",
+				description: "Exact authenticated account identity for non-batch actions.",
 			},
 			remote: {
 				type: "boolean",
-				description: "Force SSH-forwarded noVNC login; displayless Linux selects it automatically.",
+				description: "Force SSH-forwarded noVNC login for login/login_all; displayless Linux selects it automatically.",
 			},
 		},
 		output: {
@@ -41,10 +78,12 @@ export function defineInternetBrowserTool(
 				additionalProperties: false,
 				properties: {
 					ok: { type: "boolean", required: true },
-					accountId: { type: "string", required: true },
-					provider: { type: "string", required: true },
+					action: { type: "string" },
+					accountId: { type: "string" },
+					provider: { type: "string" },
 					state: { type: "string", enum: [...ACCOUNT_STATES] },
 					accountPath: { type: "string" },
+					accounts: { type: "string" },
 					account: {
 						type: "object",
 						additionalProperties: false,
@@ -79,14 +118,20 @@ export function defineInternetBrowserTool(
 			render: (_args, value) => {
 				const v = value as {
 					ok?: unknown;
+					action?: unknown;
 					accountId?: unknown;
 					provider?: unknown;
 					state?: unknown;
+					accounts?: unknown;
 					remoteLogin?: { state?: unknown; url?: unknown; sshCommand?: unknown };
 					message?: unknown;
 				};
-				const summary = [`ok=${String(v.ok)}`, `account=${String(v.accountId)}`, `provider=${String(v.provider)}`];
+				const summary = [`ok=${String(v.ok)}`];
+				if (v.action !== undefined) summary.push(`action=${String(v.action)}`);
+				if (v.accountId !== undefined) summary.push(`account=${String(v.accountId)}`);
+				if (v.provider !== undefined) summary.push(`provider=${String(v.provider)}`);
 				if (v.state !== undefined) summary.push(`state=${String(v.state)}`);
+				if (v.accounts !== undefined) summary.push(String(v.accounts));
 				if (v.remoteLogin?.state !== undefined) summary.push(`remote=${String(v.remoteLogin.state)}`);
 				const lines = [summary.join(" · ")];
 				if (v.remoteLogin?.sshCommand !== undefined) lines.push(`SSH: ${String(v.remoteLogin.sshCommand)}`);
@@ -98,87 +143,92 @@ export function defineInternetBrowserTool(
 		},
 		isConcurrencySafe: () => false,
 		async execute(args) {
+			const action = args.action;
+			if (typeof action !== "string" || !(INTERNET_BROWSER_ACTIONS as readonly string[]).includes(action)) {
+				return { ok: false, action: String(action), message: `unknown action ${String(action)}` };
+			}
+			const typedAction = action as InternetBrowserAction;
+			const remote = args.remote;
+			if (remote !== undefined && typeof remote !== "boolean") {
+				return { ok: false, action, message: "remote must be a boolean" };
+			}
+			if (remote !== undefined && typedAction !== "login" && typedAction !== "login_all") {
+				return { ok: false, action, message: "remote is valid only for login and login_all" };
+			}
+
+			if (isBatchAction(typedAction)) {
+				const accounts = batchAccounts(allowed);
+				if (accounts.length === 0) return { ok: false, action, message: "no enabled internet accounts" };
+				const results = await Promise.all(
+					accounts.map(async (accountId) => {
+						try {
+							if (typedAction === "login_all") return await manager.login(accountId, { remote: remote === true });
+							if (typedAction === "stop_all") {
+								await manager.stop(accountId);
+								return await manager.status(accountId);
+							}
+							return await manager.status(accountId);
+						} catch (error) {
+							return { accountId, error: isInternetError(error) ? `${error.kind}: ${error.message}` : String(error) };
+						}
+					}),
+				);
+				const failures = results.filter((item): item is { accountId: AccountId; error: string } => "error" in item);
+				const statuses = results.filter((item): item is AccountStatus => "state" in item);
+				const summary = [
+					...(statuses.length === 0 ? [] : [summarizeStatuses(statuses)]),
+					...failures.map((failure) => `${failure.accountId}=error:${failure.error}`),
+				].join(", ");
+				return {
+					ok: failures.length === 0,
+					action,
+					accounts: summary,
+					message:
+						failures.length === 0
+							? `${typedAction} completed for ${accounts.length} enabled accounts.`
+							: `${typedAction} completed with ${failures.length} account failure(s).`,
+				};
+			}
+
 			const rawAccount = args.account;
 			if (!isAccountId(rawAccount)) {
-				return {
-					ok: false,
-					accountId: String(rawAccount),
-					provider: "unknown",
-					message: `unknown account ${String(rawAccount)}`,
-				};
+				return { ok: false, action, accountId: String(rawAccount), provider: "unknown", message: "account is required" };
 			}
 			const accountId = rawAccount;
 			const provider = getAccountDefinition(accountId).provider;
-			const action = args.action;
-			if (typeof action !== "string" || !(INTERNET_BROWSER_ACTIONS as readonly string[]).includes(action)) {
-				return { ok: false, accountId, provider, message: `unknown action ${String(action)}` };
-			}
-			const remote = args.remote;
-			if (remote !== undefined && typeof remote !== "boolean") {
-				return { ok: false, accountId, provider, message: "remote must be a boolean" };
-			}
-			if (remote !== undefined && action !== "login") {
-				return { ok: false, accountId, provider, message: "remote is valid only for the login action" };
-			}
 			if (!allowed.has(accountId)) {
-				return {
-					ok: false,
-					accountId,
-					provider,
-					message: `account ${accountId} is disabled in the internet plugin config`,
-				};
+				return { ok: false, action, accountId, provider, message: `account ${accountId} is disabled in the internet plugin config` };
 			}
 			try {
-				if (action === "login") {
-					const status = await manager.login(accountId, { remote: remote === true });
-					const remoteLogin = status.remoteLogin;
-					return {
-						ok: true,
-						accountId,
-						provider,
-						state: status.state,
-						accountPath: status.accountPath,
-						...(status.account === undefined ? {} : { account: status.account }),
-						...(remoteLogin === undefined ? {} : { remoteLogin }),
-						message:
-							remoteLogin?.state === "waiting"
-								? `First run ${remoteLogin.sshCommand}, then open ${remoteLogin.url}, sign in to ${accountId}, and press Save account. This login expires at ${remoteLogin.expiresAt}.`
-								: (remoteLogin?.message ?? `${accountId} portable account is verified and ready.`),
-					};
-				}
-				if (action === "stop") {
+				if (typedAction === "login") return { action, ...singleResult(accountId, await manager.login(accountId, { remote: remote === true })) };
+				if (typedAction === "stop") {
 					await manager.stop(accountId);
-					return { ok: true, accountId, provider, message: `${accountId} browser stopped.` };
+					return { ok: true, action, accountId, provider, message: `${accountId} browser stopped.` };
 				}
 				const status = await manager.status(accountId);
 				return {
-					ok: true,
-					accountId,
-					provider,
-					state: status.state,
-					accountPath: status.accountPath,
-					...(status.account === undefined ? {} : { account: status.account }),
-					...(status.remoteLogin === undefined ? {} : { remoteLogin: status.remoteLogin }),
-					message:
+					action,
+					...singleResult(
+						accountId,
+						status,
 						status.remoteLogin?.message ??
-						(status.state === "ready"
-							? `${accountId} has a previously verified portable account.`
-							: status.state === "reauth-required"
-								? `${accountId} requires sign-in; run internet_browser login.`
-								: status.state === "invalid"
-									? `${accountId} account file is invalid; run internet_browser login to replace it.`
-									: `${accountId} has no account; run internet_browser login.`),
+							(status.state === "ready"
+								? `${accountId} has a previously verified portable account.`
+								: status.state === "reauth-required"
+									? `${accountId} requires sign-in; run internet_browser login.`
+									: status.state === "invalid"
+										? `${accountId} account file is invalid; run internet_browser login to replace it.`
+										: `${accountId} has no account; run internet_browser login.`),
+					),
 				};
 			} catch (error) {
-				if (isInternetError(error)) {
-					return { ok: false, accountId, provider, message: `${error.kind}: ${error.message}` };
-				}
+				if (isInternetError(error)) return { ok: false, action, accountId, provider, message: `${error.kind}: ${error.message}` };
 				throw error;
 			}
 		},
 		presentCall: (args) => ({
 			card: "generic",
-			title: `internet_browser ${String(args.action)} ${String(args.account)}`,
+			title: `internet_browser ${String(args.action)}${args.account === undefined ? "" : ` ${String(args.account)}`}`,
 			kind: "other",
 		}),
 	});
