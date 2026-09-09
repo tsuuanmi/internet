@@ -60,17 +60,8 @@ export class DurableWorkflowTeamObserver implements WorkflowTeamObserver {
 
 	begin(sessionId: string): WorkflowTeamObservation {
 		const context = parseWorkflowTeamSessionId(sessionId);
-		const at = new Date().toISOString();
-		const attempt = this.traces.begin(context.jobId, context.phase, context.lane, at);
-		const observation = { context, attempt };
-		this.publish(observation, {
-			at,
-			stage: "prepare_prompt",
-			status: "started",
-			accountId: "chatgpt-thinker",
-			provider: "chatgpt-web",
-		});
-		return observation;
+		const attempt = this.traces.begin(context.jobId, context.phase, context.lane, new Date().toISOString());
+		return { context, attempt };
 	}
 
 	record(observation: WorkflowTeamObservation, event: TeamProgressEvent): void {
