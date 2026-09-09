@@ -7,6 +7,7 @@ import { connect } from "node:net";
 import { join } from "node:path";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { BrowserDisplayManager } from "#internet/browser/display";
+import { loginProfileArgs } from "#internet/browser/login-profile";
 import { discoverVncCandidates, type VncCandidate, vncArgs } from "#internet/browser/vnc";
 import type { WebProvider } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";
@@ -40,7 +41,8 @@ export interface RemoteLoginOptions {
 	timeoutMs: number;
 	/** Stable HTTP/WebSocket loopback port; zero selects an ephemeral test port. */
 	port?: number;
-	finalize: () => Promise<void>;
+	/** Queue account exclusivity synchronously, then await profileReady before capture. */
+	finalize: (loginEnv: NodeJS.ProcessEnv, profileReady: Promise<void>) => Promise<void>;
 	onClosed?: () => void;
 	env?: NodeJS.ProcessEnv;
 	clientScript?: string;
@@ -149,6 +151,8 @@ export class RemoteLoginSession {
 	private finalization: Promise<void> | undefined;
 	private disposal: Promise<void> | undefined;
 	private intentionalExit = false;
+	private loginEnv: NodeJS.ProcessEnv = {};
+	private chromeShutdownClean = true;
 
 	private constructor(options: RemoteLoginOptions) {
 		this.options = options;
@@ -199,20 +203,27 @@ export class RemoteLoginSession {
 	}
 
 	private async finalizeAccount(): Promise<void> {
-		// Start profile capture before terminating Chrome: its profile-unlock wait
-		// overlaps shutdown, then Patchright can reopen the released profile.
-		const accountFinalization = this.options.finalize().then(
-			() => ({ ok: true as const }),
-			(error: unknown) => ({ ok: false as const, error }),
-		);
 		try {
-			await this.closeDesktop();
-			const result = await accountFinalization;
-			if (!result.ok) throw result.error;
+			// Queue the finalizer's exclusive lease before yielding to desktop shutdown.
+			// Otherwise stop() can hold that lease while waiting for this finalization.
+			const profileReady = Promise.resolve().then(async () => {
+				// SingletonLock release alone does not prove cookies finished flushing.
+				await this.closeDesktop();
+				if (!this.chromeShutdownClean) {
+					throw new InternetError(
+						"login_failed",
+						"Login Chrome required a forced shutdown; sign in again before saving the account.",
+					);
+				}
+			});
+			// The executor calls finalize synchronously and contains synchronous throws.
+			const finalized = new Promise<void>((resolve) => {
+				resolve(this.options.finalize({ ...this.loginEnv }, profileReady));
+			});
+			await Promise.all([profileReady, finalized]);
 			this.state = "complete";
 			this.message = `${this.options.provider} account saved successfully.`;
 		} catch (error) {
-			await accountFinalization;
 			this.state = "failed";
 			this.message = error instanceof Error ? error.message : "Remote login finalization failed.";
 		} finally {
@@ -241,6 +252,7 @@ export class RemoteLoginSession {
 		chmodSync(this.tempDir, 0o700);
 		const display = await this.display.prepare(false);
 		if (display.kind !== "virtual") throw new Error("remote login requires a managed virtual display");
+		this.loginEnv = { ...display.env };
 		await this.startVnc(display.env);
 		await this.startServer();
 		this.expiresAt = new Date(Date.now() + this.options.timeoutMs).toISOString();
@@ -340,14 +352,7 @@ export class RemoteLoginSession {
 	private async startChrome(env: NodeJS.ProcessEnv): Promise<void> {
 		const child = spawn(
 			this.options.chromePath,
-			[
-				`--user-data-dir=${this.options.profileDir}`,
-				"--new-window",
-				"--disable-background-mode",
-				"--no-first-run",
-				"--no-default-browser-check",
-				this.options.homeUrl,
-			],
+			[`--user-data-dir=${this.options.profileDir}`, "--new-window", ...loginProfileArgs(), this.options.homeUrl],
 			{ env, stdio: "ignore" },
 		);
 		this.chrome = child;
@@ -493,7 +498,7 @@ export class RemoteLoginSession {
 		this.intentionalExit = true;
 		if (this.chromeStartTimer !== undefined) clearImmediate(this.chromeStartTimer);
 		this.chromeStartTimer = undefined;
-		await this.terminate(this.chrome, CHROME_SHUTDOWN_TIMEOUT_MS);
+		this.chromeShutdownClean = await this.terminate(this.chrome, CHROME_SHUTDOWN_TIMEOUT_MS);
 		await this.terminate(this.vnc, VNC_SHUTDOWN_TIMEOUT_MS);
 		this.chrome = undefined;
 		this.vnc = undefined;
@@ -502,12 +507,13 @@ export class RemoteLoginSession {
 		this.tempDir = undefined;
 	}
 
-	private async terminate(child: ChildProcess | undefined, timeoutMs: number): Promise<void> {
-		if (!childRunning(child)) return;
+	private async terminate(child: ChildProcess | undefined, timeoutMs: number): Promise<boolean> {
+		if (!childRunning(child)) return true;
 		child.kill("SIGTERM");
-		if (await waitForExit(child, timeoutMs)) return;
+		if (await waitForExit(child, timeoutMs)) return true;
 		child.kill("SIGKILL");
 		await waitForExit(child, VNC_SHUTDOWN_TIMEOUT_MS);
+		return false;
 	}
 
 	private scheduleClose(): void {

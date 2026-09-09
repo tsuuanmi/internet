@@ -298,6 +298,12 @@ Every login uses a tokenized loopback noVNC page on the server. Open the returne
 
 The HTTP/WebSocket and VNC listeners bind to loopback. Treat the tokenized URL and temporary VNC password as bearer credentials.
 
+**Save account** reopens the same Chrome profile with session restoration enabled so session cookies survive the handoff. It still requires confirmed provider authentication and a successful portable-state restore before saving the account. If an older build already discarded the session, install the updated plugin, restart the existing DSH host, and sign in again; a page refresh alone does not load server-side changes.
+
+Known shutdown limitation: native Chrome batches cookie writes, and an immediate **Save account** can still lose newly issued cookies when Chrome receives SIGTERM. Wait at least 35 seconds after completing sign-in before saving. Session restoration prevents already-flushed session cookies from being discarded on reopen; it does not make SIGTERM a guaranteed storage flush.
+
+Developers can exercise the isolated native-Chrome session-cookie handoff with `INTERNET_TEST_LOGIN_PROFILE=1 npm test -- test/login-profile.test.ts` (Linux with Chrome; uses synthetic loopback cookies, not real accounts).
+
 ## Portable accounts
 
 The portable boundary is exactly:

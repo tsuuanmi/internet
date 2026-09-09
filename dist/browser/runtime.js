@@ -11,6 +11,7 @@ import { ConversationStore, parseChatGptConversationUrl, parseGeminiConversation
 import { BrowserDisplayManager, browserViewport, headedWindowArgs } from "#internet/browser/display";
 import { GEMINI_HOME_URL, geminiAuthenticationAssessment, geminiDeepResearchSnapshot, geminiLastDeepResearchReportText, geminiLastResponseText, geminiSelectDefaultMode, geminiSend, geminiSnapshot, geminiWaitAuthenticationAssessment, } from "#internet/browser/gemini";
 import { geminiEnableDeepResearch, geminiStartResearchPlan } from "#internet/browser/gemini-research";
+import { loginProfileArgs, loginProfileIgnoredDefaultArgs, loginProfileReopenEnv, } from "#internet/browser/login-profile";
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
@@ -222,17 +223,17 @@ export class BrowserManager {
         }
         throw new InternetError("login_failed", "Login Chrome did not release the profile after Save account; retry the login session.");
     }
-    async captureLoginState(accountId) {
+    async captureLoginState(accountId, loginEnv) {
         const provider = this.provider(accountId);
         const { profileDir } = this.locations(accountId);
         const display = await this.display.prepare(false);
         const context = await chromium.launchPersistentContext(profileDir, {
             executablePath: this.chromeExecutable(),
             headless: false,
-            env: display.kind === "headless" ? undefined : display.env,
+            env: loginProfileReopenEnv(loginEnv, display.kind === "headless" ? loginEnv : display.env),
             viewport: browserViewport(display),
-            ignoreDefaultArgs: ["--no-sandbox", "--password-store=basic", "--use-mock-keychain"],
-            args: ["--no-first-run", "--no-default-browser-check", ...headedWindowArgs(display)],
+            ignoreDefaultArgs: loginProfileIgnoredDefaultArgs(),
+            args: [...loginProfileArgs(), ...headedWindowArgs(display)],
         });
         try {
             const page = await this.activePage(context);
@@ -538,11 +539,12 @@ export class BrowserManager {
             homeUrl: this.homeUrl(provider),
             timeoutMs: this.config.loginTimeoutMs,
             port: this.config.remoteLoginPort + ACCOUNT_IDS.indexOf(accountId),
-            finalize: () => this.runAccountExclusive(accountId, async () => {
+            finalize: (loginEnv, profileReady) => this.runAccountExclusive(accountId, async () => {
+                await profileReady;
                 if (this.remoteLogins.get(accountId) !== session || session.status().state !== "finalizing") {
                     throw new InternetError("aborted", "Remote login was cancelled before finalization.");
                 }
-                await this.persistLoginProfile(accountId);
+                await this.persistLoginProfile(accountId, loginEnv);
             }),
             onClosed: () => {
                 if (this.remoteLogins.get(accountId) === session)
@@ -551,10 +553,10 @@ export class BrowserManager {
         });
         this.remoteLogins.set(accountId, session);
     }
-    async persistLoginProfile(accountId) {
+    async persistLoginProfile(accountId, loginEnv) {
         const provider = this.provider(accountId);
         await this.waitForProfileUnlock(this.locations(accountId).profileDir);
-        const bootstrapState = await this.captureLoginState(accountId);
+        const bootstrapState = await this.captureLoginState(accountId, loginEnv);
         const storageState = await this.verifyStorageState(provider, bootstrapState);
         this.accounts.writeReady(accountId, storageState);
     }

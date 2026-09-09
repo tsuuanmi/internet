@@ -34,8 +34,9 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 			finishFinalization = resolve;
 		});
 		let session!: RemoteLoginSession;
-		let finalizerSawChromeRunning = false;
-		const finalize = vi.fn(async () => {
+		let finalizerSawChromeRunning: boolean | undefined;
+		const finalize = vi.fn(async (_env: NodeJS.ProcessEnv, profileReady: Promise<void>) => {
+			await profileReady;
 			const chrome = (session as any)?.chrome;
 			finalizerSawChromeRunning = chrome?.exitCode === null && chrome?.signalCode === null;
 			await finalization;
@@ -57,6 +58,10 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 			expect(status.sshCommand).toContain(`127.0.0.1:${status.port}`);
 			const url = new URL(status.url!);
 			await vi.waitFor(() => expect((session as any).chrome).toBeDefined(), { timeout: 10_000 });
+			const chrome = (session as any).chrome;
+			expect(chrome.spawnargs).toContain("--restore-last-session");
+			expect(chrome.spawnargs).not.toContain("--password-store=basic");
+			expect(chrome.spawnargs).not.toContain("--no-sandbox");
 			const page = await fetch(url);
 			expect(page.status).toBe(200);
 			expect(page.headers.get("cache-control")).toBe("no-store");
@@ -74,7 +79,11 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 			expect(save.status).toBe(202);
 			await vi.waitFor(() => expect(session.status().state).toBe("finalizing"), { timeout: 10_000 });
 			await vi.waitFor(() => expect(finalize).toHaveBeenCalledTimes(1), { timeout: 10_000 });
-			expect(finalizerSawChromeRunning).toBe(true);
+			await vi.waitFor(() => expect(finalizerSawChromeRunning).toBe(false), { timeout: 10_000 });
+			expect(finalize).toHaveBeenCalledWith(
+				expect.objectContaining({ DISPLAY: expect.stringMatching(/^:\d+$/) }),
+				expect.any(Promise),
+			);
 			const cancel = await fetch(new URL("cancel", url), { method: "POST", headers: { Origin: url.origin } });
 			expect(cancel.status).toBe(409);
 			finishFinalization();
@@ -174,6 +183,35 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 		await session.dispose();
 		expect(readdirSync(join(files.dataDir, "remote-login"))).toEqual([]);
 	}, 15_000);
+
+	it("does not capture a profile after forced Chrome shutdown", async () => {
+		const capture = vi.fn();
+		const finalize = vi.fn(async (_env: NodeJS.ProcessEnv, profileReady: Promise<void>) => {
+			await profileReady;
+			capture();
+		});
+		const session = await RemoteLoginSession.start({
+			provider: "chatgpt-web",
+			...fixture(),
+			homeUrl: "https://chatgpt.com/",
+			timeoutMs: 10_000,
+			finalize,
+			clientScript: "export {};",
+		});
+		try {
+			await (session as any).closeDesktop();
+			(session as any).chromeShutdownClean = false;
+			await session.requestSave();
+			expect(session.status()).toMatchObject({
+				state: "failed",
+				message: expect.stringContaining("forced shutdown"),
+			});
+			expect(finalize).toHaveBeenCalledTimes(1);
+			expect(capture).not.toHaveBeenCalled();
+		} finally {
+			await session.dispose();
+		}
+	});
 
 	it("expires and cleans a login that was not saved", async () => {
 		const files = fixture();

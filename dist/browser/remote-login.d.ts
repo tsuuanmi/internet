@@ -19,7 +19,8 @@ export interface RemoteLoginOptions {
     timeoutMs: number;
     /** Stable HTTP/WebSocket loopback port; zero selects an ephemeral test port. */
     port?: number;
-    finalize: () => Promise<void>;
+    /** Queue account exclusivity synchronously, then await profileReady before capture. */
+    finalize: (loginEnv: NodeJS.ProcessEnv, profileReady: Promise<void>) => Promise<void>;
     onClosed?: () => void;
     env?: NodeJS.ProcessEnv;
     clientScript?: string;
@@ -49,6 +50,8 @@ export declare class RemoteLoginSession {
     private finalization;
     private disposal;
     private intentionalExit;
+    private loginEnv;
+    private chromeShutdownClean;
     private constructor();
     static start(options: RemoteLoginOptions): Promise<RemoteLoginSession>;
     status(): RemoteLoginStatus;

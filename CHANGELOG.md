@@ -35,6 +35,7 @@
 
 ### Fixed
 
+- **browser/login**: Preserve session cookies when reopening the login profile for Save account, retain the native login keyring environment, and wait for Chrome shutdown before capture. Forced shutdown and unconfirmed authentication cannot replace an existing saved account.
 - **workflow**: Retry no longer falls back generically to `CREATED`; explicit resume state is persisted for retryable exceptions.
 - **workflow**: PR creation retries reconcile the exact deterministic head branch and refuse duplicate/conflicting PR identity.
 - **workflow**: Persisted handoff/job authority is strictly validated and tampered deterministic identity/hash metadata is rejected.

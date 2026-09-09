@@ -1,7 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { chromium } from "patchright-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { type AccountStatus, BrowserManager, type ChatRequest, type ChatResult } from "#internet/browser/runtime";
 import type { AccountId } from "#internet/core/accounts";
 import { resolveBrowserConfig } from "#internet/core/config";
@@ -24,6 +26,41 @@ afterEach(() => {
 });
 
 describe("BrowserManager account serialization", () => {
+	it("queues save exclusivity before desktop shutdown so concurrent stop cannot deadlock", async () => {
+		const browser = manager();
+		let releaseDesktop!: () => void;
+		const desktopClosed = new Promise<void>((resolve) => {
+			releaseDesktop = resolve;
+		});
+		let session!: RemoteLoginSession;
+		const closeDesktop = vi.fn(() => desktopClosed);
+		vi.spyOn(RemoteLoginSession, "start").mockImplementation(async (options) => {
+			session = Reflect.construct(RemoteLoginSession, [options]);
+			vi.spyOn(session as any, "closeDesktop").mockImplementation(closeDesktop);
+			vi.spyOn(session as any, "scheduleClose").mockImplementation(() => {});
+			return session;
+		});
+		(browser as any).chromeExecutable = () => "/fake/chrome";
+		const capture = vi.spyOn(browser as any, "persistLoginProfile").mockResolvedValue(undefined);
+		await browser.login("chatgpt-thinker");
+		const saving = session.requestSave();
+		// The save callback must reserve the lease in this same synchronous turn.
+		expect(closeDesktop).not.toHaveBeenCalled();
+		let stopped = false;
+		const stopping = browser.stop("chatgpt-thinker").then(() => {
+			stopped = true;
+		});
+		await vi.waitFor(() => expect(closeDesktop).toHaveBeenCalledTimes(1));
+		expect(capture).not.toHaveBeenCalled();
+		expect(stopped).toBe(false);
+		releaseDesktop();
+		await vi.waitFor(() => expect(stopped).toBe(true));
+		await Promise.all([saving, stopping]);
+		expect(capture).toHaveBeenCalledTimes(1);
+		expect(session.status().state).toBe("complete");
+		await browser.dispose();
+	});
+
 	it("serializes lifecycle operations for the same account", async () => {
 		const browser = manager();
 		const releases: Array<() => void> = [];
@@ -117,6 +154,54 @@ describe("BrowserManager account serialization", () => {
 });
 
 describe("BrowserManager login verification", () => {
+	it("reopens with session restoration and native keyring parity, but rejects unconfirmed auth", async () => {
+		const browser = manager();
+		const page = { goto: vi.fn(async () => {}) };
+		const context = { close: vi.fn(async () => {}), cookies: vi.fn() };
+		const launch = vi.spyOn(chromium, "launchPersistentContext").mockResolvedValue(context as any);
+		(browser as any).chromeExecutable = () => "/native/chrome";
+		(browser as any).display.prepare = async () => ({ kind: "virtual", env: { DISPLAY: ":99", HOME: "/wrong" } });
+		(browser as any).activePage = async () => page;
+		(browser as any).waitForAuthenticatedPage = vi.fn(async () => undefined);
+		(browser as any).loginAuthenticationDiagnostic = async () => ({ session: { status: 200, authenticated: false } });
+		const env = { HOME: "/login-home", DBUS_SESSION_BUS_ADDRESS: "native-keyring", DISPLAY: ":98" };
+		await expect((browser as any).captureLoginState("chatgpt-thinker", env)).rejects.toThrow(
+			/authentication remained unconfirmed/,
+		);
+		expect(launch).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({
+				executablePath: "/native/chrome",
+				args: expect.arrayContaining(["--restore-last-session"]),
+				ignoreDefaultArgs: ["--no-sandbox", "--password-store=basic", "--use-mock-keychain"],
+				env: expect.objectContaining({
+					HOME: "/login-home",
+					DBUS_SESSION_BUS_ADDRESS: "native-keyring",
+					DISPLAY: ":99",
+				}),
+			}),
+		);
+		expect(context.cookies).not.toHaveBeenCalled();
+		expect(context.close).toHaveBeenCalledTimes(1);
+		expect((await browser.status("chatgpt-thinker")).state).toBe("missing");
+		await browser.dispose();
+	});
+
+	it("never overwrites a ready account when profile authentication fails", async () => {
+		const browser = manager();
+		(browser as any).accounts.writeReady("chatgpt-thinker", { cookies: [], origins: [] });
+		const before = (browser as any).accounts.inspect("chatgpt-thinker");
+		(browser as any).waitForProfileUnlock = async () => {};
+		(browser as any).captureLoginState = async () => {
+			throw new Error("unconfirmed");
+		};
+		(browser as any).verifyStorageState = vi.fn();
+		await expect((browser as any).persistLoginProfile("chatgpt-thinker", {})).rejects.toThrow("unconfirmed");
+		expect((browser as any).accounts.inspect("chatgpt-thinker")).toEqual(before);
+		expect((browser as any).verifyStorageState).not.toHaveBeenCalled();
+		await browser.dispose();
+	});
+
 	it("accepts a reopened ChatGPT profile from provider session proof without account-control DOM", async () => {
 		const browser = manager();
 		const page = {
