@@ -141,7 +141,12 @@ async function runAcceptanceTest(
 	}
 	const ownerSessionId = String(agent?.id ?? "");
 	if (ownerSessionId === "")
-		return { ok: false, operation: "test", result: "FAIL" as const, message: "workflow test requires an owner session" };
+		return {
+			ok: false,
+			operation: "test",
+			result: "FAIL" as const,
+			message: "workflow test requires an owner session",
+		};
 
 	const statuses = await Promise.all(ACCOUNT_IDS.map((accountId) => dependencies.browser!.status(accountId)));
 	const accountPreflight = statuses.map((status) => `${status.accountId}=${status.state}`).join(", ");
