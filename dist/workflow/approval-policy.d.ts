@@ -1,5 +1,5 @@
 import type { AccountId } from "#internet/core/accounts";
-import type { WorkflowPullRequestReceipt, WorkflowState } from "#internet/workflow/types";
+import type { WorkflowMergeAuthorization, WorkflowPullRequestReceipt, WorkflowState } from "#internet/workflow/types";
 export declare const WORKFLOW_CONFIRMATION_ACTIONS: readonly ["create_branch", "write_file", "create_commit", "push_branch", "create_pull_request", "update_pull_request", "merge_pull_request"];
 export type WorkflowConfirmationAction = (typeof WORKFLOW_CONFIRMATION_ACTIONS)[number];
 export type WorkflowConfirmationIssue = "unknown" | "merge-requires-user";
@@ -16,6 +16,7 @@ export interface WorkflowApprovalScope {
     readonly repository: string;
     readonly state: WorkflowState;
     readonly pullRequest?: WorkflowPullRequestReceipt;
+    readonly mergeAuthorization?: WorkflowMergeAuthorization;
 }
 /** Expected workflow authority plus the actual runtime account/session. */
 export interface WorkflowApprovalContext extends WorkflowApprovalScope {
@@ -24,7 +25,7 @@ export interface WorkflowApprovalContext extends WorkflowApprovalScope {
 }
 export type WorkflowConfirmationDecision = {
     readonly kind: "auto-approve";
-    readonly action: Exclude<WorkflowConfirmationAction, "merge_pull_request">;
+    readonly action: WorkflowConfirmationAction;
 } | {
     readonly kind: "merge-requires-user";
     readonly reason: string;

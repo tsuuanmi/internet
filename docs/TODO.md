@@ -375,21 +375,27 @@ synchronous convenience later.
 
 ## P9 — Merge gate
 
-### 34. Add READY/AWAITING merge authorization states
+**Status:** implemented with an exact-head durable authorization record and a separate merge execution phase.
 
-### 35. Present concrete merge request to Local/user
+### 34. ✅ Add READY/AWAITING merge authorization states
 
-Include PR URL, review state, CI state if known, and expected head SHA.
+A fully reviewed exact head reaches `READY_FOR_MERGE_AUTHORIZATION`. `request_merge` moves it to `AWAITING_MERGE_AUTHORIZATION` and installs one explicit pending action. Approval moves the job to `MERGING`; it never loops back to READY.
 
-### 36. Bind user authorization to exact PR head
+### 35. ✅ Present concrete merge request to Local/user
 
-### 37. Revalidate head immediately before merge
+The ACTION_REQUIRED event includes the exact PR URL, `PASS/PASS` review state, `ci=unknown` when no CI receipt is available, and the exact expected head SHA. No team/reviewer payload is copied into Local.
 
-Changed head invalidates stale authorization.
+### 36. ✅ Bind user authorization to exact PR head
 
-### 38. Execute writer merge and Website Allow only after authorization
+`approve(job_id, expectedHeadSha)` requires the exact pending head and persists a `mergeAuthorization` bound to repository, PR number/URL, head branch, head SHA, review cycle, authorization time, and owner session. Rejecting the request simply returns the job to `READY_FOR_MERGE_AUTHORIZATION` with no authorization; it does not mark the workflow broken. Persisted merge authorization/receipt structures are validated on load rather than shallow-cast.
 
-Record merged SHA and executor.
+### 37. ✅ Revalidate head immediately before merge
+
+`MERGE_AUTHORIZED` instructs the writer to fetch the actual PR immediately before merge and refuse if its current head differs. The writer must report that verified pre-merge head; the engine accepts a merge result only when it equals the durable authorization. Any changed head invalidates the authorization.
+
+### 38. ✅ Execute writer merge and Website Allow only after authorization
+
+The scoped Website controller auto-allows `merge_pull_request` only while the job is `MERGING` and the durable authorization still exactly matches the authoritative PR. On success the engine records `mergedSha`, exact merged head, executor `chatgpt-writer`, timestamp, and transitions to `DONE`.
 
 ## P10 — Hardening
 

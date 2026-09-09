@@ -70,6 +70,52 @@ function isTimestamp(value) {
 function isState(value) {
     return typeof value === "string" && WORKFLOW_STATES.includes(value);
 }
+function isFullSha(value) {
+    return typeof value === "string" && /^[0-9a-f]{40}$/u.test(value);
+}
+function isPositiveInteger(value) {
+    return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+function assertMergeAuthorization(value) {
+    if (value === undefined)
+        return;
+    if (!isRecord(value))
+        throw new Error("invalid merge authorization");
+    if (typeof value.repository !== "string" || value.repository.trim() === "")
+        throw new Error("invalid merge authorization repository");
+    if (!isPositiveInteger(value.number))
+        throw new Error("invalid merge authorization PR number");
+    if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url))
+        throw new Error("invalid merge authorization URL");
+    if (typeof value.head !== "string" || value.head.trim() === "")
+        throw new Error("invalid merge authorization head");
+    if (!isFullSha(value.headSha))
+        throw new Error("invalid merge authorization head SHA");
+    if (typeof value.reviewCycle !== "number" || !Number.isSafeInteger(value.reviewCycle) || value.reviewCycle < 1)
+        throw new Error("invalid merge authorization review cycle");
+    if (!isTimestamp(value.authorizedAt))
+        throw new Error("invalid merge authorization timestamp");
+    if (typeof value.authorizedByOwnerSessionId !== "string" || value.authorizedByOwnerSessionId.trim() === "")
+        throw new Error("invalid merge authorization owner");
+}
+function assertMergeReceipt(value) {
+    if (value === undefined)
+        return;
+    if (!isRecord(value))
+        throw new Error("invalid merge receipt");
+    if (typeof value.repository !== "string" || value.repository.trim() === "")
+        throw new Error("invalid merge receipt repository");
+    if (!isPositiveInteger(value.number))
+        throw new Error("invalid merge receipt PR number");
+    if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url))
+        throw new Error("invalid merge receipt URL");
+    if (!isFullSha(value.headSha) || !isFullSha(value.mergedSha))
+        throw new Error("invalid merge receipt SHA");
+    if (value.executorAccountId !== "chatgpt-writer")
+        throw new Error("invalid merge receipt executor");
+    if (!isTimestamp(value.mergedAt))
+        throw new Error("invalid merge receipt timestamp");
+}
 export function parseWorkflowJob(value) {
     if (!isRecord(value))
         throw new Error("job must be an object");
@@ -104,6 +150,10 @@ export function parseWorkflowJob(value) {
     if (typeof value.reviewCycle !== "number" || !Number.isSafeInteger(value.reviewCycle) || value.reviewCycle < 0) {
         throw new Error("invalid review cycle");
     }
+    assertMergeAuthorization(value.mergeAuthorization);
+    assertMergeReceipt(value.mergeReceipt);
+    if (value.mergeReceipt !== undefined && value.state !== "DONE")
+        throw new Error("merge receipt requires DONE state");
     return value;
 }
 //# sourceMappingURL=job-store.js.map

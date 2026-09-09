@@ -21,6 +21,29 @@ function controlPrompt(job, control) {
             'On block: {"status":"BLOCKED","message":"concise reason"}',
         ].join("\n");
     }
+    if (control.kind === "MERGE_AUTHORIZED") {
+        if (pullRequest === undefined || job.mergeAuthorization === undefined || control.expectedHeadSha === undefined) {
+            throw new Error("MERGE_AUTHORIZED requires a persisted PR, authorization, and expected head SHA");
+        }
+        return [
+            "You are the workflow writer/executor. This is a trusted, explicitly user-authorized merge control message.",
+            `Control: ${control.kind}`,
+            `Workflow job: ${job.jobId}`,
+            `Target repository: ${job.repository}`,
+            `Pull request: ${pullRequest.url}`,
+            `PR number: ${pullRequest.number}`,
+            `Required PR head branch: ${pullRequest.head}`,
+            `Authorized exact head SHA: ${control.expectedHeadSha}`,
+            "",
+            "Immediately before attempting merge, read the actual current pull request from GitHub and verify repository, PR number, head branch, and current head SHA. If the current head SHA is not exactly the authorized SHA, do not open or approve a merge confirmation and return BLOCKED.",
+            "Do not modify files, commits, branch contents, PR metadata, or repository settings. Merge exactly this one pull request and nothing else.",
+            "After the merge completes, report the exact pre-merge head SHA you verified and the resulting merge commit SHA.",
+            "",
+            "Return exactly one JSON object and no markdown or surrounding prose.",
+            'On success: {"status":"MERGED","repository":"owner/repo or repository URL","number":123,"url":"https://github.com/owner/repo/pull/123","headSha":"40-lowercase-hex-authorized-head","mergedSha":"40-lowercase-hex-merge-commit"}',
+            'On block: {"status":"BLOCKED","message":"concise reason"}',
+        ].join("\n");
+    }
     if (control.kind === "APPLY_REVIEWS") {
         if (pullRequest === undefined)
             throw new Error("APPLY_REVIEWS requires a persisted pull request");
@@ -66,6 +89,26 @@ export function parseWorkflowWriterResult(text) {
             throw new Error("workflow writer BLOCKED result requires a message");
         }
         return { status: "BLOCKED", message: value.message };
+    }
+    if (value.status === "MERGED") {
+        if (typeof value.repository !== "string" || value.repository.trim() === "")
+            throw new Error("writer merge repository is required");
+        if (typeof value.number !== "number" || !Number.isSafeInteger(value.number) || value.number < 1)
+            throw new Error("writer merge PR number is invalid");
+        if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url))
+            throw new Error("writer merge PR URL is invalid");
+        if (typeof value.headSha !== "string" || !/^[0-9a-f]{40}$/u.test(value.headSha))
+            throw new Error("writer merge head SHA is invalid");
+        if (typeof value.mergedSha !== "string" || !/^[0-9a-f]{40}$/u.test(value.mergedSha))
+            throw new Error("writer merge commit SHA is invalid");
+        return {
+            status: "MERGED",
+            repository: value.repository,
+            number: value.number,
+            url: value.url,
+            headSha: value.headSha,
+            mergedSha: value.mergedSha,
+        };
     }
     if (value.status !== "PR_OPEN")
         throw new Error("workflow writer result has an unsupported status");
@@ -120,6 +163,9 @@ export class BrowserWorkflowWriterRunner {
                     repository: request.job.repository,
                     state: request.job.state,
                     ...(request.job.pullRequest === undefined ? {} : { pullRequest: request.job.pullRequest }),
+                    ...(request.job.mergeAuthorization === undefined
+                        ? {}
+                        : { mergeAuthorization: request.job.mergeAuthorization }),
                 },
                 signal: request.signal,
             });

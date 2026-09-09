@@ -3,7 +3,16 @@ import type { WorkflowEngine } from "#internet/workflow/engine";
 import { WorkflowEngineError } from "#internet/workflow/engine";
 import type { WorkflowJob } from "#internet/workflow/types";
 
-export const WORKFLOW_OPERATIONS = ["start", "status", "approve", "reject", "cancel", "continue"] as const;
+export const WORKFLOW_OPERATIONS = [
+	"start",
+	"status",
+	"request_merge",
+	"approve",
+	"merge",
+	"reject",
+	"cancel",
+	"continue",
+] as const;
 export type WorkflowOperation = (typeof WORKFLOW_OPERATIONS)[number];
 
 function runsSummary(runs: WorkflowJob["teamRuns"]["research"]): string {
@@ -60,6 +69,10 @@ function project(job: WorkflowJob) {
 					pendingAction: job.pendingAction.kind,
 					pendingMessage: job.pendingAction.message,
 				}),
+		...(job.mergeAuthorization === undefined ? {} : { authorizedHeadSha: job.mergeAuthorization.headSha }),
+		...(job.mergeReceipt === undefined
+			? {}
+			: { mergedSha: job.mergeReceipt.mergedSha, mergeExecutor: job.mergeReceipt.executorAccountId }),
 		updatedAt: job.updatedAt,
 	};
 }
@@ -108,6 +121,9 @@ export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<t
 					prHeadSha: { type: "string" },
 					pendingAction: { type: "string" },
 					pendingMessage: { type: "string" },
+					authorizedHeadSha: { type: "string" },
+					mergedSha: { type: "string" },
+					mergeExecutor: { type: "string" },
 					updatedAt: { type: "string" },
 					message: { type: "string" },
 				},
@@ -153,13 +169,17 @@ export function defineInternetWorkflowTool(engine: WorkflowEngine): ReturnType<t
 				const job =
 					operation === "status"
 						? engine.status(args.jobId)
-						: operation === "cancel"
-							? engine.cancel(args.jobId)
-							: operation === "continue"
-								? engine.continue(args.jobId)
-								: operation === "approve"
-									? engine.approve({ jobId: args.jobId, expectedHeadSha })
-									: engine.reject({ jobId: args.jobId, expectedHeadSha });
+						: operation === "request_merge"
+							? engine.requestMergeAuthorization(args.jobId)
+							: operation === "merge"
+								? await engine.runWriterMerge(args.jobId, exec.signal)
+								: operation === "cancel"
+									? engine.cancel(args.jobId)
+									: operation === "continue"
+										? engine.continue(args.jobId)
+										: operation === "approve"
+											? engine.approve({ jobId: args.jobId, expectedHeadSha })
+											: engine.reject({ jobId: args.jobId, expectedHeadSha });
 				return { ok: true, operation, ...project(job) };
 			} catch (error) {
 				if (error instanceof WorkflowEngineError) return { ok: false, operation, message: error.message };

@@ -395,6 +395,8 @@ export class WorkflowEngine {
 				lastEvent: { type: "WRITER_BLOCKED", class: "ACTION_REQUIRED", at: now(), message: result.message },
 			}));
 		}
+		if (result.status !== "PR_OPEN")
+			throw new WorkflowEngineError("writer returned merge output outside merge phase");
 		return this.update(jobId, (current) => ({
 			...withState(current, "PR_OPEN"),
 			pullRequest: result.pullRequest,
@@ -606,6 +608,8 @@ export class WorkflowEngine {
 				lastEvent: { type: "WRITER_BLOCKED", class: "ACTION_REQUIRED", at: now(), message: result.message },
 			}));
 		}
+		if (result.status !== "PR_OPEN")
+			throw new WorkflowEngineError("writer returned merge output outside merge phase");
 		if (!samePullRequestIdentity(reviewedPullRequest, result.pullRequest)) {
 			return this.writerBlocked(
 				jobId,
@@ -634,6 +638,117 @@ export class WorkflowEngine {
 			},
 			pendingAction: undefined,
 			lastEvent: { type: "REMEDIATION_COMPLETED", class: "PROGRESS", at: now(), message: result.pullRequest.url },
+		}));
+	}
+
+	/** Move a fully reviewed PR into the explicit user-authorization gate. */
+	requestMergeAuthorization(jobId: string): WorkflowJob {
+		const current = this.status(jobId);
+		if (current.state !== "READY_FOR_MERGE_AUTHORIZATION") {
+			throw new WorkflowEngineError(
+				`workflow job ${jobId} cannot request merge authorization from ${current.state}`,
+			);
+		}
+		if (current.pullRequest === undefined)
+			throw new WorkflowEngineError("merge authorization requires a persisted pull request");
+		if (
+			!current.teamRuns.review.every(
+				(run) =>
+					run.result?.reviewVerdict === "PASS" && run.result.reviewedHeadSha === current.pullRequest?.headSha,
+			)
+		) {
+			throw new WorkflowEngineError("merge authorization requires both reviewers to PASS the current exact PR head");
+		}
+		const pr = current.pullRequest;
+		return this.update(jobId, (state) => ({
+			...withState(state, "AWAITING_MERGE_AUTHORIZATION"),
+			pendingAction: {
+				kind: "MERGE_AUTHORIZATION_REQUIRED",
+				expectedHeadSha: pr.headSha,
+				message: `Merge authorization required: pr=${pr.url} reviews=PASS/PASS ci=unknown expected_head=${pr.headSha}`,
+			},
+			mergeAuthorization: undefined,
+			lastEvent: {
+				type: "MERGE_AUTHORIZATION_REQUIRED",
+				class: "ACTION_REQUIRED",
+				at: now(),
+				message: `pr=${pr.url} reviews=PASS/PASS ci=unknown expected_head=${pr.headSha}`,
+			},
+		}));
+	}
+
+	/** Execute an already authorized exact-head merge through the persistent Website writer. */
+	async runWriterMerge(jobId: string, signal?: AbortSignal): Promise<WorkflowJob> {
+		if (this.writer === undefined) throw new WorkflowEngineError("workflow writer runner is not configured");
+		const job = this.status(jobId);
+		if (job.state !== "MERGING")
+			throw new WorkflowEngineError(`workflow job ${jobId} cannot merge from ${job.state}`);
+		if (job.pullRequest === undefined || job.mergeAuthorization === undefined) {
+			throw new WorkflowEngineError("merge execution requires a persisted PR and exact authorization");
+		}
+		const pr = job.pullRequest;
+		const authorization = job.mergeAuthorization;
+		if (
+			normalizeGitHubRepository(authorization.repository) !== normalizeGitHubRepository(job.repository) ||
+			authorization.number !== pr.number ||
+			authorization.url !== pr.url ||
+			authorization.head !== pr.head ||
+			authorization.headSha !== pr.headSha
+		) {
+			return this.writerBlocked(
+				jobId,
+				"merge authorization is stale or no longer matches the authoritative PR",
+				"READY_FOR_MERGE_AUTHORIZATION",
+			);
+		}
+		const control = createWorkflowControlMessage("MERGE_AUTHORIZED", jobId, authorization.headSha);
+		const result = await this.writer.runControl({
+			sessionId: job.writerConversation.sessionId,
+			job,
+			control,
+			signal,
+		});
+		if (result.status === "UNKNOWN_CONFIRMATION") {
+			return this.update(jobId, (current) => ({
+				...withState(current, "UNKNOWN_CONFIRMATION"),
+				pendingAction: { kind: "UNKNOWN_CONFIRMATION", message: result.message, resumeState: "MERGING" },
+				lastEvent: { type: "UNKNOWN_CONFIRMATION", class: "ACTION_REQUIRED", at: now(), message: result.message },
+			}));
+		}
+		if (result.status === "BLOCKED")
+			return this.writerBlocked(jobId, result.message, "READY_FOR_MERGE_AUTHORIZATION");
+		if (result.status !== "MERGED")
+			throw new WorkflowEngineError("writer did not return a merge result during merge phase");
+		if (
+			normalizeGitHubRepository(result.repository) !== normalizeGitHubRepository(pr.repository) ||
+			result.number !== pr.number ||
+			result.url !== pr.url ||
+			result.headSha !== authorization.headSha
+		) {
+			return this.writerBlocked(
+				jobId,
+				"writer merge result does not match the authorized PR/head",
+				"READY_FOR_MERGE_AUTHORIZATION",
+			);
+		}
+		return this.update(jobId, (current) => ({
+			...withState(current, "DONE"),
+			pendingAction: undefined,
+			mergeReceipt: {
+				repository: result.repository,
+				number: result.number,
+				url: result.url,
+				headSha: result.headSha,
+				mergedSha: result.mergedSha,
+				executorAccountId: "chatgpt-writer",
+				mergedAt: now(),
+			},
+			lastEvent: {
+				type: "MERGED",
+				class: "PROGRESS",
+				at: now(),
+				message: `pr=${result.url} merged_sha=${result.mergedSha}`,
+			},
 		}));
 	}
 
@@ -737,17 +852,34 @@ export class WorkflowEngine {
 		return this.update(input.jobId, (current) => {
 			if (
 				current.state !== "AWAITING_MERGE_AUTHORIZATION" ||
-				current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED"
+				current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED" ||
+				current.pullRequest === undefined
 			) {
 				throw new WorkflowEngineError(`workflow job ${input.jobId} is not awaiting merge authorization`);
 			}
 			if (
-				current.pendingAction.expectedHeadSha !== undefined &&
-				input.expectedHeadSha !== current.pendingAction.expectedHeadSha
+				input.expectedHeadSha === undefined ||
+				input.expectedHeadSha !== current.pendingAction.expectedHeadSha ||
+				input.expectedHeadSha !== current.pullRequest.headSha
 			) {
-				throw new WorkflowEngineError("merge authorization head SHA does not match the pending action");
+				throw new WorkflowEngineError("merge authorization requires the exact pending PR head SHA");
 			}
-			return { ...withState(current, "READY_FOR_MERGE_AUTHORIZATION"), pendingAction: undefined };
+			const pr = current.pullRequest;
+			return {
+				...withState(current, "MERGING"),
+				pendingAction: undefined,
+				mergeAuthorization: {
+					repository: current.repository,
+					number: pr.number,
+					url: pr.url,
+					head: pr.head,
+					headSha: pr.headSha,
+					reviewCycle: current.reviewCycle,
+					authorizedAt: now(),
+					authorizedByOwnerSessionId: current.ownerSessionId,
+				},
+				lastEvent: { type: "MERGE_AUTHORIZED", class: "INTERNAL", at: now() },
+			};
 		});
 	}
 
@@ -755,6 +887,14 @@ export class WorkflowEngine {
 		return this.update(input.jobId, (current) => {
 			if (current.pendingAction === undefined)
 				throw new WorkflowEngineError(`workflow job ${input.jobId} has no pending action to reject`);
+			if (current.pendingAction.kind === "MERGE_AUTHORIZATION_REQUIRED") {
+				return {
+					...withState(current, "READY_FOR_MERGE_AUTHORIZATION"),
+					pendingAction: undefined,
+					mergeAuthorization: undefined,
+					lastEvent: { type: "MERGE_AUTHORIZATION_REJECTED", class: "INTERNAL", at: now() },
+				};
+			}
 			return { ...withState(current, "BLOCKED"), pendingAction: undefined };
 		});
 	}
