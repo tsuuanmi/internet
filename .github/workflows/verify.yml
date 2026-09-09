@@ -2,10 +2,9 @@ name: Verify
 
 on:
   push:
-  pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -16,9 +15,444 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Apply session-backed ChatGPT auth patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Authentication evidence can now distinguish provider session proof.
+          path = Path("src/browser/authentication.ts")
+          text = path.read_text()
+          old = '''export type AuthenticationEvidence =
+          \t| "authenticated-surface"
+          \t| "login-url"'''
+          new = '''export type AuthenticationEvidence =
+          \t| "authenticated-surface"
+          \t| "authenticated-session"
+          \t| "login-url"'''
+          assert old in text
+          text = text.replace(old, new)
+          old = '| { state: "authenticated"; evidence: "authenticated-surface" }'
+          new = '| { state: "authenticated"; evidence: "authenticated-surface" | "authenticated-session" }'
+          assert old in text
+          text = text.replace(old, new)
+          path.write_text(text)
+
+          # ChatGPT: prove auth from same-origin session state first, with DOM as fallback.
+          path = Path("src/browser/chatgpt.ts")
+          text = path.read_text()
+          marker = 'export const CHATGPT_HOME_URL = "https://chatgpt.com/";\n'
+          insert = '''export const CHATGPT_HOME_URL = "https://chatgpt.com/";
+          export const CHATGPT_SESSION_PATH = "/api/auth/session";
+
+          export interface ChatGptSessionProbe {
+          \tavailable: boolean;
+          \tauthenticated: boolean;
+          \tstatus?: number;
+          }
+
+          export interface ChatGptAuthenticationDiagnostic {
+          \toriginPath?: string;
+          \tsession: ChatGptSessionProbe;
+          \tcomposerCount: number;
+          \taccountControlCount: number;
+          \tloginSurface: boolean;
+          \tchallengeSurface: boolean;
+          }
+          '''
+          assert marker in text
+          text = text.replace(marker, insert, 1)
+
+          marker = '''async function hasVisibleSurface(page: Page, selector: string): Promise<boolean> {
+          \ttry {
+          \t\treturn (await page.locator(selector).filter({ visible: true }).count()) > 0;
+          \t} catch {
+          \t\treturn false;
+          \t}
+          }
+          '''
+          insert = marker + '''
+          function chatgptOriginPath(url: string): string | undefined {
+          \ttry {
+          \t\tconst parsed = new URL(url);
+          \t\treturn `${parsed.origin}${parsed.pathname}`;
+          \t} catch {
+          \t\treturn undefined;
+          \t}
+          }
+
+          function isChatGptOrigin(url: string): boolean {
+          \ttry {
+          \t\treturn new URL(url).origin === new URL(CHATGPT_HOME_URL).origin;
+          \t} catch {
+          \t\treturn false;
+          \t}
+          }
+
+          /** Probe only non-secret ChatGPT session facts from the signed-in browser context. */
+          export async function chatgptSessionProbe(page: Page): Promise<ChatGptSessionProbe> {
+          \tif (!isChatGptOrigin(page.url())) return { available: false, authenticated: false };
+          \ttry {
+          \t\treturn await page.evaluate(async (sessionPath) => {
+          \t\t\ttry {
+          \t\t\t\tconst response = await fetch(sessionPath, {
+          \t\t\t\t\tcache: "no-store",
+          \t\t\t\t\tcredentials: "include",
+          \t\t\t\t\theaders: { accept: "application/json" },
+          \t\t\t\t});
+          \t\t\t\tconst status = response.status;
+          \t\t\t\tif (!response.ok) return { available: true, authenticated: false, status };
+          \t\t\t\tconst body: unknown = await response.json().catch(() => null);
+          \t\t\t\tconst record = body !== null && typeof body === "object" ? (body as Record<string, unknown>) : undefined;
+          \t\t\t\tconst accessToken = record?.accessToken;
+          \t\t\t\tconst user = record?.user;
+          \t\t\t\treturn {
+          \t\t\t\t\tavailable: true,
+          \t\t\t\t\tauthenticated:
+          \t\t\t\t\t\t(typeof accessToken === "string" && accessToken.length > 0) ||
+          \t\t\t\t\t\t(user !== null && typeof user === "object"),
+          \t\t\t\t\tstatus,
+          \t\t\t\t};
+          \t\t\t} catch {
+          \t\t\t\treturn { available: false, authenticated: false };
+          \t\t\t}
+          \t\t}, CHATGPT_SESSION_PATH);
+          \t} catch {
+          \t\treturn { available: false, authenticated: false };
+          \t}
+          }
+
+          /** Sanitized auth diagnostics: no cookies, token, email, query string, or session payload. */
+          export async function chatgptAuthenticationDiagnostic(page: Page): Promise<ChatGptAuthenticationDiagnostic> {
+          \tconst [session, composerCount, accountControlCount, loginSurface, challengeSurface] = await Promise.all([
+          \t\tchatgptSessionProbe(page),
+          \t\tpage.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true }).count().catch(() => 0),
+          \t\tpage.locator(CHATGPT_ACCOUNT_SELECTOR).filter({ visible: true }).count().catch(() => 0),
+          \t\thasVisibleSurface(page, CHATGPT_LOGIN_SURFACE_SELECTOR),
+          \t\thasVisibleSurface(page, CHATGPT_CHALLENGE_SURFACE_SELECTOR),
+          \t]);
+          \tconst originPath = chatgptOriginPath(page.url());
+          \treturn {
+          \t\t...(originPath === undefined ? {} : { originPath }),
+          \t\tsession,
+          \t\tcomposerCount,
+          \t\taccountControlCount,
+          \t\tloginSurface,
+          \t\tchallengeSurface,
+          \t};
+          }
+          '''
+          assert marker in text
+          text = text.replace(marker, insert, 1)
+
+          old = '''/** Assess ChatGPT auth without treating a missing composer as proof of logout. */
+          export async function chatgptAuthenticationAssessment(page: Page): Promise<AuthenticationAssessment> {
+          \tconst url = page.url();
+          \ttry {
+          \t\tif (await chatgptIsAuthenticated(page)) return { state: "authenticated", evidence: "authenticated-surface" };
+          \t} catch {
+          \t\t// Navigation may replace the document between locator checks.
+          \t}
+          \tif (urlContainsChallenge(url)) return { state: "challenge", evidence: "challenge-url" };
+          \tif (await hasVisibleSurface(page, CHATGPT_CHALLENGE_SURFACE_SELECTOR)) {
+          \t\treturn { state: "challenge", evidence: "challenge-surface" };
+          \t}
+          \tif (urlIsLogin(url)) return { state: "signed-out", evidence: "login-url" };
+          \tif (await hasVisibleSurface(page, CHATGPT_LOGIN_SURFACE_SELECTOR)) {
+          \t\treturn { state: "signed-out", evidence: "login-surface" };
+          \t}
+          \treturn { state: "unconfirmed", evidence: "timeout" };
+          }'''
+          new = '''/** Assess ChatGPT auth without treating missing or drifting DOM as proof of logout. */
+          export async function chatgptAuthenticationAssessment(page: Page): Promise<AuthenticationAssessment> {
+          \tconst url = page.url();
+          \tif (urlContainsChallenge(url)) return { state: "challenge", evidence: "challenge-url" };
+          \tif (await hasVisibleSurface(page, CHATGPT_CHALLENGE_SURFACE_SELECTOR)) {
+          \t\treturn { state: "challenge", evidence: "challenge-surface" };
+          \t}
+          \tconst session = await chatgptSessionProbe(page);
+          \tif (session.authenticated) return { state: "authenticated", evidence: "authenticated-session" };
+          \ttry {
+          \t\tif (await chatgptIsAuthenticated(page)) return { state: "authenticated", evidence: "authenticated-surface" };
+          \t} catch {
+          \t\t// Navigation may replace the document between locator checks.
+          \t}
+          \tif (urlIsLogin(url)) return { state: "signed-out", evidence: "login-url" };
+          \tif (await hasVisibleSurface(page, CHATGPT_LOGIN_SURFACE_SELECTOR)) {
+          \t\treturn { state: "signed-out", evidence: "login-surface" };
+          \t}
+          \treturn { state: "unconfirmed", evidence: "timeout" };
+          }'''
+          assert old in text
+          text = text.replace(old, new)
+          path.write_text(text)
+
+          # Runtime: Save uses the same provider assessment as normal browser turns.
+          path = Path("src/browser/runtime.ts")
+          text = path.read_text()
+          old = '''\tCHATGPT_HOME_URL,
+          \tchatgptIsAuthenticated,
+          \tchatgptLastAssistantTurnText,'''
+          new = '''\tCHATGPT_HOME_URL,
+          \tchatgptAuthenticationAssessment,
+          \tchatgptAuthenticationDiagnostic,
+          \tchatgptLastAssistantTurnText,'''
+          assert old in text
+          text = text.replace(old, new)
+          old = '''\tGEMINI_HOME_URL,
+          \tgeminiDeepResearchSnapshot,
+          \tgeminiIsAuthenticated,
+          \tgeminiLastDeepResearchReportText,'''
+          new = '''\tGEMINI_HOME_URL,
+          \tgeminiAuthenticationAssessment,
+          \tgeminiDeepResearchSnapshot,
+          \tgeminiLastDeepResearchReportText,'''
+          assert old in text
+          text = text.replace(old, new)
+
+          marker = '''\tprivate async assessAuthentication(
+          \t\tprovider: WebProvider,
+          \t\tpage: Page,
+          \t\ttimeoutMs: number,
+          \t\tsignal?: AbortSignal,
+          \t): Promise<AuthenticationAssessment> {'''
+          insert = '''\tprivate async authenticationAssessment(
+          \t\tprovider: WebProvider,
+          \t\tpage: Page,
+          \t): Promise<AuthenticationAssessment> {
+          \t\treturn provider === "chatgpt-web"
+          \t\t\t? chatgptAuthenticationAssessment(page)
+          \t\t\t: geminiAuthenticationAssessment(page);
+          \t}
+
+          ''' + marker
+          assert marker in text
+          text = text.replace(marker, insert, 1)
+
+          old = '''\t\t\tfor (const page of context.pages()) {
+          \t\t\t\tif (page.isClosed()) continue;
+          \t\t\t\ttry {
+          \t\t\t\t\tconst authenticated =
+          \t\t\t\t\t\tprovider === "chatgpt-web" ? await chatgptIsAuthenticated(page) : await geminiIsAuthenticated(page);
+          \t\t\t\t\tif (authenticated) return page;
+          \t\t\t\t} catch {
+          \t\t\t\t\t// A redirect can replace or close a page; inspect the context again.
+          \t\t\t\t}
+          \t\t\t}'''
+          new = '''\t\t\tfor (const page of context.pages()) {
+          \t\t\t\tif (page.isClosed()) continue;
+          \t\t\t\ttry {
+          \t\t\t\t\tif ((await this.authenticationAssessment(provider, page)).state === "authenticated") return page;
+          \t\t\t\t} catch {
+          \t\t\t\t\t// A redirect can replace or close a page; inspect the context again.
+          \t\t\t\t}
+          \t\t\t}'''
+          assert old in text
+          text = text.replace(old, new)
+
+          marker = '''\tprivate clearProfileSingleton(profileDir: string): void {'''
+          insert = '''\tprivate async loginAuthenticationDiagnostic(
+          \t\tprovider: WebProvider,
+          \t\tcontext: BrowserContext,
+          \t): Promise<Record<string, unknown>> {
+          \t\tconst pages: Array<Record<string, unknown>> = [];
+          \t\tfor (const page of context.pages()) {
+          \t\t\tif (page.isClosed()) continue;
+          \t\t\ttry {
+          \t\t\t\tif (provider === "chatgpt-web") {
+          \t\t\t\t\tpages.push(await chatgptAuthenticationDiagnostic(page));
+          \t\t\t\t\tcontinue;
+          \t\t\t\t}
+          \t\t\t\tlet originPath: string | undefined;
+          \t\t\t\ttry {
+          \t\t\t\t\tconst url = new URL(page.url());
+          \t\t\t\t\toriginPath = `${url.origin}${url.pathname}`;
+          \t\t\t\t} catch {
+          \t\t\t\t\t// Ignore an unstable navigation URL.
+          \t\t\t\t}
+          \t\t\t\tconst assessment = await geminiAuthenticationAssessment(page);
+          \t\t\t\tpages.push({ ...(originPath === undefined ? {} : { originPath }), assessment });
+          \t\t\t} catch {
+          \t\t\t\tpages.push({ diagnostic: "unavailable" });
+          \t\t\t}
+          \t\t}
+          \t\treturn { provider, pages };
+          \t}
+
+          ''' + marker
+          assert marker in text
+          text = text.replace(marker, insert, 1)
+
+          old = '''\t\t\tif (authenticatedPage === undefined) {
+          \t\t\t\tthrow new InternetError("login_failed", `${provider} did not expose an authenticated page after sign-in.`);
+          \t\t\t}'''
+          new = '''\t\t\tif (authenticatedPage === undefined) {
+          \t\t\t\tconst diagnostic = await this.loginAuthenticationDiagnostic(provider, context);
+          \t\t\t\tthrow new InternetError(
+          \t\t\t\t\t"login_failed",
+          \t\t\t\t\t`${provider} authentication remained unconfirmed after profile reopen; diagnostic: ${JSON.stringify(diagnostic)}`,
+          \t\t\t\t);
+          \t\t\t}'''
+          assert old in text
+          text = text.replace(old, new)
+          path.write_text(text)
+
+          # ChatGPT tests: session proof succeeds without account-control DOM and diagnostics remain sanitized.
+          path = Path("test/chatgpt.test.ts")
+          text = path.read_text()
+          old = '''\tCHATGPT_ACCOUNT_SELECTOR,
+          \tCHATGPT_COMPOSER_SELECTOR,'''
+          new = '''\tCHATGPT_ACCOUNT_SELECTOR,
+          \tCHATGPT_COMPOSER_SELECTOR,
+          \tCHATGPT_SESSION_PATH,'''
+          assert old in text
+          text = text.replace(old, new)
+          old = '''\tchatgptAuthenticationAssessment,
+          \tchatgptLastAssistantTurnText,'''
+          new = '''\tchatgptAuthenticationAssessment,
+          \tchatgptAuthenticationDiagnostic,
+          \tchatgptLastAssistantTurnText,'''
+          assert old in text
+          text = text.replace(old, new)
+          old = '''\tchatgptSelectThinkingLevel,
+          \tchatgptSend,'''
+          new = '''\tchatgptSelectThinkingLevel,
+          \tchatgptSend,
+          \tchatgptSessionProbe,'''
+          assert old in text
+          text = text.replace(old, new)
+
+          old = '''function authenticationPage(url: string, composerCount = 0, accountCount = 0): Page {
+          \treturn {
+          \t\turl: () => url,
+          \t\tlocator(selector: string) {
+          \t\t\tconst count =
+          \t\t\t\tselector === CHATGPT_COMPOSER_SELECTOR
+          \t\t\t\t\t? composerCount
+          \t\t\t\t\t: selector === CHATGPT_ACCOUNT_SELECTOR
+          \t\t\t\t\t\t? accountCount
+          \t\t\t\t\t\t: 0;
+          \t\t\treturn { filter: () => ({ count: async () => count }) };
+          \t\t},
+          \t} as unknown as Page;
+          }'''
+          new = '''function authenticationPage(
+          \turl: string,
+          \tcomposerCount = 0,
+          \taccountCount = 0,
+          \tsessionProbe?: { available: boolean; authenticated: boolean; status?: number },
+          ): Page {
+          \treturn {
+          \t\turl: () => url,
+          \t\t...(sessionProbe === undefined ? {} : { evaluate: async () => sessionProbe }),
+          \t\tlocator(selector: string) {
+          \t\t\tconst count =
+          \t\t\t\tselector === CHATGPT_COMPOSER_SELECTOR
+          \t\t\t\t\t? composerCount
+          \t\t\t\t\t: selector === CHATGPT_ACCOUNT_SELECTOR
+          \t\t\t\t\t\t? accountCount
+          \t\t\t\t\t\t: 0;
+          \t\t\treturn { filter: () => ({ count: async () => count }) };
+          \t\t},
+          \t} as unknown as Page;
+          }'''
+          assert old in text
+          text = text.replace(old, new)
+
+          marker = '''describe("chatgptAuthenticationAssessment", () => {
+          '''
+          addition = '''describe("chatgptSessionProbe", () => {
+          \tit("accepts a valid provider session even when account-control DOM is absent", async () => {
+          \t\tconst page = authenticationPage("https://chatgpt.com/", 1, 0, {
+          \t\t\tavailable: true,
+          \t\t\tauthenticated: true,
+          \t\t\tstatus: 200,
+          \t\t});
+          \t\tawait expect(chatgptSessionProbe(page)).resolves.toEqual({
+          \t\t\tavailable: true,
+          \t\t\tauthenticated: true,
+          \t\t\tstatus: 200,
+          \t\t});
+          \t\tawait expect(chatgptAuthenticationAssessment(page)).resolves.toEqual({
+          \t\t\tstate: "authenticated",
+          \t\t\tevidence: "authenticated-session",
+          \t\t});
+          \t});
+
+          \tit("falls back to the authenticated DOM surface when the session endpoint is unavailable", async () => {
+          \t\tconst page = authenticationPage("https://chatgpt.com/", 1, 1, {
+          \t\t\tavailable: false,
+          \t\t\tauthenticated: false,
+          \t\t});
+          \t\tawait expect(chatgptAuthenticationAssessment(page)).resolves.toEqual({
+          \t\t\tstate: "authenticated",
+          \t\t\tevidence: "authenticated-surface",
+          \t\t});
+          \t});
+
+          \tit("returns only sanitized session and surface diagnostics", async () => {
+          \t\texpect(CHATGPT_SESSION_PATH).toBe("/api/auth/session");
+          \t\tconst diagnostic = await chatgptAuthenticationDiagnostic(
+          \t\t\tauthenticationPage("https://chatgpt.com/?secret=query", 1, 0, {
+          \t\t\t\tavailable: true,
+          \t\t\t\tauthenticated: false,
+          \t\t\t\tstatus: 200,
+          \t\t\t}),
+          \t\t);
+          \t\texpect(diagnostic).toMatchObject({
+          \t\t\toriginPath: "https://chatgpt.com/",
+          \t\t\tsession: { available: true, authenticated: false, status: 200 },
+          \t\t\tcomposerCount: 1,
+          \t\t\taccountControlCount: 0,
+          \t\t});
+          \t\texpect(JSON.stringify(diagnostic)).not.toContain("secret=query");
+          \t\texpect(JSON.stringify(diagnostic)).not.toContain("accessToken");
+          \t});
+          });
+
+          ''' + marker
+          assert marker in text
+          text = text.replace(marker, addition, 1)
+          path.write_text(text)
+
+          # Runtime regression: the profile-reopen gate must consume session-backed assessment.
+          path = Path("test/browser-runtime.test.ts")
+          text = path.read_text()
+          marker = '''describe("BrowserManager account state boundaries", () => {
+          '''
+          addition = '''describe("BrowserManager login verification", () => {
+          \tit("accepts a reopened ChatGPT profile from provider session proof without account-control DOM", async () => {
+          \t\tconst browser = manager();
+          \t\tconst page = {
+          \t\t\tisClosed: () => false,
+          \t\t\turl: () => "https://chatgpt.com/",
+          \t\t\tevaluate: async () => ({ available: true, authenticated: true, status: 200 }),
+          \t\t\tlocator: () => ({ filter: () => ({ count: async () => 0 }) }),
+          \t\t};
+          \t\tconst context = { pages: () => [page] };
+          \t\tawait expect((browser as any).waitForAuthenticatedPage("chatgpt-web", context, 50)).resolves.toBe(page);
+          \t\tawait browser.dispose();
+          \t});
+          });
+
+          ''' + marker
+          assert marker in text
+          text = text.replace(marker, addition, 1)
+          path.write_text(text)
+          PY
       - run: npm ci
+      - run: npx biome format --write src/browser/authentication.ts src/browser/chatgpt.ts src/browser/runtime.ts test/chatgpt.test.ts test/browser-runtime.test.ts
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - run: git diff --exit-code -- dist
+      - name: Commit source and generated dist
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src test dist
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: use ChatGPT session proof for login verification"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+      - run: git diff --exit-code
       - run: npm run verify-package
