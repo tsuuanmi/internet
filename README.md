@@ -267,7 +267,7 @@ plugins:
     config:
       dataDir: "~/.dsh/internet"
       headless: false
-      loginTimeoutMs: 180000
+      loginTimeoutMs: 1800000
       remoteLoginPort: 39000
       turnTimeoutMs: 300000
       researchTimeoutMs: 1800000
@@ -288,7 +288,7 @@ internet_browser { action: "login", account: "chatgpt-writer" }
 internet_browser { action: "login", account: "gemini-thinker" }
 ```
 
-Every login uses a tokenized loopback noVNC page on the server. Open the returned loopback URL directly when working on that server, or SSH-forward the port and open the same URL from another machine. After sign-in, press **Save account**; do not close Chrome manually. Default stable ports are:
+Every login uses a tokenized loopback noVNC page on the server. Open the returned loopback URL directly when working on that server, or SSH-forward the port and open the same URL from another machine. After sign-in, press **Save account**; do not close Chrome manually. The login page also includes a host-text field: focus the target field in remote Chrome, paste text from the host into the helper, then press **Type into focused field**. The helper sends key events directly and clears the host text after sending. Default stable ports are:
 
 ```text
 39000 chatgpt-thinker

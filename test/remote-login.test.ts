@@ -55,6 +55,7 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 			expect(page.headers.get("cache-control")).toBe("no-store");
 			expect(page.headers.get("content-security-policy")).toContain("default-src 'none'");
 			expect(await page.text()).toContain("Save account");
+			expect(await (await fetch(url)).text()).toContain("Type into focused field");
 
 			const badOrigin = await fetch(new URL("status", url), { headers: { Origin: "http://evil.example" } });
 			expect(badOrigin.status).toBe(403);

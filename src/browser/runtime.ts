@@ -318,7 +318,7 @@ export class BrowserManager {
 		}
 		throw new InternetError(
 			"login_failed",
-			"Normal Chrome is still using the login profile. Close the dedicated Chrome window completely.",
+			"Login Chrome did not release the profile after Save account; retry the login session.",
 		);
 	}
 

@@ -14,7 +14,8 @@ import { ensurePrivateDirectory } from "#internet/core/private-json";
 
 const LOOPBACK = "127.0.0.1";
 const STARTUP_TIMEOUT_MS = 5_000;
-const SHUTDOWN_TIMEOUT_MS = 2_000;
+const VNC_SHUTDOWN_TIMEOUT_MS = 2_000;
+const CHROME_SHUTDOWN_TIMEOUT_MS = 10_000;
 const SETTLED_GRACE_MS = 15_000;
 const MAX_DIAGNOSTIC_CHARS = 4_096;
 
@@ -198,18 +199,14 @@ export class RemoteLoginSession {
 	}
 
 	private async finalizeAccount(): Promise<void> {
-		const accountFinalization = this.options.finalize().then(
-			() => ({ ok: true as const }),
-			(error: unknown) => ({ ok: false as const, error }),
-		);
 		try {
+			// Chrome owns the profile while the user signs in. Let it exit cleanly
+			// and flush cookies/storage before Patchright reopens the profile.
 			await this.closeDesktop();
-			const result = await accountFinalization;
-			if (!result.ok) throw result.error;
+			await this.options.finalize();
 			this.state = "complete";
 			this.message = `${this.options.provider} account saved successfully.`;
 		} catch (error) {
-			await accountFinalization;
 			this.state = "failed";
 			this.message = error instanceof Error ? error.message : "Remote login finalization failed.";
 		} finally {
@@ -297,7 +294,7 @@ export class RemoteLoginSession {
 				});
 				return;
 			} catch (error) {
-				await this.terminate(child);
+				await this.terminate(child, VNC_SHUTDOWN_TIMEOUT_MS);
 				failures.push(
 					`${candidate.source}: ${diagnostic.trim() || (error instanceof Error ? error.message : String(error))}`,
 				);
@@ -437,7 +434,7 @@ export class RemoteLoginSession {
 	}
 
 	private page(): string {
-		return `<!doctype html><html data-token="${html(this.token)}" data-password="${html(this.password)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Remote browser login</title><style>html,body{height:100%;margin:0;background:#111;color:#eee;font:14px system-ui}body{display:grid;grid-template-rows:auto 1fr}header{display:flex;gap:12px;align-items:center;padding:10px;background:#202124}#status{flex:1}button{padding:8px 14px}#screen{overflow:hidden}</style></head><body><header><span id="status">Connecting…</span><button id="save">Save account</button><button id="cancel">Cancel</button></header><main id="screen"></main><script type="module" src="/${html(this.token)}/client.js"></script></body></html>`;
+		return `<!doctype html><html data-token="${html(this.token)}" data-password="${html(this.password)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Remote browser login</title><style>html,body{height:100%;margin:0;background:#111;color:#eee;font:14px system-ui}body{display:grid;grid-template-rows:auto 1fr}header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;background:#202124}#status{flex:1}button{padding:8px 14px}#host-text{min-width:240px;flex:0 1 360px;padding:8px;border:1px solid #555;border-radius:4px;background:#111;color:#eee}#screen{overflow:hidden}</style></head><body><header><span id="status">Connecting…</span><input id="host-text" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste text from host"><button id="type-text" disabled>Type into focused field</button><button id="save">Save account</button><button id="cancel">Cancel</button></header><main id="screen"></main><script type="module" src="/${html(this.token)}/client.js"></script></body></html>`;
 	}
 
 	private bridgeVnc(client: WebSocket): void {
@@ -490,8 +487,8 @@ export class RemoteLoginSession {
 		this.intentionalExit = true;
 		if (this.chromeStartTimer !== undefined) clearImmediate(this.chromeStartTimer);
 		this.chromeStartTimer = undefined;
-		await this.terminate(this.chrome);
-		await this.terminate(this.vnc);
+		await this.terminate(this.chrome, CHROME_SHUTDOWN_TIMEOUT_MS);
+		await this.terminate(this.vnc, VNC_SHUTDOWN_TIMEOUT_MS);
 		this.chrome = undefined;
 		this.vnc = undefined;
 		await this.display.dispose().catch(() => {});
@@ -499,12 +496,12 @@ export class RemoteLoginSession {
 		this.tempDir = undefined;
 	}
 
-	private async terminate(child: ChildProcess | undefined): Promise<void> {
+	private async terminate(child: ChildProcess | undefined, timeoutMs: number): Promise<void> {
 		if (!childRunning(child)) return;
 		child.kill("SIGTERM");
-		if (await waitForExit(child, SHUTDOWN_TIMEOUT_MS)) return;
+		if (await waitForExit(child, timeoutMs)) return;
 		child.kill("SIGKILL");
-		await waitForExit(child, SHUTDOWN_TIMEOUT_MS);
+		await waitForExit(child, VNC_SHUTDOWN_TIMEOUT_MS);
 	}
 
 	private scheduleClose(): void {

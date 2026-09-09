@@ -19,7 +19,7 @@ export interface BrowserConfig {
     dataDir: string;
     /** Native headless when true; otherwise headed (managed Xvfb first on Linux). */
     headless: boolean;
-    /** Max time to wait for an interactive login to reach the authenticated surface (ms). */
+    /** Max time to keep one manual noVNC login session open before it expires (ms). */
     loginTimeoutMs: number;
     /** Stable loopback base port; each semantic account receives a deterministic offset. */
     remoteLoginPort: number;
