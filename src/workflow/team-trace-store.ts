@@ -54,7 +54,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseRecord(value: unknown, jobId: string): WorkflowTeamTraceRecord {
-	if (!isRecord(value) || value.schema !== WORKFLOW_TEAM_TRACE_SCHEMA || value.version !== 1 || value.jobId !== jobId) {
+	if (
+		!isRecord(value) ||
+		value.schema !== WORKFLOW_TEAM_TRACE_SCHEMA ||
+		value.version !== 1 ||
+		value.jobId !== jobId
+	) {
 		throw new WorkflowTeamTraceStoreError(`workflow team trace ${jobId} has an invalid schema`);
 	}
 	if (typeof value.truncated !== "boolean" || !Array.isArray(value.events)) {
