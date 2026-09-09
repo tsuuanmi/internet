@@ -1,4 +1,4 @@
-import type { AccountId } from "#internet/core/accounts";
+import { type AccountId } from "#internet/core/accounts";
 export declare const HANDOFF_SCHEMA: "@tsuuanmi/internet-workflow-handoff";
 export type WorkflowHandoffStatus = "pending" | "delivered";
 export interface WorkflowHandoff {

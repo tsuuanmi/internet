@@ -86,6 +86,27 @@ function upsertReceipts(
 	return [...byId.values()].sort((a, b) => a.sequence - b.sequence || a.handoffId.localeCompare(b.handoffId));
 }
 
+function sameReceipt(a: WorkflowHandoffReceipt, b: WorkflowHandoffReceipt): boolean {
+	return (
+		a.handoffId === b.handoffId &&
+		a.source === b.source &&
+		a.recipient === b.recipient &&
+		a.sequence === b.sequence &&
+		a.payloadHash === b.payloadHash &&
+		a.status === b.status
+	);
+}
+
+function receiptsAlreadyInstalled(
+	current: readonly WorkflowHandoffReceipt[],
+	incoming: readonly WorkflowHandoffReceipt[],
+): boolean {
+	return incoming.every((next) => {
+		const existing = current.find((item) => item.handoffId === next.handoffId);
+		return existing !== undefined && sameReceipt(existing, next);
+	});
+}
+
 function researchReceipts(job: WorkflowJob): WorkflowHandoffReceipt[] {
 	return job.handoffReceipts.filter(
 		(item) => item.recipient === job.accountRouting.writerAccount && /^research:[AB]$/u.test(item.source),
@@ -300,31 +321,36 @@ export class WorkflowEngine {
 				payload: run.result.finalAnswer,
 			});
 		});
-		this.update(jobId, (current) => ({
-			...current,
-			revision: current.revision + 1,
-			handoffReceipts: upsertReceipts(current.handoffReceipts, handoffs.map(receipt)),
-			lastEvent: { type: "RESEARCH_HANDOFFS_PREPARED", class: "INTERNAL", at: now() },
-			updatedAt: now(),
-		}));
+		const incomingReceipts = handoffs.map(receipt);
+		if (!receiptsAlreadyInstalled(job.handoffReceipts, incomingReceipts)) {
+			this.update(jobId, (current) => ({
+				...current,
+				revision: current.revision + 1,
+				handoffReceipts: upsertReceipts(current.handoffReceipts, incomingReceipts),
+				lastEvent: { type: "RESEARCH_HANDOFFS_PREPARED", class: "INTERNAL", at: now() },
+				updatedAt: now(),
+			}));
+		}
 		return handoffs;
 	}
 
 	markHandoffDelivered(jobId: string, handoffId: string, expectedPayloadHash: string): WorkflowJob {
 		if (this.handoffs === undefined) throw new WorkflowEngineError("workflow handoff store is not configured");
+		const current = this.status(jobId);
+		const registered = current.handoffReceipts.find((item) => item.handoffId === handoffId);
+		if (registered === undefined)
+			throw new WorkflowEngineError(`handoff ${handoffId} is not registered on workflow job ${jobId}`);
+		if (registered.payloadHash !== expectedPayloadHash)
+			throw new WorkflowEngineError("handoff delivery hash does not match job receipt");
 		const delivered = this.handoffs.markDelivered(jobId, handoffId, expectedPayloadHash);
-		return this.update(jobId, (current) => {
-			if (!current.handoffReceipts.some((item) => item.handoffId === handoffId)) {
-				throw new WorkflowEngineError(`handoff ${handoffId} is not registered on workflow job ${jobId}`);
-			}
-			return {
-				...current,
-				revision: current.revision + 1,
-				handoffReceipts: upsertReceipts(current.handoffReceipts, [receipt(delivered)]),
-				lastEvent: { type: "HANDOFF_DELIVERED", class: "INTERNAL", at: now() },
-				updatedAt: now(),
-			};
-		});
+		if (registered.status === "delivered" && sameReceipt(registered, receipt(delivered))) return current;
+		return this.update(jobId, (state) => ({
+			...state,
+			revision: state.revision + 1,
+			handoffReceipts: upsertReceipts(state.handoffReceipts, [receipt(delivered)]),
+			lastEvent: { type: "HANDOFF_DELIVERED", class: "INTERNAL", at: now() },
+			updatedAt: now(),
+		}));
 	}
 
 	startImplementationControl(jobId: string): WorkflowControlStep {
@@ -517,13 +543,16 @@ export class WorkflowEngine {
 				payload: run.result.finalAnswer,
 			});
 		});
-		this.update(jobId, (current) => ({
-			...current,
-			revision: current.revision + 1,
-			handoffReceipts: upsertReceipts(current.handoffReceipts, handoffs.map(receipt)),
-			lastEvent: { type: "REVIEW_HANDOFFS_PREPARED", class: "INTERNAL", at: now() },
-			updatedAt: now(),
-		}));
+		const incomingReceipts = handoffs.map(receipt);
+		if (!receiptsAlreadyInstalled(job.handoffReceipts, incomingReceipts)) {
+			this.update(jobId, (current) => ({
+				...current,
+				revision: current.revision + 1,
+				handoffReceipts: upsertReceipts(current.handoffReceipts, incomingReceipts),
+				lastEvent: { type: "REVIEW_HANDOFFS_PREPARED", class: "INTERNAL", at: now() },
+				updatedAt: now(),
+			}));
+		}
 		return handoffs;
 	}
 
@@ -768,6 +797,7 @@ export class WorkflowEngine {
 		return this.update(jobId, (current) => ({
 			...withState(current, "BLOCKED"),
 			pendingAction: { kind: "WRITER_BLOCKED", message, resumeState },
+			...(resumeState === "READY_FOR_MERGE_AUTHORIZATION" ? { mergeAuthorization: undefined } : {}),
 			lastEvent: { type: "WRITER_BLOCKED", class: "ACTION_REQUIRED", at: now(), message },
 		}));
 	}
@@ -844,7 +874,13 @@ export class WorkflowEngine {
 			if (!new Set<WorkflowState>(["BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE"]).has(current.state)) {
 				throw new WorkflowEngineError(`workflow job ${jobId} cannot continue from ${current.state}`);
 			}
-			return { ...withState(current, current.pendingAction?.resumeState ?? "CREATED"), pendingAction: undefined };
+			if (current.state === "FAILED_RETRYABLE") {
+				return { ...withState(current, "RESEARCH_RUNNING"), pendingAction: undefined };
+			}
+			const resumeState = current.pendingAction?.resumeState;
+			if (resumeState === undefined)
+				throw new WorkflowEngineError(`workflow job ${jobId} has no explicit resume state`);
+			return { ...withState(current, resumeState), pendingAction: undefined };
 		});
 	}
 

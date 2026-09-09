@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -75,5 +75,35 @@ describe("WorkflowHandoffStore", () => {
 		});
 		chmodSync(handoffs.pathFor(created.jobId, created.handoffId), 0o644);
 		expect(() => handoffs.get(created.jobId, created.handoffId)).toThrow(/permissions must be 0600/u);
+	});
+
+	it("rejects tampered logical identity, recipient, and delivery-state metadata", () => {
+		const handoffs = store();
+		const created = handoffs.create({
+			jobId: "0123456789abcdef0123456789abcdef",
+			source: "research:A",
+			recipient: "chatgpt-writer",
+			sequence: 1,
+			payload: "exact",
+		});
+		const path = handoffs.pathFor(created.jobId, created.handoffId);
+		const original = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+		for (const mutate of [
+			(value: Record<string, unknown>) => {
+				value.source = "research:B";
+			},
+			(value: Record<string, unknown>) => {
+				value.recipient = "chatgpt-web";
+			},
+			(value: Record<string, unknown>) => {
+				value.status = "delivered";
+				delete value.deliveredAt;
+			},
+		]) {
+			const changed = structuredClone(original);
+			mutate(changed);
+			writeFileSync(path, `${JSON.stringify(changed, null, 2)}\n`, { mode: 0o600 });
+			expect(() => handoffs.get(created.jobId, created.handoffId)).toThrow();
+		}
 	});
 });

@@ -399,19 +399,35 @@ The scoped Website controller auto-allows `merge_pull_request` only while the jo
 
 ## P10 — Hardening
 
-### 39. Account isolation tests
+**Ordering:** ROI first, then residual risk. The correctness-critical restart/idempotency work is completed before retention/cleanup policy.
 
-### 40. Workflow transition tests
+### 44. ✅ Durable restart recovery — ROI: critical
 
-### 41. Handoff fidelity/idempotency tests
+Restart tests reconstruct `WorkflowEngine`, `WorkflowJobStore`, and `WorkflowHandoffStore` from the same durable directory. Acknowledged exact handoffs are not resent, an exact persisted merge authorization survives process reconstruction, and corrupted account/session authority fails closed on load. Durable nested job state is now validated rather than shallow-cast.
 
-### 42. Approval classification tests
+### 43. ✅ PR creation idempotency — ROI: critical
 
-### 43. PR creation idempotency
+`START_IMPLEMENTATION` now treats workflow job ID + deterministic workflow branch as the PR idempotency key. On every retry the writer must reconcile GitHub by exact head branch, reuse exactly one existing open PR, and BLOCK on closed/merged or conflicting duplicate PR identity instead of creating another PR.
 
-### 44. Durable restart recovery
+### 40. ✅ Workflow transition tests — ROI: very high
 
-### 45. Audit/retention/cleanup policy
+Exception continuation no longer has a generic fallback to `CREATED`. `FAILED_RETRYABLE` resumes the research phase explicitly; BLOCKED/UNKNOWN confirmation paths require a persisted `resumeState`. Merge-block paths clear stale merge authorization before returning to the authorization gate. Existing phase tests plus the P10 recovery/transition suite cover the state guards.
+
+### 41. ✅ Handoff fidelity/idempotency tests — ROI: very high
+
+Handoff parsing now validates semantic recipient account IDs, recomputes deterministic handoff identity, enforces delivered/deliveredAt consistency, and still verifies exact payload SHA-256. Re-preparing identical handoffs and re-recording an acknowledged delivery are revision-idempotent at the engine layer. Tamper tests cover identity, recipient, and delivery metadata.
+
+### 42. ✅ Approval classification tests — ROI: high
+
+The existing scoped approval suite plus P9 merge-gate tests cover exact writer account/session/repository/branch/PR matching, malformed/ambiguous confirmations, cross-repo fail-closed behavior, premature merge rejection, and authorized MERGING-only approval. P10 durable-state validation now prevents corrupted persisted authority from reaching that classifier.
+
+### 39. ✅ Account isolation tests — ROI: high
+
+The account catalog, storage, stale-write, reauthentication, scheduler, browser-runtime, and workflow routing tests collectively cover thinker/writer isolation even when both ChatGPT accounts share the same provider implementation. P10 strict job parsing additionally rejects altered writer/lane session identities during restart.
+
+### 45. Audit/retention/cleanup policy — ROI: medium
+
+Define explicit retention windows, audit metadata, safe cleanup eligibility, and operator-visible cleanup commands only after correctness-critical restart/idempotency hardening is stable. No automatic deletion should be introduced implicitly.
 
 ## Defer until needed
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AccountId } from "#internet/core/accounts";
+import { type AccountId, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 
 export const HANDOFF_SCHEMA = "@tsuuanmi/internet-workflow-handoff" as const;
@@ -75,7 +75,7 @@ export function parseWorkflowHandoff(value: unknown): WorkflowHandoff {
 		throw new Error("invalid handoff id");
 	if (typeof value.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(value.jobId)) throw new Error("invalid job id");
 	if (typeof value.source !== "string" || value.source.trim() === "") throw new Error("invalid handoff source");
-	if (typeof value.recipient !== "string") throw new Error("invalid handoff recipient");
+	if (!isAccountId(value.recipient)) throw new Error("invalid handoff recipient");
 	if (typeof value.sequence !== "number" || !Number.isSafeInteger(value.sequence) || value.sequence < 1) {
 		throw new Error("invalid handoff sequence");
 	}
@@ -92,6 +92,17 @@ export function parseWorkflowHandoff(value: unknown): WorkflowHandoff {
 	) {
 		throw new Error("invalid deliveredAt");
 	}
+	if (value.status === "delivered" && value.deliveredAt === undefined)
+		throw new Error("delivered handoff requires deliveredAt");
+	if (value.status === "pending" && value.deliveredAt !== undefined)
+		throw new Error("pending handoff cannot have deliveredAt");
+	const expectedId = deterministicHandoffId({
+		jobId: value.jobId,
+		source: value.source,
+		recipient: value.recipient,
+		sequence: value.sequence,
+	});
+	if (value.handoffId !== expectedId) throw new Error("handoff id does not match logical identity");
 	return value as unknown as WorkflowHandoff;
 }
 
