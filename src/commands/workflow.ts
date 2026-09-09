@@ -5,7 +5,7 @@ import {
 	runGitCommand,
 	WorkflowRepositoryError,
 } from "#internet/workflow/repository-context";
-import { WorkflowOperator, WorkflowOperatorError } from "#internet/workflow/operator";
+import { WorkflowOperatorError } from "#internet/workflow/operator";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 
 const USAGE = "Usage: /workflow <objective> | list | status [jobId] | watch [jobId] | stop [jobId] | continue [jobId]";
@@ -22,10 +22,18 @@ export interface WorkflowEnqueuer {
 	enqueue(jobId: string): void;
 }
 
+export interface WorkflowCommandOperator {
+	list(ownerSessionId: string): string;
+	status(ownerSessionId: string, jobId?: string): string;
+	watch(ownerSessionId: string, jobId?: string): string;
+	stop(ownerSessionId: string, jobId?: string): Promise<string>;
+	continue(ownerSessionId: string, jobId?: string): string;
+}
+
 export interface WorkflowCommandDependencies {
 	readonly engine: WorkflowStarter;
 	readonly driver: WorkflowEnqueuer;
-	readonly operator: WorkflowOperator;
+	readonly operator: WorkflowCommandOperator;
 	readonly runGit?: GitRunner;
 }
 
