@@ -131,7 +131,8 @@ export async function resolveWorkflowRepository(
 		.split(/\r?\n/u)
 		.map((remote) => remote.trim())
 		.filter((remote) => remote !== "");
-	if (remotes.length === 0) throw new WorkflowRepositoryError(`${source} requires a Git remote for the upstream repository.`);
+	if (remotes.length === 0)
+		throw new WorkflowRepositoryError(`${source} requires a Git remote for the upstream repository.`);
 
 	const branch = await optionalGit(runGit, cwd, ["rev-parse", "--abbrev-ref", "HEAD"], signal);
 	const trackingRemote =
