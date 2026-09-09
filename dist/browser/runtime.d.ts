@@ -1,3 +1,4 @@
+import { type Page } from "patchright-core";
 import { type AccountState, type ReauthDiagnostic } from "#internet/browser/accounts";
 import { type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { type AccountId } from "#internet/core/accounts";
@@ -35,6 +36,22 @@ export interface AccountStatus {
     remoteLogin?: RemoteLoginStatus;
 }
 /**
+ * Observe immediately, discovering/persisting the native URL independently of
+ * generation. Both tasks are joined on every exit; no URL poller survives a turn.
+ * The completion observer must honor the supplied signal and remaining deadline.
+ */
+export declare function waitForBoundCompletion<T>(options: {
+    provider: WebProvider;
+    page: Pick<Page, "url">;
+    persist: (url: string) => T;
+    observe: (signal: AbortSignal, remainingMs: () => number) => Promise<string>;
+    timeoutMs: number;
+    signal?: AbortSignal;
+}): Promise<{
+    text: string;
+    binding: T;
+}>;
+/**
  * Owns isolated browser sessions. Interactive login runs in a dedicated,
  * per-account normal Chrome profile (without browser-automation flags). The
  * profile is retained so reopening login visibly shows the same signed-in account.
@@ -70,8 +87,6 @@ export declare class BrowserManager {
     private authenticationAssessment;
     private assessAuthentication;
     private isAuthenticated;
-    private waitForChatGptConversationUrl;
-    private waitForGeminiConversationUrl;
     private waitForAuthenticatedPage;
     private loginAuthenticationDiagnostic;
     private clearProfileSingleton;

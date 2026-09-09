@@ -1,5 +1,6 @@
 import { lstatSync, readlinkSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { type Browser, type BrowserContext, chromium, type Page } from "patchright-core";
 import {
 	type AccountState,
@@ -118,6 +119,92 @@ function isTransientStorageCaptureError(error: unknown): boolean {
 }
 
 /**
+ * Observe immediately, discovering/persisting the native URL independently of
+ * generation. Both tasks are joined on every exit; no URL poller survives a turn.
+ * The completion observer must honor the supplied signal and remaining deadline.
+ */
+export async function waitForBoundCompletion<T>(options: {
+	provider: WebProvider;
+	page: Pick<Page, "url">;
+	persist: (url: string) => T;
+	observe: (signal: AbortSignal, remainingMs: () => number) => Promise<string>;
+	timeoutMs: number;
+	signal?: AbortSignal;
+}): Promise<{ text: string; binding: T }> {
+	const deadline = Date.now() + options.timeoutMs;
+	const controller = new AbortController();
+	const signal = controller.signal;
+	const abort = () =>
+		controller.abort(
+			options.signal?.reason instanceof Error
+				? options.signal.reason
+				: new InternetError("aborted", "browser turn aborted"),
+		);
+	options.signal?.addEventListener("abort", abort, { once: true });
+	if (options.signal?.aborted) abort();
+	const timer = setTimeout(
+		() =>
+			controller.abort(
+				new InternetError("timeout", `browser provider did not complete within ${options.timeoutMs}ms`),
+			),
+		Math.max(0, options.timeoutMs),
+	);
+	let bindingDeadline = deadline;
+	const check = () => {
+		if (signal.aborted) throw signal.reason;
+		if (Date.now() >= deadline) {
+			throw new InternetError("timeout", `browser provider did not complete within ${options.timeoutMs}ms`);
+		}
+	};
+	const completion = (async () => {
+		check();
+		const text = await options.observe(signal, () => Math.max(0, deadline - Date.now()));
+		check();
+		// A finished response may precede the SPA's canonical route update.
+		bindingDeadline = Math.min(deadline, Date.now() + 5_000);
+		return text;
+	})();
+	const binding = (async () => {
+		const parse = options.provider === "chatgpt-web" ? parseChatGptConversationUrl : parseGeminiConversationUrl;
+		while (true) {
+			check();
+			let conversation: { id: string; url: string } | undefined;
+			try {
+				conversation = parse(options.page.url());
+			} catch {
+				// A home or transient route is not a binding. Persistence errors below
+				// must never be mistaken for URL discovery failures.
+			}
+			if (conversation !== undefined) return options.persist(conversation.url);
+			if (Date.now() >= bindingDeadline) {
+				const provider = options.provider === "chatgpt-web" ? "ChatGPT" : "Gemini";
+				throw new InternetError(
+					"provider_error",
+					`${provider} did not expose a canonical conversation URL after the turn.`,
+				);
+			}
+			try {
+				await delay(Math.min(100, bindingDeadline - Date.now()), undefined, { signal });
+			} catch (error) {
+				throw signal.aborted ? signal.reason : error;
+			}
+		}
+	})();
+	try {
+		const [text, persisted] = await Promise.all([completion, binding]);
+		return { text, binding: persisted };
+	} catch (error) {
+		const failure = signal.aborted ? signal.reason : error;
+		controller.abort(failure);
+		throw failure;
+	} finally {
+		clearTimeout(timer);
+		options.signal?.removeEventListener("abort", abort);
+		await Promise.allSettled([completion, binding]);
+	}
+}
+
+/**
  * Owns isolated browser sessions. Interactive login runs in a dedicated,
  * per-account normal Chrome profile (without browser-automation flags). The
  * profile is retained so reopening login visibly shows the same signed-in account.
@@ -226,44 +313,6 @@ export class BrowserManager {
 		signal?: AbortSignal,
 	): Promise<boolean> {
 		return (await this.assessAuthentication(provider, page, timeoutMs, signal)).state === "authenticated";
-	}
-
-	private async waitForChatGptConversationUrl(
-		page: Page,
-		timeoutMs: number,
-		signal?: AbortSignal,
-	): Promise<{ id: string; url: string }> {
-		const deadline = Date.now() + timeoutMs;
-		while (Date.now() < deadline) {
-			if (signal?.aborted) {
-				throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "browser turn aborted");
-			}
-			try {
-				return parseChatGptConversationUrl(page.url());
-			} catch {
-				await sleep(100, signal);
-			}
-		}
-		throw new InternetError("provider_error", "ChatGPT did not expose a canonical conversation URL after the turn.");
-	}
-
-	private async waitForGeminiConversationUrl(
-		page: Page,
-		timeoutMs: number,
-		signal?: AbortSignal,
-	): Promise<{ id: string; url: string }> {
-		const deadline = Date.now() + timeoutMs;
-		while (Date.now() < deadline) {
-			if (signal?.aborted) {
-				throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "browser turn aborted");
-			}
-			try {
-				return parseGeminiConversationUrl(page.url());
-			} catch {
-				await sleep(100, signal);
-			}
-		}
-		throw new InternetError("provider_error", "Gemini did not expose a canonical conversation URL after the turn.");
 	}
 
 	private async waitForAuthenticatedPage(
@@ -866,8 +915,26 @@ export class BrowserManager {
 				stableMs: this.config.stableMs,
 				signal: lease.signal,
 			};
-			let text: string;
-			let conversationId: string | undefined;
+			const observeBoundTurn = (observe: (signal: AbortSignal, remainingMs: () => number) => Promise<string>) =>
+				waitForBoundCompletion({
+					provider,
+					page: page!,
+					...waitOptions,
+					observe,
+					persist: (url) => {
+						try {
+							return this.conversationStore(accountId).bind(request.sessionId, url);
+						} catch (error) {
+							throw new InternetError(
+								"provider_error",
+								error instanceof Error
+									? error.message
+									: `Failed to persist the ${provider} conversation binding.`,
+							);
+						}
+					},
+				});
+			let result: { text: string; binding: ConversationBinding };
 			if (provider === "chatgpt-web") {
 				const previousTurnText = await chatgptLastAssistantTurnText(page);
 				const previousResearchText =
@@ -879,38 +946,24 @@ export class BrowserManager {
 					await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
 					await chatgptSend(page, request.prompt);
 				}
-				// Persist the native URL immediately after Send so a long-running
-				// Deep Research can be inspected or recovered if observation is cancelled.
-				const conversation = await this.waitForChatGptConversationUrl(
-					page,
-					Math.min(this.config.turnTimeoutMs, 30_000),
-					lease.signal,
-				);
-				try {
-					binding = this.conversationStore(accountId).bind(request.sessionId, conversation.url);
-				} catch (error) {
-					throw new InternetError(
-						"provider_error",
-						error instanceof Error ? error.message : "Failed to persist the ChatGPT conversation binding.",
-					);
-				}
-				conversationId = binding.conversationId;
-				text = await waitForStableCompletion(
-					() =>
-						request.research === true
-							? chatgptDeepResearchSnapshot(page!, previousResearchText)
-							: (async () => {
-									if (request.confirmation !== undefined) {
-										await chatgptHandleWorkflowConfirmation(
-											page!,
-											request.confirmation,
-											accountId,
-											request.sessionId,
-										);
-									}
-									return chatgptSnapshot(page!, previousTurnText);
-								})(),
-					waitOptions,
+				result = await observeBoundTurn((signal, remainingMs) =>
+					waitForStableCompletion(
+						() =>
+							request.research === true
+								? chatgptDeepResearchSnapshot(page!, previousResearchText)
+								: (async () => {
+										if (request.confirmation !== undefined) {
+											await chatgptHandleWorkflowConfirmation(
+												page!,
+												request.confirmation,
+												accountId,
+												request.sessionId,
+											);
+										}
+										return chatgptSnapshot(page!, previousTurnText);
+									})(),
+						{ ...waitOptions, signal, timeoutMs: remainingMs() },
+					),
 				);
 			} else {
 				const previousTurnText = await geminiLastResponseText(page);
@@ -919,37 +972,25 @@ export class BrowserManager {
 				if (request.research === true) await geminiEnableDeepResearch(page);
 				else await geminiSelectDefaultMode(page);
 				await geminiSend(page, request.prompt);
-				// Persist the native URL immediately after Send so a long-running
-				// Deep Research can be inspected or recovered if observation is cancelled.
-				const conversation = await this.waitForGeminiConversationUrl(
-					page,
-					Math.min(this.config.turnTimeoutMs, 30_000),
-					lease.signal,
-				);
-				try {
-					binding = this.conversationStore(accountId).bind(request.sessionId, conversation.url);
-				} catch (error) {
-					throw new InternetError(
-						"provider_error",
-						error instanceof Error ? error.message : "Failed to persist the Gemini conversation binding.",
+				result = await observeBoundTurn(async (signal, remainingMs) => {
+					if (request.research === true) {
+						await geminiStartResearchPlan(page!, { signal, timeoutMs: remainingMs() });
+					}
+					return waitForStableCompletion(
+						() =>
+							request.research === true
+								? geminiDeepResearchSnapshot(page!, previousResearchText)
+								: geminiSnapshot(page!, previousTurnText),
+						{ ...waitOptions, signal, timeoutMs: remainingMs() },
 					);
-				}
-				conversationId = binding.conversationId;
-				if (request.research === true) await geminiStartResearchPlan(page);
-				text = await waitForStableCompletion(
-					() =>
-						request.research === true
-							? geminiDeepResearchSnapshot(page!, previousResearchText)
-							: geminiSnapshot(page!, previousTurnText),
-					waitOptions,
-				);
+				});
 			}
 			const storageState = await this.captureAccountSnapshot(context, previousStorageState);
 			await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
 			return {
-				text: text.slice(0, this.config.maxOutputChars),
-				url: page.url(),
-				...(conversationId === undefined ? {} : { conversationId }),
+				text: result.text.slice(0, this.config.maxOutputChars),
+				url: result.binding.conversationUrl,
+				conversationId: result.binding.conversationId,
 			};
 		} catch (error) {
 			if (page !== undefined) {

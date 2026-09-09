@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import type { AccountId } from "#internet/core/accounts";
+import { resolveBrowserConfig } from "#internet/core/config";
+import { InternetError } from "#internet/core/errors";
 import {
 	composeSynthesisPrompt,
 	composeTurnPrompt,
@@ -8,6 +10,7 @@ import {
 	type TeamResult,
 	type TeamSuccess,
 } from "#internet/team/orchestrator";
+import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 
 interface RecordedCall {
 	accountId: AccountId;
@@ -122,6 +125,37 @@ describe("runTeam account routing", () => {
 			}),
 		).rejects.toThrow(/duplicates/);
 		await expect(runTeam(chat, { task: "T", sessionId: " " })).rejects.toThrow(/sessionId/u);
+	});
+
+	it("never forwards a Gemini execution failure into debate or synthesis", async () => {
+		const message = "I encountered an error doing what you asked. Could you try again?";
+		const { chat, calls } = fakeChat(["A1", new InternetError("provider_error", message)]);
+		const result = await runTeam(chat, { task: "T", sessionId: "s" });
+		if (!("error" in result)) throw new Error("expected team failure");
+		expect(result.error).toMatchObject({ accountId: "gemini-thinker", message });
+		expect(result.transcript.map((turn) => turn.text)).toEqual(["A1"]);
+		expect(calls).toHaveLength(2);
+		expect(calls.every((call) => !call.prompt.includes(message))).toBe(true);
+	});
+
+	it("returns a failed workflow lane rather than a successful provider-error contribution", async () => {
+		const message = "I encountered an error doing what you asked. Could you try again?";
+		const { chat, calls } = fakeChat(["A1", new InternetError("provider_error", message)]);
+		const runner = new BrowserWorkflowTeamRunner({ chat }, resolveBrowserConfig({}));
+		await expect(
+			runner.run({
+				task: "T",
+				sessionId: "workflow:research:A",
+				accounts: ["chatgpt-thinker", "gemini-thinker"],
+				synthesizer: "chatgpt-thinker",
+			}),
+		).resolves.toEqual({
+			ok: false,
+			error: message,
+			failedAccountId: "gemini-thinker",
+			failedProvider: "gemini-web",
+		});
+		expect(calls).toHaveLength(2);
 	});
 
 	it("attributes failures to the exact authenticated account", async () => {

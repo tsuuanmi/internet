@@ -103,10 +103,12 @@ async function geminiProviderError(page, message, error) {
     const diagnostic = await geminiModeDiagnostic(page);
     return new InternetError("provider_error", `${message}${error instanceof Error ? ` (${error.message})` : ""}; diagnostic: ${JSON.stringify(diagnostic)}`);
 }
-async function geminiWaitForAttribute(control, attribute, expected) {
-    const deadline = Date.now() + 10_000;
+async function geminiWaitForAttribute(control, attribute, expected, timeoutMs = 10_000) {
+    const accepted = typeof expected === "string" ? [expected] : expected;
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-        if ((await control.getAttribute(attribute).catch(() => null)) === expected)
+        const value = await control.getAttribute(attribute).catch(() => null);
+        if (value !== null && accepted.includes(value))
             return;
         await sleep(100);
     }
@@ -122,6 +124,10 @@ async function geminiOpenModePicker(page) {
     try {
         await composer.waitFor({ state: "visible", timeout: 60_000 });
         await trigger.waitFor({ state: "visible", timeout: 60_000 });
+        // A menu that is mid-teardown can still report aria-expanded=true; wait
+        // for the previous overlay to finish closing so the next open observes a
+        // fresh menu instead of enumerating items that detach during the click.
+        await geminiWaitForAttribute(trigger, "aria-expanded", "false", 5_000).catch(() => { });
         if ((await trigger.getAttribute("aria-expanded")) !== "true")
             await trigger.click({ timeout: 10_000 });
         await geminiWaitForAttribute(trigger, "aria-expanded", "true");
@@ -133,6 +139,7 @@ async function geminiOpenModePicker(page) {
         await menu.waitFor({ state: "visible", timeout: 10_000 });
         if ((await menu.getAttribute("role")) !== "menu")
             throw new Error("mode picker menu did not expose role=menu");
+        await menu.locator(GEMINI_MODE_MENU_ITEM_SELECTOR).first().waitFor({ state: "visible", timeout: 10_000 });
         return { trigger, menu };
     }
     catch (error) {
@@ -173,10 +180,20 @@ async function geminiWaitForModeIndicator(page, trigger, expected) {
 export async function geminiSelectDefaultMode(page) {
     const flash = await geminiOpenModePicker(page);
     await geminiSelectModeAction(page, flash.menu, GEMINI_DEFAULT_FLASH_LABEL, GEMINI_DEFAULT_FLASH_MENU_TEXT);
-    await geminiWaitForModeIndicator(page, flash.trigger, GEMINI_DEFAULT_FLASH_INDICATOR);
-    const extended = await geminiOpenModePicker(page);
-    await geminiSelectModeAction(page, extended.menu, GEMINI_DEFAULT_EXTENDED_LABEL, GEMINI_DEFAULT_EXTENDED_MENU_TEXT);
-    await geminiWaitForModeIndicator(page, extended.trigger, GEMINI_DEFAULT_FLASH_EXTENDED_INDICATOR);
+    // Selecting Flash on a resumed thread may retain Extended from the prior
+    // turn. Both indicators prove Flash; the final verification remains strict.
+    await geminiWaitForModeIndicator(page, flash.trigger, [
+        GEMINI_DEFAULT_FLASH_INDICATOR,
+        GEMINI_DEFAULT_FLASH_EXTENDED_INDICATOR,
+    ]);
+    // Extended thinking is a toggle, not an idempotent selection. Clicking it
+    // again on a resumed Extended thread disables it. Trust only the freshly
+    // observed provider indicator after selecting the exact Flash model.
+    if ((await flash.trigger.getAttribute("aria-label")) !== GEMINI_DEFAULT_FLASH_EXTENDED_INDICATOR) {
+        const extended = await geminiOpenModePicker(page);
+        await geminiSelectModeAction(page, extended.menu, GEMINI_DEFAULT_EXTENDED_LABEL, GEMINI_DEFAULT_EXTENDED_MENU_TEXT);
+    }
+    await geminiWaitForModeIndicator(page, flash.trigger, GEMINI_DEFAULT_FLASH_EXTENDED_INDICATOR);
 }
 /** Fill the Gemini composer with the prompt and submit it. */
 export async function geminiSend(page, prompt) {
@@ -188,6 +205,37 @@ export async function geminiSend(page, prompt) {
     // Keyboard-activate the semantic button. Gemini may replace it during input,
     // but Locator re-resolution avoids stale elements and pointer stability checks.
     await sendButton.press("Enter");
+}
+const GEMINI_RESPONSE_CONTAINER_SELECTOR = "model-response";
+// Only provider chrome outside message-content is authoritative. Generated
+// examples (including HTML examples) must never become execution-error evidence.
+const GEMINI_EXECUTION_ERROR_SELECTOR = [
+    "response-error",
+    ".response-error",
+    ".error-container",
+    '[data-test-id="response-error"]',
+    '[data-test-id="error-message"]',
+]
+    .map((selector) => `${selector}:not(message-content *)`)
+    .join(", ");
+async function geminiHasExecutionErrorSurface(container) {
+    if ((await container.locator(GEMINI_EXECUTION_ERROR_SELECTOR).filter({ visible: true }).count()) > 0)
+        return true;
+    // Regenerate/redo is a normal successful-response action; only explicit retry
+    // actions are failure evidence. Accessible names also cover icon-only buttons.
+    return ((await container
+        .getByRole("button", { name: /^(?:retry|try again|retry response|try again later)$/i })
+        .and(container.locator(":not(message-content *)"))
+        .filter({ visible: true })
+        .count()) > 0);
+}
+function geminiIsExecutionErrorMessage(text) {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    // Intentionally whole-message templates, not generic error/refusal keywords.
+    return [
+        /^I encountered an error doing what you asked\. Could you try again\?$/i,
+        /^(?:Something went wrong|An error occurred)\. (?:Please try again(?: later)?\.|Try again(?: later)?\.|Could you try again\?)$/i,
+    ].some((pattern) => pattern.test(normalized));
 }
 /** Read the visible text of the current newest Gemini response (empty when none). */
 export async function geminiLastResponseText(page) {
@@ -204,14 +252,22 @@ export async function geminiLastResponseText(page) {
  * durable conversation where the previous turn is already visible on the page.
  */
 export async function geminiSnapshot(page, previousTurnText) {
-    const responses = page.locator(GEMINI_RESPONSE_SELECTOR).filter({ visible: true });
-    const count = await responses.count();
-    if (count === 0)
+    // Select the newest turn BEFORE its markdown. A failed new turn may have no
+    // markdown at all; selecting the last markdown globally would read an old answer.
+    const containers = page.locator(GEMINI_RESPONSE_CONTAINER_SELECTOR).filter({ visible: true });
+    const containerCount = await containers.count();
+    if (containerCount === 0)
         return { responsePresent: false, text: "", html: "", running: false };
-    const response = responses.last();
+    // Patchright's negative-index last() can lose descendants on singleton scopes.
+    const container = containers.nth(containerCount - 1);
+    const responses = container
+        .locator(".model-response-text message-content .markdown.markdown-main-panel")
+        .filter({ visible: true });
+    const responseCount = await responses.count();
+    const response = responseCount > 0 ? responses.nth(responseCount - 1) : undefined;
     const [text, html, running] = await Promise.all([
-        response.innerText(),
-        response.innerHTML(),
+        response?.innerText() ?? "",
+        response?.innerHTML() ?? "",
         page
             .locator(GEMINI_STOP_BUTTON_SELECTOR)
             .filter({ visible: true })
@@ -219,8 +275,18 @@ export async function geminiSnapshot(page, previousTurnText) {
             .then((count) => count > 0),
     ]);
     const trimmed = text.trim();
-    const present = previousTurnText === undefined || previousTurnText === "" ? trimmed.length > 0 : trimmed !== previousTurnText;
-    return { responsePresent: present, text: trimmed, html, running };
+    const isPreviousTurn = previousTurnText !== undefined && previousTurnText !== "" && trimmed === previousTurnText;
+    if (!isPreviousTurn) {
+        const surfaceError = await geminiHasExecutionErrorSurface(container);
+        const messageError = !running &&
+            geminiIsExecutionErrorMessage(trimmed) &&
+            response !== undefined &&
+            (await response.locator("blockquote, pre, code, q").count()) === 0;
+        if (surfaceError || messageError) {
+            throw new InternetError("provider_error", "Gemini failed to execute the newest response; retry the provider turn");
+        }
+    }
+    return { responsePresent: !isPreviousTurn && trimmed.length > 0, text: trimmed, html, running };
 }
 /** Read the previous completed Gemini Deep Research report, if any. */
 export async function geminiLastDeepResearchReportText(page) {

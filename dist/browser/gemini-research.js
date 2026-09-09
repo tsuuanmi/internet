@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { GEMINI_COMPOSER_SELECTOR } from "#internet/browser/gemini";
 import { InternetError } from "#internet/core/errors";
 const GEMINI_TOOLS_TRIGGER = 'button[aria-label="Upload & tools"]';
@@ -34,22 +35,45 @@ export async function geminiEnableDeepResearch(page) {
  * Gemini first generates a plan in Deep research mode. Confirm it using the
  * semantic Start research action before waiting for the final report.
  */
-export async function geminiStartResearchPlan(page) {
+export async function geminiStartResearchPlan(page, options = {}) {
     const start = page.locator(GEMINI_START_RESEARCH).filter({ visible: true }).last();
+    const deadline = Date.now() + (options.timeoutMs ?? GEMINI_RESEARCH_PLAN_TIMEOUT_MS + 10_000);
+    const check = () => {
+        if (options.signal?.aborted) {
+            throw options.signal.reason instanceof Error
+                ? options.signal.reason
+                : new InternetError("aborted", "browser turn aborted");
+        }
+        if (Date.now() >= deadline)
+            throw new InternetError("timeout", "Gemini research plan exceeded the turn deadline");
+    };
+    const pause = () => delay(Math.max(0, Math.min(100, deadline - Date.now())), undefined, { signal: options.signal });
     try {
-        await start.waitFor({ state: "visible", timeout: GEMINI_RESEARCH_PLAN_TIMEOUT_MS });
-        await start.press("Enter");
-        const deadline = Date.now() + 10_000;
-        while (Date.now() < deadline) {
+        const planDeadline = Math.min(deadline, Date.now() + GEMINI_RESEARCH_PLAN_TIMEOUT_MS);
+        while (true) {
+            check();
+            if (await start.isVisible())
+                break;
+            if (Date.now() >= planDeadline)
+                throw new Error("Start research did not become visible");
+            await pause();
+        }
+        check();
+        await start.press("Enter", { timeout: Math.max(1, Math.min(10_000, deadline - Date.now())) });
+        const activationDeadline = Math.min(deadline, Date.now() + 10_000);
+        while (Date.now() < activationDeadline) {
+            check();
             if (!(await start.isVisible().catch(() => false)))
                 return;
             if (await start.isDisabled().catch(() => false))
                 return;
-            await page.waitForTimeout(100);
+            await pause();
         }
+        check();
         throw new Error("Start research stayed enabled after activation");
     }
     catch (error) {
+        check();
         throw new InternetError("provider_error", `Gemini Deep research did not expose a usable Start research confirmation within ${GEMINI_RESEARCH_PLAN_TIMEOUT_MS}ms${error instanceof Error ? ` (${error.message})` : ""}`);
     }
 }

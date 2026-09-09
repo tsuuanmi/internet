@@ -5,6 +5,7 @@ import {
 	GEMINI_COMPOSER_SELECTOR,
 	GEMINI_MODE_MENU_ITEM_SELECTOR,
 	GEMINI_MODE_PICKER_SELECTOR,
+	GEMINI_RESPONSE_SELECTOR,
 	GEMINI_STOP_BUTTON_SELECTOR,
 	geminiAuthenticationAssessment,
 	geminiLastResponseText,
@@ -14,22 +15,53 @@ import {
 	geminiWaitAuthenticationAssessment,
 } from "#internet/browser/gemini";
 
-function fakePage(responses: string[]): { page: Page } {
-	const response = (index: number) => ({
-		innerText: async () => responses[index] ?? "",
-		innerHTML: async () => `<p>${responses[index] ?? ""}</p>`,
+interface ResponseFixture {
+	text?: string;
+	errorSurface?: boolean;
+	retry?: string;
+	quoted?: boolean;
+}
+
+function fakePage(values: (string | ResponseFixture)[], running = false): { page: Page } {
+	const responses = values.map((value) => (typeof value === "string" ? { text: value } : value));
+	const collection = (count: number, last?: unknown) => ({
+		count: async () => count,
+		last: () => last,
+		nth: (index: number) => {
+			expect(index).toBe(count - 1);
+			return last;
+		},
+		filter: () => collection(count, last),
+		and: () => collection(count, last),
 	});
+	const response = (value: ResponseFixture) => ({
+		innerText: async () => value.text ?? "",
+		innerHTML: async () => `<p>${value.text ?? ""}</p>`,
+		locator: (selector: string) => {
+			expect(selector).toBe("blockquote, pre, code, q");
+			return collection(value.quoted ? 1 : 0);
+		},
+	});
+	const container = (value: ResponseFixture) => ({
+		locator: (selector: string) => {
+			if (selector === ".model-response-text message-content .markdown.markdown-main-panel")
+				return collection(value.text === undefined ? 0 : 1, response(value));
+			if (selector === ":not(message-content *)") return collection(1);
+			expect(selector).toContain("response-error:not(message-content *)");
+			return collection(value.errorSurface ? 1 : 0);
+		},
+		getByRole: (role: string, options: { name: RegExp }) => {
+			expect(role).toBe("button");
+			return collection(value.retry && options.name.test(value.retry) ? 1 : 0);
+		},
+	});
+	const newest = responses.at(-1);
 	const page = {
 		locator(selector: string) {
-			if (selector === GEMINI_STOP_BUTTON_SELECTOR) {
-				return { filter: () => ({ count: async () => 0 }) };
-			}
-			return {
-				filter: () => ({
-					count: async () => responses.length,
-					last: () => response(responses.length - 1),
-				}),
-			};
+			if (selector === GEMINI_STOP_BUTTON_SELECTOR) return collection(running ? 1 : 0);
+			if (selector === "model-response") return collection(responses.length, newest && container(newest));
+			expect(selector).toBe(GEMINI_RESPONSE_SELECTOR);
+			return collection(responses.length, newest && response(newest));
 		},
 	} as unknown as Page;
 	return { page };
@@ -111,7 +143,15 @@ describe("geminiWaitAuthenticationAssessment", () => {
 	});
 });
 
-function modePickerPage(options: { delayedOpen?: boolean; duplicateFlash?: boolean; flashDisabled?: boolean } = {}): {
+function modePickerPage(
+	options: {
+		delayedOpen?: boolean;
+		duplicateFlash?: boolean;
+		flashDisabled?: boolean;
+		retainExtended?: boolean;
+		staleExpandedOnce?: boolean;
+	} = {},
+): {
 	page: Page;
 	triggerClick: ReturnType<typeof vi.fn>;
 	flashClick: ReturnType<typeof vi.fn>;
@@ -122,6 +162,7 @@ function modePickerPage(options: { delayedOpen?: boolean; duplicateFlash?: boole
 	let expanded = false;
 	let pickerClicked = false;
 	let delayedReads = 0;
+	let staleExpandedReads = 0;
 	let indicator = "Open mode picker, currently Flash";
 	const triggerClick = vi.fn(async () => {
 		pickerClicked = true;
@@ -130,13 +171,18 @@ function modePickerPage(options: { delayedOpen?: boolean; duplicateFlash?: boole
 	const flashClick = vi.fn(async () => {
 		expanded = false;
 		pickerClicked = false;
-		indicator = "Open mode picker, currently Flash";
+		indicator = options.retainExtended
+			? "Open mode picker, currently Flash Extended"
+			: "Open mode picker, currently Flash";
 	});
 	const flashLiteClick = vi.fn(async () => {});
 	const extendedClick = vi.fn(async () => {
 		expanded = false;
 		pickerClicked = false;
-		indicator = "Open mode picker, currently Flash Extended";
+		indicator =
+			indicator === "Open mode picker, currently Flash Extended"
+				? "Open mode picker, currently Flash"
+				: "Open mode picker, currently Flash Extended";
 	});
 	const labels = options.duplicateFlash
 		? ["3.8 Flash All-around help", "3.8 Flash All-around help", "Extended thinking Complex problem solving"]
@@ -153,7 +199,7 @@ function modePickerPage(options: { delayedOpen?: boolean; duplicateFlash?: boole
 		getAttribute: vi.fn(async (name: string) => (name === "role" ? "menu" : null)),
 		locator: vi.fn((selector: string) => {
 			if (selector !== GEMINI_MODE_MENU_ITEM_SELECTOR) throw new Error(`unexpected menu selector ${selector}`);
-			return { allInnerTexts: async () => labels, nth };
+			return { allInnerTexts: async () => labels, nth, first: () => ({ waitFor: vi.fn(async () => {}) }) };
 		}),
 	};
 	const trigger = {
@@ -162,6 +208,12 @@ function modePickerPage(options: { delayedOpen?: boolean; duplicateFlash?: boole
 		evaluate: vi.fn(async () => ({})),
 		getAttribute: vi.fn(async (name: string) => {
 			if (name === "aria-expanded") {
+				// A torn-down overlay can still report expanded=true once; the
+				// runtime must not trust it as an open, fresh menu.
+				if (options.staleExpandedOnce && !pickerClicked && staleExpandedReads === 0) {
+					staleExpandedReads += 1;
+					return "true";
+				}
 				if (pickerClicked && options.delayedOpen && ++delayedReads >= 2) expanded = true;
 				return expanded ? "true" : "false";
 			}
@@ -197,9 +249,27 @@ describe("geminiSelectDefaultMode", () => {
 		expect(extendedClick).toHaveBeenCalledOnce();
 	});
 
+	it("accepts retained Extended after Flash selection on consecutive turns", async () => {
+		const { page, flashClick, extendedClick } = modePickerPage({ retainExtended: true });
+		await geminiSelectDefaultMode(page);
+		await geminiSelectDefaultMode(page);
+		expect(flashClick).toHaveBeenCalledTimes(2);
+		expect(extendedClick).not.toHaveBeenCalled();
+	});
+
 	it("waits for the asynchronous picker expansion", async () => {
 		const { page } = modePickerPage({ delayedOpen: true });
 		await expect(geminiSelectDefaultMode(page)).resolves.toBeUndefined();
+	});
+
+	it("reopens a fresh menu when a torn-down overlay still reports expanded", async () => {
+		const { page, triggerClick, flashClick, extendedClick } = modePickerPage({ staleExpandedOnce: true });
+		await expect(geminiSelectDefaultMode(page)).resolves.toBeUndefined();
+		expect(flashClick).toHaveBeenCalledOnce();
+		expect(extendedClick).toHaveBeenCalledOnce();
+		// Both opens clicked the trigger: the stale expanded=true must not be
+		// trusted as an already-open fresh menu.
+		expect(triggerClick).toHaveBeenCalledTimes(2);
 	});
 
 	it("fails explicitly rather than choosing another model when Flash is disabled", async () => {
@@ -253,6 +323,82 @@ describe("geminiLastResponseText", () => {
 });
 
 describe("geminiSnapshot", () => {
+	const executionError = "I encountered an error doing what you asked. Could you try again?";
+
+	it.each([
+		executionError,
+		"  I encountered an error doing what you asked.\n Could you try again?  ",
+		"Something went wrong. Please try again later.",
+		"An error occurred. Please try again.",
+	])("throws provider_error for a complete provider failure: %s", async (text) => {
+		await expect(geminiSnapshot(fakePage(["old answer", text]).page, "old answer")).rejects.toMatchObject({
+			name: "InternetError",
+			kind: "provider_error",
+		});
+	});
+
+	it.each([
+		{ errorSurface: true },
+		{ retry: "Try again" },
+		{ retry: "Retry response" },
+		{ text: "Partially generated answer", errorSurface: true },
+	])("detects newest provider chrome even without markdown: %j", async (failure) => {
+		await expect(geminiSnapshot(fakePage(["old answer", failure]).page, "old answer")).rejects.toMatchObject({
+			kind: "provider_error",
+		});
+	});
+
+	it.each([
+		"I can't help with that request.",
+		"I cannot provide instructions for that, but I can suggest safer alternatives.",
+		`The provider said: ${executionError}`,
+		`“${executionError}”`,
+		`${executionError} This is an example of an execution failure.`,
+		"An error occurred in your code. Try checking the input.",
+		"Something went wrong in the story, but they fixed it.",
+	])("preserves refusals and error discussion: %s", async (text) => {
+		await expect(geminiSnapshot(fakePage([text]).page)).resolves.toMatchObject({ responsePresent: true, text });
+	});
+
+	it("preserves exact error templates inside quotes or code markup", async () => {
+		await expect(geminiSnapshot(fakePage([{ text: executionError, quoted: true }]).page)).resolves.toMatchObject({
+			responsePresent: true,
+		});
+	});
+
+	it("does not classify an incomplete streaming sentence as a whole-message error", async () => {
+		await expect(geminiSnapshot(fakePage([executionError], true).page)).resolves.toMatchObject({ running: true });
+	});
+
+	it.each(["Regenerate", "Redo", "Try again with a different example"])(
+		"ignores ordinary action %s",
+		async (retry) => {
+			await expect(geminiSnapshot(fakePage([{ text: "answer", retry }]).page)).resolves.toMatchObject({
+				responsePresent: true,
+			});
+		},
+	);
+
+	it("ignores error surfaces and retry controls on older responses", async () => {
+		const { page } = fakePage([{ text: executionError, errorSurface: true, retry: "Retry" }, "new answer"]);
+		await expect(geminiSnapshot(page, executionError)).resolves.toMatchObject({
+			text: "new answer",
+			responsePresent: true,
+		});
+	});
+
+	it("ignores an unchanged previous error while waiting for a new turn", async () => {
+		const { page } = fakePage([{ text: executionError, errorSurface: true, retry: "Retry" }]);
+		await expect(geminiSnapshot(page, executionError)).resolves.toMatchObject({ responsePresent: false });
+	});
+
+	it("does not fall back to older markdown while a new empty response starts", async () => {
+		await expect(geminiSnapshot(fakePage([executionError, {}]).page)).resolves.toMatchObject({
+			responsePresent: false,
+			text: "",
+		});
+	});
+
 	it("is not present when the newest response still equals the previous turn text", async () => {
 		const { page } = fakePage(["old answer"]);
 		expect(await geminiSnapshot(page, "old answer")).toMatchObject({
