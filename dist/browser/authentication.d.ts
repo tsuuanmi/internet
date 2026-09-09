@@ -1,8 +1,8 @@
-export type AuthenticationEvidence = "authenticated-surface" | "login-url" | "login-surface" | "challenge-url" | "challenge-surface" | "timeout";
+export type AuthenticationEvidence = "authenticated-surface" | "authenticated-session" | "login-url" | "login-surface" | "challenge-url" | "challenge-surface" | "timeout";
 /** Ephemeral provider evidence; only signed-out may change durable account state. */
 export type AuthenticationAssessment = {
     state: "authenticated";
-    evidence: "authenticated-surface";
+    evidence: "authenticated-surface" | "authenticated-session";
 } | {
     state: "signed-out";
     evidence: "login-url" | "login-surface";

@@ -7,14 +7,17 @@ import {
 	CHATGPT_EFFORT_ITEM_SELECTOR,
 	CHATGPT_EFFORT_MENU_SELECTOR,
 	CHATGPT_EFFORT_SLIDER_SELECTOR,
+	CHATGPT_SESSION_PATH,
 	CHATGPT_STOP_BUTTON_SELECTOR,
 	CHATGPT_SUBSCRIPTION_FAILURE_SELECTOR,
 	CHATGPT_THINKING_LEVEL_INDEX,
 	chatgptAuthenticationAssessment,
+	chatgptAuthenticationDiagnostic,
 	chatgptLastAssistantTurnText,
 	chatgptPromptTextMatches,
 	chatgptSelectThinkingLevel,
 	chatgptSend,
+	chatgptSessionProbe,
 	chatgptSnapshot,
 	chatgptWaitAuthenticationAssessment,
 	parseChatGptEffortSliderState,
@@ -41,9 +44,15 @@ function fakePage(turns: string[]): { page: Page } {
 	return { page };
 }
 
-function authenticationPage(url: string, composerCount = 0, accountCount = 0): Page {
+function authenticationPage(
+	url: string,
+	composerCount = 0,
+	accountCount = 0,
+	sessionProbe?: { available: boolean; authenticated: boolean; status?: number },
+): Page {
 	return {
 		url: () => url,
+		...(sessionProbe === undefined ? {} : { evaluate: async () => sessionProbe }),
 		locator(selector: string) {
 			const count =
 				selector === CHATGPT_COMPOSER_SELECTOR
@@ -133,6 +142,55 @@ describe("latestConclusiveAssessment", () => {
 		expect(latestConclusiveAssessment(signedOut, unconfirmed)).toEqual(signedOut);
 		expect(latestConclusiveAssessment(unconfirmed, authenticated)).toEqual(authenticated);
 		expect(latestConclusiveAssessment(authenticated, signedOut)).toEqual(authenticated);
+	});
+});
+
+describe("chatgptSessionProbe", () => {
+	it("accepts a valid provider session even when account-control DOM is absent", async () => {
+		const page = authenticationPage("https://chatgpt.com/", 1, 0, {
+			available: true,
+			authenticated: true,
+			status: 200,
+		});
+		await expect(chatgptSessionProbe(page)).resolves.toEqual({
+			available: true,
+			authenticated: true,
+			status: 200,
+		});
+		await expect(chatgptAuthenticationAssessment(page)).resolves.toEqual({
+			state: "authenticated",
+			evidence: "authenticated-session",
+		});
+	});
+
+	it("falls back to the authenticated DOM surface when the session endpoint is unavailable", async () => {
+		const page = authenticationPage("https://chatgpt.com/", 1, 1, {
+			available: false,
+			authenticated: false,
+		});
+		await expect(chatgptAuthenticationAssessment(page)).resolves.toEqual({
+			state: "authenticated",
+			evidence: "authenticated-surface",
+		});
+	});
+
+	it("returns only sanitized session and surface diagnostics", async () => {
+		expect(CHATGPT_SESSION_PATH).toBe("/api/auth/session");
+		const diagnostic = await chatgptAuthenticationDiagnostic(
+			authenticationPage("https://chatgpt.com/?secret=query", 1, 0, {
+				available: true,
+				authenticated: false,
+				status: 200,
+			}),
+		);
+		expect(diagnostic).toMatchObject({
+			originPath: "https://chatgpt.com/",
+			session: { available: true, authenticated: false, status: 200 },
+			composerCount: 1,
+			accountControlCount: 0,
+		});
+		expect(JSON.stringify(diagnostic)).not.toContain("secret=query");
+		expect(JSON.stringify(diagnostic)).not.toContain("accessToken");
 	});
 });
 

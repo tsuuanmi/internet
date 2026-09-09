@@ -3,6 +3,7 @@ import { sleep } from "#internet/core/sleep";
 
 export type AuthenticationEvidence =
 	| "authenticated-surface"
+	| "authenticated-session"
 	| "login-url"
 	| "login-surface"
 	| "challenge-url"
@@ -11,7 +12,7 @@ export type AuthenticationEvidence =
 
 /** Ephemeral provider evidence; only signed-out may change durable account state. */
 export type AuthenticationAssessment =
-	| { state: "authenticated"; evidence: "authenticated-surface" }
+	| { state: "authenticated"; evidence: "authenticated-surface" | "authenticated-session" }
 	| { state: "signed-out"; evidence: "login-url" | "login-surface" }
 	| { state: "challenge"; evidence: "challenge-url" | "challenge-surface" }
 	| { state: "unconfirmed"; evidence: "timeout" };
