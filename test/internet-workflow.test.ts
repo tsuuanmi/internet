@@ -3,13 +3,13 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
+import { defineInternetWorkflowTool, type WorkflowTestDependencies } from "#internet/tools/internet-workflow";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 
 const roots: string[] = [];
 
-function tool() {
+function tool(testDependencies: WorkflowTestDependencies = {}) {
 	const root = mkdtempSync(join(tmpdir(), "internet-workflow-tool-"));
 	roots.push(root);
 	const jobs = new WorkflowJobStore(root);
@@ -20,10 +20,10 @@ function tool() {
 			return engine.cancel(jobId);
 		},
 	};
-	return defineInternetWorkflowTool(engine, driver);
+	return defineInternetWorkflowTool(engine, driver, testDependencies);
 }
 
-const exec = { agent: { id: "agent-11" } } as never;
+const exec = { agent: { id: "agent-11" }, signal: new AbortController().signal } as never;
 
 afterEach(async () => {
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -82,6 +82,31 @@ describe("internet_workflow", () => {
 			ok: false,
 			operation: "status",
 			message: "status requires jobId",
+		});
+	});
+
+	it("preflights every semantic account before starting an acceptance workflow", async () => {
+		const browser = {
+			async status(accountId: "chatgpt-thinker" | "chatgpt-writer" | "gemini-thinker") {
+				return {
+					accountId,
+					provider: accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
+					state: accountId === "chatgpt-writer" ? ("reauth-required" as const) : ("ready" as const),
+					accountPath: `/accounts/${accountId}.json`,
+				};
+			},
+		};
+		const workflow = tool({ browser: browser as never });
+		const testExec = {
+			agent: { id: "agent-11", session: { header: { cwd: "/repo" } } },
+			signal: new AbortController().signal,
+		} as never;
+		await expect(workflow.execute({ operation: "test" }, testExec)).resolves.toMatchObject({
+			ok: false,
+			operation: "test",
+			result: "FAIL",
+			accountPreflight: expect.stringContaining("chatgpt-writer=reauth-required"),
+			message: expect.stringContaining("workflow test not started"),
 		});
 	});
 });
