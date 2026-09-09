@@ -141,8 +141,6 @@ export {
 export type { BrowserConfig, ChatGptThinkingLevel, WebProvider } from "#internet/core/config";
 export { CHATGPT_THINKING_LEVELS, Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
-export type { TeamPromptStrategy, TeamPromptStrategyId } from "#internet/team/prompt-strategy";
-export { getTeamPromptStrategy, TEAM_PROMPT_STRATEGIES } from "#internet/team/prompt-strategy";
 export type {
 	OtherContribution,
 	TeamFailure,
@@ -155,6 +153,8 @@ export type {
 	TeamTurn,
 } from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
+export type { TeamPromptStrategy, TeamPromptStrategyId } from "#internet/team/prompt-strategy";
+export { getTeamPromptStrategy, TEAM_PROMPT_STRATEGIES } from "#internet/team/prompt-strategy";
 export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
@@ -183,7 +183,12 @@ export {
 	WorkflowHandoffStoreError,
 } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
-export { WorkflowOperator, WorkflowOperatorError, formatWorkflowList, formatWorkflowStatus } from "#internet/workflow/operator";
+export {
+	WorkflowOperator,
+	WorkflowOperatorError,
+	formatWorkflowList,
+	formatWorkflowStatus,
+} from "#internet/workflow/operator";
 export type {
 	WorkflowCleanupAudit,
 	WorkflowCleanupCandidate,
@@ -197,7 +202,11 @@ export {
 } from "#internet/workflow/retention";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
-export type { WorkflowTeamContext, WorkflowTeamObservation, WorkflowTeamObserver } from "#internet/workflow/team-observer";
+export type {
+	WorkflowTeamContext,
+	WorkflowTeamObservation,
+	WorkflowTeamObserver,
+} from "#internet/workflow/team-observer";
 export { DurableWorkflowTeamObserver, parseWorkflowTeamSessionId } from "#internet/workflow/team-observer";
 export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
