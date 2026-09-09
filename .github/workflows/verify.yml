@@ -2,9 +2,10 @@ name: Verify
 
 on:
   push:
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -15,82 +16,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Remove legacy remote login compatibility
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          tool = Path("src/tools/internet-browser.ts")
-          text = tool.read_text()
-          old = '''\t\t\tremote: {\n\t\t\t\ttype: "boolean",\n\t\t\t\tdescription:\n\t\t\t\t\t"Deprecated compatibility flag. Login always uses the same invisible loopback noVNC port flow whether the operator is local or connecting through SSH forwarding.",\n\t\t\t},\n'''
-          assert old in text
-          text = text.replace(old, "")
-          old = '''\t\t\tconst remote = args.remote;\n\t\t\tif (remote !== undefined && typeof remote !== "boolean") {\n\t\t\t\treturn { ok: false, action, message: "remote must be a boolean" };\n\t\t\t}\n\t\t\tif (remote !== undefined && typedAction !== "login" && typedAction !== "login_all") {\n\t\t\t\treturn { ok: false, action, message: "remote is valid only for login and login_all" };\n\t\t\t}\n\n'''
-          assert old in text
-          text = text.replace(old, "")
-          text = text.replace('manager.login(accountId, { remote: true })', 'manager.login(accountId)')
-          tool.write_text(text)
-
-          runtime = Path("src/browser/runtime.ts")
-          text = runtime.read_text()
-          text = text.replace('import { spawn } from "node:child_process";\n', '')
-          old = '''export interface LoginOptions {\n\tremote?: boolean;\n}\n\n'''
-          assert old in text
-          text = text.replace(old, "")
-          text, count = re.subn(
-              r'\n\tprivate async launchNormalLogin\(accountId: AccountId\): Promise<void> \{.*?\n\t\}\n\n\tprivate async captureLoginState',
-              '\n\tprivate async captureLoginState',
-              text,
-              flags=re.S,
-          )
-          assert count == 1, count
-          old = '''\t/** Open local or SSH-forwarded normal Chrome for sign-in. */\n\tasync login(accountId: AccountId, options: LoginOptions = {}): Promise<AccountStatus> {\n\t\treturn this.runAccountExclusive(accountId, () => this.loginAccount(accountId, options));\n\t}\n\n\tprivate async loginAccount(accountId: AccountId, options: LoginOptions): Promise<AccountStatus> {'''
-          new = '''\t/** Open the account's loopback noVNC login desktop for sign-in. */\n\tasync login(accountId: AccountId): Promise<AccountStatus> {\n\t\treturn this.runAccountExclusive(accountId, () => this.loginAccount(accountId));\n\t}\n\n\tprivate async loginAccount(accountId: AccountId): Promise<AccountStatus> {'''
-          assert old in text
-          text = text.replace(old, new)
-          old = '''\t\tconst remote = options.remote === true || !this.display.hasInteractiveDisplay();\n\t\tif (!remote) {\n\t\t\tthis.display.requireInteractiveDisplay();\n\t\t\tawait this.launchNormalLogin(accountId);\n\t\t\tawait this.persistLoginProfile(accountId);\n\t\t\treturn this.accountStatus(accountId);\n\t\t}\n'''
-          assert old in text
-          text = text.replace(old, "")
-          runtime.write_text(text)
-
-          test = Path("test/internet-browser.test.ts")
-          text = test.read_text()
-          text = text.replace('expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker", { remote: true });', 'expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker");')
-          text = text.replace('expect(browser.login).toHaveBeenCalledWith("chatgpt-writer", { remote: true });', 'expect(browser.login).toHaveBeenCalledWith("chatgpt-writer");')
-          text = text.replace('expect(browser.login).toHaveBeenCalledWith("gemini-thinker", { remote: true });', 'expect(browser.login).toHaveBeenCalledWith("gemini-thinker");')
-          text, count = re.subn(
-              r'\n\tit\("ignores the legacy remote flag value and still uses invisible login", async \(\) => \{.*?\n\t\}\);\n',
-              '\n',
-              text,
-              flags=re.S,
-          )
-          assert count == 1, count
-          test.write_text(text)
-
-          readme = Path("README.md")
-          text = readme.read_text()
-          text = text.replace('  action: "login" | "status" | "stop",\n', '  action: "login" | "status" | "stop" | "login_all" | "status_all" | "stop_all",\n')
-          text = text.replace('  remote?: boolean\n', '')
-          old = 'On displayless Linux, remote login uses a tokenized loopback noVNC page intended for SSH port forwarding. Default stable ports are:\n'
-          new = 'Every login uses a tokenized loopback noVNC page on the server. Open the returned loopback URL directly when working on that server, or SSH-forward the port and open the same URL from another machine. After sign-in, press **Save account**; do not close Chrome manually. Default stable ports are:\n'
-          assert old in text
-          text = text.replace(old, new)
-          readme.write_text(text)
-          PY
       - run: npm ci
-      - run: npx biome format --write src/tools/internet-browser.ts src/browser/runtime.ts test/internet-browser.test.ts
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Commit clean-break login API and generated dist
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/tools/internet-browser.ts src/browser/runtime.ts test/internet-browser.test.ts README.md dist
-          if ! git diff --cached --quiet; then
-            git commit -m "refactor: remove legacy remote login flag"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
-      - run: git diff --exit-code
+      - run: git diff --exit-code -- dist
       - run: npm run verify-package
