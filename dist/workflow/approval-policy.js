@@ -83,15 +83,31 @@ export function classifyWorkflowConfirmation(context, observation) {
         }
     }
     if (observation.action === "merge_pull_request") {
-        if (context.pullRequest !== undefined) {
-            if (observation.prNumber !== undefined && observation.prNumber !== context.pullRequest.number) {
-                return { kind: "unknown", reason: "merge confirmation PR number does not match the workflow PR" };
-            }
-            if (observation.branch !== undefined && observation.branch !== context.pullRequest.head) {
-                return { kind: "unknown", reason: "merge confirmation branch does not match the workflow PR head" };
-            }
+        if (context.pullRequest === undefined) {
+            return context.state === "MERGING"
+                ? { kind: "unknown", reason: "merge confirmation requires the persisted workflow PR" }
+                : { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
         }
-        return { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
+        if (observation.prNumber !== undefined && observation.prNumber !== context.pullRequest.number) {
+            return { kind: "unknown", reason: "merge confirmation PR number does not match the workflow PR" };
+        }
+        if (observation.branch !== undefined && observation.branch !== context.pullRequest.head) {
+            return { kind: "unknown", reason: "merge confirmation branch does not match the workflow PR head" };
+        }
+        if (context.state !== "MERGING" || context.mergeAuthorization === undefined) {
+            return { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
+        }
+        const authorization = context.mergeAuthorization;
+        if (normalizeGitHubRepository(authorization.repository) !== authoritativeRepository) {
+            return { kind: "unknown", reason: "merge authorization repository does not match workflow authority" };
+        }
+        if (authorization.number !== context.pullRequest.number ||
+            authorization.url !== context.pullRequest.url ||
+            authorization.head !== context.pullRequest.head ||
+            authorization.headSha !== context.pullRequest.headSha) {
+            return { kind: "unknown", reason: "merge authorization is stale or bound to a different pull request" };
+        }
+        return { kind: "auto-approve", action: "merge_pull_request" };
     }
     const allowed = allowedActions(context.state);
     if (allowed === undefined || !allowed.has(observation.action)) {

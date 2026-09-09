@@ -1,6 +1,15 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { WorkflowEngineError } from "#internet/workflow/engine";
-export const WORKFLOW_OPERATIONS = ["start", "status", "approve", "reject", "cancel", "continue"];
+export const WORKFLOW_OPERATIONS = [
+    "start",
+    "status",
+    "request_merge",
+    "approve",
+    "merge",
+    "reject",
+    "cancel",
+    "continue",
+];
 function runsSummary(runs) {
     return runs
         .map((run) => `${run.lane}:${run.status}:attempts=${run.attempts}${run.error === undefined ? "" : `:error=${run.error}`}`)
@@ -47,6 +56,10 @@ function project(job) {
                 pendingAction: job.pendingAction.kind,
                 pendingMessage: job.pendingAction.message,
             }),
+        ...(job.mergeAuthorization === undefined ? {} : { authorizedHeadSha: job.mergeAuthorization.headSha }),
+        ...(job.mergeReceipt === undefined
+            ? {}
+            : { mergedSha: job.mergeReceipt.mergedSha, mergeExecutor: job.mergeReceipt.executorAccountId }),
         updatedAt: job.updatedAt,
     };
 }
@@ -93,6 +106,9 @@ export function defineInternetWorkflowTool(engine) {
                     prHeadSha: { type: "string" },
                     pendingAction: { type: "string" },
                     pendingMessage: { type: "string" },
+                    authorizedHeadSha: { type: "string" },
+                    mergedSha: { type: "string" },
+                    mergeExecutor: { type: "string" },
                     updatedAt: { type: "string" },
                     message: { type: "string" },
                 },
@@ -133,13 +149,17 @@ export function defineInternetWorkflowTool(engine) {
                 const expectedHeadSha = typeof args.expectedHeadSha === "string" ? args.expectedHeadSha : undefined;
                 const job = operation === "status"
                     ? engine.status(args.jobId)
-                    : operation === "cancel"
-                        ? engine.cancel(args.jobId)
-                        : operation === "continue"
-                            ? engine.continue(args.jobId)
-                            : operation === "approve"
-                                ? engine.approve({ jobId: args.jobId, expectedHeadSha })
-                                : engine.reject({ jobId: args.jobId, expectedHeadSha });
+                    : operation === "request_merge"
+                        ? engine.requestMergeAuthorization(args.jobId)
+                        : operation === "merge"
+                            ? await engine.runWriterMerge(args.jobId, exec.signal)
+                            : operation === "cancel"
+                                ? engine.cancel(args.jobId)
+                                : operation === "continue"
+                                    ? engine.continue(args.jobId)
+                                    : operation === "approve"
+                                        ? engine.approve({ jobId: args.jobId, expectedHeadSha })
+                                        : engine.reject({ jobId: args.jobId, expectedHeadSha });
                 return { ok: true, operation, ...project(job) };
             }
             catch (error) {

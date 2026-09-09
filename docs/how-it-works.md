@@ -170,8 +170,8 @@ observability is not part of workflow correctness.
 
 `internet_workflow status` projects payload-free debug summaries for research/review lanes, handoff hashes and
 delivery state, writer identity, PR/head, review cycle, pending action, last event, and last error. A polling-style
-`wait(job_id)` remains optional and is not part of orchestration. The head-SHA-bound user merge authorization and
-execution gate remains P9 and is not implied by reaching `READY_FOR_MERGE_AUTHORIZATION`.
+`wait(job_id)` remains optional and is not part of orchestration. Reaching `READY_FOR_MERGE_AUTHORIZATION` still does not authorize a merge. `request_merge` creates one concrete ACTION_REQUIRED request containing the PR URL, PASS/PASS review state, CI state when known, and exact expected head SHA. `approve` persists an authorization bound to repository + PR + head branch + head SHA and moves the job to `MERGING`. The writer then receives separate `MERGE_AUTHORIZED` control, fetches the live PR immediately before merge, refuses a changed head, and reports the verified pre-merge head plus resulting merge commit SHA. The Website confirmation controller auto-allows merge only in `MERGING` when the persisted authorization still exactly matches the authoritative PR. Success records a merge receipt and transitions to `DONE`.
+
 
 ## Deep Research request flow
 

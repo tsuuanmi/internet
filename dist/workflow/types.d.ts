@@ -42,6 +42,25 @@ export interface WorkflowPullRequestReceipt {
     readonly head: string;
     readonly headSha: string;
 }
+export interface WorkflowMergeAuthorization {
+    readonly repository: string;
+    readonly number: number;
+    readonly url: string;
+    readonly head: string;
+    readonly headSha: string;
+    readonly reviewCycle: number;
+    readonly authorizedAt: string;
+    readonly authorizedByOwnerSessionId: string;
+}
+export interface WorkflowMergeReceipt {
+    readonly repository: string;
+    readonly number: number;
+    readonly url: string;
+    readonly headSha: string;
+    readonly mergedSha: string;
+    readonly executorAccountId: "chatgpt-writer";
+    readonly mergedAt: string;
+}
 export interface WorkflowPendingAction {
     readonly kind: "MERGE_AUTHORIZATION_REQUIRED" | "WRITER_BLOCKED" | "UNKNOWN_CONFIRMATION" | "REVIEW_LIMIT_REACHED" | "ACCOUNT_REAUTH_REQUIRED";
     readonly message: string;
@@ -76,6 +95,8 @@ export interface WorkflowJob {
         readonly accountId: "chatgpt-writer";
     };
     readonly pullRequest?: WorkflowPullRequestReceipt;
+    readonly mergeAuthorization?: WorkflowMergeAuthorization;
+    readonly mergeReceipt?: WorkflowMergeReceipt;
     readonly reviewCycle: number;
     readonly pendingAction?: WorkflowPendingAction;
     readonly lastEvent?: WorkflowEventRecord;

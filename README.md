@@ -179,7 +179,7 @@ records stay inside the control plane, while `PROGRESS` and `ACTION_REQUIRED` re
 owner Agent through DSH's native `agent.inject()` path. This adds durable model-facing context for Local's next
 admitted step without waking an idle Local, and never includes research/reviewer payloads. `internet_workflow status`
 also exposes payload-free team, handoff, writer, PR, review-cycle, pending-action, last-event, and last-error summaries.
-The explicit head-SHA-bound merge gate remains a later phase. The workflow is registered only when both thinker
+The merge gate is head-SHA-bound: a reviewed PR first becomes an ACTION_REQUIRED request, explicit approval persists the exact repository/PR/head authorization, and only then may the writer revalidate the live PR and execute the merge. A changed head invalidates stale authorization. The workflow is registered only when both thinker
 accounts are enabled; the writer path additionally requires a ready `chatgpt-writer` account when implementation is driven.
 
 ## Install

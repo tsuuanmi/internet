@@ -31,6 +31,13 @@ export type WorkflowWriterResult = {
     readonly status: "PR_OPEN";
     readonly pullRequest: WorkflowPullRequestReceipt;
 } | {
+    readonly status: "MERGED";
+    readonly repository: string;
+    readonly number: number;
+    readonly url: string;
+    readonly headSha: string;
+    readonly mergedSha: string;
+} | {
     readonly status: "BLOCKED";
     readonly message: string;
 } | {
