@@ -1,0 +1,36 @@
+name: P11 Finalize
+
+on:
+  push:
+    branches:
+      - impl/p11-workflow-driver
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: python3 scripts/p11-finalize.py
+      - run: npm ci
+      - run: npx biome check --write src test scripts
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run verify-package
+      - name: Commit P11 finalize changes
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src test dist docs README.md
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'fix: preserve workflow recovery across shutdown'
+          git push
