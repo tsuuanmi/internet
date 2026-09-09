@@ -112,7 +112,7 @@ function workflowTestObjective(marker: string): string {
 }
 
 function testFailure(job: WorkflowJob, message: string) {
-	return { ok: false, operation: "test", result: "FAIL", ...project(job), message };
+	return { ok: false, operation: "test", result: "FAIL" as const, ...project(job), message };
 }
 
 async function runAcceptanceTest(
@@ -125,7 +125,7 @@ async function runAcceptanceTest(
 		return {
 			ok: false,
 			operation: "test",
-			result: "FAIL",
+			result: "FAIL" as const,
 			message: "workflow test requires browser account status access",
 		};
 	}
@@ -135,13 +135,13 @@ async function runAcceptanceTest(
 		return {
 			ok: false,
 			operation: "test",
-			result: "FAIL",
+			result: "FAIL" as const,
 			message: "workflow test requires a session working directory",
 		};
 	}
 	const ownerSessionId = String(agent?.id ?? "");
 	if (ownerSessionId === "")
-		return { ok: false, operation: "test", result: "FAIL", message: "workflow test requires an owner session" };
+		return { ok: false, operation: "test", result: "FAIL" as const, message: "workflow test requires an owner session" };
 
 	const statuses = await Promise.all(ACCOUNT_IDS.map((accountId) => dependencies.browser!.status(accountId)));
 	const accountPreflight = statuses.map((status) => `${status.accountId}=${status.state}`).join(", ");
@@ -150,7 +150,7 @@ async function runAcceptanceTest(
 		return {
 			ok: false,
 			operation: "test",
-			result: "FAIL",
+			result: "FAIL" as const,
 			accountPreflight,
 			message: `workflow test not started; required accounts are not ready: ${unavailable.map((status) => `${status.accountId}=${status.state}`).join(", ")}`,
 		};
@@ -176,7 +176,7 @@ async function runAcceptanceTest(
 			return {
 				ok: true,
 				operation: "test",
-				result: "PASS",
+				result: "PASS" as const,
 				accountPreflight,
 				...project(current),
 				message: "full workflow acceptance test completed through real merge and DONE",
@@ -228,7 +228,7 @@ async function runAcceptanceTest(
 	return {
 		ok: false,
 		operation: "test",
-		result: "TIMEOUT",
+		result: "TIMEOUT" as const,
 		accountPreflight,
 		...project(current),
 		message: `workflow acceptance test timed out after ${timeoutMs} ms; durable job and PR were left intact for inspection`,
