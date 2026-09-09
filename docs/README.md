@@ -1,46 +1,58 @@
-# Internet Team Documentation
+# Internet Runtime Documentation
 
-This directory separates the Internet Team design into focused documents rather than a single giant architecture file.
+- **Status:** current as-built documentation
+- **Last synchronized:** 2026-09-09
+- **Baseline:** `main` after P13 operations/retention (`eaa8f15baea0ea6b153599f7c259864a4e482a43`)
+
+This directory documents the current `@tsuuanmi/internet` runtime after the P0-P13 workflow roadmap was completed. The coding workflow is no longer a target-only design: the durable engine, automatic driver, exact handoffs, writer path, PR review/remediation loop, exact-head health gate, explicit merge authorization, and operator-only retention cleanup are implemented.
 
 ## Start here
 
-- [`internet-team-architecture.md`](./internet-team-architecture.md) — concise architecture overview and system boundaries.
-- [`SRS.md`](./SRS.md) — normative software requirements for the target runtime.
-- [`WORKFLOW.md`](./WORKFLOW.md) — end-to-end coding workflow and user-visible approval behavior.
-- [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic runtime/state-machine design behind `/workflow <task>`.
-- [`ROADMAP.md`](./ROADMAP.md) — implementation phases and dependency order.
-- [`TODO.md`](./TODO.md) — concrete engineering work, ordered by ROI and dependency.
-- [`UPDATE.md`](./UPDATE.md) — validated discoveries and changes from previous assumptions.
+- [`internet-team-architecture.md`](./internet-team-architecture.md) — concise architecture and authority/data/control boundaries.
+- [`how-it-works.md`](./how-it-works.md) — current server-side implementation and runtime behavior.
+- [`WORKFLOW.md`](./WORKFLOW.md) — user-visible `/workflow <task>` behavior and stop boundaries.
+- [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic state machine, driver, durable receipts, retries, health and merge gates.
+- [`SRS.md`](./SRS.md) — normative requirements satisfied by the current coding workflow.
+- [`ROADMAP.md`](./ROADMAP.md) — completed P0-P13 roadmap and explicitly deferred directions.
+- [`TODO.md`](./TODO.md) — closed implementation checklist plus deferred work that is intentionally not scheduled.
+- [`UPDATE.md`](./UPDATE.md) — consolidated implementation delta through P13.
 
 ## Architecture decisions
 
-- [`ADR/0001-local-control-plane.md`](./ADR/0001-local-control-plane.md) — Local is the user-facing authority broker; WorkflowEngine is the deterministic control plane.
-- [`ADR/0002-verbatim-handoffs.md`](./ADR/0002-verbatim-handoffs.md) — team and review outputs are delivered verbatim to the writer.
-- [`ADR/0003-multi-account-capability-routing.md`](./ADR/0003-multi-account-capability-routing.md) — separate ChatGPT thinker and writer accounts with capability-aware routing.
-- [`ADR/0004-pr-centric-review-loop.md`](./ADR/0004-pr-centric-review-loop.md) — implementation and post-review are centered on a GitHub PR.
-- [`ADR/0005-durable-jobs-and-events.md`](./ADR/0005-durable-jobs-and-events.md) — long-running work uses durable jobs and event-driven continuation.
-- [`ADR/0006-workflow-command-starts-real-engine.md`](./ADR/0006-workflow-command-starts-real-engine.md) — `/workflow` remains explicit UX but triggers real deterministic code.
-- [`ADR/0007-approval-policy.md`](./ADR/0007-approval-policy.md) — scoped implementation/PR confirmations may auto-allow; merge requires user authorization.
-- [`ADR/0008-direct-team-execution.md`](./ADR/0008-direct-team-execution.md) — WorkflowEngine runs team primitives directly instead of using free-form DSH subagents as intermediaries.
+The ADRs are accepted historical decisions and are intentionally not rewritten merely because implementation has caught up with them:
 
-## Current implementation documentation
+- [`ADR/0001-local-control-plane.md`](./ADR/0001-local-control-plane.md) — Local brokers user authority; WorkflowEngine owns deterministic orchestration.
+- [`ADR/0002-verbatim-handoffs.md`](./ADR/0002-verbatim-handoffs.md) — team/reviewer finals move verbatim to the writer.
+- [`ADR/0003-multi-account-capability-routing.md`](./ADR/0003-multi-account-capability-routing.md) — semantic account identity and capability-aware routing.
+- [`ADR/0004-pr-centric-review-loop.md`](./ADR/0004-pr-centric-review-loop.md) — the PR is the canonical implementation/review artifact.
+- [`ADR/0005-durable-jobs-and-events.md`](./ADR/0005-durable-jobs-and-events.md) — long-running work is durable and event-driven.
+- [`ADR/0006-workflow-command-starts-real-engine.md`](./ADR/0006-workflow-command-starts-real-engine.md) — `/workflow` starts real deterministic code.
+- [`ADR/0007-approval-policy.md`](./ADR/0007-approval-policy.md) — scoped implementation confirmation policy and explicit merge authority.
+- [`ADR/0008-direct-team-execution.md`](./ADR/0008-direct-team-execution.md) — workflow teams run directly over the lower-level browser team runtime.
 
-- [`how-it-works.md`](./how-it-works.md) — current implemented behavior.
-- [`chatgpt-ui-inspection.md`](./chatgpt-ui-inspection.md) — ChatGPT website UI observations.
-- [`gemini-ui-inspection.md`](./gemini-ui-inspection.md) — Gemini website UI observations.
-- [`provider-ui-inspection.md`](./provider-ui-inspection.md) — provider-agnostic UI observations.
+## Provider UI inspection notes
 
-## Document roles
+These documents describe observed Website surfaces used by browser automation. They are operational observations rather than workflow-roadmap status documents, so the P13 documentation sync does not rewrite them unless the observed UI changes:
+
+- [`chatgpt-ui-inspection.md`](./chatgpt-ui-inspection.md)
+- [`gemini-ui-inspection.md`](./gemini-ui-inspection.md)
+- [`provider-ui-inspection.md`](./provider-ui-inspection.md)
+
+## Document authority
 
 | Document | Purpose | Authority |
 | --- | --- | --- |
-| SRS | What the target system must do | Normative target requirements |
-| ADR | Why a major design choice was made | Accepted design decision |
-| WORKFLOW | How the user-visible coding flow behaves | Operational design |
-| WORKFLOW-ENGINE | How deterministic orchestration/state works | Runtime design |
-| ROADMAP | In what order to build it | Planning |
-| TODO | Concrete implementation tasks | Working plan |
-| UPDATE | What changed and what has been validated | Current design delta |
-| how-it-works | What the plugin does today | Current implementation |
+| `README.md` (repository root) | install, tools, commands, operator usage | public usage reference |
+| `how-it-works.md` | current implementation | as-built source of truth |
+| `SRS.md` | required invariants | normative requirements |
+| `WORKFLOW.md` | end-to-end user flow | operational contract |
+| `WORKFLOW-ENGINE.md` | deterministic runtime/state | runtime design contract |
+| `internet-team-architecture.md` | concise architecture | architecture overview |
+| ADRs | why accepted choices exist | historical design authority |
+| `ROADMAP.md` | completed phases / deferred directions | planning history |
+| `TODO.md` | implementation closure / deferred items | working backlog boundary |
+| `UPDATE.md` | consolidated changes through latest phase | implementation delta |
 
-The target architecture documents describe desired behavior. They must not be confused with `how-it-works.md`, which remains the source for current implemented behavior until the corresponding changes land.
+## Current completion boundary
+
+The explicit coding-workflow roadmap is complete through P13. No P14 is implied. The following remain deliberately deferred until a concrete need justifies them: automatic task detection, Website-level cross-conversation/project memory as a correctness dependency, generic arbitrary DAG workflows, multi-writer pooling, a sophisticated artifact database, autonomous production deployment, and broad non-coding generalization.

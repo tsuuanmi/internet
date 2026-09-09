@@ -1,280 +1,197 @@
-# Internet Team Runtime Roadmap
+# Internet Runtime Roadmap
 
-- **Status:** Planning
-- **Date:** 2026-09-08
+- **Status:** P0-P13 complete
+- **Last synchronized:** 2026-09-09
 
-This roadmap orders implementation by dependency and expected ROI. It separates low-risk behavior fixes, identity/routing foundations, and the real `/workflow` runtime.
+The original coding-workflow roadmap is complete. This file now records what landed, in dependency order, and defines the boundary between implemented behavior and intentionally deferred ideas.
 
-## Phase 0 — Documentation split and architecture lock
+## Completed roadmap
 
-Goal: establish focused contracts before cross-cutting code changes.
+### P0 — behavior and identity contract
 
-Deliverables:
+Completed:
 
-- modular docs index;
-- SRS;
-- ADRs;
-- coding workflow spec;
-- workflow-engine design;
-- prioritized TODO;
-- concise architecture overview;
-- explicit distinction between current implementation and target design.
+- ChatGPT ordinary turns default to `high` reasoning;
+- team synthesis has an explicit account identity and defaults to `chatgpt-thinker`;
+- semantic `accountId` is separate from provider implementation metadata.
 
-Exit criteria:
+### P1 — clean-break multi-account foundation
 
-- core design choices have explicit documents and stable names;
-- future implementation PRs can cite requirements/ADRs instead of repeating rationale.
+Completed:
 
-## Phase 1 — Low-risk behavior fixes
+- `chatgpt-thinker`, `chatgpt-writer`, and `gemini-thinker` are first-class identities;
+- portable auth state, login profiles, browser pools, schedulers, conversation bindings, remote-login state, and commit queues are account-scoped;
+- authenticated runtime APIs require explicit account identity;
+- no provider-to-account fallback, v1 read-through, migration shim, or implicit legacy import is part of the architecture.
 
-Goal: implement independent changes that do not require multi-account storage refactoring.
+### P2 — real durable `/workflow`
 
-Work:
-
-- change default ChatGPT thinking level from `medium` to `high`;
-- update configuration docs/tests/system guidance;
-- make ChatGPT thinker the explicit default final team synthesizer instead of using `lastProvider`;
-- keep speaking order independent from synthesizer selection.
-
-Exit criteria:
-
-- ordinary ChatGPT turns select High by default;
-- team synthesis explicitly targets configured ChatGPT thinker identity.
-
-## Phase 2 — First-class account identity
-
-Goal: support two ChatGPT accounts safely.
-
-Work:
-
-- introduce `accountId` separate from `WebProvider`;
-- define semantic account aliases and roles;
-- make account storage paths account-aware;
-- make login profiles account-aware;
-- make browser/runtime maps account-aware;
-- make scheduler/lease state account-aware;
-- make conversation bindings account-aware;
-- provide compatibility mapping for existing single-account configs/state.
-
-Suggested initial aliases:
-
-```text
-chatgpt-thinker
-chatgpt-writer
-gemini-thinker
-```
-
-Exit criteria:
-
-- thinker and writer ChatGPT accounts can be logged in concurrently;
-- their cookies/storage/conversations/schedulers cannot collide;
-- existing single-account users have a migration or compatibility path.
-
-## Phase 3 — Account roles and capability routing
-
-Goal: route steps by required capability.
-
-Work:
-
-- model account roles/capabilities;
-- add thinker/reviewer/writer routing;
-- expose explicit account targeting internally where necessary;
-- enforce authoritative repository/base target before writer mutation;
-- keep technical GitHub capability separate from workflow authority.
-
-Exit criteria:
-
-- reasoning steps select thinker accounts;
-- code mutation selects writer account;
-- provider name alone no longer determines the security boundary.
-
-## Phase 4 — Workflow service skeleton
-
-Goal: make `/workflow <task>` start deterministic code instead of injecting one giant prompt.
-
-Work:
-
-- introduce `internet_workflow` service/tool surface;
-- add `WorkflowEngine` and `WorkflowJobStore` interfaces;
-- convert `/workflow` into a thin adapter that resolves repo/revision and calls `start`;
-- return `job_id` and initial state;
-- keep current prompt-only implementation behind a temporary compatibility path only if needed during migration.
-
-Exit criteria:
+Completed:
 
 ```text
 /workflow <task>
-  -> internet_workflow.start
-  -> persisted job
+-> resolve repository + exact base revision
+-> WorkflowEngine.start(...)
+-> durable job_id
 ```
 
-without relying on Local to simulate the workflow protocol.
+The old monolithic Local workflow prompt is gone.
 
-## Phase 5 — Direct team execution
+### P3 — direct workflow-owned team runtime
 
-Goal: preserve the useful background-team behavior without free-form DSH subagent mediation.
+Completed:
 
-Work:
+- deterministic research/review prompt builders;
+- two independent logical lanes;
+- direct lower-level browser team execution;
+- stable per-job Website sessions;
+- explicit `chatgpt-thinker` final synthesis;
+- lane-level retry/completion state.
 
-- add workflow-owned `TeamRunner` over the lower-level team runtime;
-- add deterministic `TeamPromptBuilder`;
-- generate distinct durable session identities per job/team/cycle;
-- run two logical thinking teams concurrently;
-- make ChatGPT thinker the explicit synthesizer;
-- persist team-run status/results;
-- retry failed team runs according to job policy.
+### P4 — exact durable handoffs
 
-Exit criteria:
+Completed:
+
+- SHA-256-bound exact UTF-8 payload storage;
+- deterministic logical handoff identity;
+- at-least-once Website delivery with durable idempotent acknowledgement;
+- exact A/B delivery ordering;
+- data payloads separated from trusted control messages.
+
+### P5 — persistent writer and PR receipt
+
+Completed:
+
+- one stable `chatgpt-writer` Website conversation per job;
+- exact research handoffs before `START_IMPLEMENTATION`;
+- deterministic implementation branch identity;
+- writer repository/base verification;
+- strict `PR_OPEN` or `BLOCKED` result parsing;
+- durable repository/PR/base/head/head-SHA receipt;
+- PR creation retry reconciliation instead of duplicate PR creation.
+
+### P6 — scoped Website confirmation policy
+
+Completed:
+
+- narrow GitHub confirmation recognition;
+- exact account/session/repository/state/branch-or-PR matching;
+- scoped auto-Allow for implementation/remediation actions only;
+- `UNKNOWN_CONFIRMATION` fail-closed state;
+- merge excluded from ordinary implementation authorization.
+
+### P7 — exact-head PR review/remediation
+
+Completed:
+
+- two independent review lanes inspect the actual PR;
+- strict reviewer JSON includes verdict plus exact `reviewedHeadSha`;
+- reviewer finals reach writer verbatim;
+- `APPLY_REVIEWS` is a separate control step;
+- remediation preserves the same PR and must advance the head;
+- review cycle limit defaults to three.
+
+### P8 — compact Local events
+
+Completed:
+
+- durable event classes `INTERNAL`, `PROGRESS`, `ACTION_REQUIRED`;
+- Local owner session persisted explicitly;
+- compact best-effort `agent.inject()` integration;
+- full research/review payloads stay out of Local progress context;
+- payload-free workflow status/debug projection.
+
+### P9 — exact-head merge authorization
+
+Completed:
+
+- `READY_FOR_MERGE_AUTHORIZATION` and `AWAITING_MERGE_AUTHORIZATION` boundaries;
+- explicit user approval bound to repository + PR + exact head SHA;
+- authorization invalidation when head changes;
+- `MERGE_AUTHORIZED` control separate from reviewer data;
+- Website merge Allow only in authorized `MERGING` state;
+- durable merge receipt and `DONE` transition.
+
+### P10 — restart/idempotency hardening
+
+Completed:
+
+- strict persisted-state validation;
+- durable restart recovery;
+- explicit retry/resume states rather than generic fallback;
+- handoff identity/tamper checks;
+- PR creation idempotency and exact branch reconciliation;
+- account/approval/transition recovery coverage.
+
+### P11 — automatic durable workflow driver
+
+Completed:
+
+- `WorkflowDriver` advances code-owned runnable states automatically;
+- `/workflow` and `internet_workflow start` enqueue immediately;
+- duplicate active runs deduplicate by `jobId`;
+- startup discovery resumes only safe runnable states;
+- human/action-required states remain stopped;
+- `approve` resumes authorized merge; rejection remains quiet;
+- cancellation settles in-flight work before persisting `CANCELLED`.
+
+### P12 — exact-head PR/CI health gate
+
+Completed:
+
+- durable health receipt bound to repository + PR + exact head SHA;
+- classifications: `PASS`, `FAIL`, `PENDING`, `NONE`, `UNKNOWN`;
+- read-only `CHECK_PR_HEALTH` writer control;
+- merge authorization requires acceptable current-head health;
+- changed/remediated head invalidates the old health receipt;
+- authorized merge re-checks health immediately before merge.
+
+### P13 — operations / retention
+
+Completed:
+
+- `DONE` jobs become cleanup-eligible after 30 days;
+- `CANCELLED` jobs after 14 days;
+- `internet_workflow_maintenance preview` exposes aged terminal candidates only;
+- cleanup requires exact `jobId` plus unchanged `updatedAt` from preview;
+- cleanup validates the exact handoff directory before deletion;
+- only the selected job and its handoffs are deleted;
+- a private durable cleanup audit receipt is retained;
+- repeated exact cleanup is audit-idempotent;
+- there is no background/scheduled deletion.
+
+## Current system milestone
+
+The standard coding path is now:
 
 ```text
-WorkflowEngine
-  -> Team A + Team B
-  -> exact final results
+/workflow task
+-> durable automatic research
+-> exact handoffs
+-> writer implementation + one PR
+-> exact-head independent review
+-> same-PR remediation loop if needed
+-> exact-head PR/CI health gate
+-> explicit user merge authorization
+-> pre-merge head + health revalidation
+-> writer merge
+-> DONE
+-> optional operator retention cleanup after policy age
 ```
 
-works without a child agent summarizing those results back to Local.
+## Deferred until a concrete need exists
 
-## Phase 6 — Handoff primitive
+These are not the next automatic phase and should not be implemented merely to continue numbering:
 
-Goal: remove Local summarization from the agent-to-agent data path.
+- automatic task detection instead of explicit `/workflow`;
+- Website account/project memory as a correctness or data-plane dependency;
+- generic arbitrary DAG workflow language;
+- multiple writer accounts / automatic writer pooling;
+- sophisticated artifact database;
+- autonomous production deployment;
+- broad generalization to non-coding workflows before a specific use case is defined;
+- synchronous `wait(job_id)` convenience unless a caller actually needs it.
 
-Work:
+## Rule for future roadmap work
 
-- durable handoff record;
-- exact payload preservation;
-- source/sequence/hash metadata outside payload;
-- deterministic delivery ordering;
-- delivery receipt/idempotency key;
-- separate `DATA` handoffs from `CONTROL` messages.
-
-Exit criteria:
-
-- Team A/B outputs reach writer unchanged;
-- Local does not receive full payload by default;
-- replay/retry does not unexpectedly duplicate delivery.
-
-## Phase 7 — Terminal writer integration
-
-Goal: connect durable workflow state to `chatgpt-writer`.
-
-Work:
-
-- persistent writer conversation identity;
-- deliver all required research handoffs;
-- send separate `START_IMPLEMENTATION` control message;
-- capture PR receipt;
-- support writer `BLOCKED` output;
-- support updating an existing PR during remediation;
-- enforce target repo/branch/PR scope.
-
-Exit criteria:
-
-```text
-Teams -> verbatim handoffs -> Writer -> PR
-```
-
-works without Local implementation/push.
-
-## Phase 8 — Scoped approval controller
-
-Goal: allow unattended creation of the reviewable PR while failing closed on ambiguity.
-
-Work:
-
-- detect Website confirmation UI;
-- classify recognized implementation/PR actions;
-- auto-confirm only when action/job/repository/branch-or-PR/state all match;
-- add `UNKNOWN_CONFIRMATION` exception state;
-- never treat generic `Allow` text alone as sufficient classification;
-- preserve explicit merge gate.
-
-Exit criteria:
-
-- routine branch/file/commit/PR confirmations can proceed automatically;
-- ambiguous confirmation stops safely;
-- merge remains unauthorized at this phase.
-
-## Phase 9 — PR review/remediation loop
-
-Goal: make Website teams review the real PR directly.
-
-Work:
-
-- start two independent review team runs after PR creation;
-- deterministic review prompts;
-- explicit ChatGPT synthesizer;
-- deliver review results verbatim to writer;
-- send separate `APPLY_REVIEWS` control message;
-- loop on the same PR;
-- configure initial `max_review_cycles` (recommended: 3);
-- escalate writer block, material conflict, or exhausted review limit to Local.
-
-Exit criteria:
-
-```text
-PR -> Review A/B -> Writer fixes -> PR -> review gates
-```
-
-works without Local pushing code between stages.
-
-## Phase 10 — Events and Local integration
-
-Goal: reproduce the best background-subagent UX without injecting raw reasoning into Local.
-
-Work:
-
-- INTERNAL / PROGRESS / ACTION_REQUIRED event classes;
-- host-native completion/event injection where DSH supports it;
-- compact PR/review progress receipts;
-- Local-facing status operation;
-- no busy polling as the primary mechanism.
-
-Exit criteria:
-
-- Local can start a job and continue other work;
-- completed/blocked/action-required jobs can re-enter Local later through compact events.
-
-## Phase 11 — Merge authorization
-
-Goal: make merge the normal human authority boundary.
-
-Work:
-
-- transition to `READY_FOR_MERGE_AUTHORIZATION` only after review gates pass;
-- present PR/head/review/CI state to Local/user;
-- persist user authorization bound to PR/head SHA;
-- re-check current head before merge;
-- after authorization, let writer execute merge and confirm Website merge `Allow` if present;
-- record merged SHA/executor.
-
-Exit criteria:
-
-- no merge can occur from the standard workflow without explicit user authorization;
-- a changed PR head invalidates stale authorization.
-
-## Phase 12 — Hardening and recovery
-
-Work:
-
-- restart recovery;
-- retries/backoff;
-- idempotent PR/merge actions;
-- account isolation tests;
-- handoff payload/hash tests;
-- workflow transition tests;
-- approval-classification tests;
-- audit trail;
-- job inspection/debug tooling;
-- retention/cleanup rules.
-
-## Phase 13 — Generalize beyond coding
-
-After the coding path is reliable, reuse the same primitives for:
-
-- research report workflows;
-- documentation synthesis;
-- scientific investigation loops;
-- automation/action workflows;
-- design review.
-
-Do not generalize prematurely if it weakens the coding workflow.
+A new phase should be added only when there is a concrete user problem, measurable ROI, and a clear authority/safety boundary. Preserve the existing clean-break architecture: deterministic code owns workflow transitions and authority gates; Website models own reasoning/implementation content; Local remains the user-facing authority broker.

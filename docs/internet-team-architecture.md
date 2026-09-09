@@ -1,301 +1,195 @@
 # Internet Team Architecture
 
-> **Status:** Target architecture overview  
-> **Current implementation:** see [`how-it-works.md`](./how-it-works.md)  
-> **Normative requirements:** see [`SRS.md`](./SRS.md)  
-> **User-visible coding flow:** see [`WORKFLOW.md`](./WORKFLOW.md)  
-> **Deterministic runtime design:** see [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md)
+> **Status:** current as-built architecture  
+> **Last synchronized:** 2026-09-09  
+> **Implementation:** [`how-it-works.md`](./how-it-works.md)  
+> **Operational flow:** [`WORKFLOW.md`](./WORKFLOW.md)  
+> **Runtime state machine:** [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md)
 
-This document is intentionally concise. Detailed requirements, decisions, workflow mechanics, roadmap, and implementation work are split into focused documents under `docs/`.
+## Goal
 
-## 1. Goal
+`@tsuuanmi/internet` is a browser-backed multi-account Website runtime that lets ChatGPT/Gemini reason and lets a separate ChatGPT writer perform scoped GitHub work while deterministic code preserves workflow state and user authority.
 
-Evolve `@tsuuanmi/internet` from browser-backed ChatGPT/Gemini tools into a durable workflow runtime where Website Agents can perform long-running reasoning, repository work, and review without forcing Local to absorb or rewrite all intermediate reasoning.
+The defining principle is:
 
-The central optimization is:
+> **User owns authority, Local brokers authority, WorkflowEngine/Driver own deterministic orchestration, Website teams reason, the writer performs scoped GitHub actions, and exact PR/head/health state gates merge.**
 
-> **Keep Local focused on the user and authority; let WorkflowEngine own deterministic orchestration; move broad cognition and repository mutation to Website Agents with the right context and capabilities.**
-
-## 2. Roles
-
-### User — authority
-
-The user owns the meaningful final acceptance decision in the standard coding workflow: merge authorization.
-
-### Local Agent — user-facing authority broker
-
-Local is responsible for:
-
-- receiving `/workflow <task>`;
-- preserving user intent and constraints;
-- receiving compact progress/action-required events;
-- carrying approval/rejection/cancel decisions;
-- exceptions and authority changes;
-- targeted verification when justified.
-
-Local is not required to perform broad code reading, routine implementation, normal-path summarization, or deterministic phase tracking.
-
-### WorkflowEngine — deterministic control plane
-
-WorkflowEngine owns:
-
-- durable job state;
-- exact workflow transitions;
-- team fan-out and retries;
-- deterministic workflow prompts;
-- verbatim handoff delivery;
-- writer/review sequencing;
-- PR/remediation lifecycle;
-- scoped confirmation handling;
-- merge authorization state;
-- compact event emission.
-
-### Website thinking teams — cognition plane
-
-Thinking/review teams perform repository reading, research, architecture/root-cause analysis, critique/debate, and independent PR review.
-
-Workflow-owned teams are run directly by the engine against the lower-level team runtime rather than through a free-form intermediary subagent.
-
-The default final synthesizer is `chatgpt-thinker`, independent of speaking order.
-
-### ChatGPT writer — terminal action plane
-
-A separate ChatGPT Website account acts as the GitHub writer.
-
-Validated capabilities include private-repository read, branch creation, file mutation, commit, pull-request creation/update, and merge when permitted.
-
-### GitHub / CI — shared empirical artifact
-
-The PR becomes the canonical shared implementation artifact for exact diff, commits, review, CI, remediation history, and merge state.
-
-## 3. Standard coding workflow
-
-```text
-USER
-  |
-  | /workflow <task>
-  v
-LOCAL
-  resolve objective / repo / revision
-  |
-  v
-WORKFLOW ENGINE
-  |
-  +---------------------------+
-  |                           |
-  v                           v
-TEAM A                      TEAM B
-  |                           |
-  v                           v
-ChatGPT synthesis          ChatGPT synthesis
-  |                           |
-  +------ verbatim handoffs --+
-              |
-              v
-       CHATGPT WRITER
-              |
-     code / commit / PR
-              |
-  +-----------+-----------+
-  |                       |
-  v                       v
-REVIEW TEAM A          REVIEW TEAM B
-  |                       |
-  +---- verbatim handoffs -+
-              |
-              v
-       CHATGPT WRITER
-       remediate same PR
-              |
-              v
-        review gates pass
-              |
-              v
-       LOCAL PRESENTS PR
-              |
-              v
-        USER AUTHORIZES
-              |
-              v
-         WRITER MERGES
-              |
-              v
-             DONE
-```
-
-## 4. Data plane and control plane
-
-### Data plane
-
-```text
-Team final output -> Writer
-Review final output -> Writer
-Repository/PR -> Review teams
-```
-
-These payloads are delivered verbatim in the normal path and do not need to enter Local context.
-
-### Deterministic control plane
-
-```text
-WorkflowEngine -> start teams
-WorkflowEngine -> wait for required handoffs
-WorkflowEngine -> start writer
-WorkflowEngine -> start review
-WorkflowEngine -> request remediation
-WorkflowEngine -> enforce review/merge gates
-```
+## Planes
 
 ### Authority plane
 
 ```text
-User -> authorize/reject merge and other escalated decisions
-Local -> present action-required state and carry the user's decision
+User
+  -> approve/reject exact merge and explicit exceptions
+Local
+  -> present compact action-required state and carry user decision
 ```
 
-## 5. Explicit workflow trigger
+Technical capability never equals workflow authority.
 
-The normal UX remains:
+### Deterministic control plane
 
 ```text
-/workflow <task>
+WorkflowEngine
+WorkflowDriver
+Job/Handoff stores
+Approval policy
+Event sink
+Retention manager
 ```
 
-Automatic intent detection is deferred.
+This plane decides what runs next, worker cardinality, handoff ordering, retries, state validity and authority gates.
 
-`/workflow` becomes a thin adapter over `internet_workflow.start(...)`; it is not a macro that injects the entire workflow protocol as one prompt.
+### Cognition/data plane
 
-See [`ADR/0006-workflow-command-starts-real-engine.md`](./ADR/0006-workflow-command-starts-real-engine.md).
+```text
+Research A/B -> exact finals -> Writer
+PR -> Review A/B -> exact finals -> Writer
+```
 
-## 6. Account model
+Full model payloads do not need to pass through Local.
 
-Provider identity is not enough.
+### Action plane
+
+```text
+chatgpt-writer
+  -> repo read
+  -> branch/file/commit/PR mutation
+  -> read-only PR health inspection
+  -> exact authorized merge
+```
+
+## Account identities
 
 ```text
 chatgpt-thinker
-  provider: chatgpt-web
-  role: thinking/review
+  provider: ChatGPT Web
+  role: reasoning/review/synthesis
 
 chatgpt-writer
-  provider: chatgpt-web
-  role: terminal writer
-  GitHub: read/write/PR/merge capability
+  provider: ChatGPT Web
+  role: terminal GitHub executor
 
 gemini-thinker
-  provider: gemini-web
-  role: thinking/review
+  provider: Gemini Web
+  role: reasoning/review
 ```
 
-Authentication state, profiles, schedulers, browser contexts, and conversations must be isolated per account.
+Provider is implementation metadata only. Authentication state, login profiles, browser pools, schedulers, remote login and durable conversations are account-scoped.
 
-## 7. Handoff model
+The architecture is a clean break: no provider-to-account fallback or legacy provider-keyed migration path is part of correctness.
 
-Team and review final outputs are delivered unchanged:
+## Standard workflow
 
 ```text
-handoff.payload == source.final_output
+/workflow <task>
+  -> resolve repo + exact base revision
+  -> durable job + automatic driver
+  -> Research A/B
+  -> exact handoffs A then B
+  -> START_IMPLEMENTATION
+  -> persistent chatgpt-writer
+  -> deterministic branch + one PR
+  -> Review A/B against exact PR head
+  -> exact review handoffs
+  -> APPLY_REVIEWS if needed
+  -> same PR, new head, re-review
+  -> PASS/PASS
+  -> CHECK_PR_HEALTH
+  -> exact-head merge authorization request
+  -> explicit user approval
+  -> immediate head + health revalidation
+  -> MERGE_AUTHORIZED
+  -> writer merge
+  -> DONE
 ```
 
-Metadata such as source, sequence, payload hash, and receipt sits outside the payload.
-
-The writer starts a phase only after all configured required handoffs have been delivered.
-
-## 8. Direct team execution
-
-WorkflowEngine should retain the useful properties of background DSH subagents without relying on them as reasoning intermediaries.
-
-It therefore provides:
-
-- automatic deterministic team prompt construction;
-- multiple concurrent logical team runs;
-- durable independent Website conversations;
-- team retry/completion tracking;
-- compact completion events to Local;
-- exact final outputs directly to handoff recipients.
-
-See [`ADR/0008-direct-team-execution.md`](./ADR/0008-direct-team-execution.md).
-
-## 9. PR-centric review
-
-The writer creates the PR before post-review.
-
-Review teams inspect the real PR directly. Local no longer needs to create/push an implementation simply to expose code to Website reviewers.
-
-## 10. Approval policy
-
-The standard workflow distinguishes producing a reviewable PR from accepting it into the target branch.
-
-Recognized in-scope implementation confirmations may be auto-confirmed when the job/controller can reliably bind them to the active repository, writer, action, state, and branch/PR.
-
-Unknown confirmations fail closed.
-
-Merge remains the normal human gate:
+## Stable Website conversations
 
 ```text
-review gates pass
--> READY_FOR_MERGE_AUTHORIZATION
--> Local presents concrete PR
--> user approves exact reviewed head
--> writer merges
+<local>:workflow:<job>:research:A
+<local>:workflow:<job>:research:B
+<local>:workflow:<job>:review:A
+<local>:workflow:<job>:review:B
+<local>:workflow:<job>:writer
 ```
 
-See [`ADR/0007-approval-policy.md`](./ADR/0007-approval-policy.md).
+Reviewer session identity remains stable across cycles. Exact cycle/head lives in durable state and prompts.
 
-## 11. Durable jobs and events
+Website account/project memory is not a correctness dependency.
 
-The workflow can run much longer than one Local turn.
+## Handoff invariant
 
-Therefore long-running work uses persistent job state and compact events rather than one blocking tool call.
-
-Local normally receives only useful progress or action-required events, not raw team/reviewer reasoning.
-
-See [`ADR/0005-durable-jobs-and-events.md`](./ADR/0005-durable-jobs-and-events.md) and [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md).
-
-## 12. Local verification policy
-
-Local reads on exception, not by default.
-
-Targeted inspection is appropriate when risk is high, writer becomes `BLOCKED`, review teams disagree materially, CI/runtime evidence is inadequate, Task/Decision authority may need to change, or the user asks Local to inspect directly.
-
-## 13. Quality model
-
-No writer is assumed infallible.
-
-Quality comes from the pipeline:
+For every research/review handoff:
 
 ```text
-independent thinking
--> verbatim implementation handoff
--> concrete PR
--> independent post-review
--> remediation
--> CI/runtime evidence
--> explicit merge authorization
+handoff.payload == source final output
 ```
 
-## 14. Current validated facts
+Metadata such as source, sequence, hash and delivery state is outside the payload.
 
-As of 2026-09-08:
+Delivery uses durable at-least-once semantics plus idempotent acknowledgement; the provider UI is not treated as transactional exactly-once transport.
 
-- ChatGPT Website can access private repositories through the connected GitHub integration when permissioned.
-- Branch/file/commit/PR operations and merge execution have been validated.
-- Website actions may still surface an `Allow` confirmation.
-- The current plugin still models account/runtime identity too strongly by provider.
-- The current `/workflow` command is prompt-driven rather than a real durable workflow engine.
-- The team orchestrator now routes synthesis through an explicit configured provider; ChatGPT is the default.
-- Ordinary ChatGPT browser turns now default to High reasoning unless explicitly overridden.
+## PR-centric verification
 
-## 15. Detailed documents
+The PR is the canonical shared implementation artifact after writer execution. Reviewers inspect the actual PR rather than a Local summary or pasted code.
 
-- [`README.md`](./README.md) — documentation index
-- [`SRS.md`](./SRS.md) — normative target requirements
-- [`WORKFLOW.md`](./WORKFLOW.md) — user-visible coding workflow
-- [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic runtime design
-- [`ROADMAP.md`](./ROADMAP.md) — implementation phases
-- [`TODO.md`](./TODO.md) — prioritized engineering tasks
-- [`UPDATE.md`](./UPDATE.md) — latest architecture changes
-- [`ADR/`](./ADR/) — accepted architecture decisions
+Review verdicts are exact-head-bound. A reviewer must explicitly assert the exact SHA it reviewed. Remediation preserves the same PR and must advance the head before another review cycle.
 
-## 16. Defining principle
+## PR health gate
 
-> **User owns authority, Local brokers authority, WorkflowEngine deterministically orchestrates, Website teams reason, the writer performs scoped GitHub work, and the PR/review loop provides independent verification before an explicitly authorized merge.**
+After review PASS/PASS, live PR health is classified against the exact current head:
+
+```text
+PASS | FAIL | PENDING | NONE | UNKNOWN
+```
+
+Only `PASS`, or verified `NONE` where no required checks/statuses exist, may advance toward merge authorization. New head means old health receipt is stale.
+
+## Approval policy
+
+Routine recognized implementation/remediation Website confirmations may auto-Allow only when exact runtime and durable scope match:
+
+```text
+account
+session
+repository
+state
+action
+branch / PR
+```
+
+Unknown UI fails closed.
+
+Merge is separate: it requires explicit user authority bound to repository + PR + exact head. The writer re-checks both head and health immediately before merge.
+
+## Local integration
+
+Local normally sees compact control-plane events only:
+
+```text
+INTERNAL         engine-only
+PROGRESS         compact observable progress
+ACTION_REQUIRED  explicit human/operator boundary
+```
+
+`agent.inject()` delivery is best-effort after durable state commit. Event transport cannot roll back workflow correctness.
+
+## Recovery and idempotency
+
+Durable state allows restart recovery. Completed lanes/handoffs are reused. PR creation is reconciled by deterministic job/branch identity. Merge authorization is exact-head-bound. Unexpected driver failures persist an explicit resume state instead of resetting the job.
+
+## Operations / retention
+
+Retention is explicit operator maintenance, not an automatic workflow phase:
+
+```text
+DONE      -> eligible after 30 days
+CANCELLED -> eligible after 14 days
+```
+
+Preview is read-only. Cleanup requires exact `jobId + updatedAt`, validates the exact handoff directory, removes only the selected job and handoffs, and retains a private audit receipt. No background deletion exists.
+
+## Deferred boundary
+
+No next phase is implied after P13. Automatic task detection, Website cross-conversation/project memory as correctness state, generic DAG workflows, multi-writer pooling, sophisticated artifact storage, autonomous production deployment and broad non-coding generalization remain deferred until a concrete use case justifies them.

@@ -1,413 +1,303 @@
-# How `@tsuuanmi/internet` works
+# How `@tsuuanmi/internet` Works
 
-This document describes the server-side plugin architecture, authentication boundary, browser lifecycle,
-provider interaction contracts, durable conversations, team orchestration, and the deterministic coding-workflow control plane.
+- **Status:** current implementation
+- **Last synchronized:** 2026-09-09
 
-## Package layout
+`@tsuuanmi/internet` is a standalone DeepSeek Harness plugin that drives authenticated ChatGPT Web and Gemini Web sessions through isolated browser contexts. It exposes direct chat/research/team tools and a durable coding workflow whose deterministic control plane is separate from model reasoning.
 
-- `src/index.ts` — Cordis plugin entry, tool registration, command registration, lifecycle disposal, and
-  agent-facing system-prompt guidance.
-- `src/browser/runtime.ts` — `BrowserManager`, account serialization, Chrome/context ownership, account
-  refresh, durable conversation navigation, and turn execution.
-- `src/browser/chatgpt.ts` — ChatGPT authentication, reasoning selection, prompt attachment, semantic
-  submission, assistant-turn snapshots, and completion state.
-- `src/browser/gemini.ts` — Gemini authentication, prompt submission, response snapshots, and completion
-  state.
-- `src/browser/chatgpt-research.ts` and `gemini-research.ts` — provider-native Deep Research activation
-  contracts and verified composer-mode state.
-- `src/browser/accounts.ts` — versioned portable account inspection, private writes, and IndexedDB-aware
-  storage-state capture.
-- `src/browser/conversations.ts` — private, hashed DSH-session-to-account-conversation bindings.
-- `src/browser/display.ts` — visible display selection and shared hidden inference Xvfb lifecycle.
-- `src/browser/remote-login.ts`, `vnc.ts`, and `xvfb.ts` — tokenized loopback noVNC, x11vnc, Xvfb,
-  timeout, finalization, and cleanup.
-- `src/browser/completion.ts` — conservative provider-independent response stabilization.
-- `src/browser/submission.ts` — semantic enabled-state waiting, including `aria-disabled`.
-- `src/team/orchestrator.ts` — account ordering, debate prompts, team session isolation, transcript, and
-  synthesis.
-- `src/tools/` — DSH definitions for `internet_chat`, `internet_team`, `internet_research`,
-  `internet_browser`, and the `internet_workflow` control surface.
-- `src/workflow/types.ts`, `job-store.ts`, and `engine.ts` — authoritative workflow state, private atomic job persistence, and deterministic transitions.
-- `src/workflow/team-runner.ts` and `team-prompt-builder.ts` — direct lower-level team execution and deterministic research/review tasks.
-- `src/workflow/review-result.ts` — strict reviewer verdict and reviewer-asserted PR-head binding.
-- `src/workflow/handoff-store.ts` and `control.ts` — exact SHA-256-bound data-plane handoffs and separate trusted control messages.
-- `src/workflow/writer-runner.ts` — persistent `chatgpt-writer` routing, strict writer result parsing, and implementation/PR control.
-- `src/workflow/approval-policy.ts` and `src/browser/chatgpt-confirmation.ts` — deterministic writer-action scope checks plus conservative Website confirmation recognition/handling.
-- `src/commands/internet.ts` — human `/internet` command backed by ChatGPT.
-- `src/commands/workflow.ts` — thin `/workflow` admission adapter that resolves Git authority and creates a durable engine job.
-- `src/client.ts` — DSH-side command renderer.
-- `src/remote-login-client.ts` — isolated noVNC page with Save and Cancel controls; it is not part of the
-  DSH application shell.
-- `src/core/` — configuration, errors, markdown conversion, and abort-aware sleep.
-- `src/types/dsh.d.ts` — minimal ambient declarations that allow standalone builds without installing
-  the DSH peer packages.
+## Runtime layers
+
+### Browser layer
+
+`BrowserManager` owns account-scoped Chrome lifecycle, portable auth state refresh, scheduler leases, conversation binding, visible/hidden displays, and remote login.
+
+Important account identities:
+
+```text
+chatgpt-thinker
+gemini-thinker
+chatgpt-writer
+```
+
+Every authenticated runtime path requires explicit account identity. Provider is derived implementation metadata only.
+
+### Provider adapters
+
+- ChatGPT adapter: auth verification, reasoning-level selection, prompt submission, completion, Website GitHub confirmation detection.
+- Gemini adapter: auth verification, model/thinking selection, prompt submission and completion.
+- provider-native Deep Research adapters: activate/verify research mode before submitting.
+
+### Team layer
+
+The lower-level team runtime executes ordered ChatGPT/Gemini debate turns and optional final synthesis. `chatgpt-thinker` is the default explicit synthesizer.
+
+Public `internet_team` owns its own `<agent>:team:<name>` namespace. The workflow runtime passes exact workflow-owned session IDs directly to the lower-level team primitive.
+
+### Workflow layer
+
+Main components:
+
+```text
+WorkflowEngine
+WorkflowDriver
+WorkflowJobStore
+WorkflowHandoffStore
+WorkflowTeamPromptBuilder
+BrowserWorkflowTeamRunner
+BrowserWorkflowWriterRunner
+approval policy / confirmation parser
+WorkflowEventSink / DshWorkflowEventSink
+WorkflowRetentionManager
+```
+
+The engine owns deterministic correctness; the driver owns automatic progression through safe runnable states.
 
 ## Plugin registration
 
-`apply()` resolves and validates the profile configuration, creates one `BrowserManager`, and registers a
-Cordis disposal effect. Chrome is discovered lazily on first browser operation.
+When enabled, the plugin registers browser-backed tools according to available providers/accounts:
 
-Registration derives enabled semantic accounts from the enabled website implementations:
+```text
+internet_chat
+internet_research
+internet_team
+internet_browser
+internet_workflow
+internet_workflow_maintenance
+```
 
-- `internet_browser` manages every enabled semantic account, including `chatgpt-writer`.
-- `internet_chat` and `internet_research` expose enabled thinker accounts only.
-- `/internet` is available when `chatgpt-thinker` is enabled.
-- `internet_team` and `/workflow` require both `chatgpt-thinker` and `gemini-thinker`.
+It also registers `/internet` for direct ChatGPT conversation use and `/workflow` when both thinker providers needed by the coding workflow are available.
 
-The plugin also contributes tool-selection guidance through `ctx.systemPrompt`. Updating the installed
-package requires restarting the existing DSH host so its server-side module is reloaded.
-
-## Direct request flow
+## Direct chat flow
 
 ```text
 internet_chat { account, prompt, visible? }
-  -> validate explicit accountId, prompt, and visible
-  -> read String(exec.agent.id) as the durable owner
-  -> BrowserManager.chat(accountId, request)
-  -> acquire that account's lease (same session FIFO; default hidden capacity one)
-  -> ensure account file is ready
-  -> ensure a compatible browser and isolated per-turn context exist
-       visible=true  -> headed Chrome on user-managed display
-       visible=false + headless=false -> headed Chrome on managed Xvfb
-       visible=false + headless=true  -> native Chrome headless
-  -> read dataDir/<accountId>/conversations/<sha256(sessionId)>.json
-  -> navigate to bound URL, or provider home on the first turn
-  -> verify authenticated provider surface
-  -> capture the previous response identity
-  -> perform provider-specific prompt selection/submission
-  -> wait for a changed, stopped, stable response
-  -> bind or refresh the canonical conversation URL
-  -> recapture cookies, local storage, and IndexedDB when safely serializable
-  -> atomically refresh the portable account
-  -> return markdown, URL, and conversation id
+-> validate explicit thinker account
+-> acquire account scheduler lease
+-> verify portable account is ready
+-> launch/reuse account browser
+-> load account-scoped durable conversation binding
+-> verify provider auth surface
+-> select required reasoning/model mode
+-> insert prompt and verify editor content
+-> submit via semantic send control
+-> wait for a changed, stopped, stable response
+-> refresh durable conversation URL
+-> refresh portable auth state when safe
+-> return markdown + provider conversation metadata
 ```
 
-`/internet <question>` enters the same ChatGPT path with
-`sessionId = String(invocation.agent.id)`, bypasses an agent model turn, and returns markdown to the DSH
-client command renderer.
+`chatgpt-thinker` and `chatgpt-writer` use the same Website implementation but never share authentication files, schedulers or conversation bindings.
 
-`/workflow <objective>` is a command-plane admission step, not a direct browser request. It reads only the
-receiving session's `header.cwd`, invokes Git with argument vectors (never a shell), selects the branch
-tracking remote, `origin`, or one unambiguous remote, and converts supported public SSH/HTTPS remote forms
-to a credential-free HTTPS URL. It verifies the worktree and exact `HEAD` first. On any failure it returns a
-direct command error and creates no job. On success it calls `WorkflowEngine.start(...)` and returns the
-durable job ID; no giant workflow prompt is injected into Local.
+## Direct research flow
 
-The implemented engine path through P7 is:
+`internet_research` derives a research-specific owner namespace and invokes selected thinker accounts. Each provider must successfully enter its native Deep Research mode; the tool does not silently downgrade to ordinary chat.
+
+Provider runs may complete independently. One completed provider result is preserved if another fails.
+
+## Direct team flow
+
+`internet_team` runs configured thinker accounts in deterministic speaking order. Each round gives the current task and prior team contributions to the next speaker. If synthesis is enabled, the explicit synthesizer receives the full current-call transcript and returns the final answer.
+
+The public tool may return a bounded transcript when requested; transcript truncation is explicit.
+
+## `/workflow` admission
+
+`/workflow <objective>` is a command-plane operation.
+
+It:
+
+1. reads the current DSH session worktree;
+2. resolves the checked-out branch remote, then `origin`, then one unambiguous configured remote;
+3. converts supported SSH/HTTPS GitHub remotes to a credential-free repository identity;
+4. verifies the exact current `HEAD`;
+5. calls `WorkflowEngine.start(...)` with owner session, objective, repository and exact base revision;
+6. enqueues the new job in `WorkflowDriver`;
+7. returns the durable job ID.
+
+If repository authority cannot be resolved safely, no job is created.
+
+## Workflow sessions
+
+Stable session IDs are derived from owner session + job:
 
 ```text
-CREATED
-  -> RESEARCH_RUNNING
-  -> RESEARCH_HANDOFFS_DELIVERING
-  -> WRITER_RUNNING
-  -> PR_OPEN
-  -> REVIEW_RUNNING
-  -> REVIEW_HANDOFFS_DELIVERING
-  -> READY_FOR_MERGE_AUTHORIZATION              # both reviewers PASS
-  -> WRITER_REMEDIATING -> PR_OPEN -> ...        # otherwise, review the new head again
+<owner>:workflow:<job>:research:A
+<owner>:workflow:<job>:research:B
+<owner>:workflow:<job>:review:A
+<owner>:workflow:<job>:review:B
+<owner>:workflow:<job>:writer
 ```
 
-Research A/B run directly through `BrowserWorkflowTeamRunner` with deterministic per-job lanes. Their final
-answers are stored verbatim in `WorkflowHandoffStore`, hashed over exact UTF-8 bytes, and delivered A then B
-to the single persistent `<local>:workflow:<job>:writer` conversation. Only after both delivery receipts are
-present does the engine send `START_IMPLEMENTATION` as a separate trusted control message.
+Reviewer sessions persist across cycles. The exact cycle and head SHA are durable state and prompt inputs.
 
-`BrowserWorkflowWriterRunner` always uses the explicit `chatgpt-writer` account. The writer verifies the
-repository and base revision, inspects and modifies the repository, validates the change, creates or updates
-exactly one PR, and must not merge. Its final response is parsed as strict `PR_OPEN` JSON and persisted as a
-PR receipt (`repository`, PR number/URL, base/head, and exact head SHA), or the job becomes `BLOCKED` without
-a fabricated receipt. If a transient control call fails after the research handoffs were acknowledged, the
-job remains `WRITER_RUNNING`; retry reuses the same writer conversation and skips already-delivered handoffs.
+## Research fan-out
 
-During writer execution, `BrowserManager` may inspect a visible ChatGPT Website GitHub confirmation before
-checking completion. Confirmation handling is deliberately separate from model-output parsing. Dedicated
-confirmation/approval roots are preferred over generic dialogs to avoid nested duplicate candidates. Any
-visible narrow GitHub confirmation is treated as a potential authority boundary first; it must then expose
-exactly one semantic `Allow` button plus an explicit deny/cancel control and parse to one supported action.
-Malformed or ambiguous GitHub confirmation UI therefore fails closed instead of being mistaken for "no
-confirmation".
+`WorkflowDriver` advances a newly created job into research. `WorkflowEngine.runResearch()` starts incomplete A/B lanes logically together.
 
-The workflow caller passes only expected `WorkflowApprovalScope`. `BrowserManager` supplies the actual account
-ID and session ID when invoking the ChatGPT adapter, so the approval policy never trusts caller-self-asserted
-runtime identity. The resulting context is matched against `chatgpt-writer`, the authoritative repository,
-current workflow state, and expected branch/PR identity. The initial branch is deterministic as
-`internet-workflow/<job_id>`; once a PR exists, its persisted head/number become authoritative.
+`WorkflowTeamPromptBuilder` creates lane-specific tasks from authoritative objective/repository/base facts. `BrowserWorkflowTeamRunner` invokes the lower-level team runtime directly. A completed lane is persisted and is not rerun merely because its sibling failed.
 
-Only in-scope implementation/remediation actions are auto-confirmed. Missing or mismatched metadata, ambiguous
-UI, unsupported actions, multiple candidates, or a confirmation that remains visible after activation fail
-closed as `UNKNOWN_CONFIRMATION`. Repository scope is validated before merge classification, so a cross-repo
-merge prompt is also unknown rather than a user-authorization request. The engine persists an ACTION_REQUIRED
-exception with the writer phase as the explicit resume state. A correctly scoped premature merge confirmation
-is never clicked and becomes ordinary writer `BLOCKED`; the later merge gate owns actual user authorization.
+## Exact handoffs
 
-Once a PR receipt exists, `runReview()` starts the two durable review lanes logically concurrently. Both lanes
-receive the PR URL, review cycle, objective, and exact current PR head SHA. Their stable per-job conversation IDs
-are reused across cycles, but every final result must be one strict JSON object containing a control-plane verdict
-(`PASS` or `CHANGES_REQUIRED`) and a `reviewedHeadSha` equal to the exact head requested by the engine. The engine
-rejects malformed or wrong-head results rather than stamping its expected SHA onto unverified reviewer output.
-The complete reviewer JSON remains the exact data-plane payload.
-
-Completed Review A/B outputs are materialized as cycle-scoped handoffs (`review:<cycle>:A/B`) and delivered
-verbatim, in deterministic order, to the same persistent writer conversation. If both results pass the same head,
-the job moves directly to `READY_FOR_MERGE_AUTHORIZATION`; no remediation control is sent. If either reviewer
-requires changes, both handoffs must first be acknowledged, then the engine emits separate `APPLY_REVIEWS` control.
-The writer must remediate exactly the persisted PR, preserve its repository/number/URL/base/head identity, produce
-a different head SHA, and never merge. Repository identity comparison accepts the canonical GitHub URL and
-`owner/repo` forms as the same authority, while every other PR identity field must remain exact. A successful
-remediation resets only review-run results/status and returns to `PR_OPEN`; the same reviewer sessions then inspect
-the new head. The default maximum is three review cycles. Exhaustion becomes `REVIEW_LIMIT_REACHED`; writer or
-Website-confirmation exceptions keep their explicit remediation resume state.
-
-Every durable engine mutation that installs a new `lastEvent` passes through one event-publication boundary.
-`INTERNAL` events remain control-plane-only. `PROGRESS` and `ACTION_REQUIRED` events are projected by
-`DshWorkflowEventSink` into compact text containing only job/state/repository/review-cycle/PR/head/pending-action
-metadata and the compact event message; team and reviewer payloads are never copied into Local. The job persists
-its exact `ownerSessionId`, so notification routing never reverse-parses a derived writer session ID. The sink looks
-up that live owner through DSH's `ctx.agents` registry and uses `agent.inject()` with plugin source `internet`. DSH
-injection is durable model-facing context for the next admitted step and deliberately does not wake an idle Local.
-A missing/disposed owner or a notification transport failure is ignored after the workflow state commit, because
-observability is not part of workflow correctness.
-
-`internet_workflow status` projects payload-free debug summaries for research/review lanes, handoff hashes and
-delivery state, writer identity, PR/head, review cycle, pending action, last event, and last error. A polling-style
-`wait(job_id)` remains optional and is not part of orchestration. Reaching `READY_FOR_MERGE_AUTHORIZATION` still does not authorize a merge. `request_merge` creates one concrete ACTION_REQUIRED request containing the PR URL, PASS/PASS review state, CI state when known, and exact expected head SHA. `approve` persists an authorization bound to repository + PR + head branch + head SHA and moves the job to `MERGING`. The writer then receives separate `MERGE_AUTHORIZED` control, fetches the live PR immediately before merge, refuses a changed head, and reports the verified pre-merge head plus resulting merge commit SHA. The Website confirmation controller auto-allows merge only in `MERGING` when the persisted authorization still exactly matches the authoritative PR. Success records a merge receipt and transitions to `DONE`.
-
-
-## Deep Research request flow
-
-`internet_research { query, accounts?, name?, visible? }` derives a separate owner key:
-`<agent-id>:research:<name>`. It invokes selected thinker accounts concurrently, while each account holds its own serialized browser lease. Before submission, each adapter enables and verifies its native Deep
-Research composer state. The normal five-minute turn deadline is replaced by `researchTimeoutMs` (30 minutes
-by default). Every provider result retains its own markdown and native URL; a completed provider is returned
-even when the other result fails (`partial_success`). The driver never retries after a verified Send action,
-avoiding duplicate costly research runs.
-
-## ChatGPT turn contract
-
-ChatGPT currently exposes a ProseMirror `contenteditable` composer. The provider driver scopes every
-control lookup to the visible composer or its ancestor form.
-
-### Reasoning selection
-
-Before every ChatGPT turn:
-
-1. Locate the composer reasoning pill.
-2. Open its menu even when the pill already displays the configured value.
-3. Prefer the attached reasoning slider.
-4. Parse and validate `aria-valuemin`, `aria-valuemax`, and `aria-valuenow` as exactly three supported
-   positions.
-5. Move one keyboard step at a time until the target index is reached:
-   `instant = 0`, `medium = 1`, `high = 2`.
-6. Close the menu and verify the pill text (`Instant`, `Medium`, or `High`).
-
-The current picker also contains a nested **Select model** view with `menuitemradio` entries such as
-GPT-5.6 and GPT-5.5. Those radio entries are model choices, not reasoning choices. The driver therefore
-uses the slider whenever present. A legacy radio-only picker is accepted only when its complete labels
-are exactly `Instant`, `Medium`, and `High`; any other radio list fails rather than changing models.
-
-The default is `high`, and every turn reopens and semantically verifies the picker so provider UI state
-cannot leak from a previous call.
-
-### Prompt attachment and Send transition
-
-1. Clear the visible composer and focus it.
-2. Insert the complete prompt through Patchright's browser keyboard input path. This updates the live
-   ProseMirror component state instead of only changing displayed DOM.
-3. Reconstruct the editor text by joining top-level editor blocks with newlines.
-4. Require an exact prompt match. On failure, report expected length, actual length, and common-prefix
-   length without embedding the prompt in the error.
-5. Locate only `button[data-testid="send-button"][aria-label="Send prompt"]` inside the active form.
-6. Wait until it is visible, natively enabled, and not `aria-disabled="true"`.
-7. Keyboard-activate that semantic Send control once.
-
-An empty composer may show Start Voice, or may expose a visually disabled Send control. Start Voice does
-not match the Send locator and is never used as a fallback. This protects against accidental voice-mode
-activation and against clicking before the editor component has committed the prompt.
-
-### Completion
-
-The previous newest assistant text is captured before submission. `chatgptSnapshot()` then reports the
-newest visible assistant turn, rendered HTML, and whether the stop-generation control is visible.
-`waitForStableCompletion()` returns only after a response differs from the prior response, generation is
-not running, and text remains unchanged for `stableMs`.
-
-## Gemini turn contract
-
-Before every ordinary Gemini turn, the driver opens the provider-owned mode picker, selects the observed
-latest **3.8 Flash** action, then selects **Extended thinking**. It verifies the collapsed picker indicator
-changes first to **Flash** and then to **Flash Extended** before filling the composer. The picker is reopened
-even when a prior native thread displays a mode, so provider UI state cannot leak across calls. If Gemini no
-longer exposes the entitled controls or either confirmation, the turn fails with `provider_error`; it never
-substitutes a different model. Provider-native Deep Research uses its own composer mode and does not combine
-with Flash + Extended.
-
-Gemini then uses its visible `rich-textarea` editor. The driver clears and fills the prompt, waits for the
-semantic send button to be visible and enabled (including ARIA state), keyboard-activates it, and polls the
-newest response container through the same stable-completion policy.
-
-ChatGPT and Gemini use different durable conversation files and can share a DSH session without sharing
-native provider history.
-
-## `internet_team` flow
-
-`internet_team` derives a durable team owner:
+Completed team finals become durable handoffs:
 
 ```text
-<dsh-session-id>:team:<team-name-or-default>
+handoff_id
+job_id
+source
+recipient
+sequence
+payload
+payload_hash
+delivery state/timestamps
 ```
 
-This isolates team conversations from direct `internet_chat` conversations. All calls using the same DSH
-session and team name resume the same ChatGPT and Gemini team threads.
+`payload_hash` is SHA-256 over the exact UTF-8 payload. Parsing recomputes deterministic identity/hash and rejects tampering.
 
-For each round, thinker accounts speak sequentially in the requested order:
+Research handoffs are prepared/delivered in deterministic A-then-B order. Website delivery is modeled as at-least-once; durable acknowledgement makes repeated delivery attempts idempotent.
+
+No control instruction is injected into the payload.
+
+## Writer implementation
+
+After both research handoffs are acknowledged, the engine sends separate `START_IMPLEMENTATION` to the stable `chatgpt-writer` conversation.
+
+The writer is instructed to:
+
+- verify repository and exact base revision;
+- inspect current code;
+- use the delivered research finals;
+- implement and validate the requested change;
+- use the deterministic workflow branch;
+- reconcile an existing exact matching open PR before creating a new one;
+- return strict `PR_OPEN` or `BLOCKED`;
+- never merge during implementation.
+
+Successful output is parsed into a durable PR receipt:
 
 ```text
-for round 1..rounds:
-  for accountId in accounts:
-    prompt = task + every other account's latest contribution
-    result = BrowserManager.chat(accountId, teamSessionId, visible)
-    transcript.push(result)
+repository
+PR number / URL
+base branch
+head branch
+head SHA
 ```
 
-The first account in round one receives an initial-analysis prompt because no teammate has spoken yet.
-Later turns receive the task plus each other provider's latest message and are asked to critique, refine,
-and improve it. A provider's own prior messages already exist in its native durable conversation, so the
-orchestrator injects only teammates' latest messages.
+Retry does not resend acknowledged handoffs or blindly create duplicate PRs.
 
-When synthesis is enabled, the configured `teamSynthesizer` receives the full current-call debate transcript and returns a single final answer. The default synthesizer is `chatgpt-thinker`, independent of account speaking order. Synthesis is not included in the optional transcript. Without synthesis, the last
-debate contribution is the final answer.
+## Website GitHub confirmation handling
 
-The same `visible` flag is passed to every provider turn and synthesis turn. `visible: false` is not a
-separate orchestration path: it uses the same prompts and provider drivers on hidden browser displays.
+The ChatGPT adapter inspects only narrow confirmation surfaces. A visible generic `Allow` string is not enough.
 
-The orchestrator stops at the first account failure and returns that account plus all completed current-
-call turns. It does not silently continue with a missing teammate. A team's own turns remain sequential and
-the DSH tool remains non-concurrency-safe; optional runtime concurrency applies only across independent
-hidden child-team session ids.
+The controller extracts supported action/repository/branch/PR identity and evaluates it against actual runtime account/session plus authoritative workflow state.
 
-### Transcript projection
+Implementation/remediation may auto-Allow only when all scope checks match. Unknown/malformed/ambiguous/cross-scope prompts become `UNKNOWN_CONFIRMATION` and stop the driver.
 
-The full current-call transcript exists internally for synthesis. When `includeTranscript: true`, it is
-included in both the structured result and the model-visible rendered tool content.
+Premature merge is not part of implementation authority.
 
-Projection walks backward from the newest turn using a Unicode code-point budget. Newest complete turns
-are retained first. If the boundary turn does not fit, only its suffix is retained and marked
-`textTruncation: "prefix"`. `transcriptTruncated` is true whenever any earlier content was omitted. The
-final synthesis response is returned separately and does not consume transcript budget.
+## Exact-head review
 
-## Durable account conversations
+Once a PR exists, Review A/B inspect the actual PR and exact persisted head SHA.
 
-Every agent-backed tool execution exposes the DSH owner as `exec.agent.id`. The plugin hashes its string
-form and stores one binding at:
+Each reviewer must return one strict JSON result whose control fields include:
 
 ```text
-dataDir/chatgpt-thinker/conversations/<sha256(sessionId)>.json
-dataDir/chatgpt-writer/conversations/<sha256(sessionId)>.json
-dataDir/gemini-thinker/conversations/<sha256(sessionId)>.json
+verdict: PASS | CHANGES_REQUIRED
+reviewedHeadSha: <exact requested SHA>
 ```
 
-The directory is mode `0700`; files are mode `0600`. Writes use fsync and atomic rename. The raw DSH
-session ID and prompts are not persisted. A session may refresh its existing binding but cannot silently
-rebind to another conversation id.
+The engine rejects malformed or wrong-head results. The complete reviewer JSON remains the exact data-plane payload.
 
-Team-derived session ids pass through the same hashing and binding layer, which is why named team threads
-remain private and durable without a separate storage implementation.
+## Same-PR remediation
 
-## Authentication and login
+Reviewer handoffs are delivered to the same writer conversation. If either verdict requires changes, the engine sends separate `APPLY_REVIEWS` only after both review handoffs are acknowledged.
 
-### Local desktop
+The writer must preserve the exact PR identity, remediate it and return a different head SHA. The engine resets review-run state for the new head and reuses the same reviewer sessions.
 
-`internet_browser login` stops existing provider inference, creates or reuses an account-isolated login profile, and launches normal Chrome without browser-automation or remote-debugging flags. The user signs
-in and closes Chrome completely.
+Default maximum review cycles: `3`.
 
-### Remote noVNC
+## Workflow events
 
-On displayless Linux, or when `remote: true`, `RemoteLoginSession` owns:
+Durable events are classified:
 
-- a dedicated Xvfb display,
-- bundled-first x11vnc,
-- a loopback HTTP/WebSocket bridge,
-- an isolated noVNC page,
-- normal Chrome using that account's login profile,
-- expiry, finalization, and cleanup.
+```text
+INTERNAL
+PROGRESS
+ACTION_REQUIRED
+```
 
-Stable HTTP ports use `remoteLoginPort + ACCOUNT_IDS.indexOf(accountId)`: by default `39000` for ChatGPT thinker, `39001` for ChatGPT writer, and `39002` for Gemini thinker. The VNC
-upstream is private and ephemeral. All listeners bind to `127.0.0.1`. A 256-bit URL path token, temporary
-VNC password, strict same-origin handling, explicit routes, no-store headers, and CSP define the boundary.
-Public binding and proxy trust are intentionally absent.
+Only new `PROGRESS` / `ACTION_REQUIRED` events are eligible for `DshWorkflowEventSink` publication. The sink resolves the exact persisted Local owner session and calls DSH `agent.inject()` with compact job/state/PR/head/pending-action metadata.
 
-The lifecycle state is `waiting`, `finalizing`, `complete`, or `failed`. The login tool returns immediately
-while waiting. Pressing **Save account** re-enters that account's serialized queue and runs the one
-authoritative finalization path. Once finalization starts, it runs to completion; `stop` cancels only a
-waiting login.
+Full team/reviewer payloads are never projected into Local progress context. Event delivery is best-effort after state commit; notification failure cannot roll back workflow work.
 
-### Portable account creation
+## Automatic driver and restart recovery
 
-After Chrome releases the login profile lock:
+`WorkflowDriver` maintains one active run per job ID and repeatedly invokes engine primitives until a stop boundary is reached.
 
-1. Patchright opens the persistent profile and captures bootstrap cookies/local storage.
-2. A fresh non-persistent context verifies the authenticated provider surface.
-3. The context captures IndexedDB in addition to cookies and local storage when Patchright can safely
-   serialize it. If an oversized IndexedDB value prevents capture, the cookie/local-storage snapshot must
-   restore an authenticated fresh context before it can replace the account.
-4. The plugin atomically writes schema-v2 `dataDir/accounts/<accountId>.json` with mode `0600`; the file binds both `accountId` and its derived provider implementation. Version-1 provider-keyed files are not imported or used as fallback.
+Safe restart discovery resumes runnable durable states but does not wake jobs waiting on user authority or known exception handling.
 
-A failed, cancelled, expired, or unverified login never replaces an existing ready account.
+Unexpected driver errors become explicit retry-required state with a persisted resume target. There is no generic reset to `CREATED`.
 
-## Portable security boundary
+Cancellation aborts/settles active work before `CANCELLED` is persisted.
 
-`dataDir/accounts/` is the only portable authentication boundary. Login profiles are machine-local
-recovery caches because Chrome encryption depends on OS keyrings and browser/platform internals.
-Conversation files are DSH identity bindings, not credentials.
+## Exact-head PR health
 
-Account JSON files are plaintext bearer secrets. Copy them only through a secure channel while DSH is
-stopped. Provider expiration, revocation, risk checks, MFA, or CAPTCHA can still require a fresh login.
-`status=ready` confirms a valid local file, not a live provider session.
+After Review A/B both pass the same head, the writer receives read-only `CHECK_PR_HEALTH`.
 
-## Display and browser lifecycle
+The resulting durable health receipt is bound to repository + PR + exact head and classified:
 
-Inference uses non-persistent contexts restored only from canonical account files, avoiding profile
-singleton locks.
+```text
+PASS
+FAIL
+PENDING
+NONE
+UNKNOWN
+```
 
-For `headless: false`, hidden Linux inference asks `BrowserDisplayManager` for one shared managed Xvfb:
+`PASS` is acceptable. `NONE` is acceptable only when absence of required checks/status policy is established. `PENDING` is retryable. `FAIL` cannot advance. `UNKNOWN` fails closed.
 
-1. bundled Linux x64/glibc 2.35+ Xvfb runtime closure,
-2. system `Xvfb`,
-3. inherited `$DISPLAY` fallback.
+A new PR head invalidates the prior receipt.
 
-`Xvfb -displayfd` lets Xorg select a free display without a fixed-display race. The managed display uses
-`1920x1080x24`. Supported bundles include measured Xvfb/x11vnc binaries, libraries, `xkbcomp`, and XKB
-data. Unsupported targets skip private binaries and use system executables when available.
+## Merge authorization and execution
 
-`visible: true` requires a user-managed display and never falls back to Xvfb. Native `headless: true`
-bypasses display discovery. The plugin does not silently convert a failed headed launch into native
-headless mode.
+With PASS/PASS review and acceptable current-head health, the workflow can request merge authorization.
 
-The default allows one hidden turn per account. Different DSH session ids lease isolated non-persistent
-contexts from the same portable account; repeated turns for one session remain FIFO. Set `maxConcurrentTurnsPerAccount` above `1` only after confirming account-state acceptance. Separate account IDs own separate schedulers, so `chatgpt-thinker` and `chatgpt-writer` do not share a lock. A visible call, login, remote-login finalization, stop, reauthentication, and display loss
-are account-exclusive barriers. Contexts close after their turns; compatible browser processes close
-after `closeAfterMs` of pool-wide idleness.
+The action-required request contains the exact PR and expected head. `approve(jobId, expectedHeadSha)` must exactly match the pending head and persists authorization bound to repository, PR, head branch/SHA, review cycle, owner session and time.
 
-Successful current-generation turns serialize portable-account refreshes. Every context remembers the
-canonical account revision used to bootstrap it; a commit advances that revision, and later completions
-from the older revision are discarded. The stored account is a bootstrap cache, not a mergeable replica of
-arbitrary provider state. An IndexedDB-free fallback refresh retains IndexedDB only for origins present in
-the fresh snapshot while updating cookies and local storage. Only affirmative sign-out proof marks
-reauth-required; a challenge or unconfirmed surface preserves the ready snapshot. Reauthentication invalidates only the affected account generation, aborts active leases, and prevents older turns from restoring a `ready` snapshot.
-`BrowserManager.dispose()` closes contexts, Chrome, pending remote logins, timers, and the shared
-inference display.
+Approval transitions to `MERGING`.
 
-## Errors
+Immediately before merge, the writer re-reads the live PR and PR health. Changed head or unacceptable health invalidates stale authority. Only then does `MERGE_AUTHORIZED` execute.
 
-Expected failures use `InternetError`:
+Website merge confirmation may auto-Allow only when the job is in exact authorized `MERGING` state and all durable scope still matches.
 
-- `browser_unavailable` — Chrome/display/runtime unavailable.
-- `login_required` — no accepted portable authentication state.
-- `login_failed` — interactive login or verification failed.
-- `timeout` — login, provider turn, or completion exceeded its deadline.
-- `aborted` — DSH cancelled the operation.
-- `provider_error` — provider DOM/state violated the interaction contract.
-- `config_error` — explicit plugin configuration is invalid.
+Success persists a merge receipt and transitions to `DONE`.
 
-Tools convert these into structured error results. `internet_team` additionally reports the provider whose
-turn failed and can return already completed transcript turns when transcript output was requested.
+## Workflow status/control surface
+
+`internet_workflow` exposes deterministic operations including start/status/continue/cancel, merge request/approval/rejection and the engine controls needed by the driver.
+
+The normal user path is still `/workflow <task>` rather than manually driving every operation.
+
+Status is intentionally payload-free: it reports control state, lane status/errors, handoff hashes/delivery state, writer/PR/head, review cycle, health, pending action, last event and last error.
+
+## Retention maintenance
+
+`internet_workflow_maintenance` is operator-only and never called automatically by the driver.
+
+Retention eligibility:
+
+```text
+DONE      -> 30 days after authoritative updatedAt
+CANCELLED -> 14 days after authoritative updatedAt
+```
+
+`preview` returns eligible terminal candidates only. `cleanup` requires exact `jobId + updatedAt` from preview. Before deleting anything it validates the selected job's handoff directory structure/files/permissions.
+
+Cleanup removes only that job record and its exact handoffs, then retains a private durable audit receipt. Repeating the same exact completed cleanup is audit-idempotent.
+
+There is no background cleanup, startup sweep or scheduled deletion.
+
+## Durable correctness does not depend on Website memory
+
+Website conversation continuity is useful tactical context, especially for the writer and reviewer sessions, but account-level cross-conversation/project memory is not part of the workflow correctness/data plane.
+
+All correctness-bearing facts are persisted explicitly in job, handoff, PR, review, health and authorization state.

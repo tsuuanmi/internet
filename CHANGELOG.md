@@ -2,53 +2,46 @@
 
 ## Unreleased
 
-### Changed
-
-- **tools**: Rename the public model-tool IDs `browser_chat` and `browser_team` to `internet_chat` and
-  `internet_team`. Update saved prompts and callers; legacy IDs are no longer registered.
-- **accounts**: Preserve authenticated cookie and local-storage state when Patchright cannot serialize an
-  oversized IndexedDB value, while retaining prior same-origin IndexedDB during refresh.
-
 ### Added
 
-- **commands**: Add `/workflow <objective>`, which resolves the current session's Git upstream and queues a seven-phase, independently reviewed implementation workflow. It requires both web providers so each required review can use `internet_team`.
-- **chatgpt**: Select and verify the ChatGPT Web reasoning level before each turn via
-  `chatgptThinkingLevel` (default `medium`). Supports `instant | medium | high` and handles both the
-  menuitemradio list and reasoning-effort slider surfaces.
-- **browser**: Migrate the automation backend from `playwright-core` to `patchright-core` (a drop-in,
-  stealth-patched Playwright fork) and keep the ChatGPT inference browser open through a long idle TTL
-  (`closeAfterMs` default `1800000`, 30 min) instead of closing it 10s after each turn.
-- **browser**: Manage one shared Xvfb display for headed automated Chrome on Linux. The package ships a
-  measured Xvfb runtime closure for glibc Linux x64, then tries system `Xvfb` and inherited `$DISPLAY`.
-  It never silently switches to native headless. Managed-Xvfb contexts use a natural `1920x1080`
-  browser window and shut down with `BrowserManager`.
-- **login**: Add zero-install interactive login on displayless Linux through a tokenized, loopback-only
-  noVNC page intended for SSH port forwarding. The package bundles x11vnc on its supported Linux x64
-  target; Save account runs the existing portable-account verification pipeline, while status, stop,
-  timeout, and plugin disposal report or clean the complete Chrome/VNC/Xvfb/web lifecycle. Copyable
-  login output uses stable ports `39000` (ChatGPT) and `39001` (Gemini) by default.
-- **tools**: Add an optional `visible` flag to `internet_chat` and `internet_team`; hidden managed-browser
-  operation remains the default.
-- **accounts**: Store each provider in one canonical, versioned portable account file under
-  `~/.dsh/internet/accounts/`. Fresh-context verification captures cookies, local storage, and
-  IndexedDB; account status now distinguishes `ready`, `reauth-required`, `invalid`, and `missing`.
+- **accounts**: First-class semantic authenticated identities for `chatgpt-thinker`, `chatgpt-writer`, and `gemini-thinker`, with account-scoped auth state, login profiles, browser/runtime ownership, schedulers and durable conversations.
+- **workflow**: Real durable `/workflow <objective>` runtime backed by `WorkflowEngine`, `WorkflowJobStore`, exact repository/base authority, and a durable job ID instead of one giant Local follow-up prompt.
+- **workflow**: Direct workflow-owned Research A/B and Review A/B team execution over the lower-level browser team runtime with deterministic prompts and stable per-job Website sessions.
+- **workflow**: SHA-256-bound exact handoffs for research/reviewer finals, deterministic A/B delivery ordering, durable acknowledgement, and separate trusted controls.
+- **workflow**: Persistent `chatgpt-writer` Website conversation, deterministic implementation branch, one-PR retry reconciliation, and strict durable PR receipts.
+- **workflow**: Conservative scoped Website GitHub confirmation handling with exact account/session/repository/state/branch-or-PR matching and fail-closed `UNKNOWN_CONFIRMATION` state.
+- **workflow**: Exact-head independent PR review/remediation loop with strict reviewer verdict/head contracts and a default maximum of three review cycles.
+- **workflow**: Durable `INTERNAL`, `PROGRESS`, and `ACTION_REQUIRED` events plus compact best-effort Local `agent.inject()` integration and payload-free workflow status.
+- **workflow**: Exact-head merge authorization bound to repository + PR + head SHA, live pre-merge revalidation, authorized Website merge confirmation handling, and durable merge receipt.
+- **workflow**: Restart/idempotency hardening, strict nested durable-state validation, explicit retry resume targets, handoff tamper checks, and deterministic PR creation recovery.
+- **workflow**: Automatic `WorkflowDriver` that advances safe runnable states, deduplicates active work by job ID, resumes safe jobs after restart, and stops at explicit human/error boundaries.
+- **workflow**: Exact-head PR/CI health receipt with `PASS`, `FAIL`, `PENDING`, `NONE`, and `UNKNOWN`, including read-only live health inspection before authorization and immediately before merge.
+- **workflow**: `internet_workflow_maintenance` with operator-only terminal-job retention preview/cleanup, 30-day `DONE` and 14-day `CANCELLED` windows, exact `jobId + updatedAt` cleanup guards, scoped handoff deletion, and retained private cleanup audits.
+- **commands**: `/workflow <objective>` now creates and automatically enqueues the durable workflow job.
+- **chatgpt**: Explicit reasoning-level selection/verification with `high` as the default.
+- **team**: Explicit final synthesizer identity, defaulting to `chatgpt-thinker` independently of speaking order.
+- **browser**: Patchright-backed browser automation, managed Xvfb support, account-specific browser scheduling, visible/hidden operation, and zero-install loopback noVNC login support on the supported Linux target.
+- **research**: Provider-native Deep Research through selected thinker accounts with isolated durable research sessions.
+
+### Changed
+
+- **identity**: Provider name is Website implementation metadata only; authenticated runtime boundaries require explicit semantic account identity. No provider-to-account fallback or legacy provider-keyed state migration is used.
+- **tools**: Public model-tool IDs use the `internet_*` naming surface (`internet_chat`, `internet_team`, `internet_research`, `internet_browser`, `internet_workflow`, `internet_workflow_maintenance`). Legacy `browser_chat` / `browser_team` IDs are not registered.
+- **workflow**: Local is the user-facing authority broker rather than the workflow state machine. Full research/reviewer payloads stay out of normal Local progress context.
+- **workflow**: Website handoff delivery is modeled as at-least-once with durable idempotent acknowledgement rather than claimed exactly-once transport.
+- **workflow**: Merge is an explicit exact-head human authority boundary; starting `/workflow` authorizes scoped implementation/PR work but never merge.
+- **workflow**: Website cross-conversation/project memory is not part of the correctness or data plane.
+- **docs**: Documentation is synchronized to the completed P0-P13 as-built runtime; roadmap numbering no longer implies an automatic P14.
 
 ### Fixed
 
-- **build**: Give browser entrypoints one final JavaScript producer: `tsgo` emits the public client declaration only, while esbuild owns the DSH classic-script and remote-login browser bundles. The build no longer relies on deleting overwritten TypeScript source maps or ships an unexported remote-login declaration.
-- **login**: Handle account-verification rejection immediately so a failed remote Save cannot trigger
-  an unhandled-rejection shutdown. Retry one transient Patchright browser-context protocol failure,
-  and allow ten minutes for human interactive sign-in by default.
-- **browser**: Retain separate machine-local normal-Chrome login profiles for ChatGPT and Gemini so
-  reopening a visible login window shows the same signed-in account instead of a fresh logged-out
-  profile. Automated contexts now use only the portable account files, and both providers persist
-  IndexedDB across browser restarts.
-- **browser**: Wait for provider send controls to become ready and keyboard-activate them, avoiding
-  animated-button pointer races in both ChatGPT and Gemini.
-- **client**: Build the web client entry (`src/client.ts`) as a DeepSeek Harness `__ModuleLoader__.load`
-  bundle (via `scripts/build-client.mjs` in `npm run build`) instead of the plain `tsgo` ES-module
-  emit. The raw ES-module `dist/client.js` failed to parse/register as the classic script the harness
-  loads for a plugin's browser surface, so the `/internet` command view never composed.
+- **workflow**: Retry no longer falls back generically to `CREATED`; explicit resume state is persisted for retryable exceptions.
+- **workflow**: PR creation retries reconcile the exact deterministic head branch and refuse duplicate/conflicting PR identity.
+- **workflow**: Persisted handoff/job authority is strictly validated and tampered deterministic identity/hash metadata is rejected.
+- **workflow**: Stale merge authorization and stale PR health are invalidated when the PR head changes.
+- **workflow**: Intentional plugin-shutdown aborts preserve resumable work rather than manufacturing user-facing retry failures.
+- **build**: Browser entrypoints have one final JavaScript producer and package verification validates the shipped workflow/maintenance artifacts.
+- **browser/login**: Account verification, profile retention, provider send readiness, client bundling and remote-login cleanup paths have been hardened.
 
 ## 0.0.1
 
@@ -56,18 +49,8 @@ Initial MVP release: a standalone DeepSeek Harness plugin exposing browser-backe
 
 ### Added
 
-- `browser_chat` model tool: ask ChatGPT Web or Gemini Web a question through a real, logged-in
-  browser and return the rendered answer as markdown.
-- `internet_browser` lifecycle tool: `login`, `status`, `stop`.
-- `/internet <question>` command: bypass the model, ask ChatGPT in the current DSH session's durable
-  native conversation, and render the returned markdown directly in the Web conversation UI.
-- `BrowserManager`: plain normal-Chrome interactive login, lock-safe manual storage-state export,
-  non-persistent Playwright inference contexts, and clean shutdown.
-- Private durable 1:1 DSH-session-to-ChatGPT-conversation bindings with canonical conversation-ID
-  validation and multi-turn continuation across browser/plugin restarts.
-- Conservative new-turn completion detection (present, not running, stable for `stableMs`).
-- Plugin `Config` as a Schemastery object schema (DSH validates profile config through it and
-  renders the settings UI), plus programmatic exports (`BrowserManager`, `resolveBrowserConfig`,
-  `parseChatArgs`, error types).
-- Unit tests for config, argument parsing, markdown rendering, storage layout, durable conversation
-  bindings, new-turn selection, and completion polling.
+- Browser-backed ChatGPT/Gemini chat through authenticated Website sessions.
+- `internet_browser` lifecycle operations for login/status/stop.
+- `/internet <question>` direct ChatGPT command.
+- Portable authenticated account state and durable provider conversations.
+- Conservative completion detection and plugin configuration/runtime exports.

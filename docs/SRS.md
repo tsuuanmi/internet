@@ -1,361 +1,350 @@
-# Software Requirements Specification — Internet Team Workflow Runtime
+# Software Requirements Specification — Internet Workflow Runtime
 
-- **Status:** Target requirements
-- **Version:** Draft v3.1
-- **Date:** 2026-09-08
+- **Status:** implemented normative requirements
+- **Version:** 4.0
+- **Last synchronized:** 2026-09-09
 
 ## 1. Purpose
 
-This SRS defines the target requirements for evolving `@tsuuanmi/internet` into a multi-account, durable Website Agent workflow runtime for coding and related knowledge-work tasks.
+This SRS defines the required behavior of the current `@tsuuanmi/internet` multi-account Website workflow runtime for coding tasks. The implementation description is in [`how-it-works.md`](./how-it-works.md).
 
-Current implemented behavior remains documented in `how-it-works.md`.
+## 2. Primary UX
 
-## 2. Primary user experience
-
-The standard coding workflow is started explicitly with:
+The standard coding workflow is started explicitly:
 
 ```text
 /workflow <task>
 ```
 
-Automatic task detection is not required.
+The command shall resolve repository authority and exact base revision, create one durable workflow job, and enqueue deterministic execution. Automatic task detection is not required.
 
-The command shall start a real durable workflow job rather than inject a giant workflow prompt into Local.
+The standard human authority boundary is exact-head merge authorization after independent review and acceptable PR/CI health.
 
-The user should not need to manually manage thinking teams, writer conversations, handoffs, or review teams during the normal path. The standard human decision point is merge authorization after the PR has passed the configured review gates.
+## 3. Actors and authority
 
-## 3. Actors
+### User
 
-### 3.1 User
+Owns final merge authority and any explicit exception decisions surfaced by the workflow.
 
-The user owns final authority for merge and other workflow escalations that explicitly require human authorization.
+### Local Agent
 
-### 3.2 Local Agent
+Acts as the user-facing authority broker. It starts jobs, receives compact progress/action-required context, carries user decisions back to the workflow, and may inspect details on exception. It is not the deterministic phase state machine and need not summarize normal research/review payloads.
 
-The Local Agent is the user-facing authority broker and workflow client.
+### WorkflowEngine
 
-It owns:
+Owns durable authoritative state, transitions, handoff gates, exact-head review/health validation, merge authority and retry/idempotency semantics.
 
-- user interaction;
-- authoritative intent, constraints, Tasks, and Decisions;
-- starting `/workflow` jobs;
-- receiving compact progress/action-required events;
-- carrying user approval/rejection/cancel decisions back to the workflow;
-- targeted verification when needed.
+### WorkflowDriver
 
-It does not need to perform broad repository reading, routine implementation, normal team/review summarization, or deterministic phase tracking.
+Advances safe code-owned states automatically, deduplicates active work by job ID, resumes safe runnable jobs after restart, and stops at human/action-required boundaries.
 
-### 3.3 WorkflowEngine
+### Thinker accounts
 
-WorkflowEngine is the deterministic orchestration control plane.
+`chatgpt-thinker` and `gemini-thinker` perform reasoning and review. `chatgpt-thinker` is the default explicit final synthesizer.
 
-It owns:
+### Writer account
 
-- durable job state;
-- team fan-out and completion tracking;
-- deterministic prompt construction;
-- handoff delivery and receipts;
-- writer/reviewer sequencing;
-- PR/review lifecycle;
-- scoped approval behavior;
-- retries/idempotency/recovery;
-- compact event generation.
+`chatgpt-writer` is a separate Website identity used for repository mutation, PR work, read-only PR health inspection, and merge only after exact user authorization.
 
-### 3.4 ChatGPT thinker account
+### GitHub / CI
 
-The ChatGPT thinker account participates in reasoning/review teams and acts as the explicit final synthesizer for each team by default.
-
-### 3.5 Gemini thinker account
-
-The Gemini thinker account participates in independent reasoning/review teams.
-
-### 3.6 ChatGPT writer account
-
-The writer account is a separate authenticated ChatGPT Website account with GitHub repository mutation capability.
-
-Expected capabilities include:
-
-- read accessible repositories, including private repositories;
-- create branch;
-- create/update files;
-- commit;
-- create/update pull request;
-- inspect pull request/CI state;
-- execute merge when technically permitted and workflow-authorized.
-
-### 3.7 GitHub / CI
-
-GitHub PR state, commits, review discussion, and CI/runtime evidence are shared external artifacts.
+The PR, exact head SHA and check/status policy are canonical external implementation evidence.
 
 ## 4. Functional requirements
 
-### FR-001 — Explicit workflow entry point
+### FR-001 — Explicit durable workflow start
 
-The plugin shall keep `/workflow <task>` as the explicit standard user entry point.
+`/workflow <task>` shall start one durable job and shall not encode the complete protocol as a giant Local prompt.
 
-### FR-002 — Real workflow start
+### FR-002 — First-class account identity
 
-`/workflow` shall resolve repository/revision context and start a durable workflow job through the workflow runtime. It shall not encode the complete workflow as a single Local follow-up prompt.
+Authenticated runtime boundaries shall use explicit semantic `accountId`, not provider as an implicit identity selector.
 
-### FR-003 — Multi-account ChatGPT support
-
-The plugin shall support more than one authenticated ChatGPT account concurrently.
-
-Each account shall have a stable semantic `accountId` independent of provider name.
-
-### FR-004 — Account isolation
-
-Authentication state, login profiles, scheduler state, browser contexts, and conversation bindings of one account shall not be reused by another account.
-
-### FR-005 — Capability-aware routing
-
-The runtime shall route a workflow step based on required capabilities and role.
-
-At minimum the architecture shall distinguish thinker/reviewer and terminal writer.
-
-### FR-006 — High ChatGPT thinking default
-
-Ordinary ChatGPT browser turns shall default to reasoning level `high` unless explicitly overridden.
-
-### FR-007 — Explicit team synthesizer
-
-Each thinking/review team shall have an explicit synthesizer identity. The default synthesizer shall be `chatgpt-thinker`, independent of provider speaking order.
-
-### FR-008 — Direct workflow-owned team execution
-
-The deterministic coding workflow shall be able to execute team runs directly through the lower-level team runtime rather than requiring a free-form DSH subagent intermediary.
-
-### FR-009 — Deterministic team prompt construction
-
-WorkflowEngine shall prepare team/review tasks automatically from authoritative workflow state, including objective, repository, revision/PR identity, team role, constraints, and output contract.
-
-### FR-010 — Parallel logical team fan-out
-
-The standard coding workflow shall create two independent reasoning teams as concurrent logical workflow steps.
-
-Provider/account schedulers may serialize underlying browser turns when required for account safety.
-
-### FR-011 — Verbatim pre-implementation handoff
-
-Each team's final output shall be delivered verbatim to the writer account. Metadata may be attached outside the payload, but the payload shall not be summarized, rewritten, or merged during normal routing.
-
-### FR-012 — Handoff completion gate
-
-The writer shall not receive `START_IMPLEMENTATION` until all required research handoffs are confirmed delivered.
-
-### FR-013 — Writer repository confirmation
-
-Before mutation, the writer workflow shall confirm the authoritative target repository and base branch/revision.
-
-### FR-014 — PR creation without Local push
-
-The writer workflow shall create/update a branch and pull request without requiring Local to implement or push an intermediate code commit.
-
-### FR-015 — Scoped implementation auto-approval
-
-When the Website presents a reliably recognized confirmation for a workflow-authorized implementation/PR action, the controller may auto-confirm it if repository, job, branch/PR identity, action type, and workflow state all match the active job.
-
-### FR-016 — Unknown confirmation fail-closed
-
-Unknown or ambiguous Website confirmation prompts shall not be auto-confirmed. The job shall pause and notify Local.
-
-### FR-017 — PR-centric post-review
-
-After PR creation, the runtime shall start two independent review teams against the actual PR.
-
-### FR-018 — Verbatim review handoff
-
-Each review team's final output shall be delivered verbatim to the writer.
-
-### FR-019 — Remediation loop
-
-After all required review outputs are delivered, the writer shall receive a separate `APPLY_REVIEWS` control instruction. Review/remediation may repeat until configured gates pass or the job escalates.
-
-### FR-020 — Review-cycle limit
-
-The initial workflow shall support a configurable maximum review/remediation cycle count. Exceeding the limit shall escalate to Local instead of looping indefinitely.
-
-### FR-021 — Durable workflow jobs
-
-Long-running workflows shall have a durable `job_id` and explicit state independent of one Local tool invocation.
-
-### FR-022 — Event classes
-
-The runtime shall distinguish at least internal state events, compact progress events, and action-required events.
-
-Full reasoning payloads shall not be injected into Local as progress events by default.
-
-### FR-023 — Merge authorization
-
-The standard workflow shall require explicit user authorization before merge.
-
-Starting `/workflow` or auto-approving implementation actions shall not imply merge authorization.
-
-### FR-024 — Merge authorization binding
-
-Merge authorization should be bound to concrete state including job, repository, PR number, and expected reviewed head SHA where available.
-
-### FR-025 — Merge head revalidation
-
-Before executing merge, the workflow shall verify that the current PR head matches the authorized/reviewed expected head. A mismatch shall invalidate authorization and return the job to review/authorization.
-
-### FR-026 — Merge confirmation execution
-
-After explicit user authorization, Local/controller may confirm the Website merge `Allow` prompt on the user's behalf for that authorized merge.
-
-### FR-027 — Local exception inspection
-
-Local shall be able to inspect raw handoffs, code, PR diff, review outputs, and runtime evidence when an exception or high-risk condition requires it.
-
-### FR-028 — Job recovery
-
-Durable job state shall support recovery after ordinary Local turn completion and temporary pauses. Restart recovery should be supported where technically feasible.
-
-### FR-029 — Idempotent external actions
-
-The runtime shall avoid duplicate handoffs, duplicate PR creation, and duplicate merge on retry by using durable receipts/idempotency metadata.
-
-### FR-030 — Workflow API
-
-The plugin should expose a Local-facing service/tool named `internet_workflow` with operations conceptually including:
+Required initial accounts:
 
 ```text
-start
-status
-approve
-reject
-cancel
-continue
+chatgpt-thinker
+chatgpt-writer
+gemini-thinker
 ```
 
-`/workflow` remains the normal user-facing entry point.
+### FR-003 — Account isolation
 
-### FR-031 — Current-vs-target documentation separation
+Portable auth state, login profiles, browser/runtime ownership, schedulers, conversations and remote-login state shall remain isolated per account.
 
-Target workflow documents shall not represent unimplemented behavior as current behavior. `how-it-works.md` remains the current-state source until implementation lands.
+### FR-004 — Clean-break identity model
 
-## 5. Data requirements
+The runtime shall not depend on provider-to-account default aliases, provider-keyed state read-through, legacy v1 migration or automatic compatibility import unless a future concrete compatibility requirement explicitly changes this contract.
 
-### 5.1 Account identity
+### FR-005 — High ChatGPT default
+
+Ordinary ChatGPT browser turns shall default to reasoning level `high` unless explicitly configured otherwise.
+
+### FR-006 — Explicit synthesis identity
+
+Team synthesis shall route to an explicit account identity. Default: `chatgpt-thinker`, independent of speaking order.
+
+### FR-007 — Direct workflow-owned teams
+
+Research and review lanes shall run directly through the lower-level browser team runtime without requiring a free-form DSH child agent as a reasoning intermediary.
+
+### FR-008 — Independent logical lanes
+
+The standard coding job shall run two research lanes and two post-PR review lanes. Same-account Website turns may serialize for safety while logical lanes remain independent.
+
+### FR-009 — Deterministic prompts
+
+Workflow prompts shall be constructed from authoritative job facts, including objective, repository/base or PR/head identity, lane role, constraints and output contract.
+
+### FR-010 — Stable per-job Website sessions
+
+Research A/B, Review A/B and writer shall use stable deterministic job-scoped session identities. Review cycle and exact PR head shall remain state/prompt facts rather than creating new reviewer session identities.
+
+### FR-011 — Verbatim handoffs
+
+Each research/reviewer final output shall be stored and delivered to the writer without summarization or rewriting. Metadata shall remain outside the payload.
+
+### FR-012 — Payload integrity
+
+Each handoff shall persist SHA-256 of the exact UTF-8 payload and deterministic logical identity. Corrupted/tampered persisted handoffs shall fail closed.
+
+### FR-013 — Delivery semantics
+
+Website handoff transport shall be treated as at-least-once with durable idempotent acknowledgement. The runtime shall not claim transactional exactly-once Website UI delivery.
+
+### FR-014 — Separate control plane
+
+Trusted controls such as `START_IMPLEMENTATION`, `APPLY_REVIEWS`, `CHECK_PR_HEALTH` and `MERGE_AUTHORIZED` shall be separate from model data payloads.
+
+### FR-015 — Writer start gate
+
+`START_IMPLEMENTATION` shall not be sent until all required research handoffs are durably acknowledged.
+
+### FR-016 — Writer authority verification
+
+Before mutation, the writer shall verify the exact target repository and base revision.
+
+### FR-017 — One-PR idempotency
+
+The deterministic workflow branch plus job identity shall act as the PR idempotency key. Retry shall reconcile and reuse exactly one matching open PR; closed/merged/conflicting duplicate identity shall block rather than create another PR.
+
+### FR-018 — Durable PR receipt
+
+Successful writer implementation shall persist repository, PR number/URL, base branch, head branch and exact head SHA.
+
+### FR-019 — Scoped Website auto-approval
+
+A recognized Website GitHub confirmation may be auto-approved only when actual runtime account/session, repository, workflow state, action type and branch/PR identity all match authoritative workflow scope.
+
+### FR-020 — Unknown confirmation fail-closed
+
+Unknown, malformed, ambiguous or scope-mismatched Website confirmations shall not be clicked and shall produce a durable action-required stop.
+
+### FR-021 — Merge excluded from implementation authority
+
+Starting `/workflow` shall not authorize merge. Ordinary implementation/remediation confirmation policy shall not include premature merge.
+
+### FR-022 — PR-centric independent review
+
+After PR creation, two independent review lanes shall inspect the actual PR and exact current head SHA.
+
+### FR-023 — Strict reviewer head binding
+
+Each review final shall include `PASS` or `CHANGES_REQUIRED` plus an exact reviewer-asserted `reviewedHeadSha`. Malformed or wrong-head results shall fail the lane.
+
+### FR-024 — Verbatim reviewer delivery
+
+Complete reviewer final payloads shall be delivered verbatim to the persistent writer conversation.
+
+### FR-025 — Same-PR remediation
+
+If changes are required, `APPLY_REVIEWS` shall be sent only after all required review handoffs are delivered. Writer remediation shall preserve exact PR identity and advance the head SHA.
+
+### FR-026 — Review cycle limit
+
+The default maximum review cycle count shall be three. Exhaustion shall stop as `REVIEW_LIMIT_REACHED`.
+
+### FR-027 — Durable event classes
+
+The runtime shall distinguish `INTERNAL`, `PROGRESS` and `ACTION_REQUIRED` events. Full research/review payloads shall not be projected into Local progress context by default.
+
+### FR-028 — Best-effort Local injection
+
+Progress/action-required injection failures shall not roll back committed workflow state or become part of correctness.
+
+### FR-029 — Payload-free status
+
+Workflow status shall expose control-plane summaries such as state, lane attempts/errors, handoff hashes/delivery, writer identity, PR/head, review cycle, pending action, health, event and last error without returning raw research/review payloads by default.
+
+### FR-030 — Automatic driver
+
+`WorkflowDriver` shall advance runnable deterministic states automatically and deduplicate concurrent runs by `jobId`.
+
+### FR-031 — Restart recovery
+
+Startup recovery shall resume only safe runnable states. Jobs waiting on user authority or known action-required failures shall remain stopped.
+
+### FR-032 — Explicit retry state
+
+Unexpected driver/orchestration failures shall persist an explicit retry-required state and resume target. There shall be no generic fallback to `CREATED`.
+
+### FR-033 — Cancellation ordering
+
+Cancellation shall abort/settle active driver work before persisting `CANCELLED`.
+
+### FR-034 — Exact-head PR health receipt
+
+PR health shall be persisted against repository + PR + exact head SHA with one state:
 
 ```text
-accountId
-provider
-role
-capabilities
-account storage location
-conversation namespace
+PASS | FAIL | PENDING | NONE | UNKNOWN
 ```
 
-### 5.2 Handoff record
+### FR-035 — Read-only health inspection
+
+`CHECK_PR_HEALTH` shall perform live read-only inspection and shall not mutate the repository or PR.
+
+### FR-036 — Health merge gate
+
+`PASS` shall be merge-eligible. `NONE` shall be merge-eligible only when absence of required checks/statuses is established. `PENDING` shall be retryable. `FAIL` shall not advance. `UNKNOWN` shall fail closed.
+
+### FR-037 — Health invalidation
+
+Any new/remediated PR head shall invalidate a prior health receipt.
+
+### FR-038 — Explicit exact-head merge authorization
+
+Merge approval shall be bound to the concrete job, repository, PR and expected head SHA. Approval shall move the job to `MERGING`, not imply a generic reusable permission.
+
+### FR-039 — Pre-merge revalidation
+
+Immediately before merge, the workflow shall re-read the live PR head and current PR health. Changed head or unacceptable health shall invalidate stale authority.
+
+### FR-040 — Authorized Website merge confirmation
+
+Website `merge_pull_request` confirmation may be auto-approved only in the exact authorized `MERGING` state with matching durable authority.
+
+### FR-041 — Durable merge receipt
+
+Successful merge shall persist executor, authorized/verified head, resulting merged SHA and timestamp before `DONE`.
+
+### FR-042 — Operator-only retention preview
+
+Retention preview shall list only aged terminal jobs: `DONE` after 30 days and `CANCELLED` after 14 days, measured from authoritative `updatedAt`.
+
+### FR-043 — Exact cleanup guard
+
+Cleanup shall require the exact `jobId` plus unchanged `updatedAt` from preview. A changed job shall fail closed.
+
+### FR-044 — Scoped cleanup
+
+Cleanup shall validate the selected job's expected handoff directory and delete only that exact job record and its exact handoffs.
+
+### FR-045 — Cleanup audit
+
+Cleanup shall persist a private durable audit receipt. Repeating the same exact completed cleanup shall be audit-idempotent.
+
+### FR-046 — No implicit retention deletion
+
+There shall be no automatic background cleanup, startup sweep or scheduled deletion.
+
+## 5. Core persisted authority
+
+### Job
+
+```text
+job_id
+ownerSessionId
+objective
+repository
+base branch/revision
+state
+research/review lane state
+writer account/session
+PR receipt
+review cycle
+PR health receipt
+pending action / resume state
+merge authorization / merge receipt
+last event / last error
+createdAt / updatedAt
+```
+
+### Handoff
 
 ```text
 handoff_id
 job_id
 source
-recipient account/conversation
+recipient
 sequence
 payload
-payload hash
-created_at
-delivered_at
+payload_hash
+delivery state/timestamps
 ```
 
-### 5.3 Job record
+### Merge authorization
 
 ```text
 job_id
-objective
-authoritative constraints
 repository
-base branch/revision
-team definitions
-account routing
-required handoffs
-writer identity
-state
-PR identity when available
-review cycle
-pending action
-last event
-```
-
-### 5.4 Merge authorization record
-
-```text
-authorization_id
-job_id
-repository
-PR number
+PR number/URL
+head branch
 expected head SHA
-approved_at
+review cycle
+owner session
+authorizedAt
+```
+
+### Cleanup audit
+
+```text
+audit id
+job id
+repository
+terminal state
+retention rule
+preview/eligibility identity
+operator session
+requested/completed timestamps
+deleted handoff count
 status
 ```
 
-No secrets shall be persisted in shared job/handoff artifacts.
+Secrets shall not be persisted in shared workflow artifacts.
 
 ## 6. Non-functional requirements
 
-### NFR-001 — Context efficiency
+- **Determinism:** code owns state transitions, cardinality, ordering and authority gates.
+- **Intent fidelity:** normal data routing shall not introduce avoidable LLM transformations.
+- **Isolation:** same-provider accounts remain isolated at auth/runtime/conversation/scheduler boundaries.
+- **Fail-closed safety:** ambiguous authority, stale exact-head state or corrupted durable data shall stop rather than guess.
+- **Recoverability:** Local turn completion or plugin restart shall not discard durable jobs.
+- **Idempotency:** retry prefers exact resume/reconcile over duplicate handoff, PR or merge actions.
+- **Context efficiency:** Local receives compact control-plane context rather than full team/review payloads by default.
+- **Least workflow authority:** technical GitHub capability never substitutes for job/repository/head/user authority.
 
-The normal workflow shall minimize raw team/review reasoning entering Local context.
-
-### NFR-002 — Intent fidelity
-
-The system shall avoid unnecessary LLM transformations between team/review final outputs and writer input.
-
-### NFR-003 — Deterministic orchestration
-
-Workflow phase transitions, worker cardinality, handoff gates, and approval gates shall be enforced by code rather than model compliance with a monolithic prompt.
-
-### NFR-004 — Isolation
-
-Two authenticated accounts from the same provider shall remain isolated at storage, scheduler, conversation, and browser-context layers.
-
-### NFR-005 — Observability
-
-The runtime should expose state transitions, team status, handoff receipts, PR identity, review cycles, pending actions, and failure reasons.
-
-### NFR-006 — Recoverability
-
-A long-running job should not be lost merely because the Local turn ends.
-
-### NFR-007 — Least authority in the workflow
-
-Even when technical permissions are broad, job-level policy shall constrain repository, revision, action scope, PR identity, and merge state.
-
-### NFR-008 — Deterministic routing
-
-Parallel completion order shall not make writer input order nondeterministic unless explicitly configured.
-
-### NFR-009 — Fail-closed confirmation handling
-
-Ambiguous confirmation UI shall stop rather than auto-authorize an unknown action.
-
-### NFR-010 — Backward compatibility
-
-Existing single-account configurations should continue to function through compatibility aliases/migration where practical.
-
-## 7. Default coding workflow acceptance criteria
-
-A target implementation is functionally complete when this flow works end-to-end:
+## 7. End-to-end acceptance flow
 
 ```text
-User runs /workflow <task>
-  -> command starts durable workflow job
-  -> Team A and Team B run directly under WorkflowEngine
-  -> ChatGPT thinker synthesizes each team
-  -> outputs delivered verbatim to writer
-  -> runtime sends START_IMPLEMENTATION
-  -> writer creates PR with scoped confirmations handled automatically
-  -> Review A and Review B run against PR
-  -> outputs delivered verbatim to writer
-  -> writer remediates if needed
-  -> review gates pass
-  -> Local presents merge request
-  -> user authorizes exact merge
-  -> writer merges, with Website merge confirmation executed on user's behalf
-  -> job reaches DONE
+/workflow <task>
+-> durable job + automatic driver
+-> Research A/B direct team runtime
+-> exact handoffs to writer
+-> START_IMPLEMENTATION
+-> one reconciled PR
+-> Review A/B exact-head
+-> exact reviewer handoffs
+-> same-PR remediation loop if required
+-> PASS/PASS exact head
+-> acceptable CHECK_PR_HEALTH receipt
+-> exact-head merge authorization request
+-> explicit user approval
+-> immediate head + health revalidation
+-> MERGE_AUTHORIZED
+-> writer merge
+-> durable merge receipt
+-> DONE
 ```
 
-During the normal path, Local must not need to summarize team results, rewrite reviewer findings, implement code, push an intermediate branch solely for reviewers, or manually track workflow phase progression.
+The normal path shall not require Local to summarize team results, implement code, push an intermediate branch merely for review, manually select the next workflow phase, or infer merge authority.
