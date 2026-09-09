@@ -1,0 +1,46 @@
+name: P11 TODO
+
+on:
+  push:
+    branches:
+      - impl/p11-workflow-driver
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update ROI roadmap
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/TODO.md')
+          text = path.read_text()
+          marker = '## Defer until needed\n'
+          if '## P11 — Automatic workflow driver' in text:
+              raise SystemExit(0)
+          section = '''## P11 — Automatic workflow driver\n\n**ROI:** critical  \n**Risk:** medium-high  \n**Goal:** make `/workflow <task>` a real hand-off: create one durable job, drive it automatically to the next human/action-required boundary, and resume safe in-flight work after plugin restart.\n\n### 46. Add deterministic `WorkflowDriver`\n\nDrive only code-owned state transitions; do not add another LLM orchestration layer. The driver should advance runnable states through existing `WorkflowEngine` primitives, deduplicate concurrent runs by `jobId`, and stop at explicit human/error boundaries.\n\nTarget automatic path:\n\n```text\nCREATED\n-> research\n-> exact research handoffs\n-> writer implementation\n-> PR_OPEN\n-> review\n-> exact review handoffs\n-> remediation/re-review as needed\n-> READY_FOR_MERGE_AUTHORIZATION\n-> request exact-head merge authorization\n-> AWAITING_MERGE_AUTHORIZATION\n```\n\nAfter exact-head approval, the driver resumes `MERGING -> DONE`. It must never bypass `BLOCKED`, `UNKNOWN_CONFIRMATION`, retry-required, review-limit, or merge-authorization boundaries.\n\n### 47. Make `/workflow` and `internet_workflow` enqueue execution\n\n`/workflow <task>` and tool `start` should create the durable job and immediately enqueue it. `continue` should resume the exact persisted `resumeState`; `approve` should enqueue the authorized merge; `cancel` should abort/settle any active driver turn before persisting `CANCELLED`. `reject` must not immediately re-request merge authorization.\n\n### 48. Add durable active-job discovery and restart resume\n\nAdd strict job-store enumeration and resume only states that can safely continue. Restart recovery must not wake jobs waiting on user authority or known action-required failures. A rejected merge authorization in `READY_FOR_MERGE_AUTHORIZATION` must remain quiet after restart until explicitly requested again.\n\n### 49. Add driver failure boundary and tests\n\nUnexpected driver/orchestration errors must become a durable retry-required action with an explicit resume state rather than leaving a job looking active forever. Add tests for state driving, duplicate enqueue, restart during research/review/writer work, review retry stop, merge rejection quietness, approval-to-merge continuation, cancellation ordering, and driver disposal.\n\n## P12 — Exact-head CI / PR health gate\n\n**ROI:** very high  \n**Risk:** medium  \n**Dependency:** P11 automatic driver.\n\n### 50. Persist exact-head CI/check receipt\n\nBind PR health to repository + PR + exact head SHA. Distinguish `PASS`, `FAIL`, `PENDING`, `NONE`, and `UNKNOWN`; do not collapse repositories with no configured checks into failure.\n\n### 51. Gate merge authorization on current PR health\n\nRequired checks failing or pending must block/wait. `NONE` may be merge-eligible when no checks are configured. `UNKNOWN` must be surfaced explicitly to the user rather than silently treated as pass. A changed head invalidates the old CI receipt exactly like review and merge authorization.\n\n### 52. Re-check health immediately before merge\n\nThe authorized merge path should verify that the exact authorized head still has acceptable PR/check health immediately before merge.\n\n## P13 — Operations / retention\n\n### 45. Audit/retention/cleanup policy — ROI: medium\n\nDefine explicit retention windows, audit metadata, safe terminal-job cleanup eligibility, and operator-visible cleanup commands after the automatic driver and CI gate are stable. Start with explicit operator actions only; no implicit automatic deletion.\n\n'''
+          old = '''### 45. Audit/retention/cleanup policy — ROI: medium\n\nDefine explicit retention windows, audit metadata, safe cleanup eligibility, and operator-visible cleanup commands only after correctness-critical restart/idempotency hardening is stable. No automatic deletion should be introduced implicitly.\n\n'''
+          if old not in text:
+              raise SystemExit('expected P10 #45 block not found')
+          text = text.replace(old, '')
+          if marker not in text:
+              raise SystemExit('defer marker not found')
+          text = text.replace(marker, section + marker)
+          path.write_text(text)
+          PY
+      - name: Commit TODO roadmap
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/TODO.md
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'docs: prioritize automatic workflow driving by ROI'
+          git push
