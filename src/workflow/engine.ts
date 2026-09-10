@@ -216,7 +216,7 @@ export class WorkflowEngine {
 				],
 			},
 			accountRouting: {
-				thinkerAccounts: ["chatgpt-thinker", "gemini-thinker"],
+				thinkerAccounts: ["chatgpt-thinker", "chatgpt-thinker-2"],
 				writerAccount: "chatgpt-writer",
 				synthesizerAccount: "chatgpt-thinker",
 			},
