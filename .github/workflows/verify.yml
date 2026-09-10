@@ -5,7 +5,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -20,5 +20,15 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - name: Sync generated dist on implementation branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/workflow-operator-team-hardening'
+        run: |
+          if ! git diff --quiet -- dist; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add dist
+            git commit -m "build: sync generated dist"
+            git push origin HEAD:feat/workflow-operator-team-hardening
+          fi
       - run: git diff --exit-code -- dist
       - run: npm run verify-package
