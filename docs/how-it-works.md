@@ -122,7 +122,7 @@ The tool may return a bounded current-call transcript when requested. Transcript
 
 ## Workflow admission and operator commands
 
-`/workflow <objective>` resolves the current Git worktree, authoritative remote repository identity, and exact `HEAD`; it then starts a durable job and enqueues `WorkflowDriver`.
+`/workflow <objective>` resolves the current Git worktree and authoritative remote repository identity, queries that remote for the exact current `refs/heads/main` SHA, persists it as `baseRevision`, then starts a durable job and enqueues `WorkflowDriver`. Local worktree `HEAD` is not workflow base authority.
 
 The same command family exposes routine operator actions:
 
@@ -135,7 +135,7 @@ The same command family exposes routine operator actions:
 /workflow delete <jobId>
 ```
 
-Operator job selection is scoped to the owning Local session and fails on ambiguity rather than guessing.
+Operator job selection is scoped to the owning Local session and fails on ambiguity rather than guessing. Deletion always requires an explicit job ID.
 
 `status` starts with a compact pipeline summary and then expands Research/Review Team A/B. `watch` returns the authoritative current snapshot; live progress continues through the existing `PROGRESS` event stream instead of a second polling state machine.
 
@@ -167,7 +167,7 @@ Review Team B    ─────────────────►
 
 Each lane is a full agent-team invocation over the same ordered backing member accounts. One lane failing or completing does not restart its sibling.
 
-The account scheduler may serialize turns that use the same authenticated account. This is intentionally separate from workflow-lane concurrency; workflow adds no A-then-B mutex.
+The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so different workflow session IDs may run concurrently on the same authenticated account while each individual session remains strictly ordered. Work above configured capacity queues. This is separate from workflow-lane concurrency; workflow adds no A-then-B mutex.
 
 ## Structured team traces
 
@@ -238,9 +238,9 @@ Trusted controls are separate from data payloads.
 
 After both research handoffs are acknowledged, the stable `chatgpt-writer` conversation receives `START_IMPLEMENTATION`.
 
-The writer verifies repository/base, inspects code, implements and validates the requested change, uses the deterministic workflow branch, reconciles an existing exact matching open PR before creating a new one, and never merges during implementation.
+The writer verifies repository, required base branch `main`, and exact upstream `main` base revision; creates/reuses the deterministic workflow branch from that revision; inspects code; implements and validates the requested change; and reconciles an existing exact matching open PR targeting `main` before creating a new one. It never merges during implementation.
 
-`chatgpt-writer` is deliberately not a team member. Successful output becomes a durable PR receipt bound to repository, PR number/URL, base, head branch, and exact head SHA.
+`chatgpt-writer` is deliberately not a team member. Successful output becomes a durable PR receipt bound to repository, PR number/URL, base, head branch, and exact head SHA. A PR result targeting any base other than `main` is blocked.
 
 ## Exact-head review and remediation
 
@@ -271,11 +271,13 @@ Team progress is persisted to trace first and then published as compact phase/te
 
 Notification failure cannot roll back durable workflow correctness.
 
-## Status, stop, and explicit recovery
+## Status, stop, explicit recovery, and deletion
 
 `WorkflowOperator.stop()` delegates to `WorkflowDriver.cancel()`, which aborts active work, waits for settlement, then persists terminal `CANCELLED`. Cancelled jobs are not rediscovered as runnable after restart.
 
 `WorkflowOperator.continue()` delegates to the engine's explicit retry/recovery transition and re-enqueues only a valid resumable job. It does not reset a job to the beginning.
+
+`WorkflowOperator.delete()` requires an exact job ID. If the job is active, it first cancels and settles it; then `WorkflowRetentionManager.deleteNow()` removes that job's local durable job record, handoffs, and team trace. It does not remove the GitHub PR/branch or provider Website conversations.
 
 ## Automatic driver and restart recovery
 
@@ -295,6 +297,8 @@ Only `PASS`, or verified `NONE` when no required checks/statuses exist, may adva
 
 Merge authorization is explicit and bound to repository + PR + exact head. Immediately before merge, the writer re-reads live PR/head/health. Stale authority fails closed.
 
+`MERGE_AUTHORIZED` is squash-only. Successful workflow merge therefore adds exactly one commit to `main`; if squash merge is unavailable the writer blocks instead of falling back to merge-commit or rebase-merge behavior.
+
 ## Retention maintenance
 
 `internet_workflow_maintenance` is operator-only and never runs automatically.
@@ -304,7 +308,9 @@ DONE      -> eligible after 30 days
 CANCELLED -> eligible after 14 days
 ```
 
-Cleanup requires exact `jobId + updatedAt`, validates private workflow artifacts, removes only the selected job/handoffs/team trace, and retains a private durable audit receipt.
+Aged cleanup requires exact `jobId + updatedAt`, validates private workflow artifacts, removes only the selected job/handoffs/team trace, and retains a private durable audit receipt.
+
+Immediate `/workflow delete <jobId>` bypasses the age threshold only for an explicitly selected workflow and does not create an aged-cleanup audit receipt.
 
 ## Correctness boundary
 

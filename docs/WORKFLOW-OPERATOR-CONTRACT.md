@@ -2,7 +2,7 @@
 
 - **Status:** current as-built contract
 - **Last synchronized:** 2026-09-10
-- **Scope:** starting, discovering, tracking, stopping and explicitly recovering durable workflow jobs
+- **Scope:** starting, discovering, tracking, stopping, explicitly recovering, and deleting durable workflow jobs
 
 ## Goal
 
@@ -23,13 +23,13 @@ What is waiting on that result?
 ## Command surface
 
 ```text
-/workflow <objective>                 start a new workflow
+/workflow <objective>                 start a new workflow from fresh upstream main HEAD
 /workflow list                        list workflows owned by this Local session
 /workflow status [jobId]              inspect one workflow
 /workflow watch [jobId]               show the current snapshot and rely on live PROGRESS events
 /workflow stop [jobId]                abort active work and persist CANCELLED
-/workflow continue [jobId]
-/workflow delete <jobId>            resume an explicit retry-required boundary
+/workflow continue [jobId]            resume an explicit retry/recovery boundary
+/workflow delete <jobId>              remove one exact workflow's local durable state
 ```
 
 Starting a workflow prints its durable job ID immediately.
@@ -46,6 +46,8 @@ For `status`, `watch`, `stop`, and `continue`:
 4. if multiple active jobs exist, the command lists their IDs in the error and requires an explicit target;
 5. for non-mutating inspection, one unambiguous historical job may be selected when no active job exists;
 6. terminal jobs cannot be stopped or continued.
+
+`delete` is stricter: it always requires exactly one explicit `jobId`; omitted-ID inference is never allowed.
 
 ## `/workflow list`
 
@@ -146,12 +148,17 @@ The response includes the most recent structured team/member context when availa
 
 `stop` is not pause. `CANCELLED` remains terminal.
 
-## `/workflow continue [jobId]
-/workflow delete <jobId>`
+## `/workflow continue [jobId]`
 
 `continue` resumes only an explicit durable retry/recovery path. It delegates validation to the workflow engine, restores the persisted resume state, and re-enqueues the driver.
 
 It does not reset a workflow to `CREATED`, re-run completed lanes blindly, or make terminal jobs resumable.
+
+## `/workflow delete <jobId>`
+
+`delete` always requires an exact workflow ID. If the selected workflow is non-terminal, the operator first cancels and settles it through `WorkflowDriver.cancel(jobId)`. It then removes that exact workflow's local durable job record, handoffs, and bounded team trace.
+
+Deletion is scoped to the owning Local session and fails rather than guessing. It does **not** silently delete the GitHub PR, workflow branch, or provider Website conversations; those are external artifacts outside the local durable-state deletion contract.
 
 ## Parallel team visibility
 
@@ -168,7 +175,7 @@ Research teams
     Step: round 1 · Member 2 · provider turn · STARTED
 ```
 
-The engine launches both incomplete lane promises before awaiting either. Same-account turns may still serialize through the backing account scheduler; that is independent of workflow-lane concurrency.
+The engine launches both incomplete lane promises before awaiting either. The default account scheduler capacity is `2`, so different workflow session IDs may also run concurrently on the same authenticated account while each individual session remains strictly ordered. This scheduler policy is independent of workflow-lane concurrency.
 
 ## Action-required visibility
 
@@ -206,7 +213,7 @@ The operator projection converts normal account identity to `Member N`; raw acco
 ## Invariants
 
 - routine workflow operation does not require filesystem inspection;
-- omitted job IDs are used only when unambiguous;
+- omitted job IDs are used only when unambiguous, except delete which always requires an explicit ID;
 - status/watch read authoritative durable state;
 - status clearly separates pipeline state from Team A/B execution detail;
 - ordinary team presentation is provider-agnostic;
@@ -215,10 +222,6 @@ The operator projection converts normal account identity to `Member N`; raw acco
 - stop settles active work before terminal cancellation is persisted;
 - cancelled jobs do not restart automatically;
 - continue requires an explicit durable recovery path;
+- delete cancels active work before removing the exact selected workflow's local durable state;
 - A/B lane concurrency remains visible and preserved;
 - full model payloads are not injected into Local progress events.
-
-
-### Explicit deletion
-
-`/workflow delete <jobId>` always requires an exact workflow ID. If the selected workflow is still non-terminal, the operator cancels and settles it first, then removes that job's durable handoffs, bounded team trace, and job record. Omitted IDs are never inferred for deletion.

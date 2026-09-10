@@ -1,7 +1,7 @@
 # Software Requirements Specification — Internet Workflow Runtime
 
 - **Status:** implemented normative requirements
-- **Version:** 4.1
+- **Version:** 4.2
 - **Last synchronized:** 2026-09-10
 
 ## 1. Purpose
@@ -24,9 +24,10 @@ Routine operator controls are:
 /workflow watch [jobId]
 /workflow stop [jobId]
 /workflow continue [jobId]
+/workflow delete <jobId>
 ```
 
-The start command shall resolve repository authority and exact base revision, create one durable workflow job, print its job ID, and enqueue deterministic execution. Automatic task detection is not required.
+The start command shall resolve repository authority, query the selected upstream remote for the exact current `main` head SHA, persist that SHA as `baseRevision`, create one durable workflow job, print its job ID, and enqueue deterministic execution. Local worktree `HEAD` shall not be used as workflow base authority. Automatic task detection is not required.
 
 The standard human authority boundary is exact-head merge authorization after independent review and acceptable PR/CI health.
 
@@ -114,7 +115,7 @@ The standard coding job shall run two research lanes and two post-PR review lane
 
 ### FR-009 — Concurrent lane launch
 
-Research A/B and Review A/B shall be launched before either sibling is awaited. Same-account Website turns may serialize for account safety, but workflow shall not introduce an A-then-B lane mutex.
+Research A/B and Review A/B shall be launched before either sibling is awaited. The default account scheduler shall allow up to two different session IDs to use the same authenticated account concurrently while preserving strict ordering within each session. Workflow shall not introduce an A-then-B lane mutex.
 
 ### FR-010 — Stable per-job Website sessions
 
@@ -168,17 +169,17 @@ Trusted controls such as `START_IMPLEMENTATION`, `APPLY_REVIEWS`, `CHECK_PR_HEAL
 
 `START_IMPLEMENTATION` shall not be sent until all required research handoffs are durably acknowledged.
 
-### FR-023 — Writer authority verification
+### FR-023 — Writer base authority verification
 
-Before mutation, the writer shall verify exact target repository and base revision.
+Before mutation, the writer shall verify the exact target repository, required base branch `main`, and the exact freshly resolved upstream `main` base revision. The deterministic workflow branch shall be created or reused from that revision.
 
 ### FR-024 — One-PR idempotency
 
-The deterministic workflow branch plus job identity shall act as the PR idempotency key. Retry shall reconcile/reuse exactly one matching open PR; closed/merged/conflicting duplicate identity shall block rather than create another PR.
+The deterministic workflow branch plus job identity shall act as the PR idempotency key. Retry shall reconcile/reuse exactly one matching open PR targeting `main`; closed/merged/conflicting duplicate identity shall block rather than create another PR.
 
 ### FR-025 — Durable PR receipt
 
-Successful writer implementation shall persist repository, PR number/URL, base branch, head branch, and exact head SHA.
+Successful writer implementation shall persist repository, PR number/URL, base branch, head branch, and exact head SHA. A writer result whose base branch is not `main` shall not advance the workflow.
 
 ### FR-026 — Scoped Website auto-approval
 
@@ -238,7 +239,7 @@ Full research/review payloads shall not be projected into Local progress context
 
 ### FR-040 — Owner-scoped operator target selection
 
-Operator commands shall scope jobs to the current owner session and fail rather than guess when an omitted job ID is ambiguous.
+Operator commands shall scope jobs to the current owner session and fail rather than guess when an omitted job ID is ambiguous. `/workflow delete` shall always require an explicit job ID.
 
 ### FR-041 — Automatic driver
 
@@ -331,6 +332,14 @@ Adding a new semantic account shall not silently remap existing stable login por
 
 The runtime shall not silently replace a failed member/provider inside an existing durable workflow. Any future health-aware retry/failover policy requires an explicit durable routing/retry specification.
 
+### FR-061 — Explicit exact-ID workflow deletion
+
+`/workflow delete <jobId>` shall require exactly one explicit workflow ID owned by the current Local session. If the workflow is non-terminal, the operator shall cancel and settle it first. Deletion shall remove only that workflow's local durable job record, handoffs, and bounded team trace. It shall not implicitly delete the GitHub PR/branch or provider Website conversations.
+
+### FR-062 — Squash-only workflow merge history
+
+Authorized workflow merge shall use squash merge only. One workflow PR shall contribute exactly one commit to `main`. If squash merge is unavailable, the writer shall block rather than fall back to merge-commit or rebase-merge modes.
+
 ## 5. Core persisted authority
 
 ### Job
@@ -340,7 +349,7 @@ job_id
 ownerSessionId
 objective
 repository
-base revision
+base revision (fresh upstream main HEAD)
 state
 ordered thinker account routing
 writer/synthesizer routing
@@ -414,27 +423,28 @@ Secrets shall not be persisted in shared workflow artifacts.
 
 ## 6. Non-functional requirements
 
-- **Determinism:** code owns state transitions, lane cardinality, ordering, durable routing, and authority gates.
+- **Determinism:** code owns state transitions, lane cardinality, ordering, durable routing, base authority, and authority gates.
 - **Provider agnosticism:** team intellectual semantics depend on ordered members, not provider brands.
 - **Intent fidelity:** normal data routing shall not introduce avoidable LLM transformations.
 - **Isolation:** same-provider accounts remain isolated at auth/runtime/conversation/scheduler boundaries.
-- **Fail-closed safety:** ambiguous authority, stale exact-head state, malformed routing, or corrupted durable data shall stop rather than guess.
+- **Fail-closed safety:** ambiguous authority, stale exact-head state, malformed routing, wrong PR base, or corrupted durable data shall stop rather than guess.
 - **Recoverability:** Local turn completion or plugin restart shall not discard durable jobs.
 - **Idempotency:** retry prefers exact resume/reconcile over duplicate handoff, PR, or merge actions.
 - **Context efficiency:** Local receives compact control-plane context rather than full team/review payloads by default.
 - **Least workflow authority:** technical GitHub capability never substitutes for job/repository/head/user authority.
 - **Diagnosability:** provider/account details remain available for failure attribution without leaking into normal member reasoning prompts.
+- **Reviewable history:** each authorized workflow PR contributes exactly one squash commit to `main`.
 
 ## 7. End-to-end acceptance flow
 
 ```text
 /workflow <task>
--> durable job + automatic driver
+-> resolve fresh upstream main HEAD + durable job + automatic driver
 -> Research Team A/B concurrently
      each: Member 1 + Member 2 -> strongest synthesis
 -> exact handoffs to writer
 -> START_IMPLEMENTATION
--> one reconciled PR
+-> one reconciled PR targeting main
 -> Review Team A/B concurrently on exact head
      each: Member 1 + Member 2 -> exact-head result
 -> exact reviewer handoffs
@@ -445,7 +455,7 @@ Secrets shall not be persisted in shared workflow artifacts.
 -> explicit user approval
 -> immediate head + health revalidation
 -> MERGE_AUTHORIZED
--> writer merge
+-> writer squash merge
 -> durable merge receipt
 -> DONE
 ```

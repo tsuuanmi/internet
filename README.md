@@ -11,8 +11,8 @@ Browser-backed ChatGPT Web and Gemini Web tools for the DeepSeek Harness (DSH), 
 - **`internet_workflow`** — lower-level durable workflow control/status surface.
 - **`internet_workflow_maintenance`** — explicit operator-only retention preview/cleanup.
 - **`/internet <question>`** — direct ChatGPT Web answer from the DSH conversation UI.
-- **`/workflow <objective>`** — automatically drive a Git-aware implementation workflow.
-- **`/workflow list|status|watch|stop|continue`** — discover, inspect, follow, cancel, and explicitly resume durable workflow jobs.
+- **`/workflow <objective>`** — automatically drive a Git-aware implementation workflow from a freshly queried upstream `main` HEAD.
+- **`/workflow list|status|watch|stop|continue|delete`** — discover, inspect, follow, cancel, resume, or explicitly remove durable workflow jobs.
 
 The plugin drives the providers' real websites through isolated Chrome contexts. It is standalone and does not replace DSH `web_search` / `web_fetch`.
 
@@ -67,7 +67,7 @@ Start explicitly from a DSH session whose working directory is inside the target
 /workflow Fix the login redirect after a cancelled sign-in.
 ```
 
-The command resolves the repository/upstream and exact current base revision, creates a durable job, prints its job ID, and immediately enqueues the workflow driver.
+The command resolves the repository/upstream, queries the selected remote for the exact current `refs/heads/main` SHA, stores that SHA as the workflow `baseRevision`, creates a durable job, prints its job ID, and immediately enqueues the workflow driver. Local worktree `HEAD` is not workflow base authority.
 
 Normal path:
 
@@ -77,8 +77,8 @@ Normal path:
      each team: Member 1 + Member 2 -> strongest combined synthesis
 -> exact SHA-256-bound handoffs A then B to chatgpt-writer
 -> START_IMPLEMENTATION
--> writer verifies repo/base, implements, validates
--> deterministic workflow branch + exactly one reconciled PR
+-> writer verifies repo/upstream main base, implements, validates
+-> deterministic workflow branch + exactly one reconciled PR targeting main
 -> Review Team A/B launched concurrently against the exact PR head
      each team: Member 1 + Member 2 -> exact-head review synthesis
 -> exact reviewer payloads to writer
@@ -89,11 +89,11 @@ Normal path:
 -> explicit user approval
 -> immediate live head + health revalidation
 -> MERGE_AUTHORIZED
--> writer merges
+-> writer squash-merges exactly that PR
 -> DONE
 ```
 
-Research A/B and Review A/B are independent workflow lanes and are started before either sibling is awaited. Same-account turns may still serialize through that authenticated account's scheduler; the workflow does not add an A-then-B mutex above account/browser safety limits.
+Research A/B and Review A/B are independent workflow lanes and are started before either sibling is awaited. The default account scheduler capacity is `2`, so different workflow session IDs may progress concurrently on the same authenticated account while each individual session remains strictly ordered. The workflow does not add an A-then-B mutex above those scheduler limits.
 
 The workflow driver automatically advances code-owned states and stops at explicit human/error boundaries such as merge authorization, `BLOCKED`, `UNKNOWN_CONFIRMATION`, retry-required state, review limit, cancellation, or completion.
 
@@ -117,10 +117,11 @@ Routine operation does not require inspecting `~/.dsh/internet/workflows/jobs/*.
 - **`watch`** returns the same authoritative snapshot while compact live events identify phase, Team A/B, attempt, round, member, stage, and structured failures as they occur. It does not create a second workflow state machine.
 - **`stop`** aborts active driver work, waits for the active operation to settle, persists terminal `CANCELLED`, and prevents restart resume.
 - **`continue`** only resumes a job that already has an explicit durable retry/recovery target; it is not a reset-to-start operation.
+- **`delete`** requires an exact `jobId`. Active work is cancelled and settled first, then that workflow's durable job record, handoffs, and team trace are removed. It never guesses an omitted ID and does not silently delete the GitHub PR/branch.
 
 Normal status/watch output uses team/member identities. Underlying account/provider identity is included only in explicit failure diagnostics so provider-level incidents can still be attributed correctly.
 
-When `jobId` is omitted, the operator surface resolves only an unambiguous current-session target. Multiple plausible jobs require an explicit ID rather than guessing.
+When `jobId` is omitted, the operator surface resolves only an unambiguous current-session target. Multiple plausible jobs require an explicit ID rather than guessing. Deletion always requires an explicit ID.
 
 ## Structured team traces
 
@@ -138,7 +139,7 @@ status
 failure kind/message/retryability
 ```
 
-The operator projection maps backing accounts to `Member 1..N` for normal display. Completed member text is bounded; compact Local progress events do not inject full research/review payloads. Explicit terminal retention cleanup removes the corresponding team trace together with the selected workflow artifacts.
+The operator projection maps backing accounts to `Member 1..N` for normal display. Completed member text is bounded; compact Local progress events do not inject full research/review payloads. Explicit terminal retention cleanup or exact-ID workflow deletion removes the corresponding team trace together with the selected workflow artifacts.
 
 ## Exact handoffs
 
@@ -163,7 +164,7 @@ Trusted controls such as `START_IMPLEMENTATION`, `APPLY_REVIEWS`, `CHECK_PR_HEAL
 
 `chatgpt-writer` is the only workflow account used for repository mutation.
 
-During implementation it must verify the authoritative repository/base, inspect current code, implement and validate the change, then create or reuse exactly one matching open PR. Retry reconciles the deterministic workflow branch instead of blindly creating another PR.
+During implementation it must verify the authoritative repository, required base branch `main`, and exact upstream `main` base revision; inspect current code; implement and validate the change; then create or reuse exactly one matching open PR targeting `main`. Retry reconciles the deterministic workflow branch instead of blindly creating another PR.
 
 The durable PR receipt binds repository, PR number/URL, base branch, head branch, and exact head SHA. The same writer Website conversation is reused for remediation and authorized merge controls.
 
@@ -181,7 +182,7 @@ PASS | FAIL | PENDING | NONE | UNKNOWN
 
 `PASS`, or verified `NONE` when no required checks/statuses exist, may advance. `PENDING` is retryable, `FAIL` does not advance, and `UNKNOWN` fails closed. A new head invalidates the prior health receipt.
 
-Starting `/workflow` does **not** authorize merge. User approval is bound to the exact repository + PR + head, and the writer re-reads live head/health immediately before merge.
+Starting `/workflow` does **not** authorize merge. User approval is bound to the exact repository + PR + head, and the writer re-reads live head/health immediately before merge. Authorized workflow merges are **squash-only**, so each workflow PR contributes exactly one commit to `main`; if squash merge is unavailable, the writer must return `BLOCKED` rather than falling back to merge-commit or rebase-merge modes.
 
 ## Scoped Website confirmations
 
@@ -205,6 +206,8 @@ CANCELLED -> 14 days after authoritative updatedAt
 ```
 
 Use `internet_workflow_maintenance preview` to list eligible terminal candidates. Cleanup requires the exact `jobId` and unchanged `updatedAt`, validates the selected workflow artifacts, removes only that job + handoffs + team trace, and retains a private durable audit receipt.
+
+For immediate manual removal of one known workflow, use `/workflow delete <jobId>`. It requires the exact ID, cancels active work first if necessary, and then removes only that workflow's local durable artifacts.
 
 ## Direct tools
 
@@ -281,7 +284,7 @@ plugins:
       remoteLoginPort: 39000
       turnTimeoutMs: 300000
       researchTimeoutMs: 1800000
-      maxConcurrentTurnsPerAccount: 1
+      maxConcurrentTurnsPerAccount: 2
       chatgptThinkingLevel: high
       teamRounds: 2
       teamMaxRounds: 4

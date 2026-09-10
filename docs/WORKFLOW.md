@@ -24,9 +24,9 @@ Routine operator controls:
 /workflow delete <jobId>
 ```
 
-The start command resolves the current Git worktree, authoritative upstream repository and exact base revision, creates one durable job, prints its job ID, and enqueues the automatic driver.
+The start command resolves the current Git worktree and upstream repository, queries the selected remote for the exact current `main` head SHA, stores that SHA as `baseRevision`, creates one durable job, prints its job ID, and enqueues the automatic driver. Local worktree `HEAD` is not workflow base authority.
 
-Operator commands are scoped to the current Local owner session. An omitted job ID is used only when the target is unambiguous.
+Operator commands are scoped to the current Local owner session. An omitted job ID is used only when the target is unambiguous. Deletion always requires an explicit job ID.
 
 ## Happy path
 
@@ -53,7 +53,7 @@ strongest synthesis         strongest synthesis
                 |
                 v
        inspect / edit / test
-       exactly one PR
+       exactly one PR -> main
                 |
                 v
             GITHUB PR
@@ -101,7 +101,7 @@ READY_FOR_MERGE_AUTHORIZATION
                  MERGE_AUTHORIZED
                         |
                         v
-                 WRITER MERGES
+              WRITER SQUASH-MERGES
                         |
                         v
                        DONE
@@ -138,7 +138,7 @@ Review Team A    ─────────────────►
 Review Team B    ─────────────────►
 ```
 
-Same-account turns may serialize through that backing account's scheduler. The workflow does not add an A-then-B mutex on top of account/browser safety limits.
+The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so Team A and Team B may execute different workflow session IDs concurrently on the same authenticated account. Each session remains strictly ordered; work above configured capacity queues. The workflow adds no A-then-B mutex.
 
 A completed or failed lane is persisted independently and does not cause its sibling to restart.
 
@@ -190,7 +190,7 @@ Research teams
 
 Full model payloads remain outside Local progress injection.
 
-## Stopping and recovering
+## Stopping, recovering, and deleting
 
 `/workflow stop [jobId]` performs terminal cancellation:
 
@@ -204,8 +204,9 @@ abort active driver work
 
 `CANCELLED` is not pause.
 
-`/workflow continue [jobId]
-/workflow delete <jobId>` only resumes an explicit durable retry/recovery path approved by the engine. It does not reset to `CREATED` or blindly rerun completed work.
+`/workflow continue [jobId]` resumes only an explicit durable retry/recovery path approved by the engine. It does not reset to `CREATED` or blindly rerun completed work.
+
+`/workflow delete <jobId>` always requires one exact workflow ID. If the job is still active, the operator cancels and settles it first. It then removes that job's local durable job record, handoffs, and bounded team trace. The command does not infer an omitted ID and does not silently delete the GitHub PR/branch.
 
 ## Exact handoffs
 
@@ -219,14 +220,15 @@ Website delivery is modeled as at-least-once with idempotent durable acknowledge
 
 The separate `chatgpt-writer` account is the only workflow mutation account. It must:
 
-- verify repository and exact base revision;
+- verify repository, required base branch `main`, and exact upstream `main` base revision;
+- create or reuse the deterministic workflow branch from that exact base revision;
 - inspect current repository state;
 - use delivered research outputs;
 - implement/validate the requested change;
-- use the deterministic workflow branch;
-- reconcile/reuse exactly one matching open PR on retry;
+- reconcile/reuse exactly one matching open PR targeting `main` on retry;
 - return strict `PR_OPEN` or `BLOCKED`;
-- never merge before authorized merge phase.
+- never merge before authorized merge phase;
+- use squash merge only during authorized merge; if squash is unavailable, return `BLOCKED` rather than fall back to merge-commit or rebase-merge modes.
 
 The writer is never reused as Member 1/2. The same writer conversation is reused for remediation and authorized merge controls.
 
@@ -269,7 +271,7 @@ Healthy exact-head review does not authorize merge by itself.
 
 The runtime emits `ACTION_REQUIRED` with the concrete PR and expected head. User approval is bound to repository + PR + exact head.
 
-Immediately before merge, live PR head and health are re-read. Stale authority is rejected. Only then may `MERGE_AUTHORIZED` execute.
+Immediately before merge, live PR head and health are re-read. Stale authority is rejected. Only then may `MERGE_AUTHORIZED` execute. The resulting writer operation is squash-only, so one workflow PR contributes exactly one commit to `main`.
 
 ## Driver stop boundaries
 
@@ -298,19 +300,23 @@ CANCELLED -> eligible after 14 days
 
 Cleanup requires exact `jobId + updatedAt`, validates private workflow artifacts, removes the selected job + handoffs + team trace, and retains a private cleanup audit.
 
+Immediate `/workflow delete <jobId>` is a separate exact-ID operator action for removing one known workflow without waiting for retention eligibility. Active work is cancelled first.
+
 ## Core invariants
 
-1. `/workflow <task>` starts one real durable job.
+1. `/workflow <task>` starts one real durable job from a freshly queried upstream `main` HEAD.
 2. Deterministic code owns phase transitions and authority gates.
 3. Team semantics are provider-agnostic; current default backing accounts are two independent ChatGPT thinkers.
 4. Every normal team lane obtains contributions from both selected members and synthesizes the strongest supported combined answer.
 5. Research A/B and Review A/B are workflow-level concurrent.
-6. Same-account serialization is owned by the account scheduler, not workflow lane ordering.
+6. Same-session ordering and bounded account concurrency are owned by the account scheduler, not workflow lane ordering.
 7. Team/reviewer finals reach the writer unchanged.
 8. Control messages remain separate from data payloads.
 9. `chatgpt-writer` is isolated from reasoning membership and remains the mutation authority.
-10. The PR is canonical after writer creation.
+10. The PR is canonical after writer creation and must target `main`.
 11. Review, health and merge authority are exact-head-bound.
 12. Scoped Website auto-Allow remains fail-closed.
 13. Stop is terminal cancellation; continue requires explicit durable recovery state.
-14. Cleanup is explicit operator-only maintenance.
+14. Exact-ID delete removes only the selected workflow's local durable artifacts.
+15. Authorized workflow merges are squash-only and contribute exactly one commit to `main`.
+16. Retention cleanup is explicit operator-only maintenance.

@@ -35,7 +35,7 @@ This document describes the deterministic runtime behind `/workflow <task>`. Use
 
 `WorkflowTeamTraceStore` and `DurableWorkflowTeamObserver` persist bounded per-turn execution evidence and publish compact best-effort progress events.
 
-`WorkflowOperator` projects authoritative job + trace state through `/workflow list|status|watch|stop|continue`.
+`WorkflowOperator` projects authoritative job + trace state through `/workflow list|status|watch|stop|continue|delete`.
 
 `BrowserWorkflowWriterRunner` routes implementation/remediation/health/merge controls through `chatgpt-writer` only.
 
@@ -205,9 +205,15 @@ MERGE_AUTHORIZED
 
 This preserves the invariant that a handoff payload equals the exact source final output.
 
+## Workflow base authority
+
+New workflows resolve one public upstream repository, select the authoritative remote, query `refs/heads/main` with `git ls-remote`, and persist that exact SHA as `baseRevision`. Local worktree `HEAD` is not accepted as workflow base authority.
+
+The writer must create or reuse the deterministic workflow branch from that exact base revision and target PR base branch `main`. A writer result whose PR base is not `main` is blocked.
+
 ## Writer implementation and PR idempotency
 
-`START_IMPLEMENTATION` is sent only after required research handoffs are acknowledged. The writer verifies repository/base, uses the deterministic branch, and reconciles exact matching PR identity before creating anything new.
+`START_IMPLEMENTATION` is sent only after required research handoffs are acknowledged. The writer verifies repository, required `main` base branch, and exact base revision; uses the deterministic branch; and reconciles exact matching PR identity before creating anything new.
 
 Successful writer output persists:
 
@@ -265,6 +271,8 @@ Research teams
 
 `watch` returns the same authoritative snapshot. Live `TEAM_PROGRESS` events use phase/team/attempt/round/member/stage/status and include backing source only on failure.
 
+`delete` is an exact-ID mutation. Active jobs are cancelled and settled first, then the selected workflow's local job record, handoffs, and team trace are removed. It does not infer a missing ID or silently remove external GitHub/provider artifacts.
+
 ## Event publication
 
 ```text
@@ -295,6 +303,8 @@ PASS | FAIL | PENDING | NONE | UNKNOWN
 
 Merge authorization is explicit and bound to repository + PR + exact head. Immediately before merge the writer re-reads head and health. Only still-valid authority may execute `MERGE_AUTHORIZED`.
 
+Authorized workflow merges are squash-only. One workflow PR therefore contributes exactly one commit to `main`; if squash merge is unavailable, the writer must return `BLOCKED` rather than fall back to merge-commit or rebase-merge modes.
+
 ## Maintenance / retention
 
 Terminal cleanup remains explicit operator maintenance:
@@ -304,7 +314,9 @@ DONE      30 days
 CANCELLED 14 days
 ```
 
-Cleanup requires exact `jobId + updatedAt`, validates private artifacts, removes the selected job + handoffs + team trace, and retains a private audit receipt.
+Aged cleanup requires exact `jobId + updatedAt`, validates private artifacts, removes the selected job + handoffs + team trace, and retains a private audit receipt.
+
+Immediate `/workflow delete <jobId>` is a separate exact-ID operator action. It can cancel an active workflow first and then remove only that workflow's local durable artifacts without waiting for retention eligibility.
 
 ## Runtime invariants
 
@@ -315,14 +327,11 @@ Cleanup requires exact `jobId + updatedAt`, validates private artifacts, removes
 5. Full team/reviewer payloads are not correctness-bearing Local context.
 6. Handoff payloads are immutable exact data; controls are separate.
 7. Research A/B and Review A/B are workflow-level concurrent.
-8. PR, review, health and merge authorization are bound to exact head state.
-9. Retry prefers resume/reconcile over duplicate external action.
-10. Website confirmation policy fails closed.
-11. Merge requires explicit user authority.
-12. Restart recovery resumes only safe code-owned work.
-13. Retention deletion is explicit operator maintenance only.
-
-
-## Base and merge policy
-
-New workflows resolve a fresh upstream `main` HEAD with `git ls-remote` and persist that SHA as `baseRevision`; Local worktree HEAD is not workflow authority. Each workflow keeps its own branch/PR. Authorized merges are squash-only, so one workflow PR contributes exactly one commit to `main`; the writer must block rather than fall back to merge-commit or rebase-merge modes.
+8. New workflows pin fresh upstream `main` HEAD; Local `HEAD` is not base authority.
+9. Writer PRs target `main`; PR, review, health and merge authorization are bound to exact head state.
+10. Retry prefers resume/reconcile over duplicate external action.
+11. Website confirmation policy fails closed.
+12. Merge requires explicit user authority and uses squash-only history.
+13. Restart recovery resumes only safe code-owned work.
+14. Exact-ID delete removes only the selected workflow's local durable artifacts.
+15. Retention deletion is explicit operator maintenance only.
