@@ -60,9 +60,9 @@ describe("WorkflowOperator", () => {
 		expect(operator.status("owner", b.jobId)).toContain(`Workflow ${b.jobId}`);
 	});
 
-	it("renders exact failed provider turn from durable trace", () => {
+	it("renders current pipeline, team/member step, and backing provider only as failure diagnostics", () => {
 		const { jobs, traces, engine, operator } = fixture();
-		const job = start(engine, "Fix Gemini provider failure");
+		const job = start(engine, "Fix provider failure");
 		jobs.update(job.jobId, (current) => ({
 			...current,
 			revision: current.revision + 1,
@@ -74,7 +74,7 @@ describe("WorkflowOperator", () => {
 						...current.teamRuns.research[0],
 						status: "failed",
 						attempts: 1,
-						error: "Gemini failed to execute the newest response; retry the provider turn",
+						error: "Provider failed to execute the newest response",
 					},
 					current.teamRuns.research[1],
 				],
@@ -91,20 +91,45 @@ describe("WorkflowOperator", () => {
 			phase: "research",
 			lane: "A",
 			attempt: 1,
+			at: "2026-09-09T10:00:00.500Z",
+			stage: "provider_turn",
+			status: "completed",
+			round: 2,
+			accountId: "chatgpt-thinker",
+			provider: "chatgpt-web",
+		});
+		traces.append(job.jobId, {
+			phase: "research",
+			lane: "A",
+			attempt: 1,
 			at: "2026-09-09T10:00:01.000Z",
 			stage: "provider_turn",
 			status: "failed",
 			round: 2,
-			accountId: "gemini-thinker",
-			provider: "gemini-web",
+			accountId: "chatgpt-thinker-2",
+			provider: "chatgpt-web",
 			kind: "provider_error",
-			message: "Gemini failed to execute the newest response; retry the provider turn",
+			message: "Provider failed to execute the newest response",
 			retryable: true,
 		});
 		const output = operator.status("owner", job.jobId);
-		expect(output).toContain("A  FAILED  attempt 1");
-		expect(output).toContain("round 2 · gemini-thinker · provider_turn · FAILED · provider_error");
+		expect(output).toContain("Current: Research · retry required");
+		expect(output).toContain("Research  Team A=failed · Team B=pending");
+		expect(output).toContain("Team A — FAILED (attempt 1)");
+		expect(output).toContain("Step: round 2 · Member 2 · provider turn · FAILED · provider_error");
+		expect(output).toContain("Members: Member 1=completed round 2 · Member 2=failed round 2");
+		expect(output).toContain("Error: provider_error · retryable");
+		expect(output).toContain("Diagnostic: chatgpt-thinker-2 · chatgpt-web");
 		expect(output).toContain("ACTION REQUIRED: RETRY_REQUIRED");
+	});
+
+	it("watch explains the exact live progress dimensions", () => {
+		const { engine, operator } = fixture();
+		const job = start(engine, "Watch me");
+		const output = operator.watch("owner", job.jobId);
+		expect(output).toContain("Pipeline");
+		expect(output).toContain("Team A=pending · Team B=pending");
+		expect(output).toContain("phase, Team A/B, attempt, round, Member 1/2, stage, and structured failures");
 	});
 
 	it("stops active work through the driver and reports CANCELLED", async () => {
