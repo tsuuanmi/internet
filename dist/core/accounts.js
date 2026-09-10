@@ -1,5 +1,8 @@
 /** Stable semantic account identities used by workflow routing. */
-export const ACCOUNT_IDS = ["chatgpt-thinker", "chatgpt-writer", "gemini-thinker"];
+export const ACCOUNT_IDS = ["chatgpt-thinker", "chatgpt-writer", "gemini-thinker", "chatgpt-thinker-2"];
+/** Default independent reasoning members used by team/workflow execution. */
+export const DEFAULT_TEAM_ACCOUNTS = ["chatgpt-thinker", "chatgpt-thinker-2"];
+export const DEFAULT_TEAM_SYNTHESIZER = "chatgpt-thinker";
 /** Coarse workflow role; capabilities provide the authoritative routing detail. */
 export const ACCOUNT_ROLES = ["thinker", "writer"];
 /** Capabilities the workflow runtime may require when selecting an account. */
@@ -13,11 +16,7 @@ export const ACCOUNT_CAPABILITIES = [
     "github.pull_request",
     "github.merge",
 ];
-/**
- * Initial semantic account catalog. These definitions describe intended
- * workflow routing and authority boundaries; later multi-account work binds
- * each identity to isolated portable browser state.
- */
+/** Authenticated account catalog. Team roles are assigned by ordered membership, not provider identity. */
 export const ACCOUNTS = {
     "chatgpt-thinker": {
         accountId: "chatgpt-thinker",
@@ -36,6 +35,12 @@ export const ACCOUNTS = {
         provider: "gemini-web",
         role: "thinker",
         capabilities: ["browser.chat", "team.reason", "team.review", "github.read"],
+    },
+    "chatgpt-thinker-2": {
+        accountId: "chatgpt-thinker-2",
+        provider: "chatgpt-web",
+        role: "thinker",
+        capabilities: ["browser.chat", "team.reason", "team.review", "team.synthesize", "github.read"],
     },
 };
 export function isAccountId(value) {

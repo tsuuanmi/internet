@@ -8,20 +8,33 @@ export function parseWorkflowTeamSessionId(sessionId) {
         lane: match[3],
     };
 }
-function progressMessage(observation, event) {
+function title(value) {
+    return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+function stageLabel(stage) {
+    return stage.replaceAll("_", " ");
+}
+function memberLabel(job, accountId) {
+    const index = job.accountRouting.thinkerAccounts.indexOf(accountId);
+    return index < 0 ? accountId : `Member ${index + 1}`;
+}
+function progressMessage(job, observation, event) {
     const fields = [
-        `${observation.context.phase}:${observation.context.lane}`,
-        `attempt=${observation.attempt}`,
-        ...(event.round === undefined ? [] : [`round=${event.round}`]),
-        `account=${event.accountId}`,
-        `stage=${event.stage}`,
-        `status=${event.status}`,
+        title(observation.context.phase),
+        `Team ${observation.context.lane}`,
+        `attempt ${observation.attempt}`,
+        ...(event.round === undefined ? [] : [`round ${event.round}`]),
+        memberLabel(job, event.accountId),
+        stageLabel(event.stage),
+        event.status.toUpperCase(),
     ];
     if (event.kind !== undefined)
-        fields.push(`kind=${event.kind}`);
+        fields.push(event.kind);
+    if (event.status === "failed")
+        fields.push(`source=${event.accountId}/${event.provider}`);
     if (event.message !== undefined && event.message.trim() !== "")
-        fields.push(`message=${event.message}`);
-    return fields.join(" ");
+        fields.push(event.message);
+    return fields.join(" · ");
 }
 /** Persist team traces first, then emit compact best-effort Local progress notifications. */
 export class DurableWorkflowTeamObserver {
@@ -75,7 +88,7 @@ export class DurableWorkflowTeamObserver {
                 type: "TEAM_PROGRESS",
                 class: "PROGRESS",
                 at: event.at,
-                message: progressMessage(observation, event),
+                message: progressMessage(job, observation, event),
             });
         }
         catch {

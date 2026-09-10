@@ -21,10 +21,11 @@ export interface WorkflowTeamRun {
     readonly result?: WorkflowTeamResult;
     readonly error?: string;
 }
+/** Durable backing-account routing. Member identity is derived from tuple order. */
 export interface WorkflowAccountRouting {
-    readonly thinkerAccounts: readonly ["chatgpt-thinker", "gemini-thinker"];
+    readonly thinkerAccounts: readonly [AccountId, AccountId];
     readonly writerAccount: "chatgpt-writer";
-    readonly synthesizerAccount: "chatgpt-thinker";
+    readonly synthesizerAccount: AccountId;
 }
 export interface WorkflowHandoffReceipt {
     readonly handoffId: string;

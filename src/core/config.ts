@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import S from "@deepseek-ai/schemastery";
-import { ACCOUNT_IDS, type AccountId, accountHasCapability } from "#internet/core/accounts";
+import { ACCOUNT_IDS, type AccountId, accountHasCapability, DEFAULT_TEAM_SYNTHESIZER } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 
 /** Browser-backed web providers this plugin can drive. */
@@ -79,13 +79,13 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	pollMs: 200,
 	stableMs: 1_500,
 	closeAfterMs: 1_800_000,
-	maxConcurrentTurnsPerAccount: 1,
+	maxConcurrentTurnsPerAccount: 2,
 	maxOutputChars: 200_000,
 	teamRounds: 2,
 	teamMaxRounds: 4,
 	teamTranscriptMaxChars: 50_000,
 	teamSynthesis: true,
-	teamSynthesizer: "chatgpt-thinker",
+	teamSynthesizer: DEFAULT_TEAM_SYNTHESIZER,
 	enableChatgpt: true,
 	enableGemini: true,
 	chatgptThinkingLevel: "high",

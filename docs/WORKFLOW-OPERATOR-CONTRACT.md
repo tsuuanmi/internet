@@ -1,8 +1,8 @@
 # Workflow Operator Contract
 
 - **Status:** current as-built contract
-- **Last synchronized:** 2026-09-09
-- **Scope:** starting, discovering, tracking, stopping and explicitly recovering durable workflow jobs
+- **Last synchronized:** 2026-09-10
+- **Scope:** starting, discovering, tracking, stopping, explicitly recovering, and deleting durable workflow jobs
 
 ## Goal
 
@@ -10,15 +10,26 @@ The normal workflow is operable from the user-facing `/workflow` command family 
 
 The durable workflow job and trace stores remain authoritative. Operator commands are views/actions over that state, not a second orchestration system.
 
+The operator view should answer immediately:
+
+```text
+Which workflow phase is active?
+Which Team A/B is running or failed?
+Which round/member/stage is each team on?
+What failed, is it retryable, and which backing provider/account produced the failure?
+What is waiting on that result?
+```
+
 ## Command surface
 
 ```text
-/workflow <objective>                 start a new workflow
+/workflow <objective>                 start a new workflow from fresh upstream main HEAD
 /workflow list                        list workflows owned by this Local session
 /workflow status [jobId]              inspect one workflow
 /workflow watch [jobId]               show the current snapshot and rely on live PROGRESS events
 /workflow stop [jobId]                abort active work and persist CANCELLED
-/workflow continue [jobId]            resume an explicit retry-required boundary
+/workflow continue [jobId]            resume an explicit retry/recovery boundary
+/workflow delete <jobId>              remove one exact workflow's local durable state
 ```
 
 Starting a workflow prints its durable job ID immediately.
@@ -36,58 +47,88 @@ For `status`, `watch`, `stop`, and `continue`:
 5. for non-mutating inspection, one unambiguous historical job may be selected when no active job exists;
 6. terminal jobs cannot be stopped or continued.
 
+`delete` is stricter: it always requires exactly one explicit `jobId`; omitted-ID inference is never allowed.
+
 ## `/workflow list`
 
 `list` is a discovery surface. Jobs are ordered by newest `updatedAt` first and include durable job ID, state, update time, and compact objective text.
 
-Example:
-
-```text
-JOB                               STATE                            UPDATED                   OBJECTIVE
-5cdf77117800086fb4497e8ac76500ad  RESEARCH_RUNNING                 2026-09-09T13:45:15Z      Fix Gemini login UI...
-```
-
 ## `/workflow status [jobId]`
 
-`status` is a one-shot control-plane view. It includes:
+`status` is a one-shot control-plane view with two levels:
+
+1. a compact end-to-end `Pipeline` summary;
+2. detailed per-team execution state.
+
+Normal team presentation is provider-agnostic. `Member 1`, `Member 2`, ... are derived from the job's ordered thinker routing. Backing account/provider identity is included only under `Diagnostic` when a failure requires source attribution.
+
+Example retry-required state:
 
 ```text
-jobId
-objective
-workflow state / driver-active marker
-Research A/B status + attempts + latest trace stage
-writer state
-Review A/B status + attempts + latest trace stage
-PR URL/base/head/exact head SHA
-review cycle
-CI/health receipt when present
-pending action and expected head when present
-last durable update
+Workflow a3bbaeabf4b8495b0956b754a35c3263
+State: FAILED_RETRYABLE
+Current: Research · retry required
+Objective: Fix the login UI alignment
+
+Pipeline
+  Research  Team A=failed · Team B=completed
+  Writer    waiting for research
+  Review    Team A=pending · Team B=pending
+  PR        not created
+
+Research teams
+  Team A — FAILED (attempt 1)
+    Step: round 1 · Member 2 · provider turn · FAILED · provider_error
+    Members: Member 1=completed round 1 · Member 2=failed round 1
+    Error: provider_error · retryable
+      Provider failed to execute the newest response; retry the provider turn
+    Diagnostic: chatgpt-thinker-2 · chatgpt-web
+
+  Team B — COMPLETED (attempt 1)
+    Step: synthesis · COMPLETED
+    Members: Member 1=completed round 2 · Member 2=completed round 2
+    Result: ready for handoff
+
+Writer
+  Account: chatgpt-writer
+  Status: waiting for research
+
+Review teams
+  Team A — PENDING (attempt 0)
+  Team B — PENDING (attempt 0)
+
+PR
+  not created
+
+ACTION REQUIRED: RETRY_REQUIRED
+  One or more research lanes failed; retry runs only incomplete lanes.
 ```
 
-When structured trace evidence exists, a lane can show the exact latest round/account/stage/failure kind rather than only the flattened lane error.
-
-Example:
-
-```text
-Workflow 5cdf77117800086fb4497e8ac76500ad
-State: RESEARCH_RUNNING · driver active
-
-Research
-  A  FAILED   attempt 1 · round 2 · gemini-thinker · provider_turn · FAILED · provider_error
-     Gemini failed to execute the newest response; retry the provider turn
-  B  RUNNING  attempt 1 · round 2 · chatgpt-thinker · provider_turn · STARTED
-```
+This layout deliberately distinguishes workflow state (`FAILED_RETRYABLE`) from the exact team execution failure (`Research Team A`, `Member 2`, `round 1`, `provider turn`, `provider_error`).
 
 Full research/review payloads are not dumped into routine status.
 
 ## `/workflow watch [jobId]`
 
-The workflow already emits compact `PROGRESS` events to its owning Local session while it runs. `watch` therefore does not create another polling/state machine or duplicate workflow truth.
+The workflow emits compact `PROGRESS` events to its owning Local session while it runs. `watch` returns the same authoritative status snapshot and confirms the live dimensions being followed:
 
-It returns the authoritative current status snapshot and explicitly confirms that live compact workflow/team events continue through the existing event stream.
+```text
+phase · Team A/B · attempt · round · Member 1..N · stage · status
+```
 
-This design keeps durable job/trace state authoritative while still giving the user continuous progress without a second orchestration mechanism.
+Example live events:
+
+```text
+Research · Team A · attempt 1 · round 1 · Member 1 · provider turn · STARTED
+Research · Team B · attempt 1 · round 1 · Member 1 · provider turn · STARTED
+Research · Team A · attempt 1 · round 1 · Member 1 · provider turn · COMPLETED
+Research · Team A · attempt 1 · round 1 · Member 2 · provider turn · STARTED
+Research · Team A · attempt 1 · round 1 · Member 2 · provider turn · FAILED · provider_error · source=chatgpt-thinker-2/chatgpt-web · <message>
+```
+
+The backing account/provider is added only on failed progress events for diagnostics. Ordinary progress stays member-oriented.
+
+`watch` does not create another polling/state machine or duplicate workflow truth. Durable job/trace state remains authoritative.
 
 ## `/workflow stop [jobId]`
 
@@ -103,7 +144,7 @@ resolve exact job
 -> never resume this job automatically after restart
 ```
 
-The response includes the most recent structured trace context when available.
+The response includes the most recent structured team/member context when available.
 
 `stop` is not pause. `CANCELLED` remains terminal.
 
@@ -113,17 +154,28 @@ The response includes the most recent structured trace context when available.
 
 It does not reset a workflow to `CREATED`, re-run completed lanes blindly, or make terminal jobs resumable.
 
-## Parallel lane visibility
+## `/workflow delete <jobId>`
 
-Research A/B and Review A/B are independent concurrent workflow lanes. Status/progress may therefore show both active at once:
+`delete` always requires an exact workflow ID. If the selected workflow is non-terminal, the operator first cancels and settles it through `WorkflowDriver.cancel(jobId)`. It then removes that exact workflow's local durable job record, handoffs, and bounded team trace.
+
+Deletion is scoped to the owning Local session and fails rather than guessing. It does **not** silently delete the GitHub PR, workflow branch, or provider Website conversations; those are external artifacts outside the local durable-state deletion contract.
+
+## Parallel team visibility
+
+Research Team A/B and Review Team A/B are independent concurrent workflow lanes. Status/progress may therefore show both active at once:
 
 ```text
-Research
-  A RUNNING · round 2 · gemini-thinker
-  B RUNNING · round 1 · chatgpt-thinker
+Pipeline
+  Research  Team A=running · Team B=running
+
+Research teams
+  Team A — RUNNING (attempt 1)
+    Step: round 2 · Member 1 · provider turn · STARTED
+  Team B — RUNNING (attempt 1)
+    Step: round 1 · Member 2 · provider turn · STARTED
 ```
 
-The engine launches both incomplete lane promises before awaiting either. Same-account turns may still serialize through the account scheduler; that is independent of workflow-lane concurrency.
+The engine launches both incomplete lane promises before awaiting either. The default account scheduler capacity is `2`, so different workflow session IDs may also run concurrently on the same authenticated account while each individual session remains strictly ordered. This scheduler policy is independent of workflow-lane concurrency.
 
 ## Action-required visibility
 
@@ -140,7 +192,7 @@ Approval itself remains governed by the existing exact repository + PR + head au
 
 ## Failure detail
 
-The private bounded workflow team trace records:
+The private bounded workflow team trace retains authoritative diagnostic fields:
 
 ```text
 phase
@@ -156,16 +208,20 @@ structured failure kind/message/retryability
 bounded completed-turn text
 ```
 
-Provider/browser errors are visible as execution failures, not mistaken for intellectual disagreement or valid teammate output.
+The operator projection converts normal account identity to `Member N`; raw account/provider data remains available for explicit failure diagnostics. Provider/browser errors are visible as execution failures, not mistaken for intellectual disagreement or valid member output.
 
 ## Invariants
 
 - routine workflow operation does not require filesystem inspection;
-- omitted job IDs are used only when unambiguous;
+- omitted job IDs are used only when unambiguous, except delete which always requires an explicit ID;
 - status/watch read authoritative durable state;
+- status clearly separates pipeline state from Team A/B execution detail;
+- ordinary team presentation is provider-agnostic;
+- backing provider/account identity appears only when diagnostic attribution is useful;
 - live progress uses the existing event stream rather than a duplicate watcher state machine;
 - stop settles active work before terminal cancellation is persisted;
 - cancelled jobs do not restart automatically;
 - continue requires an explicit durable recovery path;
+- delete cancels active work before removing the exact selected workflow's local durable state;
 - A/B lane concurrency remains visible and preserved;
 - full model payloads are not injected into Local progress events.

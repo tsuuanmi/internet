@@ -1,10 +1,12 @@
 # Internet Runtime Documentation
 
 - **Status:** current as-built documentation
-- **Last synchronized:** 2026-09-09
-- **Baseline:** workflow-team observability/control hardening implemented after the completed P0-P13 roadmap
+- **Last synchronized:** 2026-09-10
+- **Baseline:** workflow-team observability/control hardening plus provider-agnostic member routing
 
-This directory documents the current `@tsuuanmi/internet` runtime. The durable coding workflow, automatic driver, exact handoffs, separate writer, exact-head review/health/merge gates, best-of-both ChatGPT+Gemini team execution, parallel workflow lanes, structured team traces, and user-facing workflow operator controls are implemented.
+This directory documents the current `@tsuuanmi/internet` runtime. The durable coding workflow, automatic driver, exact handoffs, separate writer, exact-head review/health/merge gates, provider-agnostic agent-team execution, concurrent workflow lanes, structured team traces, and user-facing workflow operator controls are implemented. New workflows pin a fresh upstream `main` HEAD rather than Local worktree HEAD, successful workflow merges are squash-only so they add one commit to `main`, and one exact workflow can be removed with `/workflow delete <jobId>`.
+
+The current default agent team uses two independent ChatGPT-backed thinker accounts as `Member 1` and `Member 2`. That is a routing choice, not a team semantic. Gemini remains supported for explicit direct chat/research/team use but is temporarily outside the default team/workflow route.
 
 ## Start here
 
@@ -12,9 +14,9 @@ This directory documents the current `@tsuuanmi/internet` runtime. The durable c
 - [`how-it-works.md`](./how-it-works.md) — current server-side implementation and runtime behavior.
 - [`WORKFLOW.md`](./WORKFLOW.md) — user-visible workflow behavior and control surface.
 - [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic state machine, driver, durable receipts, traces, retries, health and merge gates.
-- [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md) — implemented workflow-team observability/control/prompt/concurrency hardening prompted by a real provider failure.
-- [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md) — best-of-both ChatGPT+Gemini team quality contract and workflow-lane concurrency contract.
-- [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md) — start/list/status/watch/stop/continue operator semantics.
+- [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md) — implemented workflow-team observability/control/prompt/concurrency hardening and current routing adjustment.
+- [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md) — provider-agnostic team quality contract, current two-ChatGPT routing, and lane concurrency contract.
+- [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md) — start/list/status/watch/stop/continue/delete operator semantics.
 - [`SRS.md`](./SRS.md) — normative workflow requirements.
 - [`ROADMAP.md`](./ROADMAP.md) — completed P0-P13 roadmap and explicitly deferred directions.
 - [`TODO.md`](./TODO.md) — implementation closure boundary and intentionally deferred work.
@@ -35,7 +37,7 @@ The ADRs are accepted historical decisions:
 
 ## Provider UI inspection notes
 
-These documents describe observed Website surfaces used by browser automation:
+These documents describe observed Website surfaces used by browser automation. They remain provider-specific because browser automation must understand each provider UI even though team reasoning is provider-agnostic:
 
 - [`chatgpt-ui-inspection.md`](./chatgpt-ui-inspection.md)
 - [`gemini-ui-inspection.md`](./gemini-ui-inspection.md)
@@ -51,7 +53,7 @@ These documents describe observed Website surfaces used by browser automation:
 | `WORKFLOW.md` | end-to-end user flow | operational contract |
 | `WORKFLOW-ENGINE.md` | deterministic runtime/state | runtime design contract |
 | `internet-team-architecture.md` | concise architecture | architecture overview |
-| `AGENT-TEAM-DESIGN.md` | best-of-both team quality + parallel lane requirements | current team contract |
+| `AGENT-TEAM-DESIGN.md` | provider-agnostic team quality + current routing + parallel lane requirements | current team contract |
 | `WORKFLOW-OPERATOR-CONTRACT.md` | user-facing workflow control/inspection semantics | current operator contract |
 | `WORKFLOW-HARDENING.md` | implemented post-roadmap hardening rationale and acceptance criteria | current hardening record |
 | ADRs | why accepted choices exist | historical design authority |
@@ -61,6 +63,6 @@ These documents describe observed Website surfaces used by browser automation:
 
 ## Current completion boundary
 
-The explicit P0-P13 coding-workflow roadmap remains complete, and the observed workflow-team hardening described in the documents above is now implemented without inventing a P14.
+The explicit P0-P13 coding-workflow roadmap remains complete. The workflow-team hardening and current provider-agnostic member routing are implemented without inventing a new numbered phase.
 
-Further work remains deliberately deferred until a concrete need exists, including automatic provider-turn retry policy, automatic task detection, Website-level cross-conversation/project memory as a correctness dependency, generic arbitrary DAG workflows, multi-writer pooling, sophisticated artifact storage, autonomous production deployment, and broad non-coding generalization.
+Further work remains deliberately deferred until a concrete need exists, including automatic provider-turn retry policy, dynamic provider/account health routing, automatic task detection, Website-level cross-conversation/project memory as a correctness dependency, generic arbitrary DAG workflows, multi-writer pooling, sophisticated artifact storage, autonomous production deployment, and broad non-coding generalization.

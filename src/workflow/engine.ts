@@ -4,6 +4,7 @@ import { createWorkflowControlMessage, type WorkflowControlMessage } from "#inte
 import type { WorkflowEventSink } from "#internet/workflow/events";
 import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
+import { WORKFLOW_BASE_BRANCH } from "#internet/workflow/repository-context";
 import type { WorkflowReviewResult } from "#internet/workflow/review-result";
 import { parseWorkflowReviewResult } from "#internet/workflow/review-result";
 import { type WorkflowTeamLane, WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
@@ -216,7 +217,7 @@ export class WorkflowEngine {
 				],
 			},
 			accountRouting: {
-				thinkerAccounts: ["chatgpt-thinker", "gemini-thinker"],
+				thinkerAccounts: ["chatgpt-thinker", "chatgpt-thinker-2"],
 				writerAccount: "chatgpt-writer",
 				synthesizerAccount: "chatgpt-thinker",
 			},
@@ -427,6 +428,9 @@ export class WorkflowEngine {
 		}
 		if (result.status !== "PR_OPEN")
 			throw new WorkflowEngineError("writer returned merge output outside merge phase");
+		if (result.pullRequest.base !== WORKFLOW_BASE_BRANCH) {
+			return this.writerBlocked(jobId, `writer pull request must target ${WORKFLOW_BASE_BRANCH}`, "WRITER_RUNNING");
+		}
 		return this.update(jobId, (current) => ({
 			...withState(current, "PR_OPEN"),
 			pullRequest: result.pullRequest,

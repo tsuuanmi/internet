@@ -1,7 +1,7 @@
 import { BrowserManager } from "#internet/browser/runtime";
 import { defineInternetCommand } from "#internet/commands/internet";
 import { defineWorkflowCommand } from "#internet/commands/workflow";
-import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
+import { ACCOUNT_IDS, DEFAULT_TEAM_ACCOUNTS, getAccountDefinition } from "#internet/core/accounts";
 import { resolveBrowserConfig } from "#internet/core/config";
 import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
 import { defineInternetChatTool } from "#internet/tools/internet-chat";
@@ -24,26 +24,28 @@ import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
 export const name = "internet";
 export const inject = ["tools", "systemPrompt", "commands", "agents"];
 const INTERNET_CHAT_GUIDANCE = [
-    "Use internet_chat for one answer or a durable multi-turn exchange through an explicitly selected thinker account: chatgpt-thinker or gemini-thinker.",
+    "Use internet_chat for one answer or a durable multi-turn exchange through an explicitly selected thinker account: chatgpt-thinker, chatgpt-thinker-2, or gemini-thinker when enabled.",
     "Each account resumes one native conversation for the current DSH session. The automated browser is hidden by default on the managed display; set visible: true only when the user asks to watch or when live UI inspection is needed.",
     "ChatGPT selects and verifies the configured reasoning level before every turn (High by default). Gemini selects and verifies the observed latest Flash model with Extended thinking before every ordinary turn; provider-native Deep Research uses its own mode.",
-    "If an account is missing or requires reauthentication, use internet_browser status and then login with that exact account ID. chatgpt-thinker and chatgpt-writer have separate login state and must never share credentials or browser storage.",
+    "If an account is missing or requires reauthentication, use internet_browser status and then login with that exact account ID. Every semantic account has separate login state and must never share browser storage with another account identity.",
     "internet_chat cannot read local files or search the web by itself. Paste required material into the prompt and gather current sources with web_search or web_fetch first.",
 ].join(" ");
 const INTERNET_RESEARCH_GUIDANCE = "Use internet_research for provider-native Deep Research rather than ordinary internet_chat when the user needs a sourced, long-running investigation. It runs through explicitly selected thinker accounts, isolates durable conversations per account under a research name, and may return partial success when only one account completes.";
 const INTERNET_TEAM_GUIDANCE = [
-    "Use internet_team when multiple independent web-model perspectives should be debated and synthesized into the strongest supported result.",
-    "The shared team engine deliberately seeks the best of both ChatGPT and Gemini: peer output is untrusted evidence to critique, disagreements are resolved using task evidence, and synthesis selects the strongest parts rather than averaging or concatenating answers.",
+    "Use internet_team when multiple independent authenticated members should critique, refine, and synthesize a result stronger than any member alone.",
+    "Team prompts are provider-agnostic: participants are Member 1..N, peer output is untrusted evidence to critique, disagreements are resolved using task evidence, and synthesis keeps the strongest supported parts rather than averaging or concatenating answers.",
+    "The current default team uses two independent ChatGPT thinker accounts. Gemini remains available as an explicit thinker account when enabled but is not part of the default team route.",
     "Each child agent has a unique DSH agent id, so its internet_team uses distinct durable account threads under <child-agent-id>:team:<name>, isolated from the parent's direct and team conversations.",
-    "The default profile serializes hidden turns per authenticated account to protect portable account state. Different accounts have independent schedulers; workflow lane concurrency must not add an A-then-B mutex above those account-level limits.",
-    "For one simple debate, call internet_team directly. Thinker accounts speak sequentially in configured order once per round (default 2, maximum 4). When synthesis is enabled, chatgpt-thinker is the default explicit synthesizer.",
+    "The default profile allows up to two hidden turns from different sessions per authenticated account while preserving strict ordering within each session. Different accounts have independent schedulers; workflow lane concurrency must not add an A-then-B mutex above those account-level limits.",
+    "For one simple team run, call internet_team directly. Members speak sequentially in configured order once per round (default 2, maximum 4). When synthesis is enabled, Member 1 is backed by the default synthesizer account.",
     "Named teams have durable conversations isolated by account and team. Account browsers are hidden by default; set visible: true only when the user asks to watch them or requests live acceptance testing.",
-    "The tool returns only the final answer by default. includeTranscript: true adds a bounded current-call transcript with account identity and truncation metadata.",
-    "Every selected account needs its own ready portable account state. Provider/browser execution failures are orchestration errors, not valid model contributions.",
+    "The tool returns only the final answer by default. includeTranscript: true adds a bounded current-call transcript labeled only by Member 1..N.",
+    "Every selected member needs its own ready portable account state. Provider/browser execution failures are orchestration errors, not valid member contributions; provider/account identity is reserved for explicit diagnostics.",
 ].join(" ");
 const INTERNET_WORKFLOW_GUIDANCE = [
-    "Use /workflow <task> as the normal entry point for a durable coding workflow. Use /workflow list, /workflow status [jobId], /workflow watch [jobId], /workflow stop [jobId], and /workflow continue [jobId] for operator control without reading private JSON files manually.",
-    "Research A/B and Review A/B are independent full ChatGPT+Gemini agent-team lanes and are launched concurrently at the workflow level. Same-account turns may still serialize through the account scheduler for browser/account safety.",
+    "Use /workflow <task> as the normal entry point for a durable coding workflow. Use /workflow list, /workflow status [jobId], /workflow watch [jobId], /workflow stop [jobId], /workflow continue [jobId], and /workflow delete <jobId> for operator control without reading private JSON files manually. New jobs always pin a freshly queried upstream main HEAD; deletion requires an explicit workflow ID.",
+    "Research A/B and Review A/B are independent provider-agnostic agent-team lanes and are launched concurrently at the workflow level. Each lane currently uses two independent ChatGPT thinker accounts as Member 1 and Member 2; Gemini is not on the default route. The default account scheduler has capacity 2, so Team A and Team B may run different session IDs concurrently on the same account while each session remains strictly ordered.",
+    "Status/watch show the current pipeline stage, Team A/B, attempt, round, Member 1..N, execution stage, and structured failure detail. Underlying account/provider identity appears only in diagnostics when a failure needs source attribution.",
     "The shared team core emits bounded durable per-turn traces with phase/lane/attempt/round/account/stage/failure evidence. Compact PROGRESS events go to Local without injecting full model payloads.",
     "WorkflowDriver advances runnable engine states automatically through research, exact handoffs, writer implementation, PR review/remediation, and the explicit merge-authorization boundary. Safe in-flight states are rediscovered after plugin restart; action-required and rejected-merge states remain stopped until explicit user/operator action.",
     "Research and review finals are materialized as exact SHA-256-bound durable handoffs. The separate chatgpt-writer account receives exact payloads and trusted controls in one persistent per-job conversation.",
@@ -73,26 +75,31 @@ export function apply(ctx, rawConfig) {
         ctx.systemPrompt?.section?.({ name: "tool:internet_research", order: 119, text: INTERNET_RESEARCH_GUIDANCE });
         ctx.systemPrompt?.section?.({ name: "tool:internet_chat", order: 120, text: INTERNET_CHAT_GUIDANCE });
     }
-    if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker") && accounts.has("chatgpt-writer")) {
+    if (thinkers.size >= 2 && thinkers.has(config.teamSynthesizer)) {
+        ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
+        ctx.systemPrompt?.section?.({ name: "tool:internet_team", order: 122, text: INTERNET_TEAM_GUIDANCE });
+    }
+    const workflowTeamReady = DEFAULT_TEAM_ACCOUNTS.every((accountId) => thinkers.has(accountId));
+    if (workflowTeamReady && accounts.has("chatgpt-writer")) {
         const workflowJobs = new WorkflowJobStore(config.dataDir);
         const workflowTraces = new WorkflowTeamTraceStore(config.dataDir);
         const workflowEvents = new DshWorkflowEventSink(ctx.agents);
         const workflowObserver = new DurableWorkflowTeamObserver(workflowTraces, workflowJobs, workflowEvents);
-        const workflowEngine = new WorkflowEngine(workflowJobs, new BrowserWorkflowTeamRunner(manager, config, workflowObserver), new WorkflowTeamPromptBuilder(), new WorkflowHandoffStore(config.dataDir), new BrowserWorkflowWriterRunner(manager), 3, workflowEvents);
+        const workflowHandoffs = new WorkflowHandoffStore(config.dataDir);
+        const workflowRetention = new WorkflowRetentionManager(config.dataDir, workflowJobs);
+        const workflowEngine = new WorkflowEngine(workflowJobs, new BrowserWorkflowTeamRunner(manager, config, workflowObserver), new WorkflowTeamPromptBuilder(), workflowHandoffs, new BrowserWorkflowWriterRunner(manager), 3, workflowEvents);
         const workflowDriver = new WorkflowDriver(workflowEngine, workflowJobs);
-        const workflowOperator = new WorkflowOperator(workflowEngine, workflowDriver, workflowJobs, workflowTraces);
+        const workflowOperator = new WorkflowOperator(workflowEngine, workflowDriver, workflowJobs, workflowTraces, workflowRetention);
         ctx.effect(() => () => workflowDriver.dispose());
         workflowDriver.resumeActive();
         ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine, driver: workflowDriver, operator: workflowOperator }));
         ctx.tools.register(defineInternetWorkflowTool(workflowEngine, workflowDriver, { browser: manager }));
-        ctx.tools.register(defineInternetWorkflowMaintenanceTool(new WorkflowRetentionManager(config.dataDir, workflowJobs)));
-        ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
+        ctx.tools.register(defineInternetWorkflowMaintenanceTool(workflowRetention));
         ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
-        ctx.systemPrompt?.section?.({ name: "tool:internet_team", order: 122, text: INTERNET_TEAM_GUIDANCE });
     }
 }
 export { BrowserManager } from "#internet/browser/runtime";
-export { ACCOUNT_CAPABILITIES, ACCOUNT_IDS, ACCOUNT_ROLES, ACCOUNTS, accountHasCapability, accountsForProvider, accountsWithCapabilities, getAccountDefinition, isAccountId, } from "#internet/core/accounts";
+export { ACCOUNT_CAPABILITIES, ACCOUNT_IDS, ACCOUNT_ROLES, ACCOUNTS, accountHasCapability, accountsForProvider, accountsWithCapabilities, DEFAULT_TEAM_ACCOUNTS, DEFAULT_TEAM_SYNTHESIZER, getAccountDefinition, isAccountId, } from "#internet/core/accounts";
 export { CHATGPT_THINKING_LEVELS, Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";

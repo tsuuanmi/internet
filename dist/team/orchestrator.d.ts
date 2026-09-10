@@ -31,7 +31,7 @@ export interface TeamOptions {
     readonly synthesize?: boolean;
     /** Account that performs the final synthesis, independent of speaking order. */
     readonly synthesizer?: AccountId;
-    /** Ordered reasoning accounts; the first opens the debate. */
+    /** Ordered reasoning accounts. Prompt roles are Member 1..N in this order. */
     readonly accounts?: readonly AccountId[];
     /** Prompt composition purpose. The execution engine remains shared. */
     readonly promptStrategy?: TeamPromptStrategyId;
@@ -46,11 +46,11 @@ export type ChatFn = (accountId: AccountId, request: ChatRequest) => Promise<Cha
 /** Join display names with an Oxford comma. Retained as a small public utility. */
 export declare function joinNames(names: readonly string[]): string;
 /** Compose the default generic prompt for one debate turn. */
-export declare function composeTurnPrompt(task: string, accountId: AccountId, others: readonly OtherContribution[], round: number): string;
+export declare function composeTurnPrompt(task: string, accountId: AccountId, others: readonly OtherContribution[], round: number, members?: readonly AccountId[]): string;
 /** Compose the default generic final synthesis prompt. */
-export declare function composeSynthesisPrompt(task: string, transcript: readonly TeamTurn[]): string;
+export declare function composeSynthesisPrompt(task: string, transcript: readonly TeamTurn[], members?: readonly AccountId[]): string;
 /**
- * Run a multi-model debate using an exact durable conversation-session key.
+ * Run a provider-agnostic member debate using an exact durable conversation-session key.
  * Callers own namespace construction; this primitive owns the single authoritative
  * round/synthesis loop and emits structured progress for optional durable observers.
  */
