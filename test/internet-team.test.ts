@@ -28,7 +28,7 @@ const exec = {
 	concludeTurn: () => {},
 } as never;
 
-const allowed = new Set(["chatgpt-thinker", "gemini-thinker"] as const);
+const allowed = new Set(["chatgpt-thinker", "chatgpt-thinker-2", "gemini-thinker"] as const);
 
 describe("parseTeamArgs", () => {
 	it("accepts explicit ordered accounts", () => {
@@ -63,62 +63,76 @@ describe("parseTeamArgs", () => {
 });
 
 describe("renderInternetTeamResult", () => {
-	it("renders account identity in an opted-in transcript", () => {
-		expect(
-			renderInternetTeamResult({
-				finalAnswer: "Final",
-				transcript: [
-					{ round: 1, accountId: "chatgpt-thinker", provider: "chatgpt-web", text: "Alpha" },
-					{
-						round: 1,
-						accountId: "gemini-thinker",
-						provider: "gemini-web",
-						text: "Beta",
-						textTruncation: "prefix",
-					},
-				],
-				transcriptTruncated: true,
-			}),
-		).toContain("### chatgpt-thinker · round 1");
+	it("renders only member identity in an opted-in transcript", () => {
+		const output = renderInternetTeamResult({
+			finalAnswer: "Final",
+			transcript: [
+				{ round: 1, member: 1, text: "Alpha" },
+				{ round: 1, member: 2, text: "Beta", textTruncation: "prefix" },
+			],
+			transcriptTruncated: true,
+		});
+		expect(output).toContain("### Member 1 · round 1");
+		expect(output).toContain("### Member 2 · round 1");
+		expect(output).not.toContain("chatgpt-thinker");
+		expect(output).not.toContain("gemini-thinker");
 	});
 });
 
 describe("defineInternetTeamTool", () => {
-	it("uses thinker account identities and hides browsers by default", async () => {
+	it("uses two independent ChatGPT accounts as provider-agnostic default members", async () => {
 		const { manager, calls } = fakeManager(["A1", "B1"]);
 		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, synthesize: false }, exec);
-		expect(result).toEqual({
-			finalAnswer: "B1",
-			finalAccountId: "gemini-thinker",
-			finalProvider: "gemini-web",
-		});
-		expect(calls.map(({ accountId }) => accountId)).toEqual(["chatgpt-thinker", "gemini-thinker"]);
+		expect(result).toEqual({ finalAnswer: "B1", finalMember: 2 });
+		expect(calls.map(({ accountId }) => accountId)).toEqual(["chatgpt-thinker", "chatgpt-thinker-2"]);
 		expect(calls.map(({ request }) => request.visible)).toEqual([undefined, undefined]);
+		expect(calls.every(({ request }) => !request.prompt.includes("ChatGPT") && !request.prompt.includes("Gemini"))).toBe(true);
 	});
 
-	it("synthesizes through chatgpt-thinker even though Gemini speaks last", async () => {
+	it("synthesizes through Member 1 and projects provider-agnostic transcript metadata", async () => {
 		const { manager, calls } = fakeManager(["A1", "B1", "FINAL"]);
 		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, includeTranscript: true }, exec);
-		expect(calls.map(({ accountId }) => accountId)).toEqual(["chatgpt-thinker", "gemini-thinker", "chatgpt-thinker"]);
+		expect(calls.map(({ accountId }) => accountId)).toEqual([
+			"chatgpt-thinker",
+			"chatgpt-thinker-2",
+			"chatgpt-thinker",
+		]);
 		expect(result).toMatchObject({
 			finalAnswer: "FINAL",
-			finalAccountId: "chatgpt-thinker",
-			finalProvider: "chatgpt-web",
+			finalMember: 1,
+			transcript: [
+				{ round: 1, member: 1, text: "A1" },
+				{ round: 1, member: 2, text: "B1" },
+			],
 			transcriptTruncated: false,
 		});
 	});
 
-	it("returns account identity on an opted-in failure", async () => {
+	it("returns member-facing error plus backing account/provider diagnostics", async () => {
 		const { manager } = fakeManager(["A1", new Error("boom")]);
 		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
 		const result = await tool.execute({ task: "T", rounds: 1, includeTranscript: true }, exec);
 		expect(result).toMatchObject({
 			isError: true,
-			error: "gemini-thinker: boom",
-			transcript: [{ round: 1, accountId: "chatgpt-thinker", provider: "chatgpt-web", text: "A1" }],
+			error: "Member 2 failed: boom",
+			diagnostic: "chatgpt-thinker-2 · chatgpt-web · unexpected_error",
+			transcript: [{ round: 1, member: 1, text: "A1" }],
 		});
+	});
+
+	it("still supports explicit Gemini composition without exposing provider identity to prompts", async () => {
+		const { manager, calls } = fakeManager(["G1", "C1"]);
+		const tool = defineInternetTeamTool(manager, resolveBrowserConfig({}), allowed);
+		const result = await tool.execute(
+			{ task: "T", rounds: 1, synthesize: false, accounts: ["gemini-thinker", "chatgpt-thinker"] },
+			exec,
+		);
+		expect(result).toEqual({ finalAnswer: "C1", finalMember: 2 });
+		expect(calls[0]?.request.prompt).toContain("Member 1");
+		expect(calls[1]?.request.prompt).toContain("Member 2");
+		expect(calls.every(({ request }) => !request.prompt.includes("Gemini") && !request.prompt.includes("ChatGPT"))).toBe(true);
 	});
 
 	it("rejects a non-thinker account instead of routing it by provider", async () => {
@@ -129,13 +143,13 @@ describe("defineInternetTeamTool", () => {
 		expect(calls).toEqual([]);
 	});
 
-	it("declares a timeout covering configured account turns and synthesis", () => {
+	it("declares a timeout covering the largest allowed team and synthesis", () => {
 		const { manager } = fakeManager([]);
 		const tool = defineInternetTeamTool(
 			manager,
 			resolveBrowserConfig({ turnTimeoutMs: 100, teamMaxRounds: 4 }),
 			allowed,
 		);
-		expect(tool.timeoutMs).toBe(900);
+		expect(tool.timeoutMs).toBe(1300);
 	});
 });
