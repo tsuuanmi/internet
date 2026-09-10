@@ -1,9 +1,9 @@
 # Workflow Engine — Current Runtime Design
 
 - **Status:** implemented
-- **Last synchronized:** 2026-09-09
+- **Last synchronized:** 2026-09-10
 
-This document describes the deterministic runtime behind `/workflow <task>`. The user-visible path is in [`WORKFLOW.md`](./WORKFLOW.md).
+This document describes the deterministic runtime behind `/workflow <task>`. User-visible operation lives in [`WORKFLOW.md`](./WORKFLOW.md).
 
 ## Core components
 
@@ -15,55 +15,80 @@ This document describes the deterministic runtime behind `/workflow <task>`. The
   -> WorkflowDriver
   -> WorkflowTeamPromptBuilder
   -> BrowserWorkflowTeamRunner
+  -> WorkflowTeamTraceStore / DurableWorkflowTeamObserver
+  -> WorkflowOperator
   -> BrowserWorkflowWriterRunner
   -> approval/confirmation policy
   -> WorkflowEventSink / DshWorkflowEventSink
   -> WorkflowRetentionManager
 ```
 
-### WorkflowEngine
+`WorkflowEngine` owns authoritative transitions, state guards, durable per-job account routing, handoff gates, reviewer/head validation, health/merge authority, and retry/idempotency semantics.
 
-Owns authoritative transitions, state guards, handoff gates, reviewer/head validation, health/merge authority and durable mutation semantics.
+`WorkflowDriver` automatically advances safe code-owned states, deduplicates active execution by `jobId`, resumes safe jobs after restart, and stops at human/action-required boundaries.
 
-### WorkflowDriver
+`WorkflowJobStore` persists private atomic per-job JSON and strictly validates nested state. Corrupted routing/session/PR/authorization state fails closed.
 
-Automatically advances only states that are safe for deterministic code to continue. Active runs deduplicate by `jobId`. Startup discovery resumes safe runnable jobs and leaves human/action-required boundaries stopped.
+`WorkflowHandoffStore` persists exact model payloads, deterministic identity, SHA-256 and delivery metadata.
 
-### WorkflowJobStore
+`BrowserWorkflowTeamRunner` adapts the shared provider-agnostic team runtime to deterministic workflow tasks. It does not maintain a second debate loop.
 
-Persists private atomic per-job JSON and strictly validates nested authority/state on load. Corrupted account/session/PR/authorization state fails closed rather than being shallow-cast.
+`WorkflowTeamTraceStore` and `DurableWorkflowTeamObserver` persist bounded per-turn execution evidence and publish compact best-effort progress events.
 
-### WorkflowHandoffStore
+`WorkflowOperator` projects authoritative job + trace state through `/workflow list|status|watch|stop|continue`.
 
-Persists exact model payloads, deterministic logical identity, SHA-256 and delivery metadata. It recomputes identity/hash during parsing and rejects tampering.
+`BrowserWorkflowWriterRunner` routes implementation/remediation/health/merge controls through `chatgpt-writer` only.
 
-### Team runtime
+## Account and member routing
 
-Research/review lanes call the lower-level browser team primitive directly. Stable session identity is exact and workflow-owned; the lower-level runtime no longer appends hidden workflow suffixes.
+Semantic account identity remains authoritative for authentication and scheduling. Team intellectual roles are separate and ordinal.
 
-### Writer runtime
-
-All implementation/remediation/health/merge controls route through the explicit `chatgpt-writer` account and the stable per-job writer session.
-
-### Event sink
-
-Durable mutations may publish compact `PROGRESS` / `ACTION_REQUIRED` observations. Publication is best-effort after state commit and never changes correctness.
-
-### Retention manager
-
-Provides explicit terminal-job preview/cleanup. It is never called by the automatic driver and has no background scheduler.
-
-## Account routing
-
-Semantic identities are authoritative:
+Current catalog:
 
 ```text
 chatgpt-thinker
-gemini-thinker
 chatgpt-writer
+gemini-thinker
+chatgpt-thinker-2
 ```
 
-Provider is derived metadata. Runtime authentication and capability boundaries require explicit `accountId`.
+Current default route for **new** workflow jobs:
+
+```text
+Member 1 -> chatgpt-thinker
+Member 2 -> chatgpt-thinker-2
+Writer   -> chatgpt-writer
+Synthesizer -> chatgpt-thinker
+```
+
+`gemini-thinker` remains a valid thinker account but is temporarily outside the default workflow route.
+
+`WorkflowJob.accountRouting` persists the exact two thinker accounts, writer account, and synthesizer account. The parser validates capabilities rather than hard-coding one provider pair. Therefore old durable jobs keep their recorded route while new jobs use the current default. Retry never silently changes team membership.
+
+## Shared team runtime
+
+Research/review lanes call the shared `runTeam(...)` core directly with the job's ordered thinker routing. Prompt strategies render only `Member 1..N`, never provider/account identity.
+
+Purpose-specific strategies:
+
+```text
+generic-debate
+workflow-research
+workflow-review
+```
+
+Workflow uses the latter two. Peer model output is untrusted evidence, and review's exact PR/head/output contract remains authoritative.
+
+Structured team stages:
+
+```text
+prepare_prompt
+provider_turn
+synthesis
+complete
+```
+
+Internal progress/failure events retain backing account/provider for routing and diagnostics. Provider/browser failures are not valid member contributions.
 
 ## Stable workflow sessions
 
@@ -75,7 +100,7 @@ Provider is derived metadata. Runtime authentication and capability boundaries r
 <owner>:workflow:<job>:writer
 ```
 
-Review cycle and exact PR head are durable facts, not session-ID components.
+Review cycle, exact PR head, and account routing are durable facts rather than session-ID components.
 
 ## Top-level states
 
@@ -102,17 +127,54 @@ REVIEW_LIMIT_REACHED
 CANCELLED
 ```
 
-Parallel A/B status is represented inside lane state rather than multiplying top-level states.
+Parallel Team A/B status lives inside lane state rather than multiplying top-level states.
 
-## Research phase
+## Research and review concurrency
 
-Research A/B are started logically together. Each prompt contains exact objective, repository/base authority, lane role and output contract. Same-account Website turns may serialize through the account scheduler while different accounts remain independent.
+Research Team A/B are launched before either sibling is awaited. Review Team A/B follow the same rule.
 
-A completed sibling lane is not rerun just because another lane failed.
+```text
+Research Team A  ─────────────────►
+Research Team B  ─────────────────►
+
+Review Team A    ─────────────────►
+Review Team B    ─────────────────►
+```
+
+Each lane receives the same persisted ordered thinker route but an independent workflow focus/session. A completed or failed sibling is preserved and not rerun unnecessarily.
+
+Same-account Website turns may serialize through the account scheduler according to `maxConcurrentTurnsPerAccount`. That does not change workflow-level lane concurrency.
+
+## Durable team trace
+
+Trace evidence is stored separately from compact job JSON:
+
+```text
+<workflow data>/workflows/team-traces/<jobId>.json
+```
+
+Events include:
+
+```text
+phase
+lane
+attempt
+round
+accountId
+provider
+stage
+status
+failure kind/message/retryability
+bounded completed-turn text
+```
+
+The operator maps account IDs to `Member N` by the job's persisted thinker tuple. Normal display stays provider-agnostic; raw account/provider appears only for explicit failure diagnostics.
+
+Full research/review payloads are not injected into Local progress context.
 
 ## Handoff phase
 
-Each final team/reviewer result is persisted exactly:
+Each final research/review result is persisted exactly:
 
 ```text
 handoff_id
@@ -125,13 +187,13 @@ payload_hash
 delivery status/timestamps
 ```
 
-The SHA is over exact UTF-8 payload bytes. Re-preparing identical logical handoffs is revision-idempotent. Changed content for an existing logical handoff is rejected.
+The SHA is over exact UTF-8 payload bytes. Re-preparing identical logical handoffs is idempotent; changed content for an existing logical handoff is rejected.
 
-Website transport is modeled as at-least-once. Durable acknowledgement makes replay safe; exactly-once UI delivery is not assumed.
+Website transport is modeled as at-least-once with durable idempotent acknowledgement.
 
-## Control messages
+## Trusted controls
 
-Trusted controls are typed separately from model data:
+Controls are typed separately from model data:
 
 ```text
 START_IMPLEMENTATION
@@ -145,14 +207,9 @@ This preserves the invariant that a handoff payload equals the exact source fina
 
 ## Writer implementation and PR idempotency
 
-The deterministic workflow branch is derived from job identity. `START_IMPLEMENTATION` requires the writer to reconcile the exact head branch before creating a PR:
+`START_IMPLEMENTATION` is sent only after required research handoffs are acknowledged. The writer verifies repository/base, uses the deterministic branch, and reconciles exact matching PR identity before creating anything new.
 
-- reuse exactly one matching open PR;
-- block on closed/merged identity conflict;
-- block on duplicate/conflicting PR identity;
-- never create another PR merely because control execution was retried.
-
-Successful strict writer output persists the PR receipt:
+Successful writer output persists:
 
 ```text
 repository
@@ -163,41 +220,52 @@ head branch
 head SHA
 ```
 
+`chatgpt-writer` is never reused as a reasoning member.
+
 ## Website approval boundary
 
-The BrowserManager supplies actual runtime account/session identity. Caller-provided scope cannot self-assert it.
+Auto-Allow requires exact match on runtime account/session, repository, workflow state, recognized action, and branch/PR identity. Unknown/ambiguous UI becomes `UNKNOWN_CONFIRMATION`.
 
-Auto-Allow requires exact match on:
-
-```text
-chatgpt-writer
-writer session
-repository
-workflow state
-action allowlist
-workflow branch or persisted PR identity
-```
-
-Unknown or ambiguous UI is `UNKNOWN_CONFIRMATION`. Premature merge is not implementation authority.
+Premature merge is excluded from implementation authority.
 
 ## Exact-head review loop
 
-Review A/B inspect the actual PR and requested current head. Each reviewer must return a strict control-plane result with:
+Review Team A/B inspect the actual PR and requested current head. Each final review result must assert:
 
 ```text
 PASS | CHANGES_REQUIRED
 reviewedHeadSha == exact requested head
 ```
 
-The complete reviewer JSON remains the data-plane handoff.
+Malformed or stale-head output fails the lane. If changes are required, exact review handoffs are delivered before `APPLY_REVIEWS`; remediation preserves PR identity and advances head before both teams review again.
 
-If changes are required, both handoffs are delivered before `APPLY_REVIEWS`. Remediation must preserve repository/PR/base/head identity and return a different head SHA. Review state is reset for the new head while stable reviewer sessions are reused.
+Default maximum review cycles: `3`.
 
-The default maximum is three review cycles.
+## Operator projection
+
+`/workflow status` combines job and trace state:
+
+```text
+State: FAILED_RETRYABLE
+Current: Research · retry required
+
+Pipeline
+  Research  Team A=failed · Team B=completed
+  Writer    waiting for research
+  Review    Team A=pending · Team B=pending
+  PR        not created
+
+Research teams
+  Team A — FAILED (attempt 1)
+    Step: round 1 · Member 2 · provider turn · FAILED · provider_error
+    Members: Member 1=completed round 1 · Member 2=failed round 1
+    Error: provider_error · retryable
+    Diagnostic: <account> · <provider>
+```
+
+`watch` returns the same authoritative snapshot. Live `TEAM_PROGRESS` events use phase/team/attempt/round/member/stage/status and include backing source only on failure.
 
 ## Event publication
-
-Every durable mutation that changes `lastEvent` passes through one publication boundary.
 
 ```text
 INTERNAL         -> engine/store only
@@ -205,85 +273,51 @@ PROGRESS         -> eligible for Local injection
 ACTION_REQUIRED  -> eligible for Local injection
 ```
 
-`DshWorkflowEventSink` resolves the exact persisted `ownerSessionId` through DSH agents and injects compact metadata. It does not send full research/reviewer payloads. Missing/disposed agents and injection failures are ignored after the state commit.
+Durable trace/state is committed before best-effort notification. Missing/disposed Local agents cannot roll back correctness.
 
-## Automatic driver
+## Automatic driver and recovery
 
-The driver advances runnable states until it reaches an explicit stop boundary. It does not introduce another LLM orchestration layer.
+The driver advances runnable states until an explicit stop boundary. Safe restart discovery preserves completed work and does not wake jobs waiting on user authority or known exceptions.
 
-Safe restart behavior:
+Unexpected driver errors become `FAILED_RETRYABLE` with an explicit `resumeState`. `/workflow continue` resumes only that durable recovery path.
 
-- discover durable jobs;
-- resume only states whose next action is code-owned and retry-safe;
-- preserve completed handoffs/lanes;
-- do not wake jobs waiting on user authority or known exceptions;
-- preserve intentional-shutdown aborts as runnable state instead of manufacturing user-facing failure.
+`/workflow stop` aborts active driver work, waits for settlement, then persists terminal `CANCELLED`. Cancelled jobs do not resume on restart.
 
-Unexpected driver errors become `FAILED_RETRYABLE` with an explicit `resumeState`.
+## PR health and merge authority
 
-## PR health receipt
-
-Health is bound to exact authority:
+Health is exact-head-bound:
 
 ```text
-repository
-PR number
-head SHA
-state: PASS | FAIL | PENDING | NONE | UNKNOWN
-checkedAt
+PASS | FAIL | PENDING | NONE | UNKNOWN
 ```
 
-`CHECK_PR_HEALTH` is read-only. The Website writer reads live PR/check policy and returns deterministic state; the engine validates exact repository/PR/head binding.
+`CHECK_PR_HEALTH` is read-only. Only `PASS`, or verified `NONE` with no required checks/statuses, may advance. New head invalidates prior health.
 
-Acceptable merge health is:
-
-```text
-PASS
-NONE  # only when absence of required checks/statuses is established
-```
-
-`PENDING` is retryable. `FAIL` is not merge-eligible. `UNKNOWN` fails closed. Any new head invalidates the old receipt.
-
-## Merge authority
-
-`request_merge` may proceed only after exact-head review gates pass and the current health receipt is acceptable.
-
-The action-required request includes the concrete PR and expected head. `approve(jobId, expectedHeadSha)` must exactly match the pending head and persists authorization bound to repository, PR, branch, head SHA, review cycle, owner session and authorization timestamp.
-
-Approval transitions to `MERGING`, not back to ready state.
-
-Immediately before merge the writer re-reads both PR head and health. Only an exact still-authorized head may execute `MERGE_AUTHORIZED`. A successful merge persists a merge receipt and moves the job to `DONE`.
-
-## Cancel / reject / continue
-
-- `cancel` aborts and settles active driver work before persisting `CANCELLED`.
-- merge `reject` removes authorization and returns to a quiet ready state; it does not automatically request again.
-- `continue` resumes the exact persisted `resumeState` for explicit exception recovery.
-
-There is no generic fallback to `CREATED`.
+Merge authorization is explicit and bound to repository + PR + exact head. Immediately before merge the writer re-reads head and health. Only still-valid authority may execute `MERGE_AUTHORIZED`.
 
 ## Maintenance / retention
 
-Terminal cleanup is intentionally outside the driver.
-
-Eligibility is based on authoritative `updatedAt`:
+Terminal cleanup remains explicit operator maintenance:
 
 ```text
 DONE      30 days
 CANCELLED 14 days
 ```
 
-`preview` is read-only. `cleanup` requires exact `jobId + updatedAt` from preview, validates the expected per-job handoff files and private permissions, removes only that job and its exact handoffs, and keeps a private durable audit receipt. Repeating the same completed cleanup returns the retained audit result.
+Cleanup requires exact `jobId + updatedAt`, validates private artifacts, removes the selected job + handoffs + team trace, and retains a private audit receipt.
 
 ## Runtime invariants
 
 1. Job state, not model memory, determines the next phase.
-2. Provider identity never substitutes for account identity.
-3. Full team/reviewer payloads are not correctness-bearing Local context.
-4. Handoff payloads are immutable exact data; controls are separate.
-5. PR, review, health and merge authorization are bound to exact head state.
-6. Retry prefers resume/reconcile over duplicate external action.
-7. Website confirmation policy fails closed.
-8. Merge requires explicit user authority.
-9. Restart recovery resumes only safe code-owned work.
-10. Retention deletion is explicit operator maintenance only.
+2. Provider identity never substitutes for account identity or team member role.
+3. Team prompts are provider-agnostic; routing is durable execution metadata.
+4. Existing jobs keep persisted routing; retry never silently changes members.
+5. Full team/reviewer payloads are not correctness-bearing Local context.
+6. Handoff payloads are immutable exact data; controls are separate.
+7. Research A/B and Review A/B are workflow-level concurrent.
+8. PR, review, health and merge authorization are bound to exact head state.
+9. Retry prefers resume/reconcile over duplicate external action.
+10. Website confirmation policy fails closed.
+11. Merge requires explicit user authority.
+12. Restart recovery resumes only safe code-owned work.
+13. Retention deletion is explicit operator maintenance only.
