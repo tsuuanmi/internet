@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AccountStatus } from "#internet/browser/runtime";
 import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
 
-const allowed = new Set(["chatgpt-thinker", "chatgpt-writer", "gemini-thinker"] as const);
+const allowed = new Set(["chatgpt-thinker", "chatgpt-writer", "gemini-thinker", "chatgpt-thinker-2"] as const);
 
 function manager(status: AccountStatus) {
 	return {
@@ -44,7 +44,7 @@ describe("internet_browser", () => {
 		expect((result as { message: string }).message).toContain("Do not close Chrome manually");
 	});
 
-	it("routes the ChatGPT writer independently from the thinker", async () => {
+	it("routes the ChatGPT writer independently from both thinker accounts", async () => {
 		const browser = manager({
 			accountId: "chatgpt-writer",
 			provider: "chatgpt-web",
@@ -53,7 +53,9 @@ describe("internet_browser", () => {
 		});
 		const tool = defineInternetBrowserTool(browser as never, allowed);
 		await tool.execute({ action: "status", account: "chatgpt-writer" }, {} as never);
+		await tool.execute({ action: "status", account: "chatgpt-thinker-2" }, {} as never);
 		expect(browser.status).toHaveBeenCalledWith("chatgpt-writer");
+		expect(browser.status).toHaveBeenCalledWith("chatgpt-thinker-2");
 	});
 
 	it("starts invisible login for all enabled accounts without sharing lifecycle identity", async () => {
@@ -67,12 +69,13 @@ describe("internet_browser", () => {
 		await expect(tool.execute({ action: "login_all" }, {} as never)).resolves.toMatchObject({
 			ok: true,
 			action: "login_all",
-			accounts: expect.stringContaining("chatgpt-writer=ready"),
+			accounts: expect.stringContaining("chatgpt-thinker-2=ready"),
 		});
-		expect(browser.login).toHaveBeenCalledTimes(3);
+		expect(browser.login).toHaveBeenCalledTimes(4);
 		expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker");
 		expect(browser.login).toHaveBeenCalledWith("chatgpt-writer");
 		expect(browser.login).toHaveBeenCalledWith("gemini-thinker");
+		expect(browser.login).toHaveBeenCalledWith("chatgpt-thinker-2");
 	});
 
 	it("returns account ports, URLs, and one combined SSH command for login_all", async () => {
@@ -80,6 +83,7 @@ describe("internet_browser", () => {
 			"chatgpt-thinker": 39000,
 			"chatgpt-writer": 39001,
 			"gemini-thinker": 39002,
+			"chatgpt-thinker-2": 39003,
 		} as const;
 		const browser = {
 			login: vi.fn(async (accountId: keyof typeof ports) => {
@@ -109,11 +113,13 @@ describe("internet_browser", () => {
 		expect(output.accounts).toContain("chatgpt-thinker=login-waiting(port=39000)");
 		expect(output.accounts).toContain("chatgpt-writer=login-waiting(port=39001)");
 		expect(output.accounts).toContain("gemini-thinker=login-waiting(port=39002)");
+		expect(output.accounts).toContain("chatgpt-thinker-2=login-waiting(port=39003)");
 		expect(output.remoteLogins).toContain("chatgpt-thinker: state=waiting port=39000");
 		expect(output.remoteLogins).toContain("URL: http://127.0.0.1:39001/token-chatgpt-writer/");
 		expect(output.remoteLogins).toContain("gemini-thinker: state=waiting port=39002");
+		expect(output.remoteLogins).toContain("chatgpt-thinker-2: state=waiting port=39003");
 		expect(output.batchSshCommand).toBe(
-			"ssh -N -L 39000:127.0.0.1:39000 -L 39001:127.0.0.1:39001 -L 39002:127.0.0.1:39002 <user>@<server>",
+			"ssh -N -L 39000:127.0.0.1:39000 -L 39001:127.0.0.1:39001 -L 39002:127.0.0.1:39002 -L 39003:127.0.0.1:39003 <user>@<server>",
 		);
 		expect(output.message).toContain("On this server, open each URL above directly");
 		expect(output.message).toContain("Save account");
@@ -131,9 +137,9 @@ describe("internet_browser", () => {
 		await expect(tool.execute({ action: "status_all" }, {} as never)).resolves.toMatchObject({
 			ok: true,
 			action: "status_all",
-			accounts: expect.stringContaining("gemini-thinker=ready"),
+			accounts: expect.stringContaining("chatgpt-thinker-2=ready"),
 		});
-		expect(browser.status).toHaveBeenCalledTimes(3);
+		expect(browser.status).toHaveBeenCalledTimes(4);
 	});
 
 	it("rejects disabled and provider-like identities rather than falling back", async () => {
