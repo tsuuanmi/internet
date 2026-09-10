@@ -4,9 +4,9 @@ Browser-backed ChatGPT Web and Gemini Web tools for the DeepSeek Harness (DSH), 
 
 ## What it provides
 
-- **`internet_chat`** — direct authenticated ChatGPT/Gemini thinker conversation.
-- **`internet_research`** — provider-native Deep Research through one or both thinker accounts.
-- **`internet_team`** — a shared ChatGPT+Gemini team runtime that critiques, refines, and synthesizes the strongest supported combined answer.
+- **`internet_chat`** — direct authenticated thinker conversation through an explicitly selected account.
+- **`internet_research`** — provider-native Deep Research through one or more selected thinker accounts.
+- **`internet_team`** — a shared provider-agnostic agent-team runtime that critiques, refines, and synthesizes the strongest supported combined answer.
 - **`internet_browser`** — login/status/stop for semantic accounts, including the dedicated writer.
 - **`internet_workflow`** — lower-level durable workflow control/status surface.
 - **`internet_workflow_maintenance`** — explicit operator-only retention preview/cleanup.
@@ -24,25 +24,38 @@ The runtime uses semantic authenticated identities rather than treating provider
 chatgpt-thinker
 chatgpt-writer
 gemini-thinker
+chatgpt-thinker-2
 ```
 
-`chatgpt-thinker` and `chatgpt-writer` both use ChatGPT Web but have separate portable auth state, login profiles, browser pools, schedulers and conversation bindings.
+The three ChatGPT-backed identities use separate portable auth state, login profiles, browser pools, schedulers, and conversation bindings. `chatgpt-writer` remains the dedicated workflow mutation authority and is not reused as a reasoning member.
+
+The current default team routing is:
+
+```text
+Member 1 -> chatgpt-thinker
+Member 2 -> chatgpt-thinker-2
+Writer   -> chatgpt-writer
+```
+
+For genuine member independence, `chatgpt-thinker-2` should be signed into a different ChatGPT account from `chatgpt-thinker`. Gemini remains available for direct chat/research and explicit non-default team composition when enabled.
 
 This is a clean-break model: authenticated APIs require explicit `accountId`; there is no provider-to-account default fallback or legacy provider-keyed state migration.
 
 ## Agent-team model
 
-`internet_team` and workflow research/review use one shared team execution core. A normal team is deliberately **best-of-both**, not a 50/50 merge of two answers:
+`internet_team` and workflow research/review use one shared team execution core. Team reasoning is deliberately provider-agnostic and seeks the strongest supported result, not an equal-weight merge:
 
 ```text
-ChatGPT reasoning
-  <-> Gemini critique/refinement
-  <-> further cross-model refinement
+Member 1 reasoning
+  <-> Member 2 critique/refinement
+  <-> further cross-member refinement
   -> explicit synthesis
   -> strongest supported combined answer
 ```
 
-Peer model output is delimited as untrusted evidence to evaluate, not control-plane instruction. The synthesizer may keep one model's stronger proposal, combine compatible parts, reject weak parts from both, or state an unresolved verification need. Provider/browser execution errors are orchestration failures and are never treated as valid model contributions.
+Members see only ordinal roles (`Member 1`, `Member 2`, ...), never the underlying provider or account identity. Peer output is delimited as untrusted evidence to evaluate, not control-plane instruction. The synthesizer may keep one member's stronger proposal, combine compatible parts, reject weak parts from all members, or state an unresolved verification need. Provider/browser execution errors are orchestration failures and are never treated as valid member contributions.
+
+The current operational default uses two independent ChatGPT thinker accounts because Gemini is temporarily excluded from the default route. This is a routing policy rather than a team-engine assumption; explicit team composition can still include Gemini.
 
 Workflow uses purpose-specific prompt strategies for implementation research and exact-head PR review while retaining the same shared team engine as `internet_team`.
 
@@ -60,14 +73,14 @@ Normal path:
 
 ```text
 /workflow <task>
--> Research A/B launched concurrently
-     each lane: ChatGPT + Gemini -> best-of-both synthesis
+-> Research Team A/B launched concurrently
+     each team: Member 1 + Member 2 -> strongest combined synthesis
 -> exact SHA-256-bound handoffs A then B to chatgpt-writer
 -> START_IMPLEMENTATION
 -> writer verifies repo/base, implements, validates
 -> deterministic workflow branch + exactly one reconciled PR
--> Review A/B launched concurrently against the exact PR head
-     each lane: ChatGPT + Gemini -> exact-head review synthesis
+-> Review Team A/B launched concurrently against the exact PR head
+     each team: Member 1 + Member 2 -> exact-head review synthesis
 -> exact reviewer payloads to writer
 -> APPLY_REVIEWS and same-PR remediation if required
 -> both reviewers PASS the exact head
@@ -99,16 +112,18 @@ Routine operation does not require inspecting `~/.dsh/internet/workflows/jobs/*.
 ```
 
 - **`list`** shows jobs owned by the current Local session, newest first.
-- **`status`** shows durable state, Research/Review A/B, attempt and latest round/account/stage, structured failure detail, writer state, PR/head, CI, review cycle and pending action.
-- **`watch`** returns the authoritative current snapshot; the existing compact `PROGRESS` event stream continues to surface live team/workflow updates to the owning Local session without creating a second workflow state machine.
+- **`status`** starts with a pipeline summary, then shows Research/Review Team A/B separately with attempt, current/latest round, `Member 1..N`, execution stage, structured failure detail, writer state, PR/head, CI, review cycle, and pending action.
+- **`watch`** returns the same authoritative snapshot while compact live events identify phase, Team A/B, attempt, round, member, stage, and structured failures as they occur. It does not create a second workflow state machine.
 - **`stop`** aborts active driver work, waits for the active operation to settle, persists terminal `CANCELLED`, and prevents restart resume.
 - **`continue`** only resumes a job that already has an explicit durable retry/recovery target; it is not a reset-to-start operation.
+
+Normal status/watch output uses team/member identities. Underlying account/provider identity is included only in explicit failure diagnostics so provider-level incidents can still be attributed correctly.
 
 When `jobId` is omitted, the operator surface resolves only an unambiguous current-session target. Multiple plausible jobs require an explicit ID rather than guessing.
 
 ## Structured team traces
 
-Workflow team execution persists bounded private per-job trace evidence outside the compact job record. The trace records fields such as:
+Workflow team execution persists bounded private per-job trace evidence outside the compact job record. Internal trace evidence records fields such as:
 
 ```text
 phase
@@ -122,7 +137,7 @@ status
 failure kind/message/retryability
 ```
 
-Completed model text is bounded; compact Local progress events do not inject full research/review payloads. Explicit terminal retention cleanup removes the corresponding team trace together with the selected workflow artifacts.
+The operator projection maps backing accounts to `Member 1..N` for normal display. Completed member text is bounded; compact Local progress events do not inject full research/review payloads. Explicit terminal retention cleanup removes the corresponding team trace together with the selected workflow artifacts.
 
 ## Exact handoffs
 
@@ -153,11 +168,11 @@ The durable PR receipt binds repository, PR number/URL, base branch, head branch
 
 ## PR review, health, and merge
 
-Two independent reviewer lanes inspect the real PR. Each final result must bind its verdict to the exact requested head SHA. Malformed or stale-head results fail the lane; reviewer finals are delivered unchanged to the writer.
+Two independent reviewer teams inspect the real PR. Each final result must bind its verdict to the exact requested head SHA. Malformed or stale-head results fail the team lane; reviewer finals are delivered unchanged to the writer.
 
 If changes are required, the writer receives a separate `APPLY_REVIEWS` control and must update the same PR with a new head. The default review limit is three cycles.
 
-After both reviewers pass the same exact head, the workflow performs read-only live PR health inspection:
+After both reviewer teams pass the same exact head, the workflow performs read-only live PR health inspection:
 
 ```text
 PASS | FAIL | PENDING | NONE | UNKNOWN
@@ -196,7 +211,7 @@ Use `internet_workflow_maintenance preview` to list eligible terminal candidates
 
 ```text
 internet_chat {
-  account: "chatgpt-thinker" | "gemini-thinker",
+  account: "chatgpt-thinker" | "chatgpt-thinker-2" | "gemini-thinker",
   prompt: string,
   visible?: boolean
 }
@@ -209,7 +224,7 @@ ChatGPT ordinary turns explicitly select/verify the configured reasoning level. 
 ```text
 internet_research {
   query: string,
-  accounts?: ["chatgpt-thinker", "gemini-thinker"],
+  accounts?: ["chatgpt-thinker", "chatgpt-thinker-2", "gemini-thinker"],
   name?: string,
   visible?: boolean
 }
@@ -226,19 +241,19 @@ internet_team {
   rounds?: number,
   synthesize?: boolean,
   includeTranscript?: boolean,
-  accounts?: ["chatgpt-thinker", "gemini-thinker"],
+  accounts?: ["chatgpt-thinker", "chatgpt-thinker-2"],
   visible?: boolean
 }
 ```
 
-Default final synthesizer: `chatgpt-thinker`, independent of speaking order.
+The `accounts` field selects the authenticated accounts backing ordered `Member 1..N`; it can be overridden explicitly, including with `gemini-thinker` when enabled. The default synthesizer is the account backing Member 1 (`chatgpt-thinker`).
 
 ### `internet_browser`
 
 ```text
 internet_browser {
   action: "login" | "status" | "stop" | "login_all" | "status_all" | "stop_all",
-  account: "chatgpt-thinker" | "chatgpt-writer" | "gemini-thinker",
+  account: "chatgpt-thinker" | "chatgpt-writer" | "gemini-thinker" | "chatgpt-thinker-2",
 }
 ```
 
@@ -282,7 +297,12 @@ Default stable ports:
 39000 chatgpt-thinker
 39001 chatgpt-writer
 39002 gemini-thinker
+39003 chatgpt-thinker-2
 ```
+
+The fourth account is appended to the semantic account catalog, so the three existing stable login ports are unchanged. The runtime assigns `remoteLoginPort + ACCOUNT_IDS.indexOf(accountId)`.
+
+For the current default team, sign `chatgpt-thinker` and `chatgpt-thinker-2` into two different ChatGPT accounts. Keep `chatgpt-writer` as its own separate account/authority. Gemini login is optional for the default workflow but remains useful for explicit Gemini chat/research/team runs.
 
 The HTTP/WebSocket and VNC listeners bind to loopback. Treat the tokenized URL and temporary VNC password as bearer credentials.
 
@@ -301,6 +321,7 @@ The portable boundary is exactly:
   chatgpt-thinker.json
   chatgpt-writer.json
   gemini-thinker.json
+  chatgpt-thinker-2.json
 ```
 
 These files contain authenticated browser state and must be protected as secrets. On POSIX, keep the account directory private and files mode `0600`.
@@ -321,4 +342,4 @@ Start with [`docs/README.md`](./docs/README.md). Key current-state documents inc
 - [`docs/internet-team-architecture.md`](./docs/internet-team-architecture.md)
 - [`docs/TODO.md`](./docs/TODO.md)
 
-The explicit P0-P13 roadmap remains complete. The observed workflow-team hardening is implemented without adding a P14; broader generalization remains deferred until a concrete need exists.
+The explicit P0-P13 roadmap remains complete. The workflow-team hardening and provider-agnostic member routing are implemented without adding a numbered phase; broader generalization remains deferred until a concrete need exists.
