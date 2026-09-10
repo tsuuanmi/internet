@@ -1,140 +1,96 @@
 # Internet Runtime TODO
 
-- **Status:** coding-workflow roadmap complete through P13; concrete post-roadmap hardening proposed from observed failures
+- **Status:** current implementation complete through the observed workflow-team hardening
 - **Last synchronized:** 2026-09-09
 
-This file remains a closure checklist, not an instruction to keep adding phases. All planned correctness-critical coding-workflow work through P13 has landed. New work is added only when a concrete observed problem justifies it.
+This file is a closure boundary, not an instruction to keep adding numbered phases. New work should be added only for a concrete observed problem.
 
-## Completed
+## Completed workflow foundation
 
-- ✅ ChatGPT ordinary turns default to `high` reasoning.
-- ✅ Team synthesis uses an explicit account identity and defaults to `chatgpt-thinker`.
 - ✅ First-class semantic accounts: `chatgpt-thinker`, `chatgpt-writer`, `gemini-thinker`.
-- ✅ Clean-break account isolation for auth state, login profiles, browser/runtime maps, schedulers and conversations.
-- ✅ `/workflow <task>` starts a real durable `WorkflowEngine` job.
-- ✅ Workflow-owned research/review teams run directly over the lower-level team runtime.
+- ✅ Clean-break account isolation for auth state, browser/runtime maps, schedulers and conversations.
+- ✅ `/workflow <task>` creates and automatically drives a durable coding job.
 - ✅ Deterministic per-job research/review/writer session identities.
-- ✅ Two independent logical research lanes and two exact-head review lanes.
-- ✅ Exact SHA-256-bound durable handoffs with deterministic ordering and idempotent acknowledgement.
-- ✅ Trusted control messages are separate from verbatim team/reviewer payloads.
-- ✅ Persistent `chatgpt-writer` conversation and strict writer control contract.
-- ✅ Deterministic implementation branch and idempotent one-PR reconciliation.
-- ✅ Durable exact PR receipt.
-- ✅ Conservative scoped Website GitHub confirmation controller.
-- ✅ `UNKNOWN_CONFIRMATION` fail-closed behavior.
-- ✅ Exact-head PR review/remediation loop with `maxReviewCycles = 3` default.
-- ✅ Compact `INTERNAL` / `PROGRESS` / `ACTION_REQUIRED` events and Local `agent.inject()` integration.
-- ✅ Payload-free workflow status projection.
-- ✅ Exact-head user merge authorization and pre-merge head revalidation.
-- ✅ Durable merge receipt.
-- ✅ Strict restart recovery and persisted-authority validation.
-- ✅ Transition, handoff, account-isolation and approval hardening.
-- ✅ Automatic durable `WorkflowDriver` with safe restart resume and explicit stop boundaries.
-- ✅ Exact-head PR/CI health receipt: `PASS | FAIL | PENDING | NONE | UNKNOWN`.
-- ✅ Health gating before authorization and immediately before merge.
-- ✅ Operator-only retention cleanup: `DONE` 30 days, `CANCELLED` 14 days.
-- ✅ Exact `jobId + updatedAt` cleanup guard, handoff-directory validation and retained private cleanup audit.
-- ✅ No implicit/background/scheduled deletion.
+- ✅ Exact SHA-256-bound durable research/review handoffs.
+- ✅ Persistent `chatgpt-writer` conversation with strict control messages.
+- ✅ Deterministic branch / one-PR reconciliation and durable exact PR receipt.
+- ✅ Exact-head PR review/remediation with a bounded review cycle.
+- ✅ Exact-head PR/CI health gating and explicit user merge authorization.
+- ✅ Fail-closed Website confirmation policy and pre-merge revalidation.
+- ✅ Restart recovery, explicit retry-required boundaries and terminal cancellation.
+- ✅ Operator-only terminal retention cleanup with durable audit receipts.
+
+## Completed workflow-team hardening
+
+- ✅ `internet_team` and workflow research/review use one shared team execution core.
+- ✅ Every normal workflow lane remains a full ChatGPT + Gemini team.
+- ✅ Team prompting targets the **best combined answer**, not averaging, neutral summarization, or concatenation.
+- ✅ Peer model output is delimited as untrusted content/evidence rather than instruction authority.
+- ✅ Purpose-specific prompt strategies exist for generic debate, workflow research and exact-head workflow review.
+- ✅ Research A/B are launched concurrently at the workflow-lane level.
+- ✅ Review A/B are launched concurrently at the workflow-lane level.
+- ✅ Same-account serialization remains an account-scheduler responsibility; workflow adds no A-then-B mutex.
+- ✅ Regression tests protect both research and review lane concurrency.
+- ✅ Shared team execution emits structured round/account/stage progress and structured failure classification.
+- ✅ Provider failures preserve exact account/provider/stage/round/kind/retryability without becoming model contributions.
+- ✅ Completed-turn evidence is retained in a bounded private per-job team trace outside compact job state.
+- ✅ Team trace progress is lane-tagged and can safely interleave across concurrent A/B execution.
+- ✅ Compact Local `PROGRESS` events exclude full research/review payloads.
+- ✅ `/workflow list` discovers jobs owned by the current Local session.
+- ✅ `/workflow status [jobId]` renders job/lane/attempt/current-turn/PR/CI/action state.
+- ✅ `/workflow watch [jobId]` returns the authoritative current snapshot and relies on the existing durable event stream for live follow-up rather than creating a second state machine.
+- ✅ `/workflow stop [jobId]` uses `WorkflowDriver.cancel()` to abort active work, settle it, persist `CANCELLED`, and prevent restart resume.
+- ✅ `/workflow continue [jobId]` resumes only an explicit durable recovery path.
+- ✅ Omitted job IDs resolve only when unambiguous; commands fail rather than guess across multiple jobs.
+- ✅ Team traces are removed with their terminal workflow during explicit retention cleanup.
+
+## Current operator surface
+
+```text
+/workflow <objective>
+/workflow list
+/workflow status [jobId]
+/workflow watch [jobId]
+/workflow stop [jobId]
+/workflow continue [jobId]
+```
+
+`internet_workflow` remains the lower-level deterministic control-plane tool, including acceptance testing and exact-head merge operations.
 
 ## Current normal workflow
 
 ```text
 /workflow <task>
--> create durable job and enqueue driver
--> Research A/B
+-> create durable job + enqueue driver
+-> Research A/B concurrently
+     each lane: ChatGPT <-> Gemini -> best-of-both synthesis
 -> exact research handoffs to writer
 -> START_IMPLEMENTATION
 -> writer creates/reuses one PR
--> Review A/B against exact PR head
+-> Review A/B concurrently against the exact PR head
+     each lane: ChatGPT <-> Gemini -> exact-head synthesis
 -> exact review handoffs
 -> APPLY_REVIEWS + same-PR remediation when needed
--> review PASS/PASS on exact head
+-> PASS/PASS on exact head
 -> CHECK_PR_HEALTH
--> READY_FOR_MERGE_AUTHORIZATION
--> explicit exact-head user approval
--> pre-merge head + health re-check
+-> explicit exact-head user merge authorization
+-> immediate head + health revalidation
 -> MERGE_AUTHORIZED
 -> writer merge
 -> DONE
 ```
 
-## Explicit stop boundaries
+## Deferred — no implementation without a concrete request
 
-The automatic driver stops instead of guessing through:
-
-```text
-AWAITING_MERGE_AUTHORIZATION
-BLOCKED
-UNKNOWN_CONFIRMATION
-FAILED_RETRYABLE
-REVIEW_LIMIT_REACHED
-CANCELLED
-DONE
-```
-
-`PENDING` health remains retryable; `FAIL` and `UNKNOWN` health do not silently pass.
-
-## Concrete follow-up — workflow team observability/control hardening
-
-A real research lane exposed a provider execution failure on `gemini-thinker`. Detection worked, but the durable workflow view only retained a flattened lane-level error, making it difficult to see the exact failed round/account/stage without opening the provider UI or reading internal files.
-
-The detailed proposal and acceptance criteria live in [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md). Agent-team quality semantics are in [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md), and user-facing operation semantics are in [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md).
-
-### P0 operator UX and concurrency protection
-
-- [ ] Add `/workflow status [jobId]`.
-- [ ] Add `/workflow list`.
-- [ ] Add `/workflow stop [jobId]` backed by the existing driver cancellation path.
-- [ ] Add `/workflow continue [jobId]` only for explicit retry-required recovery.
-- [ ] Resolve an omitted `jobId` safely from the current owner session; fail on ambiguity instead of guessing.
-- [ ] Render phase/lane/attempt/PR/CI/pending-action state without dumping full model payloads.
-- [ ] Preserve concurrent Research A/B launch semantics; both lanes must start before either is awaited.
-- [ ] Preserve concurrent Review A/B launch semantics; both lanes must start before either is awaited.
-- [ ] Do not add workflow-level A-then-B serialization on top of account scheduler limits.
-- [ ] Add regression tests proving lane concurrency remains intact.
-
-### P1 structured team evidence
-
-- [ ] Extend the shared team core with per-turn progress callbacks/events.
-- [ ] Preserve `phase/lane/attempt/round/accountId/provider/stage/status` for workflow team execution.
-- [ ] Replace flattened provider failures with structured failure metadata while keeping a compact user-facing message.
-- [ ] Retain bounded completed-turn evidence on team failure.
-- [ ] Persist detailed trace data outside the compact main job record.
-- [ ] Make workflow status show the current or last exact team turn.
-- [ ] Make A/B interleaved progress safe and explicitly lane-tagged.
-
-### P1 agent-team quality and prompt strategy
-
-- [ ] Keep one shared team engine for `internet_team` and workflow research/review.
-- [ ] Do **not** make workflow call the public `internet_team` tool as an internal dependency.
-- [ ] Keep every normal workflow lane as a full ChatGPT + Gemini team.
-- [ ] Make synthesis explicitly target the **best combined answer**, not averaging or neutral summarization.
-- [ ] Add explicit prompt strategies for generic debate, workflow research and workflow review.
-- [ ] Delimit peer model output as untrusted content/evidence rather than instruction authority.
-- [ ] Preserve the exact-head strict JSON review contract.
-
-### P2 convenience monitoring
-
-- [ ] Consider `/workflow watch [jobId]` after one-shot status is stable.
-- [ ] `watch` must consume durable state/events and must not become a second correctness source.
-
-### Retry follow-up
-
-- [ ] Classify provider execution failures as retryable/non-retryable in structured state.
-- [ ] Measure failure frequency before adding automatic provider-turn retry.
-- [ ] If automatic retry is added, make it bounded, durable, cancellation-aware and incapable of duplicating acknowledged handoffs or GitHub mutations.
-
-## Deferred — do not implement without a concrete request
-
+- automatic provider-turn retry policy beyond existing explicit workflow retry/recovery;
 - automatic task detection instead of explicit `/workflow`;
 - Website cross-conversation/project memory as workflow correctness state;
 - generic arbitrary DAG workflow language;
 - many writer accounts / automatic pooling;
 - sophisticated artifact database;
 - autonomous production deployment;
-- broad non-coding generalization;
-- synchronous `wait(job_id)` convenience.
+- broad non-coding generalization.
 
 ## Future-task rule
 
-New work should be added here only when it solves a concrete observed problem. Prefer focused fixes with measurable ROI over continuing phase numbering for its own sake. Do not add legacy migrations, aliases, provider-to-account fallbacks, or compatibility shims unless a real compatibility requirement is first demonstrated and documented.
+Prefer focused fixes with measurable ROI. Do not add legacy migrations, aliases, provider-to-account fallbacks, compatibility shims, duplicate execution paths, or a new numbered phase unless a concrete requirement first justifies it.

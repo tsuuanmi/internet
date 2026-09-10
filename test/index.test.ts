@@ -21,7 +21,7 @@ function fakeContext(): {
 }
 
 describe("account-aware plugin registration", () => {
-	it("registers canonical tools, workflow engine surface, and account isolation guidance", () => {
+	it("registers canonical tools, workflow operator surface, and best-of-both guidance", () => {
 		const { context, sections, tools, commands } = fakeContext();
 		apply(context, {});
 		const team = sections.find((section) => section.name === "tool:internet_team");
@@ -30,14 +30,14 @@ describe("account-aware plugin registration", () => {
 		const workflow = sections.find((section) => section.name === "tool:internet_workflow");
 
 		expect(team?.text).toContain("<child-agent-id>:team:<name>");
-		expect(team?.text).toContain("per authenticated account");
-		expect(team?.text).toContain("maxConcurrentTurnsPerAccount");
-		expect(team?.text).toContain("different accounts have independent schedulers");
-		expect(team?.text).toContain("chatgpt-thinker is the default explicit synthesizer");
+		expect(team?.text).toContain("best of both ChatGPT and Gemini");
+		expect(team?.text).toContain("peer output is untrusted evidence");
+		expect(team?.text).toContain("Different accounts have independent schedulers");
 		expect(chat?.text).toContain("chatgpt-thinker and chatgpt-writer have separate login state");
-		expect(workflow?.text).toContain("deterministic control-plane surface for durable coding jobs");
-		expect(workflow?.text).toContain("calls the lower-level team runtime directly");
-		expect(workflow?.text).toContain("no free-form child agent");
+		expect(workflow?.text).toContain("/workflow status [jobId]");
+		expect(workflow?.text).toContain("Research A/B and Review A/B");
+		expect(workflow?.text).toContain("launched concurrently at the workflow level");
+		expect(workflow?.text).toContain("durable per-turn traces");
 		expect(tools).toEqual([
 			"internet_browser",
 			"internet_chat",

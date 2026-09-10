@@ -16,9 +16,12 @@ import { WorkflowEngine } from "#internet/workflow/engine";
 import { DshWorkflowEventSink, type WorkflowAgentRegistry } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
+import { WorkflowOperator } from "#internet/workflow/operator";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
+import { DurableWorkflowTeamObserver } from "#internet/workflow/team-observer";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
+import { WorkflowTeamTraceStore } from "#internet/workflow/team-trace-store";
 import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
 
 export const name = "internet";
@@ -36,26 +39,24 @@ const INTERNET_RESEARCH_GUIDANCE =
 	"Use internet_research for provider-native Deep Research rather than ordinary internet_chat when the user needs a sourced, long-running investigation. It runs through explicitly selected thinker accounts, isolates durable conversations per account under a research name, and may return partial success when only one account completes.";
 
 const INTERNET_TEAM_GUIDANCE = [
-	"Use internet_team when multiple independent web-model perspectives should be debated and merged: design decisions, tradeoff analysis, brainstorming, code or document review, second opinions, and adversarial review.",
+	"Use internet_team when multiple independent web-model perspectives should be debated and synthesized into the strongest supported result.",
+	"The shared team engine deliberately seeks the best of both ChatGPT and Gemini: peer output is untrusted evidence to critique, disagreements are resolved using task evidence, and synthesis selects the strongest parts rather than averaging or concatenating answers.",
 	"Each child agent has a unique DSH agent id, so its internet_team uses distinct durable account threads under <child-agent-id>:team:<name>, isolated from the parent's direct and team conversations.",
-	"The default profile serializes hidden turns per authenticated account to protect portable account state. Set maxConcurrentTurnsPerAccount above one only after confirming account-state acceptance; different accounts have independent schedulers.",
-	"For one simple debate, call internet_team directly. Thinker accounts speak sequentially in the configured order once per round (default 2, maximum 4). When synthesis is enabled, chatgpt-thinker is the default explicit synthesizer.",
+	"The default profile serializes hidden turns per authenticated account to protect portable account state. Different accounts have independent schedulers; workflow lane concurrency must not add an A-then-B mutex above those account-level limits.",
+	"For one simple debate, call internet_team directly. Thinker accounts speak sequentially in configured order once per round (default 2, maximum 4). When synthesis is enabled, chatgpt-thinker is the default explicit synthesizer.",
 	"Named teams have durable conversations isolated by account and team. Account browsers are hidden by default; set visible: true only when the user asks to watch them or requests live acceptance testing.",
 	"The tool returns only the final answer by default. includeTranscript: true adds a bounded current-call transcript with account identity and truncation metadata.",
-	"Every selected account needs its own ready portable account state. A model refusal is model output, while login, timeout, and DOM failures are orchestration errors that should be reported distinctly.",
-	"internet_team cannot search the web or read files. Paste all source material into task, and use web_search or web_fetch before the debate when current information is required.",
+	"Every selected account needs its own ready portable account state. Provider/browser execution failures are orchestration errors, not valid model contributions.",
 ].join(" ");
 
 const INTERNET_WORKFLOW_GUIDANCE = [
-	"Use internet_workflow as the deterministic control-plane surface for durable coding jobs. /workflow <task> is the normal user entry point: it resolves the current Git repository and exact revision, creates the durable job, and immediately enqueues deterministic background execution.",
-	"WorkflowDriver advances runnable engine states automatically through research, exact handoffs, writer implementation, PR review/remediation, and the explicit merge-authorization boundary. It is code-owned orchestration, not another LLM layer. Safe in-flight states are rediscovered after plugin restart; action-required and rejected-merge states remain stopped until explicit user/operator action.",
-	"Workflow state, account routing, team lane identities, writer conversation identity, handoff receipts, PR receipt, review cycle, pending action, and compact last event are persisted outside model context.",
-	"Workflow-owned team execution calls the lower-level team runtime directly with deterministic prompts and per-job lanes; no free-form child agent is needed merely to call internet_team.",
-	"Research finals are materialized as exact SHA-256-bound durable handoffs. Data-plane payloads are separate from trusted control messages, and START_IMPLEMENTATION is gated on delivery of both research handoffs.",
-	"The workflow writer is the separate chatgpt-writer account. It receives both research finals verbatim in one persistent per-job conversation, then a separate trusted START_IMPLEMENTATION control. The writer must open/update one PR and return a compact machine-validated PR receipt; merge is never part of this phase.",
-	"Scoped Website confirmation classification is fail-closed. Implementation/remediation actions auto-confirm only in exact writer scope. Before merge authorization, the writer performs a read-only live GitHub health check bound to repository + PR + exact head SHA and classifies required-check health as PASS, FAIL, PENDING, NONE, or UNKNOWN; only PASS or verified NONE is merge-eligible. request_merge emits a concrete ACTION_REQUIRED request only after that exact-head health gate, approve binds repository + PR + branch + exact head SHA, and MERGING re-checks live PR health immediately before the writer revalidates and merges the exact authorized head. Successful merge records the merge SHA/executor and completes the job. PROGRESS and ACTION_REQUIRED events remain compact Local context without raw team/reviewer payloads.",
-	"Workflow retention is explicit operator maintenance only: internet_workflow_maintenance preview reports aged terminal candidates, and cleanup requires the exact unchanged updatedAt from preview. DONE jobs retain 30 days, CANCELLED jobs 14 days, cleanup is never automatic, and durable audit receipts remain after job/handoff deletion.",
-	"Use internet_workflow test for a full real acceptance run against the current Git repository. It first checks all semantic accounts are ready, then runs the production workflow end to end and auto-authorizes only the exact reviewed healthy PR head.",
+	"Use /workflow <task> as the normal entry point for a durable coding workflow. Use /workflow list, /workflow status [jobId], /workflow watch [jobId], /workflow stop [jobId], and /workflow continue [jobId] for operator control without reading private JSON files manually.",
+	"Research A/B and Review A/B are independent full ChatGPT+Gemini agent-team lanes and are launched concurrently at the workflow level. Same-account turns may still serialize through the account scheduler for browser/account safety.",
+	"The shared team core emits bounded durable per-turn traces with phase/lane/attempt/round/account/stage/failure evidence. Compact PROGRESS events go to Local without injecting full model payloads.",
+	"WorkflowDriver advances runnable engine states automatically through research, exact handoffs, writer implementation, PR review/remediation, and the explicit merge-authorization boundary. Safe in-flight states are rediscovered after plugin restart; action-required and rejected-merge states remain stopped until explicit user/operator action.",
+	"Research and review finals are materialized as exact SHA-256-bound durable handoffs. The separate chatgpt-writer account receives exact payloads and trusted controls in one persistent per-job conversation.",
+	"Scoped Website confirmation classification is fail-closed. Exact-head review, PR health, merge authorization, and immediate pre-merge revalidation remain authoritative merge gates.",
+	"internet_workflow remains the deterministic lower-level control-plane tool, including the real end-to-end acceptance test. Workflow retention remains explicit operator maintenance only.",
 ].join(" ");
 
 export interface PluginContext {
@@ -95,19 +96,25 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 	}
 	if (thinkers.has("chatgpt-thinker") && thinkers.has("gemini-thinker") && accounts.has("chatgpt-writer")) {
 		const workflowJobs = new WorkflowJobStore(config.dataDir);
+		const workflowTraces = new WorkflowTeamTraceStore(config.dataDir);
+		const workflowEvents = new DshWorkflowEventSink(ctx.agents);
+		const workflowObserver = new DurableWorkflowTeamObserver(workflowTraces, workflowJobs, workflowEvents);
 		const workflowEngine = new WorkflowEngine(
 			workflowJobs,
-			new BrowserWorkflowTeamRunner(manager, config),
+			new BrowserWorkflowTeamRunner(manager, config, workflowObserver),
 			new WorkflowTeamPromptBuilder(),
 			new WorkflowHandoffStore(config.dataDir),
 			new BrowserWorkflowWriterRunner(manager),
 			3,
-			new DshWorkflowEventSink(ctx.agents),
+			workflowEvents,
 		);
 		const workflowDriver = new WorkflowDriver(workflowEngine, workflowJobs);
+		const workflowOperator = new WorkflowOperator(workflowEngine, workflowDriver, workflowJobs, workflowTraces);
 		ctx.effect(() => () => workflowDriver.dispose());
 		workflowDriver.resumeActive();
-		ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine, driver: workflowDriver }));
+		ctx.commands.register(
+			defineWorkflowCommand({ engine: workflowEngine, driver: workflowDriver, operator: workflowOperator }),
+		);
 		ctx.tools.register(defineInternetWorkflowTool(workflowEngine, workflowDriver, { browser: manager }));
 		ctx.tools.register(
 			defineInternetWorkflowMaintenanceTool(new WorkflowRetentionManager(config.dataDir, workflowJobs)),
@@ -137,12 +144,17 @@ export { InternetError, isInternetError } from "#internet/core/errors";
 export type {
 	OtherContribution,
 	TeamFailure,
+	TeamFailureDetail,
 	TeamOptions,
+	TeamProgressEvent,
 	TeamResult,
+	TeamStage,
 	TeamSuccess,
 	TeamTurn,
 } from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
+export type { TeamPromptStrategy, TeamPromptStrategyId } from "#internet/team/prompt-strategy";
+export { getTeamPromptStrategy, TEAM_PROMPT_STRATEGIES } from "#internet/team/prompt-strategy";
 export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
@@ -171,6 +183,12 @@ export {
 	WorkflowHandoffStoreError,
 } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export {
+	formatWorkflowList,
+	formatWorkflowStatus,
+	WorkflowOperator,
+	WorkflowOperatorError,
+} from "#internet/workflow/operator";
 export type {
 	WorkflowCleanupAudit,
 	WorkflowCleanupCandidate,
@@ -184,10 +202,24 @@ export {
 } from "#internet/workflow/retention";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
+export type {
+	WorkflowTeamContext,
+	WorkflowTeamObservation,
+	WorkflowTeamObserver,
+} from "#internet/workflow/team-observer";
+export { DurableWorkflowTeamObserver, parseWorkflowTeamSessionId } from "#internet/workflow/team-observer";
 export type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export type { WorkflowTeamRunner, WorkflowTeamRunRequest, WorkflowTeamRunResult } from "#internet/workflow/team-runner";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
+export type { WorkflowTeamTraceEvent, WorkflowTeamTraceStage } from "#internet/workflow/team-trace-store";
+export {
+	MAX_WORKFLOW_TEAM_TRACE_EVENTS,
+	MAX_WORKFLOW_TEAM_TRACE_TEXT_CHARS,
+	WORKFLOW_TEAM_TRACE_SCHEMA,
+	WorkflowTeamTraceStore,
+	WorkflowTeamTraceStoreError,
+} from "#internet/workflow/team-trace-store";
 export type {
 	StartWorkflowInput,
 	WorkflowAccountRouting,

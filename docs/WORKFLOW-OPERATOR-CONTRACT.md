@@ -1,263 +1,146 @@
 # Workflow Operator Contract
 
-- **Status:** proposed user-facing control contract; not implemented yet
+- **Status:** current as-built contract
 - **Last synchronized:** 2026-09-09
-- **Scope:** starting, discovering, tracking, watching, stopping and recovering durable workflow jobs
+- **Scope:** starting, discovering, tracking, stopping and explicitly recovering durable workflow jobs
 
 ## Goal
 
-The normal workflow must be operable from the same user-facing `/workflow` surface without requiring the operator to inspect `~/.dsh/internet/workflows/jobs/*.json` manually.
+The normal workflow is operable from the user-facing `/workflow` command family without reading `~/.dsh/internet/workflows/jobs/*.json` manually.
 
-The operator should always be able to answer four questions quickly:
+The durable workflow job and trace stores remain authoritative. Operator commands are views/actions over that state, not a second orchestration system.
 
-```text
-What workflows exist?
-What is this workflow doing now?
-Where exactly is it blocked or failing?
-How do I stop it safely?
-```
-
-The durable workflow state remains authoritative. These commands are views/actions over that state, not a second orchestration system.
-
-## Command family
-
-Target command surface:
+## Command surface
 
 ```text
 /workflow <objective>                 start a new workflow
 /workflow list                        list workflows owned by this Local session
 /workflow status [jobId]              inspect one workflow
-/workflow watch [jobId]               continuously follow durable progress
+/workflow watch [jobId]               show the current snapshot and rely on live PROGRESS events
 /workflow stop [jobId]                abort active work and persist CANCELLED
 /workflow continue [jobId]            resume an explicit retry-required boundary
 ```
 
-Merge authorization remains an explicit authority boundary. The exact command/UI used for approve/reject may stay on the existing deterministic workflow control path, but status/watch must show when approval is required and the exact PR/head involved.
+Starting a workflow prints its durable job ID immediately.
 
-## Job selection when `jobId` is omitted
+## Job selection
 
-Commands must never guess across ambiguous jobs.
+Commands never guess across ambiguous jobs.
 
 For `status`, `watch`, `stop`, and `continue`:
 
-1. scope candidates to the current owner/Local session;
-2. if exactly one active matching workflow exists, use it;
-3. if no active workflow exists and the command permits a historical target, use the latest non-cleaned job only when unambiguous;
-4. if multiple candidates remain plausible, show a compact candidate list and require an explicit `jobId`.
-
-A job ID should be printed immediately when `/workflow <objective>` starts so it can always be copied into later commands.
+1. candidates are scoped to the current owner/Local session;
+2. an explicit `jobId` must belong to that session;
+3. when omitted, exactly one active job is selected automatically;
+4. if multiple active jobs exist, the command lists their IDs in the error and requires an explicit target;
+5. for non-mutating inspection, one unambiguous historical job may be selected when no active job exists;
+6. terminal jobs cannot be stopped or continued.
 
 ## `/workflow list`
 
-Purpose: discovery, not deep inspection.
+`list` is a discovery surface. Jobs are ordered by newest `updatedAt` first and include durable job ID, state, update time, and compact objective text.
 
-Suggested output:
-
-```text
-JOB                               STATE               UPDATED                OBJECTIVE
-5cdf77117800086fb4497e8ac76500ad  RESEARCH_RUNNING    2026-09-09 20:45:15    Fix Gemini login UI...
-...
-```
-
-Useful fields:
+Example:
 
 ```text
-jobId
-state
-updatedAt
-objective
-PR number/head when present
-pending action when present
+JOB                               STATE                            UPDATED                   OBJECTIVE
+5cdf77117800086fb4497e8ac76500ad  RESEARCH_RUNNING                 2026-09-09T13:45:15Z      Fix Gemini login UI...
 ```
-
-Default ordering: newest `updatedAt` first.
-
-The command should make active/non-terminal jobs easy to distinguish from historical `DONE` / `CANCELLED` jobs.
 
 ## `/workflow status [jobId]`
 
-Purpose: one-shot control-plane inspection.
+`status` is a one-shot control-plane view. It includes:
 
-It should show the end-to-end pipeline, including both A/B lanes and the exact current team turn where available.
+```text
+jobId
+objective
+workflow state / driver-active marker
+Research A/B status + attempts + latest trace stage
+writer state
+Review A/B status + attempts + latest trace stage
+PR URL/base/head/exact head SHA
+review cycle
+CI/health receipt when present
+pending action and expected head when present
+last durable update
+```
+
+When structured trace evidence exists, a lane can show the exact latest round/account/stage/failure kind rather than only the flattened lane error.
 
 Example:
 
 ```text
 Workflow 5cdf77117800086fb4497e8ac76500ad
-State: RESEARCH_RUNNING
-Objective: Fix the Gemini login UI that the screen is not center...
+State: RESEARCH_RUNNING · driver active
 
 Research
-├─ A  FAILED    attempt 1
-│  ├─ round 1 · chatgpt-thinker · completed
-│  ├─ round 1 · gemini-thinker  · completed
-│  ├─ round 2 · chatgpt-thinker · completed
-│  └─ round 2 · gemini-thinker  · provider_turn · FAILED
-│     provider_error: Gemini failed to execute the newest response; retry the provider turn
-└─ B  RUNNING   attempt 1
-   └─ round 2 · chatgpt-thinker · provider_turn · running
-
-Writer
-└─ waiting for research A/B
-
-Review
-├─ A pending
-└─ B pending
-
-PR
-└─ not created
-
-Last durable update: 2026-09-09 20:45:15 +07
+  A  FAILED   attempt 1 · round 2 · gemini-thinker · provider_turn · FAILED · provider_error
+     Gemini failed to execute the newest response; retry the provider turn
+  B  RUNNING  attempt 1 · round 2 · chatgpt-thinker · provider_turn · STARTED
 ```
 
-When a PR exists, include:
-
-```text
-repository
-PR number / URL
-base branch
-head branch
-exact head SHA
-review cycle
-review A/B exact-head result
-CI/health state
-merge authorization state
-```
-
-Status should not dump full model payloads by default. A separate bounded trace/detail view can expose completed turn evidence when needed.
+Full research/review payloads are not dumped into routine status.
 
 ## `/workflow watch [jobId]`
 
-Purpose: follow a long-running workflow without repeatedly re-running `status`.
+The workflow already emits compact `PROGRESS` events to its owning Local session while it runs. `watch` therefore does not create another polling/state machine or duplicate workflow truth.
 
-`watch` is a presentation/read layer only. It must consume durable job/trace events and must not become another correctness state machine.
+It returns the authoritative current status snapshot and explicitly confirms that live compact workflow/team events continue through the existing event stream.
 
-Useful event examples:
-
-```text
-20:41:02  Research A · round 1 · chatgpt-thinker · started
-20:41:02  Research B · round 1 · chatgpt-thinker · started/queued
-20:42:17  Research A · round 1 · chatgpt-thinker · completed
-20:42:18  Research A · round 1 · gemini-thinker · started
-20:42:22  Research B · round 1 · gemini-thinker · started
-20:45:15  Research A · round 2 · gemini-thinker · FAILED provider_error
-20:45:16  Research B · continuing
-```
-
-The exact UI may be terminal refresh or appended events. Required behavior is the same:
-
-- show state transitions promptly;
-- show phase/lane/round/account/stage;
-- show PR/head/CI/approval transitions;
-- show failures compactly;
-- stop watching when the job reaches a terminal or action-required boundary unless the user explicitly keeps it open.
-
-`watch` must not hold authority, create retries, or change workflow behavior.
+This design keeps durable job/trace state authoritative while still giving the user continuous progress without a second orchestration mechanism.
 
 ## `/workflow stop [jobId]`
 
-Purpose: immediate safe terminal cancellation.
-
-Required semantics:
+`stop` is immediate terminal cancellation:
 
 ```text
 resolve exact job
-  -> abort the WorkflowDriver's active AbortController
-  -> propagate cancellation to active team/writer/browser operation
-  -> settle the active promise
-  -> persist CANCELLED
-  -> never resume that job automatically after restart
+-> WorkflowDriver.cancel(jobId)
+-> abort active AbortController
+-> propagate AbortSignal into team/writer/browser work
+-> await active run settlement
+-> persist CANCELLED
+-> never resume this job automatically after restart
 ```
 
-A successful stop should return where execution was interrupted, for example:
+The response includes the most recent structured trace context when available.
 
-```text
-Workflow 5cdf7711... cancelled.
-Stopped at: research B · round 2 · gemini-thinker · provider_turn
-State: CANCELLED
-```
-
-`stop` is terminal. It is not pause.
-
-If pause/resume is ever introduced, it needs a separate durable `PAUSED`-style state and explicit design. Do not reinterpret `CANCELLED` as resumable.
+`stop` is not pause. `CANCELLED` remains terminal.
 
 ## `/workflow continue [jobId]`
 
-Purpose: resume only a workflow that has an explicit durable retry/recovery path, such as `FAILED_RETRYABLE` with a persisted `resumeState`.
+`continue` resumes only an explicit durable retry/recovery path. It delegates validation to the workflow engine, restores the persisted resume state, and re-enqueues the driver.
 
-It must not provide a generic reset-to-start behavior.
-
-Expected semantics:
-
-```text
-FAILED_RETRYABLE + valid resumeState
-  -> validate durable state
-  -> restore exact resume state
-  -> enqueue driver
-```
-
-If the job is `CANCELLED`, `DONE`, or otherwise not resumable, the command should refuse clearly.
-
-## Merge/action-required visibility
-
-When user authority is required, both `status` and `watch` must show the exact concrete action rather than a generic waiting state.
-
-Example:
-
-```text
-ACTION REQUIRED: merge authorization
-PR: #24
-Expected head: abcdef1234...
-Review: PASS / PASS on this exact head
-CI: PASS on this exact head
-```
-
-Any later approval remains bound to the exact PR/head. If the head changes, stale approval must not be reused.
+It does not reset a workflow to `CREATED`, re-run completed lanes blindly, or make terminal jobs resumable.
 
 ## Parallel lane visibility
 
-Research A/B and Review A/B are independent workflow lanes and are intended to run concurrently.
+Research A/B and Review A/B are independent concurrent workflow lanes. Status/progress may therefore show both active at once:
 
-The operator surface must make this visible rather than rendering the workflow as if lane B starts only after lane A completes.
+```text
+Research
+  A RUNNING · round 2 · gemini-thinker
+  B RUNNING · round 1 · chatgpt-thinker
+```
+
+The engine launches both incomplete lane promises before awaiting either. Same-account turns may still serialize through the account scheduler; that is independent of workflow-lane concurrency.
+
+## Action-required visibility
+
+When user authority is required, status exposes the concrete pending action and exact head where applicable.
 
 Example:
 
 ```text
-Research
-├─ A RUNNING · round 2 · gemini-thinker
-└─ B RUNNING · round 1 · chatgpt-thinker
+ACTION REQUIRED: MERGE_AUTHORIZATION_REQUIRED
+expected_head=<exact SHA>
 ```
 
-The implementation must preserve concurrent lane scheduling: start both incomplete A/B lane executions before awaiting either result. There must be no workflow-level pattern equivalent to:
+Approval itself remains governed by the existing exact repository + PR + head authorization policy.
 
-```text
-await runLaneA()
-await runLaneB()
-```
+## Failure detail
 
-Instead, lane execution should be logically/concurrently launched together and independently persisted as each settles.
-
-Individual provider turns may still be serialized by an account-level scheduler when the same authenticated account has a configured concurrency limit. That safety limit is distinct from workflow-lane concurrency. The workflow must not add extra serialization on top of the account scheduler.
-
-In other words:
-
-```text
-required:
-  Research A  ───────────────►
-  Research B  ───────────────►
-              concurrent lanes
-
-not required/unsafe to fake:
-  two simultaneous turns on one account when that account scheduler forbids it
-```
-
-This preserves the prior behavior where the two teams can make progress in parallel while respecting account/browser safety constraints.
-
-## Failure detail and trace drill-down
-
-Routine status should stay compact, but the durable trace must be rich enough to diagnose a failure without guessing.
-
-At minimum the trace should retain:
+The private bounded workflow team trace records:
 
 ```text
 phase
@@ -269,22 +152,20 @@ provider
 stage
 status
 timestamps
-structured failure kind/message
+structured failure kind/message/retryability
+bounded completed-turn text
 ```
 
-Completed model text may be retained in a bounded trace store where policy allows. Full transcripts should not be injected into Local progress events.
+Provider/browser errors are visible as execution failures, not mistaken for intellectual disagreement or valid teammate output.
 
-## Acceptance criteria
+## Invariants
 
-The operator contract is satisfied when:
-
-1. starting a workflow returns a durable job ID;
-2. `list` discovers current-session workflows without filesystem inspection;
-3. `status` identifies phase/lane/attempt/round/account/stage and current PR/head/CI/action state;
-4. `watch` follows the same durable truth without creating a second workflow state machine;
-5. `stop` aborts active work and persists terminal `CANCELLED`;
-6. cancelled jobs do not resume after plugin restart;
-7. `continue` only resumes explicit retry-required states and never resets blindly;
-8. action-required output identifies the exact PR/head or exception involved;
-9. Research A/B and Review A/B are visibly and operationally concurrent at the workflow-lane level;
-10. account scheduler limits may serialize same-account turns, but no additional workflow-level serialization is introduced.
+- routine workflow operation does not require filesystem inspection;
+- omitted job IDs are used only when unambiguous;
+- status/watch read authoritative durable state;
+- live progress uses the existing event stream rather than a duplicate watcher state machine;
+- stop settles active work before terminal cancellation is persisted;
+- cancelled jobs do not restart automatically;
+- continue requires an explicit durable recovery path;
+- A/B lane concurrency remains visible and preserved;
+- full model payloads are not injected into Local progress events.

@@ -37,6 +37,7 @@ export declare class WorkflowRetentionError extends Error {
 export declare class WorkflowRetentionManager {
     private readonly auditDir;
     private readonly handoffRoot;
+    private readonly traceRoot;
     private readonly jobs;
     private readonly policy;
     private readonly now;

@@ -1,75 +1,80 @@
 import { getAccountDefinition } from "#internet/core/accounts";
-import { InternetError } from "#internet/core/errors";
+import { InternetError, isInternetError } from "#internet/core/errors";
+import { getTeamPromptStrategy } from "#internet/team/prompt-strategy";
 const DEFAULT_ROUNDS = 2;
 const DEFAULT_ACCOUNTS = ["chatgpt-thinker", "gemini-thinker"];
 const DEFAULT_SYNTHESIZER = "chatgpt-thinker";
-function accountName(accountId) {
-    if (accountId === "chatgpt-thinker")
-        return "ChatGPT";
-    if (accountId === "gemini-thinker")
-        return "Gemini";
-    return accountId;
-}
-/** Join display names with an Oxford comma: "A", "A and B", "A, B, and C". */
+const DEFAULT_PROMPT_STRATEGY = "generic-debate";
+/** Join display names with an Oxford comma. Retained as a small public utility. */
 export function joinNames(names) {
     if (names.length === 0)
         return "";
     if (names.length === 1)
-        return names[0];
+        return names[0] ?? "";
     if (names.length === 2)
         return `${names[0]} and ${names[1]}`;
     return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 function assertNotAborted(signal) {
-    if (signal?.aborted) {
-        throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "team debate aborted");
+    if (!signal?.aborted)
+        return;
+    throw signal.reason instanceof Error ? signal.reason : new InternetError("aborted", "team debate aborted");
+}
+function now() {
+    return new Date().toISOString();
+}
+function emit(observer, event) {
+    if (observer === undefined)
+        return;
+    try {
+        observer(event);
+    }
+    catch {
+        // Observability is never part of team correctness.
     }
 }
-/** Compose the prompt for one debate turn. */
+function failureKind(error) {
+    if (isInternetError(error))
+        return error.kind;
+    if (error instanceof Error && error.name === "AbortError")
+        return "aborted";
+    return "unexpected_error";
+}
+function retryable(kind) {
+    return kind === "browser_unavailable" || kind === "provider_error" || kind === "timeout";
+}
+function failureDetail(error, accountId, stage, round) {
+    const kind = failureKind(error);
+    return {
+        accountId,
+        provider: getAccountDefinition(accountId).provider,
+        stage,
+        ...(round === undefined ? {} : { round }),
+        kind,
+        message: error instanceof Error ? error.message : String(error),
+        retryable: retryable(kind),
+        failedAt: now(),
+    };
+}
+/** Compose the default generic prompt for one debate turn. */
 export function composeTurnPrompt(task, accountId, others, round) {
-    const name = accountName(accountId);
-    const teamLine = `You are ${name} on a team with ${joinNames(others.map((other) => accountName(other.accountId)))}.`;
-    if (round === 1 && others.every((other) => other.text.trim() === "")) {
-        return [
-            teamLine,
-            "",
-            `Task: ${task}`,
-            "",
-            "Give your initial analysis and proposed approach. Be concrete and specific.",
-        ].join("\n");
-    }
-    const lines = [teamLine, "", `Task: ${task}`, ""];
-    for (const other of others) {
-        lines.push(`${accountName(other.accountId)} said:`, '"""', other.text, '"""', "");
-    }
-    lines.push(`Respond as ${name}: critique, refine, and improve toward the best combined answer.`);
-    return lines.join("\n");
+    return getTeamPromptStrategy("generic-debate").turn({ task, accountId, others, round });
 }
-/** Compose the final synthesis prompt from the full debate transcript. */
+/** Compose the default generic final synthesis prompt. */
 export function composeSynthesisPrompt(task, transcript) {
-    const lines = [
-        "Here is the full debate on the task. Produce a single final answer that combines the best perspectives.",
-        "",
-        `Task: ${task}`,
-        "",
-        "Debate:",
-    ];
-    for (const turn of transcript) {
-        lines.push("", `### ${accountName(turn.accountId)} (round ${turn.round})`, turn.text);
-    }
-    lines.push("", "Final answer (best of both):");
-    return lines.join("\n");
+    return getTeamPromptStrategy("generic-debate").synthesis({ task, transcript });
 }
 /**
  * Run a multi-model debate using an exact durable conversation-session key.
- * Callers own namespace construction; this primitive does not append hidden
- * provider/tool-specific suffixes.
+ * Callers own namespace construction; this primitive owns the single authoritative
+ * round/synthesis loop and emits structured progress for optional durable observers.
  */
 export async function runTeam(chat, options) {
     const rounds = options.rounds ?? DEFAULT_ROUNDS;
     const synthesize = options.synthesize ?? true;
     const synthesizer = options.synthesizer ?? DEFAULT_SYNTHESIZER;
     const accounts = options.accounts ?? DEFAULT_ACCOUNTS;
+    const prompts = getTeamPromptStrategy(options.promptStrategy ?? DEFAULT_PROMPT_STRATEGY);
     if (!Number.isInteger(rounds) || rounds <= 0)
         throw new Error("team debate rounds must be a positive integer");
     if (accounts.length < 2)
@@ -82,14 +87,18 @@ export async function runTeam(chat, options) {
         throw new Error("team debate sessionId must not be empty");
     const transcript = [];
     const lastByAccount = new Map();
-    let activeAccountId = accounts[0];
-    let finalDebateAccountId = accounts[0];
+    let activeAccountId = accounts[0] ?? DEFAULT_SYNTHESIZER;
+    let activeStage = "prepare_prompt";
+    let activeRound = 1;
+    let finalDebateAccountId = activeAccountId;
     try {
         for (let round = 1; round <= rounds; round++) {
             for (const accountId of accounts) {
                 assertNotAborted(options.signal);
                 activeAccountId = accountId;
+                activeRound = round;
                 finalDebateAccountId = accountId;
+                const provider = getAccountDefinition(accountId).provider;
                 const others = accounts
                     .filter((other) => other !== accountId)
                     .map((other) => ({
@@ -97,7 +106,19 @@ export async function runTeam(chat, options) {
                     provider: getAccountDefinition(other).provider,
                     text: lastByAccount.get(other) ?? "",
                 }));
-                const prompt = composeTurnPrompt(options.task, accountId, others, round);
+                activeStage = "prepare_prompt";
+                emit(options.onProgress, { at: now(), stage: activeStage, status: "started", round, accountId, provider });
+                const prompt = prompts.turn({ task: options.task, accountId, others, round });
+                emit(options.onProgress, {
+                    at: now(),
+                    stage: activeStage,
+                    status: "completed",
+                    round,
+                    accountId,
+                    provider,
+                });
+                activeStage = "provider_turn";
+                emit(options.onProgress, { at: now(), stage: activeStage, status: "started", round, accountId, provider });
                 const result = await chat(accountId, {
                     prompt,
                     sessionId: options.sessionId,
@@ -105,10 +126,14 @@ export async function runTeam(chat, options) {
                     signal: options.signal,
                 });
                 lastByAccount.set(accountId, result.text);
-                transcript.push({
+                transcript.push({ round, accountId, provider, text: result.text });
+                emit(options.onProgress, {
+                    at: now(),
+                    stage: activeStage,
+                    status: "completed",
                     round,
                     accountId,
-                    provider: getAccountDefinition(accountId).provider,
+                    provider,
                     text: result.text,
                 });
             }
@@ -116,39 +141,77 @@ export async function runTeam(chat, options) {
         if (synthesize) {
             assertNotAborted(options.signal);
             activeAccountId = synthesizer;
-            const prompt = composeSynthesisPrompt(options.task, transcript);
+            activeRound = undefined;
+            activeStage = "synthesis";
+            const provider = getAccountDefinition(synthesizer).provider;
+            emit(options.onProgress, {
+                at: now(),
+                stage: activeStage,
+                status: "started",
+                accountId: synthesizer,
+                provider,
+            });
+            const prompt = prompts.synthesis({ task: options.task, transcript });
             const result = await chat(synthesizer, {
                 prompt,
                 sessionId: options.sessionId,
                 visible: options.visible,
                 signal: options.signal,
             });
+            emit(options.onProgress, {
+                at: now(),
+                stage: activeStage,
+                status: "completed",
+                accountId: synthesizer,
+                provider,
+                text: result.text,
+            });
+            emit(options.onProgress, {
+                at: now(),
+                stage: "complete",
+                status: "completed",
+                accountId: synthesizer,
+                provider,
+            });
             return {
                 finalAnswer: result.text,
                 finalAccountId: synthesizer,
-                finalProvider: getAccountDefinition(synthesizer).provider,
+                finalProvider: provider,
                 transcript: [...transcript],
             };
         }
         const finalAnswer = lastByAccount.get(finalDebateAccountId);
         if (finalAnswer === undefined)
             throw new Error("team debate completed without a final turn");
+        const provider = getAccountDefinition(finalDebateAccountId).provider;
+        emit(options.onProgress, {
+            at: now(),
+            stage: "complete",
+            status: "completed",
+            accountId: finalDebateAccountId,
+            provider,
+        });
         return {
             finalAnswer,
             finalAccountId: finalDebateAccountId,
-            finalProvider: getAccountDefinition(finalDebateAccountId).provider,
+            finalProvider: provider,
             transcript: [...transcript],
         };
     }
     catch (error) {
-        return {
-            error: {
-                accountId: activeAccountId,
-                provider: getAccountDefinition(activeAccountId).provider,
-                message: error instanceof Error ? error.message : String(error),
-            },
-            transcript: [...transcript],
-        };
+        const failure = failureDetail(error, activeAccountId, activeStage, activeRound);
+        emit(options.onProgress, {
+            at: failure.failedAt,
+            stage: failure.stage,
+            status: "failed",
+            ...(failure.round === undefined ? {} : { round: failure.round }),
+            accountId: failure.accountId,
+            provider: failure.provider,
+            kind: failure.kind,
+            message: failure.message,
+            retryable: failure.retryable,
+        });
+        return { error: failure, transcript: [...transcript] };
     }
 }
 //# sourceMappingURL=orchestrator.js.map
