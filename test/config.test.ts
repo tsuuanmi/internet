@@ -56,7 +56,7 @@ describe("resolveBrowserConfig", () => {
 		expect(() => resolveBrowserConfig({ researchTimeoutMs: 0 })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerAccount: 0 })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerAccount: Number.NaN })).toThrow(InternetError);
-		expect(() => resolveBrowserConfig({ remoteLoginPort: 65_535 })).toThrow(/must not exceed 65533/);
+		expect(() => resolveBrowserConfig({ remoteLoginPort: 65_535 })).toThrow(/must not exceed 65532/);
 	});
 
 	it("honors team config overrides", () => {
@@ -65,13 +65,13 @@ describe("resolveBrowserConfig", () => {
 			teamMaxRounds: 5,
 			teamTranscriptMaxChars: 10_000,
 			teamSynthesis: false,
-			teamSynthesizer: "chatgpt-thinker",
+			teamSynthesizer: "chatgpt-thinker-2",
 		});
 		expect(config.teamRounds).toBe(3);
 		expect(config.teamMaxRounds).toBe(5);
 		expect(config.teamTranscriptMaxChars).toBe(10_000);
 		expect(config.teamSynthesis).toBe(false);
-		expect(config.teamSynthesizer).toBe("chatgpt-thinker");
+		expect(config.teamSynthesizer).toBe("chatgpt-thinker-2");
 	});
 
 	it("rejects invalid team limits", () => {
@@ -81,7 +81,7 @@ describe("resolveBrowserConfig", () => {
 		expect(() => resolveBrowserConfig({ teamRounds: 3, teamMaxRounds: 2 })).toThrow(/must not exceed/);
 	});
 
-	it("defaults ChatGPT thinking to High and team synthesis to chatgpt-thinker", () => {
+	it("defaults ChatGPT thinking to High and team synthesis to Member 1 backing account", () => {
 		const config = resolveBrowserConfig({});
 		expect(config.chatgptThinkingLevel).toBe("high");
 		expect(config.teamSynthesizer).toBe("chatgpt-thinker");
