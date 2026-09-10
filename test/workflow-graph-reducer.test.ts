@@ -17,6 +17,9 @@ import {
 
 const now = "2026-09-10T10:00:00.000Z";
 const resultId = "a".repeat(64);
+const firstOutputHash = "b".repeat(64);
+const lateOutputHash = "c".repeat(64);
+const currentOutputHash = "d".repeat(64);
 
 function graph(nodes: readonly WorkflowGraphNode[]): WorkflowGraphSnapshot {
 	return {
@@ -43,7 +46,7 @@ function execution(executionId: string, attempt = 1): WorkflowExecutionRecord {
 }
 
 function input(dependencyOutputHashes: Readonly<Record<string, string>> = {}): WorkflowNodeInputReceipt {
-	return { inputHash: JSON.stringify(dependencyOutputHashes), dependencyOutputHashes };
+	return { inputHash: "e".repeat(64), dependencyOutputHashes };
 }
 
 describe("workflow graph reducer", () => {
@@ -54,13 +57,13 @@ describe("workflow graph reducer", () => {
 			dependencies: [],
 			state: "COMPLETED",
 			input: input(),
-			output: { resultId, outputHash: "first-output", completedAt: now },
+			output: { resultId, outputHash: firstOutputHash, completedAt: now },
 		};
 		const second: WorkflowGraphNode = { nodeId: "second", phase: "RESEARCH", dependencies: ["first"], state: "WAITING" };
 		const initial = graph([first, second]);
 		expect(promotableWorkflowNodeIds(initial)).toEqual(["second"]);
-		expect(() => promoteWorkflowNode(initial, "second", input({ first: "stale" }))).toThrow("does not match");
-		const ready = promoteWorkflowNode(initial, "second", input({ first: "first-output" }));
+		expect(() => promoteWorkflowNode(initial, "second", input({ first: "f".repeat(64) }))).toThrow("does not match");
+		const ready = promoteWorkflowNode(initial, "second", input({ first: firstOutputHash }));
 		expect(ready.nodes.second?.state).toBe("READY");
 		expect(readyWorkflowNodeIds(ready)).toEqual(["second"]);
 		expect(ready.graphRevision).toBe(1);
@@ -109,14 +112,18 @@ describe("workflow graph reducer", () => {
 		);
 		const retried = retryWorkflowNode(recovering, node.nodeId, execution("exec-new", 2));
 		expect(() =>
-			completeWorkflowNode(retried, node.nodeId, "exec-old", { resultId, outputHash: "late", completedAt: now }),
+			completeWorkflowNode(retried, node.nodeId, "exec-old", {
+				resultId,
+				outputHash: lateOutputHash,
+				completedAt: now,
+			}),
 		).toThrow("rejected stale execution");
 		const completed = completeWorkflowNode(retried, node.nodeId, "exec-new", {
 			resultId,
-			outputHash: "current",
+			outputHash: currentOutputHash,
 			completedAt: now,
 		});
 		expect(completed.nodes[node.nodeId]?.state).toBe("COMPLETED");
-		expect(completed.nodes[node.nodeId]?.output?.outputHash).toBe("current");
+		expect(completed.nodes[node.nodeId]?.output?.outputHash).toBe(currentOutputHash);
 	});
 });
