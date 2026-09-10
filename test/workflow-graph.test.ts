@@ -73,10 +73,7 @@ describe("workflow graph model", () => {
 		const second = completedNode("second", [first.nodeId]);
 		expect(() =>
 			assertWorkflowGraph(
-				snapshot([
-					first,
-					{ ...second, input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} } },
-				]),
+				snapshot([first, { ...second, input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} } }]),
 			),
 		).toThrow("keys do not match dependencies");
 		expect(() =>
@@ -156,10 +153,7 @@ describe("workflow graph model", () => {
 		expect(() => assertWorkflowGraph(snapshot([waitingUser]))).not.toThrow();
 		expect(() =>
 			assertWorkflowGraph(
-				snapshot([
-					waitingUser,
-					{ ...waitingUser, nodeId: "writer:other", execution: waitingUser.execution },
-				]),
+				snapshot([waitingUser, { ...waitingUser, nodeId: "writer:other", execution: waitingUser.execution }]),
 			),
 		).toThrow("execution id is duplicated");
 	});

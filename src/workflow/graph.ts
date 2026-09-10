@@ -273,10 +273,12 @@ function assertNodeInput(node: WorkflowGraphNode): void {
 
 function assertExecution(nodeId: string, execution: WorkflowExecutionRecord, executionIds: Set<string>): void {
 	if (execution.executionId.trim() === "") throw new Error(`workflow graph node ${nodeId} has empty execution id`);
-	if (executionIds.has(execution.executionId)) throw new Error(`workflow graph execution id is duplicated: ${execution.executionId}`);
+	if (executionIds.has(execution.executionId))
+		throw new Error(`workflow graph execution id is duplicated: ${execution.executionId}`);
 	executionIds.add(execution.executionId);
 	positiveInteger(execution.attempt, "execution attempt");
-	if (execution.ownerInstanceId.trim() === "") throw new Error(`workflow graph node ${nodeId} has empty execution owner`);
+	if (execution.ownerInstanceId.trim() === "")
+		throw new Error(`workflow graph node ${nodeId} has empty execution owner`);
 	for (const [name, value] of [
 		["startedAt", execution.startedAt],
 		["heartbeatAt", execution.heartbeatAt],

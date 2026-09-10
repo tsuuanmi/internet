@@ -83,7 +83,8 @@ export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): Wor
 			nodeIdsByStepId.set(step.stepId, nodeId);
 			const dependencies = step.dependsOnStepIds.map((stepId) => {
 				const dependencyId = nodeIdsByStepId.get(stepId);
-				if (dependencyId === undefined) throw new Error(`team plan dependency ${stepId} must precede ${step.stepId}`);
+				if (dependencyId === undefined)
+					throw new Error(`team plan dependency ${stepId} must precede ${step.stepId}`);
 				return dependencyId;
 			});
 			const bindings = stepBindings(input, lane, laneInput, step);
