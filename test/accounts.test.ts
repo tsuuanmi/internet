@@ -40,6 +40,7 @@ describe("AccountStore account identity", () => {
 		["chatgpt-thinker", "chatgpt-web"],
 		["chatgpt-writer", "chatgpt-web"],
 		["gemini-thinker", "gemini-web"],
+		["chatgpt-thinker-2", "chatgpt-web"],
 	] as const)("persists private v2 state for %s", (accountId, provider) => {
 		const store = new AccountStore(root());
 		store.writeReady(accountId, state(), new Date("2026-01-02T03:04:05.000Z"));
@@ -60,13 +61,18 @@ describe("AccountStore account identity", () => {
 		}
 	});
 
-	it("isolates thinker and writer state even though both use ChatGPT", () => {
+	it("isolates both thinkers and writer even though all three use ChatGPT", () => {
 		const store = new AccountStore(root());
-		store.writeReady("chatgpt-thinker", state("thinker"));
+		store.writeReady("chatgpt-thinker", state("member-1"));
+		store.writeReady("chatgpt-thinker-2", state("member-2"));
 		store.writeReady("chatgpt-writer", state("writer"));
-		expect(store.inspect("chatgpt-thinker").path).not.toBe(store.inspect("chatgpt-writer").path);
-		expect(store.inspect("chatgpt-thinker").account?.storageState.cookies[0]?.value).toBe("thinker");
-		expect(store.inspect("chatgpt-writer").account?.storageState.cookies[0]?.value).toBe("writer");
+		const member1 = store.inspect("chatgpt-thinker");
+		const member2 = store.inspect("chatgpt-thinker-2");
+		const writer = store.inspect("chatgpt-writer");
+		expect(new Set([member1.path, member2.path, writer.path]).size).toBe(3);
+		expect(member1.account?.storageState.cookies[0]?.value).toBe("member-1");
+		expect(member2.account?.storageState.cookies[0]?.value).toBe("member-2");
+		expect(writer.account?.storageState.cookies[0]?.value).toBe("writer");
 	});
 
 	it("keeps stale-write protection account-local", () => {
@@ -80,14 +86,14 @@ describe("AccountStore account identity", () => {
 
 	it("marks only the selected account for reauthentication", () => {
 		const store = new AccountStore(root());
-		store.writeReady("chatgpt-thinker", state("thinker"));
-		store.writeReady("chatgpt-writer", state("writer"));
-		store.markReauthRequired("chatgpt-writer", new Date("2026-02-03T04:05:06.000Z"), {
+		store.writeReady("chatgpt-thinker", state("member-1"));
+		store.writeReady("chatgpt-thinker-2", state("member-2"));
+		store.markReauthRequired("chatgpt-thinker-2", new Date("2026-02-03T04:05:06.000Z"), {
 			observedAt: "2026-02-03T04:05:06.000Z",
 			evidence: "login-url",
 		});
 		expect(store.inspect("chatgpt-thinker").state).toBe("ready");
-		expect(store.inspect("chatgpt-writer").state).toBe("reauth-required");
+		expect(store.inspect("chatgpt-thinker-2").state).toBe("reauth-required");
 	});
 
 	it("rejects old provider-keyed schema instead of migrating it", () => {
