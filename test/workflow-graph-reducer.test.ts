@@ -9,8 +9,8 @@ import {
 	completeWorkflowNode,
 	promotableWorkflowNodeIds,
 	promoteWorkflowNode,
-	recoverWorkflowNode,
 	readyWorkflowNodeIds,
+	recoverWorkflowNode,
 	retryWorkflowNode,
 	startWorkflowNode,
 } from "#internet/workflow/graph-reducer";
