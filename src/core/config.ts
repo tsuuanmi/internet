@@ -79,7 +79,7 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	pollMs: 200,
 	stableMs: 1_500,
 	closeAfterMs: 1_800_000,
-	maxConcurrentTurnsPerAccount: 1,
+	maxConcurrentTurnsPerAccount: 2,
 	maxOutputChars: 200_000,
 	teamRounds: 2,
 	teamMaxRounds: 4,
