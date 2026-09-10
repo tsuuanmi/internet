@@ -21,9 +21,7 @@ function completedNode(nodeId: string, dependencies: readonly string[] = []): Wo
 		state: "COMPLETED",
 		input: {
 			inputHash: "b".repeat(64),
-			dependencyOutputHashes: Object.fromEntries(
-				dependencies.map((dependency) => [dependency, `output:${dependency}`]),
-			),
+			dependencyOutputHashes: Object.fromEntries(dependencies.map((dependency) => [dependency, "c".repeat(64)])),
 		},
 		output: { resultId, outputHash: "c".repeat(64), completedAt: now },
 	};
@@ -67,7 +65,31 @@ describe("workflow graph model", () => {
 		const second = completedNode("second", [first.nodeId]);
 		const nodes = snapshot([first, second]).nodes;
 		expect(workflowNodeDependenciesCompleted(second, nodes)).toBe(true);
-		expect(workflowNodeInputMatchesDependencies(second, nodes)).toBe(false);
+		expect(workflowNodeInputMatchesDependencies(second, nodes)).toBe(true);
+	});
+
+	it("rejects malformed dependency receipts", () => {
+		const first = completedNode("first");
+		const second = completedNode("second", [first.nodeId]);
+		expect(() =>
+			assertWorkflowGraph(
+				snapshot([
+					first,
+					{ ...second, input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} } },
+				]),
+			),
+		).toThrow("keys do not match dependencies");
+		expect(() =>
+			assertWorkflowGraph(
+				snapshot([
+					first,
+					{
+						...second,
+						input: { inputHash: "b".repeat(64), dependencyOutputHashes: { first: "invalid" } },
+					},
+				]),
+			),
+		).toThrow("invalid dependency output hash");
 	});
 
 	it("rejects dependency cycles and unknown dependencies", () => {
@@ -108,7 +130,7 @@ describe("workflow graph model", () => {
 		expect(() => assertWorkflowGraph(snapshot([recovering]))).toThrow("requires failure and recovery receipts");
 	});
 
-	it("requires RUNNING and WAITING_USER nodes to own a live execution", () => {
+	it("requires RUNNING and WAITING_USER nodes to own a valid unique live execution", () => {
 		const running: WorkflowGraphNode = {
 			nodeId: "writer:implementation",
 			kind: "WRITER_IMPLEMENTATION",
@@ -132,5 +154,13 @@ describe("workflow graph model", () => {
 			},
 		};
 		expect(() => assertWorkflowGraph(snapshot([waitingUser]))).not.toThrow();
+		expect(() =>
+			assertWorkflowGraph(
+				snapshot([
+					waitingUser,
+					{ ...waitingUser, nodeId: "writer:other", execution: waitingUser.execution },
+				]),
+			),
+		).toThrow("execution id is duplicated");
 	});
 });

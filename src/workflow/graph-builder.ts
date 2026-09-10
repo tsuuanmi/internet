@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { AccountId } from "#internet/core/accounts";
-import { buildTeamPlan, type TeamPlanStep } from "#internet/team/plan";
+import { buildTeamPlan, prepareTeamStep, type TeamPlan, type TeamPlanStep } from "#internet/team/plan";
+import type { TeamPromptStrategyId } from "#internet/team/prompt-strategy";
+import type { TeamTurn } from "#internet/team/types";
 import {
 	assertWorkflowGraph,
 	type WorkflowGraphNode,
@@ -25,6 +27,17 @@ export interface InitialWorkflowGraphInput {
 	readonly writerSessionId: string;
 }
 
+export interface TeamStepInputReceiptInput {
+	readonly nodeId: string;
+	readonly plan: TeamPlan;
+	readonly step: TeamPlanStep;
+	readonly task: string;
+	readonly transcript: readonly TeamTurn[];
+	readonly promptStrategy: TeamPromptStrategyId;
+	readonly dependencyOutputHashes: Readonly<Record<string, string>>;
+	readonly bindings: Readonly<Record<string, string | number | boolean>>;
+}
+
 export function hashWorkflowGraphValue(value: string): string {
 	return createHash("sha256").update(value, "utf8").digest("hex");
 }
@@ -42,6 +55,15 @@ export function createWorkflowNodeInputReceipt(
 		dependencyOutputHashes: Object.fromEntries(normalizedDependencies),
 		bindings: Object.fromEntries(normalizedBindings),
 	};
+}
+
+export function createTeamStepInputReceipt(input: TeamStepInputReceiptInput): WorkflowNodeInputReceipt {
+	const prepared = prepareTeamStep(input.plan, input.step, input.task, input.transcript, input.promptStrategy);
+	return createWorkflowNodeInputReceipt(input.nodeId, input.dependencyOutputHashes, {
+		...input.bindings,
+		promptStrategy: input.promptStrategy,
+		promptHash: hashWorkflowGraphValue(prepared.prompt),
+	});
 }
 
 export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): WorkflowGraphSnapshot {
@@ -72,7 +94,20 @@ export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): Wor
 				phase: "RESEARCH",
 				dependencies,
 				state: ready ? "READY" : "WAITING",
-				...(ready ? { input: createWorkflowNodeInputReceipt(nodeId, {}, bindings) } : {}),
+				...(ready
+					? {
+							input: createTeamStepInputReceipt({
+								nodeId,
+								plan,
+								step,
+								task: laneInput.task,
+								transcript: [],
+								promptStrategy: "workflow-research",
+								dependencyOutputHashes: {},
+								bindings,
+							}),
+						}
+					: {}),
 			};
 		}
 	}
@@ -93,6 +128,7 @@ export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): Wor
 		phase: "WRITER",
 		dependencies: [handoffGateId],
 		state: "WAITING",
+		waitReason: undefined,
 	};
 
 	const graph: WorkflowGraphSnapshot = {

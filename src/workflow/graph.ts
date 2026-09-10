@@ -1,4 +1,4 @@
-export const WORKFLOW_PHASES = ["RESEARCH", "WRITER", "REVIEW", "PR_HEALTH", "MERGE", "DONE"] as const;
+export const WORKFLOW_PHASES = ["RESEARCH", "WRITER", "REVIEW", "HEALTH", "MERGE", "DONE"] as const;
 export type WorkflowPhase = (typeof WORKFLOW_PHASES)[number];
 
 export const WORKFLOW_LIFECYCLES = [
@@ -220,23 +220,31 @@ export function assertWorkflowGraph(snapshot: WorkflowGraphSnapshot): void {
 		throw new Error("workflow graphRevision must be a non-negative integer");
 	if (snapshot.eventSeq < 0 || !Number.isInteger(snapshot.eventSeq))
 		throw new Error("workflow eventSeq must be a non-negative integer");
+	const executionIds = new Set<string>();
 	for (const [nodeId, node] of Object.entries(snapshot.nodes)) {
 		if (node.nodeId !== nodeId) throw new Error(`workflow graph node key mismatch: ${nodeId}`);
 		if (node.dependencies.includes(nodeId)) throw new Error(`workflow graph node cannot depend on itself: ${nodeId}`);
+		if (new Set(node.dependencies).size !== node.dependencies.length)
+			throw new Error(`workflow graph node ${nodeId} has duplicate dependencies`);
 		for (const dependencyId of node.dependencies)
 			if (!snapshot.nodes[dependencyId])
 				throw new Error(`workflow graph node ${nodeId} has unknown dependency ${dependencyId}`);
 		if (["READY", "RUNNING", "WAITING_USER", "RECOVERING", "COMPLETED", "FAILED"].includes(node.state) && !node.input)
 			throw new Error(`workflow graph node ${nodeId} in ${node.state} requires an input receipt`);
-		if (node.input && !/^[0-9a-f]{64}$/u.test(node.input.inputHash))
-			throw new Error(`workflow graph node ${nodeId} has invalid input hash`);
-		if (node.state === "COMPLETED") {
-			if (!node.output) throw new Error(`completed workflow graph node ${nodeId} requires an output receipt`);
+		if (node.input) assertNodeInput(node);
+		if (node.output) {
 			if (!/^[0-9a-f]{64}$/u.test(node.output.resultId) || !/^[0-9a-f]{64}$/u.test(node.output.outputHash))
-				throw new Error(`completed workflow graph node ${nodeId} has invalid output receipt`);
+				throw new Error(`workflow graph node ${nodeId} has invalid output receipt`);
+			if (!validTimestamp(node.output.completedAt))
+				throw new Error(`workflow graph node ${nodeId} has invalid completion timestamp`);
 		}
+		if (node.state === "COMPLETED" && !node.output)
+			throw new Error(`completed workflow graph node ${nodeId} requires an output receipt`);
 		if (node.state === "WAITING" && node.dependencies.length === 0 && !node.waitReason)
 			throw new Error(`waiting workflow graph node ${nodeId} requires a dependency or wait reason`);
+		if (node.execution) {
+			assertExecution(nodeId, node.execution, executionIds);
+		}
 		if (node.state === "RUNNING" || node.state === "WAITING_USER") {
 			if (!node.execution || !["STARTING", "ACTIVE"].includes(node.execution.state))
 				throw new Error(`${node.state.toLowerCase()} workflow graph node ${nodeId} requires a live execution`);
@@ -247,6 +255,42 @@ export function assertWorkflowGraph(snapshot: WorkflowGraphSnapshot): void {
 			throw new Error(`failed workflow graph node ${nodeId} requires a failure receipt`);
 	}
 	assertAcyclic(snapshot.nodes);
+}
+
+function assertNodeInput(node: WorkflowGraphNode): void {
+	const input = node.input;
+	if (!input) return;
+	if (!/^[0-9a-f]{64}$/u.test(input.inputHash))
+		throw new Error(`workflow graph node ${node.nodeId} has invalid input hash`);
+	const dependencyKeys = Object.keys(input.dependencyOutputHashes).sort();
+	const dependencies = [...node.dependencies].sort();
+	if (JSON.stringify(dependencyKeys) !== JSON.stringify(dependencies))
+		throw new Error(`workflow graph node ${node.nodeId} input dependency receipt keys do not match dependencies`);
+	for (const hash of Object.values(input.dependencyOutputHashes))
+		if (!/^[0-9a-f]{64}$/u.test(hash))
+			throw new Error(`workflow graph node ${node.nodeId} has invalid dependency output hash`);
+}
+
+function assertExecution(nodeId: string, execution: WorkflowExecutionRecord, executionIds: Set<string>): void {
+	if (execution.executionId.trim() === "") throw new Error(`workflow graph node ${nodeId} has empty execution id`);
+	if (executionIds.has(execution.executionId)) throw new Error(`workflow graph execution id is duplicated: ${execution.executionId}`);
+	executionIds.add(execution.executionId);
+	positiveInteger(execution.attempt, "execution attempt");
+	if (execution.ownerInstanceId.trim() === "") throw new Error(`workflow graph node ${nodeId} has empty execution owner`);
+	for (const [name, value] of [
+		["startedAt", execution.startedAt],
+		["heartbeatAt", execution.heartbeatAt],
+		["leaseUntil", execution.leaseUntil],
+		["lastProviderEventAt", execution.lastProviderEventAt],
+		["lastMeaningfulProgressAt", execution.lastMeaningfulProgressAt],
+	] as const) {
+		if (value !== undefined && !validTimestamp(value))
+			throw new Error(`workflow graph node ${nodeId} has invalid execution ${name}`);
+	}
+}
+
+function validTimestamp(value: string): boolean {
+	return Number.isFinite(Date.parse(value));
 }
 
 function assertAcyclic(nodes: Readonly<Record<string, WorkflowGraphNode>>): void {

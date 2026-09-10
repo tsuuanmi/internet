@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { buildTeamPlan, prepareTeamStep } from "#internet/team/plan";
 import { workflowNodeId } from "#internet/workflow/graph";
-import { buildInitialWorkflowGraph, createWorkflowNodeInputReceipt } from "#internet/workflow/graph-builder";
+import {
+	buildInitialWorkflowGraph,
+	createTeamStepInputReceipt,
+	createWorkflowNodeInputReceipt,
+	hashWorkflowGraphValue,
+} from "#internet/workflow/graph-builder";
 import { readyWorkflowNodeIds } from "#internet/workflow/graph-reducer";
 
 const base = {
@@ -26,15 +32,58 @@ describe("workflow graph builder", () => {
 		expect(graph.nodes[workflowNodeId.researchMember("A", 1, 2)]?.dependencies).toEqual([
 			workflowNodeId.researchMember("A", 1, 1),
 		]);
-		expect(graph.nodes[workflowNodeId.researchMember("A", 2, 1)]?.dependencies).toEqual([
-			workflowNodeId.researchMember("A", 1, 2),
-		]);
 		expect(graph.nodes[workflowNodeId.researchSynthesis("A")]?.dependencies).toEqual([
 			workflowNodeId.researchMember("A", 1, 1),
 			workflowNodeId.researchMember("A", 1, 2),
 			workflowNodeId.researchMember("A", 2, 1),
 			workflowNodeId.researchMember("A", 2, 2),
 		]);
+	});
+
+	it("binds root inputs to the exact prepared provider prompt", () => {
+		const graph = buildInitialWorkflowGraph(base);
+		const plan = buildTeamPlan({
+			accounts: base.accounts,
+			rounds: base.rounds,
+			synthesize: true,
+			synthesizer: base.synthesizer,
+		});
+		const step = plan.steps[0];
+		if (step === undefined) throw new Error("missing first team step");
+		const prepared = prepareTeamStep(plan, step, base.research.A.task, [], "workflow-research");
+		const id = workflowNodeId.researchMember("A", 1, 1);
+		expect(graph.nodes[id]?.input?.bindings?.promptHash).toBe(hashWorkflowGraphValue(prepared.prompt));
+		expect(graph.nodes[id]?.input?.bindings?.promptStrategy).toBe("workflow-research");
+	});
+
+	it("creates exact downstream team receipts from dependency outputs and prepared prompt", () => {
+		const plan = buildTeamPlan({
+			accounts: base.accounts,
+			rounds: 1,
+			synthesize: true,
+			synthesizer: base.synthesizer,
+		});
+		const step = plan.steps.at(-1);
+		if (step === undefined) throw new Error("missing synthesis step");
+		const transcript = [
+			{ round: 1, accountId: "chatgpt-thinker" as const, provider: "chatgpt-web" as const, text: "A1" },
+			{ round: 1, accountId: "chatgpt-thinker-2" as const, provider: "chatgpt-web" as const, text: "B1" },
+		];
+		const receipt = createTeamStepInputReceipt({
+			nodeId: workflowNodeId.researchSynthesis("A"),
+			plan,
+			step,
+			task: base.research.A.task,
+			transcript,
+			promptStrategy: "workflow-research",
+			dependencyOutputHashes: {
+				[workflowNodeId.researchMember("A", 1, 1)]: "a".repeat(64),
+				[workflowNodeId.researchMember("A", 1, 2)]: "b".repeat(64),
+			},
+			bindings: { sessionId: base.research.A.sessionId },
+		});
+		expect(receipt.bindings?.promptHash).toMatch(/^[0-9a-f]{64}$/u);
+		expect(receipt.inputHash).toMatch(/^[0-9a-f]{64}$/u);
 	});
 
 	it("blocks the writer behind both synthesis results and the research handoff gate", () => {
