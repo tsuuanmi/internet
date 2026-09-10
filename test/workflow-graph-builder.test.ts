@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildInitialWorkflowGraph, createWorkflowNodeInputReceipt } from "#internet/workflow/graph-builder";
 import { workflowNodeId } from "#internet/workflow/graph";
+import { buildInitialWorkflowGraph, createWorkflowNodeInputReceipt } from "#internet/workflow/graph-builder";
 import { readyWorkflowNodeIds } from "#internet/workflow/graph-reducer";
 
 const base = {

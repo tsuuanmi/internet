@@ -37,7 +37,11 @@ export function createWorkflowNodeInputReceipt(
 	const normalizedDependencies = Object.entries(dependencyOutputHashes).sort(([a], [b]) => a.localeCompare(b));
 	const normalizedBindings = Object.entries(bindings).sort(([a], [b]) => a.localeCompare(b));
 	const inputHash = hashWorkflowGraphValue(JSON.stringify([nodeId, normalizedDependencies, normalizedBindings]));
-	return { inputHash, dependencyOutputHashes: Object.fromEntries(normalizedDependencies), bindings: Object.fromEntries(normalizedBindings) };
+	return {
+		inputHash,
+		dependencyOutputHashes: Object.fromEntries(normalizedDependencies),
+		bindings: Object.fromEntries(normalizedBindings),
+	};
 }
 
 export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): WorkflowGraphSnapshot {

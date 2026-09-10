@@ -36,9 +36,7 @@ export function hashWorkflowNodePayload(payload: string): string {
 }
 
 function deterministicResultId(input: Omit<CreateWorkflowNodeResultInput, "payload">): string {
-	return createHash("sha256")
-		.update(`${input.jobId}\0${input.nodeId}\0${input.inputHash}`, "utf8")
-		.digest("hex");
+	return createHash("sha256").update(`${input.jobId}\0${input.nodeId}\0${input.inputHash}`, "utf8").digest("hex");
 }
 
 function assertHex(value: string, length: number, name: string): void {
@@ -48,7 +46,8 @@ function assertHex(value: string, length: number, name: string): void {
 }
 
 function assertNodeId(nodeId: string): void {
-	if (nodeId.trim() === "" || nodeId.includes("\0")) throw new WorkflowNodeResultStoreError("workflow node id is invalid");
+	if (nodeId.trim() === "" || nodeId.includes("\0"))
+		throw new WorkflowNodeResultStoreError("workflow node id is invalid");
 }
 
 function assertInput(input: CreateWorkflowNodeResultInput): void {
@@ -67,7 +66,8 @@ export function parseWorkflowNodeResult(value: unknown): WorkflowNodeResult {
 	}
 	if (typeof value.resultId !== "string" || !/^[0-9a-f]{64}$/u.test(value.resultId))
 		throw new Error("invalid workflow node result id");
-	if (typeof value.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(value.jobId)) throw new Error("invalid workflow job id");
+	if (typeof value.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(value.jobId))
+		throw new Error("invalid workflow job id");
 	if (typeof value.nodeId !== "string" || value.nodeId.trim() === "" || value.nodeId.includes("\0"))
 		throw new Error("invalid workflow node id");
 	if (typeof value.inputHash !== "string" || !/^[0-9a-f]{64}$/u.test(value.inputHash))
@@ -75,7 +75,8 @@ export function parseWorkflowNodeResult(value: unknown): WorkflowNodeResult {
 	if (typeof value.payload !== "string") throw new Error("invalid workflow node result payload");
 	if (typeof value.outputHash !== "string" || !/^[0-9a-f]{64}$/u.test(value.outputHash))
 		throw new Error("invalid workflow node output hash");
-	if (hashWorkflowNodePayload(value.payload) !== value.outputHash) throw new Error("workflow node result hash mismatch");
+	if (hashWorkflowNodePayload(value.payload) !== value.outputHash)
+		throw new Error("workflow node result hash mismatch");
 	if (typeof value.completedAt !== "string" || !Number.isFinite(Date.parse(value.completedAt)))
 		throw new Error("invalid workflow node completion timestamp");
 	const expectedId = deterministicResultId({ jobId: value.jobId, nodeId: value.nodeId, inputHash: value.inputHash });
@@ -115,7 +116,9 @@ export class WorkflowNodeResultStore {
 				current.outputHash !== outputHash ||
 				current.payload !== input.payload
 			) {
-				throw new WorkflowNodeResultStoreError(`workflow node result ${resultId} already exists with different content`);
+				throw new WorkflowNodeResultStoreError(
+					`workflow node result ${resultId} already exists with different content`,
+				);
 			}
 			return current;
 		}
@@ -140,7 +143,8 @@ export class WorkflowNodeResultStore {
 		const path = this.pathFor(jobId, resultId);
 		if (!existsSync(path)) return undefined;
 		const stat = lstatSync(path);
-		if (!stat.isFile()) throw new WorkflowNodeResultStoreError(`workflow node result ${resultId} is not a regular file`);
+		if (!stat.isFile())
+			throw new WorkflowNodeResultStoreError(`workflow node result ${resultId} is not a regular file`);
 		if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) {
 			throw new WorkflowNodeResultStoreError(`workflow node result ${resultId} permissions must be 0600`);
 		}

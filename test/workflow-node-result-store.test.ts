@@ -12,7 +12,12 @@ describe("workflow node result store", () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-node-results-"));
 		const store = new WorkflowNodeResultStore(root);
 		const first = store.create({ jobId, nodeId: "research:B:round:2:member:2", inputHash, payload: "exact answer" });
-		const repeated = store.create({ jobId, nodeId: "research:B:round:2:member:2", inputHash, payload: "exact answer" });
+		const repeated = store.create({
+			jobId,
+			nodeId: "research:B:round:2:member:2",
+			inputHash,
+			payload: "exact answer",
+		});
 		expect(repeated).toEqual(first);
 		expect(store.get(jobId, first.resultId)?.payload).toBe("exact answer");
 		expect(first.outputHash).toMatch(/^[0-9a-f]{64}$/u);
@@ -22,9 +27,9 @@ describe("workflow node result store", () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-node-results-conflict-"));
 		const store = new WorkflowNodeResultStore(root);
 		store.create({ jobId, nodeId: "research:A:round:1:member:1", inputHash, payload: "first" });
-		expect(() => store.create({ jobId, nodeId: "research:A:round:1:member:1", inputHash, payload: "different" })).toThrow(
-			WorkflowNodeResultStoreError,
-		);
+		expect(() =>
+			store.create({ jobId, nodeId: "research:A:round:1:member:1", inputHash, payload: "different" }),
+		).toThrow(WorkflowNodeResultStoreError);
 	});
 
 	it("detects payload corruption on read", () => {

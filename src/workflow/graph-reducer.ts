@@ -75,7 +75,9 @@ export function startWorkflowNode(
 	if (execution.state !== "STARTING" && execution.state !== "ACTIVE") {
 		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} start requires a live execution state`);
 	}
-	return checked(replaceNode(graph, { ...node, state: "RUNNING", execution, failure: undefined, recovery: undefined }));
+	return checked(
+		replaceNode(graph, { ...node, state: "RUNNING", execution, failure: undefined, recovery: undefined }),
+	);
 }
 
 export function completeWorkflowNode(
@@ -146,7 +148,9 @@ export function retryWorkflowNode(
 	if (node.recovery?.attempt !== execution.attempt) {
 		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} retry attempt does not match recovery plan`);
 	}
-	return checked(replaceNode(graph, { ...node, state: "RUNNING", execution, failure: undefined, recovery: undefined }));
+	return checked(
+		replaceNode(graph, { ...node, state: "RUNNING", execution, failure: undefined, recovery: undefined }),
+	);
 }
 
 export function failWorkflowNode(
@@ -176,11 +180,7 @@ function requireNode(graph: WorkflowGraphSnapshot, nodeId: string): WorkflowGrap
 	return node;
 }
 
-function requireCurrentExecution(
-	graph: WorkflowGraphSnapshot,
-	nodeId: string,
-	executionId: string,
-): WorkflowGraphNode {
+function requireCurrentExecution(graph: WorkflowGraphSnapshot, nodeId: string, executionId: string): WorkflowGraphNode {
 	const node = requireNode(graph, nodeId);
 	if (node.execution?.executionId !== executionId) {
 		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} rejected stale execution ${executionId}`);

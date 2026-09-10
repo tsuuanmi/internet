@@ -21,7 +21,9 @@ function completedNode(nodeId: string, dependencies: readonly string[] = []): Wo
 		state: "COMPLETED",
 		input: {
 			inputHash: "b".repeat(64),
-			dependencyOutputHashes: Object.fromEntries(dependencies.map((dependency) => [dependency, `output:${dependency}`])),
+			dependencyOutputHashes: Object.fromEntries(
+				dependencies.map((dependency) => [dependency, `output:${dependency}`]),
+			),
 		},
 		output: { resultId, outputHash: "c".repeat(64), completedAt: now },
 	};
@@ -69,8 +71,20 @@ describe("workflow graph model", () => {
 	});
 
 	it("rejects dependency cycles and unknown dependencies", () => {
-		const a: WorkflowGraphNode = { nodeId: "a", kind: "TEAM_MEMBER", phase: "RESEARCH", dependencies: ["b"], state: "WAITING" };
-		const b: WorkflowGraphNode = { nodeId: "b", kind: "TEAM_MEMBER", phase: "RESEARCH", dependencies: ["a"], state: "WAITING" };
+		const a: WorkflowGraphNode = {
+			nodeId: "a",
+			kind: "TEAM_MEMBER",
+			phase: "RESEARCH",
+			dependencies: ["b"],
+			state: "WAITING",
+		};
+		const b: WorkflowGraphNode = {
+			nodeId: "b",
+			kind: "TEAM_MEMBER",
+			phase: "RESEARCH",
+			dependencies: ["a"],
+			state: "WAITING",
+		};
 		expect(() => assertWorkflowGraph(snapshot([a, b]))).toThrow("dependency cycle");
 		expect(() => assertWorkflowGraph(snapshot([{ ...a, dependencies: ["missing"] }]))).toThrow("unknown dependency");
 	});
@@ -85,7 +99,12 @@ describe("workflow graph model", () => {
 			input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} },
 		};
 		expect(() => assertWorkflowGraph(snapshot([completed]))).toThrow("requires an output receipt");
-		const recovering: WorkflowGraphNode = { ...completed, nodeId: "recovering", state: "RECOVERING", output: undefined };
+		const recovering: WorkflowGraphNode = {
+			...completed,
+			nodeId: "recovering",
+			state: "RECOVERING",
+			output: undefined,
+		};
 		expect(() => assertWorkflowGraph(snapshot([recovering]))).toThrow("requires failure and recovery receipts");
 	});
 
