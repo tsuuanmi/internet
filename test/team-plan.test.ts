@@ -5,7 +5,7 @@ import type { TeamTurn } from "#internet/team/types";
 const accounts = ["chatgpt-thinker", "chatgpt-thinker-2"] as const;
 
 describe("team plan", () => {
-	it("builds the current speaking order as deterministic steps", () => {
+	it("builds speaking order and exact consumed-input dependencies", () => {
 		const plan = buildTeamPlan({ accounts, rounds: 2, synthesize: true, synthesizer: "chatgpt-thinker" });
 		expect(plan.steps.map((step) => step.stepId)).toEqual([
 			"round:1:member:1",
@@ -20,6 +20,13 @@ describe("team plan", () => {
 			"chatgpt-thinker",
 			"chatgpt-thinker-2",
 			"chatgpt-thinker",
+		]);
+		expect(plan.steps.map((step) => step.dependsOnStepIds)).toEqual([
+			[],
+			["round:1:member:1"],
+			["round:1:member:2"],
+			["round:2:member:1"],
+			["round:1:member:1", "round:1:member:2", "round:2:member:1", "round:2:member:2"],
 		]);
 	});
 

@@ -55,21 +55,25 @@ export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): Wor
 
 	for (const lane of ["A", "B"] as const) {
 		const laneInput = input.research[lane];
-		let previousNodeId: string | undefined;
+		const nodeIdsByStepId = new Map<string, string>();
 		for (const step of plan.steps) {
 			const nodeId = researchStepNodeId(lane, step);
-			const dependencies = previousNodeId === undefined ? [] : [previousNodeId];
+			nodeIdsByStepId.set(step.stepId, nodeId);
+			const dependencies = step.dependsOnStepIds.map((stepId) => {
+				const dependencyId = nodeIdsByStepId.get(stepId);
+				if (dependencyId === undefined) throw new Error(`team plan dependency ${stepId} must precede ${step.stepId}`);
+				return dependencyId;
+			});
 			const bindings = stepBindings(input, lane, laneInput, step);
-			const first = previousNodeId === undefined;
+			const ready = dependencies.length === 0;
 			nodes[nodeId] = {
 				nodeId,
 				kind: step.kind === "member" ? "TEAM_MEMBER" : "TEAM_SYNTHESIS",
 				phase: "RESEARCH",
 				dependencies,
-				state: first ? "READY" : "WAITING",
-				...(first ? { input: createWorkflowNodeInputReceipt(nodeId, {}, bindings) } : {}),
+				state: ready ? "READY" : "WAITING",
+				...(ready ? { input: createWorkflowNodeInputReceipt(nodeId, {}, bindings) } : {}),
 			};
-			previousNodeId = nodeId;
 		}
 	}
 

@@ -10,7 +10,11 @@ export interface TeamPlanOptions {
 	readonly synthesizer: AccountId;
 }
 
-export interface TeamMemberStep {
+interface TeamStepDependency {
+	readonly dependsOnStepIds: readonly string[];
+}
+
+export interface TeamMemberStep extends TeamStepDependency {
 	readonly kind: "member";
 	readonly stepId: string;
 	readonly round: number;
@@ -18,7 +22,7 @@ export interface TeamMemberStep {
 	readonly accountId: AccountId;
 }
 
-export interface TeamSynthesisStep {
+export interface TeamSynthesisStep extends TeamStepDependency {
 	readonly kind: "synthesis";
 	readonly stepId: "synthesis";
 	readonly accountId: AccountId;
@@ -54,20 +58,31 @@ export function buildTeamPlan(options: TeamPlanOptions): TeamPlan {
 	}
 
 	const steps: TeamPlanStep[] = [];
+	let previousStepId: string | undefined;
 	for (let round = 1; round <= options.rounds; round++) {
 		for (let index = 0; index < options.accounts.length; index++) {
 			const accountId = options.accounts[index];
 			if (accountId === undefined) throw new Error("team plan member disappeared during construction");
+			const stepId = `round:${round}:member:${index + 1}`;
 			steps.push({
 				kind: "member",
-				stepId: `round:${round}:member:${index + 1}`,
+				stepId,
 				round,
 				member: index + 1,
 				accountId,
+				dependsOnStepIds: previousStepId === undefined ? [] : [previousStepId],
 			});
+			previousStepId = stepId;
 		}
 	}
-	if (options.synthesize) steps.push({ kind: "synthesis", stepId: "synthesis", accountId: options.synthesizer });
+	if (options.synthesize) {
+		steps.push({
+			kind: "synthesis",
+			stepId: "synthesis",
+			accountId: options.synthesizer,
+			dependsOnStepIds: steps.filter((step) => step.kind === "member").map((step) => step.stepId),
+		});
+	}
 
 	return {
 		accounts: [...options.accounts],

@@ -17,7 +17,7 @@ const base = {
 };
 
 describe("workflow graph builder", () => {
-	it("builds both research lanes concurrently with sequential intra-lane dependencies", () => {
+	it("builds both research lanes concurrently from shared team dependencies", () => {
 		const graph = buildInitialWorkflowGraph(base);
 		expect(readyWorkflowNodeIds(graph)).toEqual([
 			workflowNodeId.researchMember("A", 1, 1),
@@ -30,6 +30,9 @@ describe("workflow graph builder", () => {
 			workflowNodeId.researchMember("A", 1, 2),
 		]);
 		expect(graph.nodes[workflowNodeId.researchSynthesis("A")]?.dependencies).toEqual([
+			workflowNodeId.researchMember("A", 1, 1),
+			workflowNodeId.researchMember("A", 1, 2),
+			workflowNodeId.researchMember("A", 2, 1),
 			workflowNodeId.researchMember("A", 2, 2),
 		]);
 	});
