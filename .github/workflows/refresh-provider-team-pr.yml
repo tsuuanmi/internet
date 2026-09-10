@@ -1,0 +1,84 @@
+name: Refresh provider-team review branch
+
+on:
+  push:
+    branches:
+      - feat/provider-agnostic-team-status
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/provider-agnostic-team-status
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Align concurrency guidance with actual scheduler capacity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "src/index.ts": [
+                  (
+                      "The default profile serializes hidden turns per authenticated account to protect portable account state. Different accounts have independent schedulers; workflow lane concurrency must not add an A-then-B mutex above those account-level limits.",
+                      "The default profile allows up to two hidden turns from different sessions per authenticated account while preserving strict ordering within each session. Different accounts have independent schedulers; workflow lane concurrency must not add an A-then-B mutex above those account-level limits.",
+                  ),
+                  (
+                      "Research A/B and Review A/B are independent provider-agnostic agent-team lanes and are launched concurrently at the workflow level. Each lane currently uses two independent ChatGPT thinker accounts as Member 1 and Member 2; Gemini is not on the default route. Same-account turns may still serialize through the account scheduler for browser/account safety.",
+                      "Research A/B and Review A/B are independent provider-agnostic agent-team lanes and are launched concurrently at the workflow level. Each lane currently uses two independent ChatGPT thinker accounts as Member 1 and Member 2; Gemini is not on the default route. The default account scheduler has capacity 2, so Team A and Team B may run different session IDs concurrently on the same account while each session remains strictly ordered.",
+                  ),
+              ],
+              "docs/WORKFLOW-HARDENING.md": [
+                  (
+                      "Same-account provider turns may still serialize through the account scheduler according to `maxConcurrentTurnsPerAccount`. That safety policy is intentionally separate from workflow-lane concurrency; the workflow adds no A-then-B mutex.",
+                      "The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so Team A and Team B may execute different session IDs concurrently on the same authenticated account. Each native session remains strictly ordered, and work above the configured capacity queues. This account policy is separate from workflow-lane concurrency; the workflow adds no A-then-B mutex.",
+                  ),
+              ],
+              "docs/WORKFLOW-ENGINE.md": [
+                  (
+                      "Research A/B are started logically together. Each prompt contains exact objective, repository/base authority, lane role and output contract. Same-account Website turns may serialize through the account scheduler while different accounts remain independent.",
+                      "Research A/B are started together. Each prompt contains exact objective, repository/base authority, lane role and output contract. The default account scheduler capacity is 2, so the A/B session IDs may execute concurrently even when they use the same authenticated account; turns within one session remain strictly ordered.",
+                  ),
+              ],
+              "docs/TODO.md": [
+                  (
+                      "Same-account serialization remains an account-scheduler responsibility; workflow adds no A-then-B mutex.",
+                      "Same-session ordering and bounded per-account capacity remain account-scheduler responsibilities; the default capacity is 2 and workflow adds no A-then-B mutex.",
+                  ),
+              ],
+          }
+
+          for filename, pairs in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              for old, new in pairs:
+                  if old not in text:
+                      raise SystemExit(f"expected text not found in {filename}: {old}")
+                  text = text.replace(old, new, 1)
+              path.write_text(text)
+          PY
+          npx biome check --write src test scripts
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: git diff --exit-code -- dist || true
+      - run: npm run verify-package
+      - name: Commit generated dist and review fixes
+        run: |
+          rm .github/workflows/refresh-provider-team-pr.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src test scripts dist docs .github/workflows/refresh-provider-team-pr.yml
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: honor concurrent workflow team sessions"
+            git push origin HEAD:feat/provider-agnostic-team-status
+          fi
