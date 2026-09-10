@@ -3,6 +3,7 @@ import type { WorkflowEventSink } from "#internet/workflow/events";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowTeamLane, WorkflowTeamPhase } from "#internet/workflow/team-prompt-builder";
 import type { WorkflowTeamTraceStore } from "#internet/workflow/team-trace-store";
+import type { WorkflowJob } from "#internet/workflow/types";
 
 export interface WorkflowTeamContext {
 	readonly jobId: string;
@@ -32,18 +33,33 @@ export function parseWorkflowTeamSessionId(sessionId: string): WorkflowTeamConte
 	};
 }
 
-function progressMessage(observation: WorkflowTeamObservation, event: TeamProgressEvent): string {
+function title(value: string): string {
+	return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function stageLabel(stage: TeamProgressEvent["stage"]): string {
+	return stage.replaceAll("_", " ");
+}
+
+function memberLabel(job: WorkflowJob, accountId: TeamProgressEvent["accountId"]): string {
+	const index = job.accountRouting.thinkerAccounts.indexOf(accountId);
+	return index < 0 ? accountId : `Member ${index + 1}`;
+}
+
+function progressMessage(job: WorkflowJob, observation: WorkflowTeamObservation, event: TeamProgressEvent): string {
 	const fields = [
-		`${observation.context.phase}:${observation.context.lane}`,
-		`attempt=${observation.attempt}`,
-		...(event.round === undefined ? [] : [`round=${event.round}`]),
-		`account=${event.accountId}`,
-		`stage=${event.stage}`,
-		`status=${event.status}`,
+		title(observation.context.phase),
+		`Team ${observation.context.lane}`,
+		`attempt ${observation.attempt}`,
+		...(event.round === undefined ? [] : [`round ${event.round}`]),
+		memberLabel(job, event.accountId),
+		stageLabel(event.stage),
+		event.status.toUpperCase(),
 	];
-	if (event.kind !== undefined) fields.push(`kind=${event.kind}`);
-	if (event.message !== undefined && event.message.trim() !== "") fields.push(`message=${event.message}`);
-	return fields.join(" ");
+	if (event.kind !== undefined) fields.push(event.kind);
+	if (event.status === "failed") fields.push(`source=${event.accountId}/${event.provider}`);
+	if (event.message !== undefined && event.message.trim() !== "") fields.push(event.message);
+	return fields.join(" · ");
 }
 
 /** Persist team traces first, then emit compact best-effort Local progress notifications. */
@@ -105,7 +121,7 @@ export class DurableWorkflowTeamObserver implements WorkflowTeamObserver {
 				type: "TEAM_PROGRESS",
 				class: "PROGRESS",
 				at: event.at,
-				message: progressMessage(observation, event),
+				message: progressMessage(job, observation, event),
 			});
 		} catch {
 			// Notification delivery is not workflow correctness.
