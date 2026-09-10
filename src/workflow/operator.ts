@@ -62,44 +62,124 @@ function compact(value: string, max = 72): string {
 	return normalized.length <= max ? normalized : `${normalized.slice(0, Math.max(0, max - 1))}…`;
 }
 
+function stageLabel(stage: WorkflowTeamTraceEvent["stage"]): string {
+	return stage.replaceAll("_", " ");
+}
+
+function memberLabel(job: WorkflowJob, accountId: WorkflowTeamTraceEvent["accountId"]): string | undefined {
+	if (accountId === undefined) return undefined;
+	const index = job.accountRouting.thinkerAccounts.indexOf(accountId);
+	return index < 0 ? accountId : `Member ${index + 1}`;
+}
+
 function traceForRun(
 	trace: readonly WorkflowTeamTraceEvent[],
 	phase: "research" | "review",
 	run: WorkflowTeamRun,
-): WorkflowTeamTraceEvent | undefined {
-	const matches = trace.filter(
-		(event) =>
-			event.phase === phase && event.lane === run.lane && event.attempt === run.attempts && event.stage !== "team",
+): readonly WorkflowTeamTraceEvent[] {
+	return trace.filter(
+		(event) => event.phase === phase && event.lane === run.lane && event.attempt === run.attempts,
 	);
-	return matches[matches.length - 1];
 }
 
-function describeTrace(event: WorkflowTeamTraceEvent | undefined): string | undefined {
+function latestMeaningfulEvent(events: readonly WorkflowTeamTraceEvent[]): WorkflowTeamTraceEvent | undefined {
+	for (let index = events.length - 1; index >= 0; index--) {
+		const event = events[index];
+		if (event !== undefined && event.stage !== "team" && event.stage !== "complete" && event.stage !== "prepare_prompt") {
+			return event;
+		}
+	}
+	return events[events.length - 1];
+}
+
+function describeEvent(job: WorkflowJob, event: WorkflowTeamTraceEvent | undefined): string | undefined {
 	if (event === undefined) return undefined;
+	const member = memberLabel(job, event.accountId);
 	return [
 		...(event.round === undefined ? [] : [`round ${event.round}`]),
-		...(event.accountId === undefined ? [] : [event.accountId]),
-		event.stage,
+		...(member === undefined ? [] : [member]),
+		stageLabel(event.stage),
 		event.status.toUpperCase(),
 		...(event.kind === undefined ? [] : [event.kind]),
 	].join(" · ");
 }
 
-function formatLane(
+function formatMemberProgress(job: WorkflowJob, events: readonly WorkflowTeamTraceEvent[]): string | undefined {
+	const summaries = job.accountRouting.thinkerAccounts.map((accountId, index) => {
+		const accountEvents = events.filter(
+			(event) => event.accountId === accountId && event.stage === "provider_turn",
+		);
+		const latest = accountEvents[accountEvents.length - 1];
+		if (latest === undefined) return `Member ${index + 1}=waiting`;
+		const round = latest.round === undefined ? "" : ` round ${latest.round}`;
+		return `Member ${index + 1}=${latest.status}${round}`;
+	});
+	return summaries.length === 0 ? undefined : summaries.join(" · ");
+}
+
+function formatTeam(
+	job: WorkflowJob,
 	phase: "research" | "review",
 	run: WorkflowTeamRun,
 	trace: readonly WorkflowTeamTraceEvent[],
 ): string[] {
-	const latest = traceForRun(trace, phase, run);
-	const detail = describeTrace(latest);
+	const events = traceForRun(trace, phase, run);
+	const latest = latestMeaningfulEvent(events);
 	const outputContractFailure = run.status === "failed" && latest?.status === "completed" && run.error !== undefined;
-	const renderedDetail = outputContractFailure ? "output_contract · FAILED" : detail;
-	const lines = [
-		`${run.lane}  ${run.status.toUpperCase()}  attempt ${run.attempts}${renderedDetail === undefined ? "" : ` · ${renderedDetail}`}`,
-	];
-	const message = outputContractFailure ? run.error : (latest?.message ?? run.error);
-	if (message !== undefined && message.trim() !== "") lines.push(`   ${compact(message, 180)}`);
+	const lines = [`Team ${run.lane} — ${run.status.toUpperCase()} (attempt ${run.attempts})`];
+	if (outputContractFailure) {
+		lines.push("  Step: output contract · FAILED", `  Error: output_contract`, `    ${compact(run.error!, 220)}`);
+		return lines;
+	}
+	const step = describeEvent(job, latest);
+	if (step !== undefined) lines.push(`  Step: ${step}`);
+	const members = formatMemberProgress(job, events);
+	if (members !== undefined) lines.push(`  Members: ${members}`);
+	const message = latest?.message ?? run.error;
+	if (run.status === "failed" || latest?.status === "failed") {
+		const kind = latest?.kind ?? "unknown_error";
+		const retry = latest?.retryable === undefined ? "" : latest.retryable ? " · retryable" : " · not retryable";
+		lines.push(`  Error: ${kind}${retry}`);
+		if (message !== undefined && message.trim() !== "") lines.push(`    ${compact(message, 220)}`);
+		if (latest?.accountId !== undefined || latest?.provider !== undefined) {
+			lines.push(`  Diagnostic: ${latest.accountId ?? "unknown-account"} · ${latest.provider ?? "unknown-provider"}`);
+		}
+	} else if (run.status === "completed") {
+		lines.push(`  Result: ${phase === "research" ? "ready for handoff" : "review result ready"}`);
+	}
 	return lines;
+}
+
+function laneSummary(runs: readonly WorkflowTeamRun[]): string {
+	return runs.map((run) => `Team ${run.lane}=${run.status}`).join(" · ");
+}
+
+function currentStep(job: WorkflowJob): string {
+	if (job.state === "FAILED_RETRYABLE") {
+		const resume = job.pendingAction?.resumeState;
+		if (resume?.startsWith("RESEARCH")) return "Research · retry required";
+		if (resume?.startsWith("REVIEW")) return "Review · retry required";
+		if (resume?.startsWith("WRITER")) return "Writer · retry required";
+		return "Retry required";
+	}
+	if (job.state === "CREATED" || job.state.startsWith("RESEARCH")) return "Research";
+	if (job.state.startsWith("WRITER")) return "Writer";
+	if (job.state === "PR_OPEN" || job.state.startsWith("REVIEW")) return "Review";
+	if (job.state === "READY_FOR_MERGE_AUTHORIZATION" || job.state === "AWAITING_MERGE_AUTHORIZATION")
+		return "Merge authorization";
+	if (job.state === "MERGING") return "Merge";
+	if (job.state === "DONE") return "Complete";
+	if (job.state === "CANCELLED") return "Cancelled";
+	return job.state.replaceAll("_", " ").toLowerCase();
+}
+
+function writerStatus(job: WorkflowJob): string {
+	if (job.state === "CREATED" || job.state.startsWith("RESEARCH") || (job.state === "FAILED_RETRYABLE" && job.pullRequest === undefined)) {
+		return "waiting for research";
+	}
+	if (job.state.startsWith("WRITER")) return "running";
+	if (job.pullRequest !== undefined) return "implementation delivered";
+	return job.state.toLowerCase();
 }
 
 export function formatWorkflowList(jobs: readonly WorkflowJob[]): string {
@@ -120,19 +200,25 @@ export function formatWorkflowStatus(
 	const lines = [
 		`Workflow ${job.jobId}`,
 		`State: ${job.state}${active ? " · driver active" : ""}`,
+		`Current: ${currentStep(job)}`,
 		`Objective: ${job.objective}`,
 		"",
-		"Research",
-	];
-	for (const run of job.teamRuns.research)
-		lines.push(...formatLane("research", run, trace).map((line) => `  ${line}`));
-	lines.push(
+		"Pipeline",
+		`  Research  ${laneSummary(job.teamRuns.research)}`,
+		`  Writer    ${writerStatus(job)}`,
+		`  Review    ${laneSummary(job.teamRuns.review)}`,
+		`  PR        ${job.pullRequest === undefined ? "not created" : `#${job.pullRequest.number} · ${job.pullRequest.headSha.slice(0, 12)}`}`,
 		"",
-		"Writer",
-		`  ${job.writerConversation.accountId} · ${job.state === "CREATED" || job.state.startsWith("RESEARCH") ? "waiting for research" : job.state}`,
-	);
-	lines.push("", "Review");
-	for (const run of job.teamRuns.review) lines.push(...formatLane("review", run, trace).map((line) => `  ${line}`));
+		"Research teams",
+	];
+	for (const run of job.teamRuns.research) {
+		lines.push(...formatTeam(job, "research", run, trace).map((line) => `  ${line}`));
+	}
+	lines.push("", "Writer", `  Account: ${job.writerConversation.accountId}`, `  Status: ${writerStatus(job)}`);
+	lines.push("", "Review teams");
+	for (const run of job.teamRuns.review) {
+		lines.push(...formatTeam(job, "review", run, trace).map((line) => `  ${line}`));
+	}
 	lines.push("", "PR");
 	if (job.pullRequest === undefined) lines.push("  not created");
 	else {
@@ -186,16 +272,16 @@ export class WorkflowOperator {
 		return [
 			formatWorkflowStatus(job, this.traces.list(job.jobId), this.driver.isActive(job.jobId)),
 			"",
-			"Live compact team/workflow progress events are emitted automatically to this Local session while the job runs.",
+			"Watching: live progress identifies phase, Team A/B, attempt, round, Member 1/2, stage, and structured failures as durable events arrive.",
 		].join("\n");
 	}
 
 	async stop(ownerSessionId: string, jobId?: string): Promise<string> {
 		const selected = selectJob(this.jobs, ownerSessionId, jobId, true);
 		const trace = this.traces.list(selected.jobId);
-		const latest = trace[trace.length - 1];
+		const latest = latestMeaningfulEvent(trace);
 		const cancelled = await this.driver.cancel(selected.jobId);
-		const stoppedAt = latest === undefined ? "unknown current operation" : (describeTrace(latest) ?? latest.stage);
+		const stoppedAt = latest === undefined ? "unknown current operation" : (describeEvent(selected, latest) ?? latest.stage);
 		return `Workflow ${cancelled.jobId} cancelled.\nStopped at: ${stoppedAt}\nState: ${cancelled.state}`;
 	}
 
