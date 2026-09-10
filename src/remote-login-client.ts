@@ -30,6 +30,10 @@ const rfb = new RFB(screen, socketUrl, { credentials: { password }, shared: true
 rfb.scaleViewport = true;
 rfb.resizeSession = false;
 let connected = false;
+let saveInProgress = false;
+let pollGeneration = 0;
+let pollTimer: number | undefined;
+
 rfb.addEventListener("connect", () => {
 	connected = true;
 	typeText.disabled = false;
@@ -38,7 +42,8 @@ rfb.addEventListener("connect", () => {
 rfb.addEventListener("disconnect", () => {
 	connected = false;
 	typeText.disabled = true;
-	if (!save.disabled) status.textContent = "Remote desktop disconnected. Check status or cancel this login.";
+	if (!save.disabled && !saveInProgress)
+		status.textContent = "Remote desktop disconnected. Check status or cancel this login.";
 });
 
 function keysymForCharacter(character: string): number {
@@ -84,29 +89,44 @@ function render(remote: RemoteStatus): void {
 	if (remote.state === "complete") rfb.disconnect();
 }
 
-async function poll(): Promise<void> {
+function schedulePoll(generation: number): void {
+	pollTimer = window.setTimeout(() => void poll(generation), 750);
+}
+
+async function poll(generation: number): Promise<void> {
+	if (saveInProgress || generation !== pollGeneration) return;
 	try {
 		const remote = await readStatus();
+		if (saveInProgress || generation !== pollGeneration) return;
 		render(remote);
-		if (remote.state === "waiting" || remote.state === "finalizing") setTimeout(() => void poll(), 750);
+		if (remote.state === "waiting" || remote.state === "finalizing") schedulePoll(generation);
 	} catch (error) {
+		if (saveInProgress || generation !== pollGeneration) return;
 		status.textContent = error instanceof Error ? error.message : "status request failed";
 	}
 }
 
 save.addEventListener("click", async () => {
+	saveInProgress = true;
+	pollGeneration += 1;
+	if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+	pollTimer = undefined;
 	save.disabled = true;
+	cancel.disabled = true;
 	status.textContent = "Saving account…";
 	try {
 		const response = await fetch(`${base}/save`, { method: "POST" });
 		if (!response.ok) throw new Error(await response.text());
-		await poll();
-	} catch (error) {
-		status.textContent = error instanceof Error ? error.message : "save failed";
+		const remote = (await response.json()) as RemoteStatus;
+		render(remote);
+	} catch {
+		status.textContent = "Save result could not be confirmed; check account status before retrying.";
+	} finally {
+		saveInProgress = false;
 	}
 });
 
-setTimeout(() => void poll(), 750);
+schedulePoll(pollGeneration);
 
 cancel.addEventListener("click", async () => {
 	cancel.disabled = true;
