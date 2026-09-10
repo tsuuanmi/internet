@@ -1,6 +1,6 @@
 # Internet Runtime TODO
 
-- **Status:** current implementation complete through provider-agnostic team routing and workflow observability hardening
+- **Status:** current implementation complete through provider-agnostic team routing and workflow observability hardening; graph-orchestration hardening accepted next
 - **Last synchronized:** 2026-09-10
 
 This file is a closure boundary, not an instruction to keep adding numbered phases. New work should be added only for a concrete observed problem.
@@ -54,6 +54,58 @@ This file is a closure boundary, not an instruction to keep adding numbered phas
 - ✅ Team traces are removed with their terminal workflow during explicit retention cleanup or exact-ID deletion.
 - ✅ Existing durable jobs keep their persisted account routing; new jobs use the current default route.
 
+## Accepted next hardening — durable graph orchestration
+
+The concrete failure cases observed in real workflows justify implementing [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md). This is accepted work, not yet current runtime behavior.
+
+- ☐ Represent workflow work as durable executable nodes with explicit dependency edges.
+- ☐ Derive `READY` work from graph dependencies instead of replaying a team/round procedurally.
+- ☐ Persist stable logical node IDs separately from concrete execution-attempt IDs.
+- ☐ Preserve `COMPLETED` nodes unless an input dependency is explicitly invalidated.
+- ☐ Retry/recover only the smallest failed or orphaned node, including individual member turns and synthesis.
+- ☐ Add execution fencing so stale late provider results cannot commit after a retry begins.
+- ☐ Reconcile durable `RUNNING`/`WAITING_USER`/`RECOVERING` nodes with live executions on restart and `/workflow continue`.
+- ☐ Introduce an append-only meaningful event journal and derive operator state from graph + execution projections.
+- ☐ Separate node state, execution state, and provider/browser state.
+- ☐ Replace one fixed 300-second completion timeout with meaningful-progress leases plus mode-aware stall/hard limits.
+- ☐ Do not let a static thinking indicator refresh progress indefinitely.
+- ☐ Add explicit `WAITING_USER` handling for permission/consent/OTP/2FA/CAPTCHA/login-confirmation style boundaries.
+- ☐ Suspend normal provider timeout and retry-budget consumption while a valid live execution waits for user action.
+- ☐ Prevent `/workflow continue` from duplicating a live `WAITING_USER` execution.
+- ☐ Classify deterministic browser-automation defects such as `InvalidSelectorError`/`AUTOMATION_BUG` separately from provider failures and do not loop them through automatic provider retries.
+- ☐ Rebuild `/workflow status|watch` as explainable graph projections: active execution, provider activity, blocked dependencies, recovery action, recent meaningful events, and next transition.
+- ☐ Remove stale projection states such as `Writer: waiting for research` after research is complete and Writer has already started/failed.
+- ☐ Supplement coarse `driver active` output with actual scheduler/execution health.
+- ☐ Add acceptance tests for later-member failure, orphaned synthesis, valid long thinking, stalled provider, permission waits, deterministic selector errors, live-wait continue, and restart recovery.
+- ☐ Remove obsolete coarse team/lane replay/retry paths once the graph scheduler is authoritative; do not preserve parallel legacy execution engines.
+
+### Observed cases this work must solve
+
+```text
+1. Team B fails at a later member/round
+   -> current retry may replay more of Team B than necessary
+   -> desired: retry only that member node
+
+2. Team B synthesis is durable STARTED but no provider session remains
+   -> desired: mark execution orphaned and retry synthesis only
+
+3. Writer legitimately waits longer than 300000ms
+   -> current runtime reports a generic provider timeout
+   -> desired: distinguish meaningful thinking/progress from an actual stall
+
+4. Writer waits on GitHub permission
+   -> current runtime can time out instead of explaining that user action is required
+   -> desired: WAITING_USER with live-session/action projection
+
+5. Browser confirmation detection throws InvalidSelectorError
+   -> retrying the writer unchanged cannot repair deterministic selector syntax
+   -> desired: AUTOMATION_BUG/INVALID_SELECTOR surfaced directly
+
+6. FAILED_RETRYABLE status can still render Writer as "waiting for research"
+   even though both research lanes are complete
+   -> desired: graph-derived state with no stale child projection
+```
+
 ## Current operator surface
 
 ```text
@@ -102,11 +154,10 @@ Writer   -> chatgpt-writer
 
 ## Deferred — no implementation without a concrete request
 
-- automatic provider-turn retry policy beyond existing explicit workflow retry/recovery;
-- dynamic member/provider health scoring or automatic provider failover;
+- dynamic member/provider health scoring or automatic member substitution/failover beyond the accepted same-node recovery policy;
 - automatic task detection instead of explicit `/workflow`;
 - Website cross-conversation/project memory as workflow correctness state;
-- generic arbitrary DAG workflow language;
+- generic user-defined arbitrary DAG workflow language beyond the internal workflow dependency graph;
 - many writer accounts / automatic pooling;
 - sophisticated artifact database;
 - autonomous production deployment;
