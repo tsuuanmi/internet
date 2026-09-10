@@ -1,6 +1,10 @@
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import type { AccountId } from "#internet/core/accounts";
-import { getAccountDefinition } from "#internet/core/accounts";
+import {
+	DEFAULT_TEAM_ACCOUNTS,
+	DEFAULT_TEAM_SYNTHESIZER,
+	getAccountDefinition,
+} from "#internet/core/accounts";
 import { InternetError, isInternetError } from "#internet/core/errors";
 import { getTeamPromptStrategy, type TeamPromptStrategyId } from "#internet/team/prompt-strategy";
 import type {
@@ -50,7 +54,7 @@ export interface TeamOptions {
 	readonly synthesize?: boolean;
 	/** Account that performs the final synthesis, independent of speaking order. */
 	readonly synthesizer?: AccountId;
-	/** Ordered reasoning accounts; the first opens the debate. */
+	/** Ordered reasoning accounts. Prompt roles are Member 1..N in this order. */
 	readonly accounts?: readonly AccountId[];
 	/** Prompt composition purpose. The execution engine remains shared. */
 	readonly promptStrategy?: TeamPromptStrategyId;
@@ -65,8 +69,6 @@ export interface TeamOptions {
 export type ChatFn = (accountId: AccountId, request: ChatRequest) => Promise<ChatResult>;
 
 const DEFAULT_ROUNDS = 2;
-const DEFAULT_ACCOUNTS: readonly AccountId[] = ["chatgpt-thinker", "gemini-thinker"];
-const DEFAULT_SYNTHESIZER: AccountId = "chatgpt-thinker";
 const DEFAULT_PROMPT_STRATEGY: TeamPromptStrategyId = "generic-debate";
 
 /** Join display names with an Oxford comma. Retained as a small public utility. */
@@ -125,25 +127,30 @@ export function composeTurnPrompt(
 	accountId: AccountId,
 	others: readonly OtherContribution[],
 	round: number,
+	members: readonly AccountId[] = [accountId, ...others.map((other) => other.accountId)],
 ): string {
-	return getTeamPromptStrategy("generic-debate").turn({ task, accountId, others, round });
+	return getTeamPromptStrategy("generic-debate").turn({ task, accountId, members, others, round });
 }
 
 /** Compose the default generic final synthesis prompt. */
-export function composeSynthesisPrompt(task: string, transcript: readonly TeamTurn[]): string {
-	return getTeamPromptStrategy("generic-debate").synthesis({ task, transcript });
+export function composeSynthesisPrompt(
+	task: string,
+	transcript: readonly TeamTurn[],
+	members: readonly AccountId[] = [...new Set(transcript.map((turn) => turn.accountId))],
+): string {
+	return getTeamPromptStrategy("generic-debate").synthesis({ task, members, transcript });
 }
 
 /**
- * Run a multi-model debate using an exact durable conversation-session key.
+ * Run a provider-agnostic member debate using an exact durable conversation-session key.
  * Callers own namespace construction; this primitive owns the single authoritative
  * round/synthesis loop and emits structured progress for optional durable observers.
  */
 export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamResult> {
 	const rounds = options.rounds ?? DEFAULT_ROUNDS;
 	const synthesize = options.synthesize ?? true;
-	const synthesizer = options.synthesizer ?? DEFAULT_SYNTHESIZER;
-	const accounts = options.accounts ?? DEFAULT_ACCOUNTS;
+	const synthesizer = options.synthesizer ?? DEFAULT_TEAM_SYNTHESIZER;
+	const accounts = options.accounts ?? DEFAULT_TEAM_ACCOUNTS;
 	const prompts = getTeamPromptStrategy(options.promptStrategy ?? DEFAULT_PROMPT_STRATEGY);
 	if (!Number.isInteger(rounds) || rounds <= 0) throw new Error("team debate rounds must be a positive integer");
 	if (accounts.length < 2) throw new Error("team debate requires at least two accounts");
@@ -154,7 +161,7 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 
 	const transcript: TeamTurn[] = [];
 	const lastByAccount = new Map<AccountId, string>();
-	let activeAccountId: AccountId = accounts[0] ?? DEFAULT_SYNTHESIZER;
+	let activeAccountId: AccountId = accounts[0] ?? DEFAULT_TEAM_SYNTHESIZER;
 	let activeStage: TeamStage = "prepare_prompt";
 	let activeRound: number | undefined = 1;
 	let finalDebateAccountId: AccountId = activeAccountId;
@@ -177,7 +184,7 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 
 				activeStage = "prepare_prompt";
 				emit(options.onProgress, { at: now(), stage: activeStage, status: "started", round, accountId, provider });
-				const prompt = prompts.turn({ task: options.task, accountId, others, round });
+				const prompt = prompts.turn({ task: options.task, accountId, members: accounts, others, round });
 				emit(options.onProgress, {
 					at: now(),
 					stage: activeStage,
@@ -222,7 +229,7 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 				accountId: synthesizer,
 				provider,
 			});
-			const prompt = prompts.synthesis({ task: options.task, transcript });
+			const prompt = prompts.synthesis({ task: options.task, members: accounts, transcript });
 			const result = await chat(synthesizer, {
 				prompt,
 				sessionId: options.sessionId,
