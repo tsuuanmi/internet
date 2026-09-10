@@ -1,7 +1,7 @@
 # How `@tsuuanmi/internet` Works
 
 - **Status:** current implementation
-- **Last synchronized:** 2026-09-09
+- **Last synchronized:** 2026-09-10
 
 `@tsuuanmi/internet` is a standalone DeepSeek Harness plugin that drives authenticated ChatGPT Web and Gemini Web sessions through isolated browser contexts. It exposes direct chat/research/team tools and a durable coding workflow whose deterministic control plane is separate from model reasoning.
 
@@ -15,11 +15,12 @@ Semantic accounts:
 
 ```text
 chatgpt-thinker
-gemini-thinker
 chatgpt-writer
+gemini-thinker
+chatgpt-thinker-2
 ```
 
-Provider is implementation metadata; authenticated runtime state is account-scoped.
+Provider is implementation metadata; authenticated runtime state is account-scoped. The current default reasoning team maps Member 1 to `chatgpt-thinker` and Member 2 to `chatgpt-thinker-2`. `chatgpt-writer` remains separate mutation authority.
 
 ### Provider adapters
 
@@ -27,7 +28,7 @@ Provider is implementation metadata; authenticated runtime state is account-scop
 - Gemini: auth verification, model/thinking selection, prompt submission and completion.
 - Provider-native Deep Research adapters: activate/verify research mode before submission.
 
-Provider execution errors are raised as runtime errors rather than returned as valid model content.
+Provider execution errors are raised as runtime errors rather than returned as valid member content.
 
 ### Team layer
 
@@ -45,7 +46,9 @@ workflow-review
 
 The generic strategy is used by `internet_team`; workflow selects research/review strategies from deterministic session identity.
 
-All strategies treat peer model output as delimited untrusted evidence. Synthesis explicitly targets the strongest supported combined answer rather than a neutral or 50/50 merge.
+Every strategy receives ordered backing accounts but renders reasoning roles only as `Member 1`, `Member 2`, ... . Peer content and transcript delimiters contain member numbers rather than provider/account names. All strategies treat peer output as delimited untrusted evidence. Synthesis explicitly targets the strongest supported combined answer rather than a neutral or equal-weight merge.
+
+Underlying account/provider identity is retained internally for routing, auth, scheduler ownership, traces, and failure diagnostics. It is not exposed to members as part of their reasoning role.
 
 ### Workflow layer
 
@@ -71,7 +74,9 @@ The engine owns deterministic correctness; the driver owns automatic progression
 
 ## Plugin registration
 
-When both thinker providers and the writer account are enabled, the plugin registers:
+When the two default thinker accounts and writer account are available, the workflow command/tool surfaces are registered. `internet_team` is registered whenever at least two thinker accounts are enabled and the configured synthesizer is available.
+
+With default configuration, the plugin registers:
 
 ```text
 internet_chat
@@ -84,25 +89,36 @@ internet_workflow_maintenance
 
 It also registers `/internet` and the `/workflow` command family.
 
+Gemini is no longer required for workflow registration. Disabling Gemini leaves the two-ChatGPT default team/workflow available.
+
 ## Direct chat and research
 
 `internet_chat` validates an explicit thinker account, acquires that account's scheduler lease, verifies portable account state/auth, resumes an account-scoped durable conversation, selects the required provider mode, submits the prompt, waits for a stable changed response, refreshes durable conversation identity, and returns markdown + provider metadata.
 
-`internet_research` uses provider-native research modes. Selected provider runs are independent; a completed provider result may be preserved when another fails.
+`internet_research` uses provider-native research modes. Selected provider/account runs are independent; a completed result may be preserved when another fails.
 
 ## Direct team flow
 
 `internet_team` uses its own `<agent>:team:<name>` session namespace and calls the shared team core.
 
-Default two-round shape:
+Current default two-round shape:
 
 ```text
-round 1: ChatGPT -> Gemini critique/refinement
-round 2: ChatGPT critique/refinement -> Gemini critique/refinement
-synthesis: configured synthesizer -> best combined final
+round 1: Member 1 -> Member 2 critique/refinement
+round 2: Member 1 critique/refinement -> Member 2 critique/refinement
+synthesis: configured synthesizer -> strongest combined final
 ```
 
-The tool may return a bounded current-call transcript when requested.
+Default backing accounts:
+
+```text
+Member 1 -> chatgpt-thinker
+Member 2 -> chatgpt-thinker-2
+```
+
+Explicit team calls may choose other enabled thinker accounts, including Gemini. This changes routing only; member-facing prompts remain provider-agnostic.
+
+The tool may return a bounded current-call transcript when requested. Transcript presentation uses only member numbers. On execution failure, user-facing error text identifies the failed member and separate diagnostic metadata identifies the backing account/provider/kind.
 
 ## Workflow admission and operator commands
 
@@ -120,7 +136,7 @@ The same command family exposes routine operator actions:
 
 Operator job selection is scoped to the owning Local session and fails on ambiguity rather than guessing.
 
-`watch` returns the authoritative current snapshot; live progress continues through the existing `PROGRESS` event stream instead of a second polling state machine.
+`status` starts with a compact pipeline summary and then expands Research/Review Team A/B. `watch` returns the authoritative current snapshot; live progress continues through the existing `PROGRESS` event stream instead of a second polling state machine.
 
 ## Workflow sessions
 
@@ -141,14 +157,14 @@ Reviewer sessions persist across cycles; exact cycle/head facts remain durable s
 `WorkflowEngine.runResearch()` and `runReview()` launch both incomplete A/B lane promises before awaiting either sibling.
 
 ```text
-Research A  ─────────────────►
-Research B  ─────────────────►
+Research Team A  ─────────────────►
+Research Team B  ─────────────────►
 
-Review A    ─────────────────►
-Review B    ─────────────────►
+Review Team A    ─────────────────►
+Review Team B    ─────────────────►
 ```
 
-Each lane is a full ChatGPT+Gemini team invocation. One lane failing or completing does not restart its sibling.
+Each lane is a full agent-team invocation over the same ordered backing member accounts. One lane failing or completing does not restart its sibling.
 
 The account scheduler may serialize turns that use the same authenticated account. This is intentionally separate from workflow-lane concurrency; workflow adds no A-then-B mutex.
 
@@ -179,7 +195,35 @@ bounded completed-turn text
 
 Stages include `prepare_prompt`, `provider_turn`, `synthesis`, and `complete`; the trace also records team-level attempt markers.
 
-The trace is deliberately separate from compact job JSON. It is private, bounded, and used by workflow status to show the exact latest turn/failure without dumping full payloads into Local progress context.
+The trace is deliberately separate from compact job JSON. It is private and bounded. Operator projection maps backing accounts to `Member 1..N` for normal status/watch output while preserving raw account/provider only for explicit diagnostic attribution.
+
+## Status/watch projection
+
+`WorkflowOperator.status()` combines compact durable job state with team trace evidence in two layers.
+
+Pipeline summary:
+
+```text
+Pipeline
+  Research  Team A=running · Team B=completed
+  Writer    waiting for research
+  Review    Team A=pending · Team B=pending
+  PR        not created
+```
+
+Team detail:
+
+```text
+Team A — FAILED (attempt 1)
+  Step: round 2 · Member 2 · provider turn · FAILED · provider_error
+  Members: Member 1=completed round 2 · Member 2=failed round 2
+  Error: provider_error · retryable
+  Diagnostic: chatgpt-thinker-2 · chatgpt-web
+```
+
+Normal progress never needs provider identity. `Diagnostic` exists so a provider/account-specific incident remains identifiable when a failure occurs.
+
+Live `TEAM_PROGRESS` event messages use the same conceptual shape: phase, Team A/B, attempt, round, Member N, stage, status. Failed events additionally include backing source account/provider and the bounded failure message.
 
 ## Exact handoffs
 
@@ -195,11 +239,11 @@ After both research handoffs are acknowledged, the stable `chatgpt-writer` conve
 
 The writer verifies repository/base, inspects code, implements and validates the requested change, uses the deterministic workflow branch, reconciles an existing exact matching open PR before creating a new one, and never merges during implementation.
 
-Successful output becomes a durable PR receipt bound to repository, PR number/URL, base, head branch, and exact head SHA.
+`chatgpt-writer` is deliberately not a team member. Successful output becomes a durable PR receipt bound to repository, PR number/URL, base, head branch, and exact head SHA.
 
 ## Exact-head review and remediation
 
-Review A/B inspect the actual PR at the exact persisted head SHA. The workflow review prompt strategy keeps the strict output contract authoritative.
+Review Team A/B inspect the actual PR at the exact persisted head SHA. The workflow review prompt strategy keeps the strict output contract authoritative.
 
 Each final result must contain:
 
@@ -222,13 +266,11 @@ PROGRESS
 ACTION_REQUIRED
 ```
 
-Team progress is persisted to trace first and then published as compact phase/lane/attempt/round/account/stage metadata. Full model payloads are not injected into Local progress context.
+Team progress is persisted to trace first and then published as compact phase/team/attempt/round/member/stage metadata. Full model payloads are not injected into Local progress context.
 
 Notification failure cannot roll back durable workflow correctness.
 
 ## Status, stop, and explicit recovery
-
-`WorkflowOperator.status()` combines compact durable job state with the latest trace event for each lane, plus writer, PR/head, review cycle, CI/health, pending action, and update time.
 
 `WorkflowOperator.stop()` delegates to `WorkflowDriver.cancel()`, which aborts active work, waits for settlement, then persists terminal `CANCELLED`. Cancelled jobs are not rediscovered as runnable after restart.
 
@@ -242,7 +284,7 @@ Safe restart discovery resumes runnable durable states but does not wake termina
 
 ## PR health, merge authorization, and execution
 
-After Review A/B both pass the same exact head, the writer performs read-only `CHECK_PR_HEALTH` and persists an exact-head receipt classified as:
+After Review Team A/B both pass the same exact head, the writer performs read-only `CHECK_PR_HEALTH` and persists an exact-head receipt classified as:
 
 ```text
 PASS | FAIL | PENDING | NONE | UNKNOWN
