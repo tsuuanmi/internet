@@ -5,30 +5,42 @@ import {
 	accountHasCapability,
 	accountsForProvider,
 	accountsWithCapabilities,
+	DEFAULT_TEAM_ACCOUNTS,
 	getAccountDefinition,
 	isAccountId,
 } from "#internet/core/accounts";
 
 describe("account identity catalog", () => {
-	it("defines the three initial semantic account ids", () => {
-		expect(ACCOUNT_IDS).toEqual(["chatgpt-thinker", "chatgpt-writer", "gemini-thinker"]);
+	it("defines stable account ids and appends the second thinker without shifting existing identities", () => {
+		expect(ACCOUNT_IDS).toEqual([
+			"chatgpt-thinker",
+			"chatgpt-writer",
+			"gemini-thinker",
+			"chatgpt-thinker-2",
+		]);
+		expect(DEFAULT_TEAM_ACCOUNTS).toEqual(["chatgpt-thinker", "chatgpt-thinker-2"]);
 	});
 
 	it("keeps provider identity separate from account identity", () => {
 		expect(getAccountDefinition("chatgpt-thinker").provider).toBe("chatgpt-web");
+		expect(getAccountDefinition("chatgpt-thinker-2").provider).toBe("chatgpt-web");
 		expect(getAccountDefinition("chatgpt-writer").provider).toBe("chatgpt-web");
 		expect(getAccountDefinition("gemini-thinker").provider).toBe("gemini-web");
 		expect(accountsForProvider("chatgpt-web").map((account) => account.accountId)).toEqual([
 			"chatgpt-thinker",
 			"chatgpt-writer",
+			"chatgpt-thinker-2",
 		]);
 	});
 
 	it("assigns distinct thinker and writer authority", () => {
 		expect(ACCOUNTS["chatgpt-thinker"].role).toBe("thinker");
+		expect(ACCOUNTS["chatgpt-thinker-2"].role).toBe("thinker");
 		expect(ACCOUNTS["chatgpt-writer"].role).toBe("writer");
 		expect(accountHasCapability("chatgpt-thinker", "team.synthesize")).toBe(true);
+		expect(accountHasCapability("chatgpt-thinker-2", "team.synthesize")).toBe(true);
 		expect(accountHasCapability("chatgpt-thinker", "github.write")).toBe(false);
+		expect(accountHasCapability("chatgpt-thinker-2", "github.write")).toBe(false);
 		expect(accountHasCapability("chatgpt-writer", "github.write")).toBe(true);
 		expect(accountHasCapability("chatgpt-writer", "github.merge")).toBe(true);
 	});
@@ -37,6 +49,7 @@ describe("account identity catalog", () => {
 		expect(accountsWithCapabilities(["team.reason", "team.review"]).map((account) => account.accountId)).toEqual([
 			"chatgpt-thinker",
 			"gemini-thinker",
+			"chatgpt-thinker-2",
 		]);
 		expect(
 			accountsWithCapabilities(["github.write", "github.pull_request"]).map((account) => account.accountId),
@@ -45,6 +58,7 @@ describe("account identity catalog", () => {
 
 	it("validates semantic account ids", () => {
 		expect(isAccountId("chatgpt-thinker")).toBe(true);
+		expect(isAccountId("chatgpt-thinker-2")).toBe(true);
 		expect(isAccountId("chatgpt-web")).toBe(false);
 		expect(isAccountId("unknown")).toBe(false);
 	});
