@@ -39,14 +39,14 @@ jobs:
               ],
               "docs/WORKFLOW-HARDENING.md": [
                   (
-                      "Same-account provider turns may still serialize through the account scheduler according to `maxConcurrentTurnsPerAccount`. That safety policy is intentionally separate from workflow-lane concurrency; the workflow adds no A-then-B mutex.",
-                      "The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so Team A and Team B may execute different session IDs concurrently on the same authenticated account. Each native session remains strictly ordered, and work above the configured capacity queues. This account policy is separate from workflow-lane concurrency; the workflow adds no A-then-B mutex.",
+                      "Same-account turns may serialize through `maxConcurrentTurnsPerAccount`. That account safety policy is separate from workflow-lane concurrency; workflow adds no A-then-B mutex.",
+                      "The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so Team A and Team B may execute different session IDs concurrently on the same authenticated account. Each native session remains strictly ordered, and work above the configured capacity queues. This account policy is separate from workflow-lane concurrency; workflow adds no A-then-B mutex.",
                   ),
               ],
               "docs/WORKFLOW-ENGINE.md": [
                   (
-                      "Research A/B are started logically together. Each prompt contains exact objective, repository/base authority, lane role and output contract. Same-account Website turns may serialize through the account scheduler while different accounts remain independent.",
-                      "Research A/B are started together. Each prompt contains exact objective, repository/base authority, lane role and output contract. The default account scheduler capacity is 2, so the A/B session IDs may execute concurrently even when they use the same authenticated account; turns within one session remain strictly ordered.",
+                      "Same-account Website turns may serialize through the account scheduler according to `maxConcurrentTurnsPerAccount`. That does not change workflow-level lane concurrency.",
+                      "The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so Team A and Team B may execute different session IDs concurrently on the same authenticated account. Each session remains strictly ordered; work above the configured capacity queues. This does not change workflow-level lane independence.",
                   ),
               ],
               "docs/TODO.md": [
@@ -70,7 +70,6 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - run: git diff --exit-code -- dist || true
       - run: npm run verify-package
       - name: Commit generated dist and review fixes
         run: |
