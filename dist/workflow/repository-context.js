@@ -90,7 +90,7 @@ export function normalizeRepositoryUrl(remote) {
     const path = normalizedPath(parsed.pathname);
     return path === undefined ? undefined : `https://${parsed.hostname.toLowerCase()}/${path}`;
 }
-/** Resolve a session worktree to one public upstream repository and exact local HEAD. */
+/** Resolve a session worktree to one public upstream repository and fresh upstream main HEAD. */
 export async function resolveWorkflowRepository(cwd, signal, runGit = runGitCommand, source = "/workflow") {
     try {
         await runGit(cwd, ["rev-parse", "--show-toplevel"], signal);
