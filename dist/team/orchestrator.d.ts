@@ -1,67 +1,58 @@
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import type { AccountId } from "#internet/core/accounts";
-import type { WebProvider } from "#internet/core/config";
-/** One completed contribution in a team debate. */
-export interface TeamTurn {
-    round: number;
-    accountId: AccountId;
-    provider: WebProvider;
-    text: string;
-}
-/** A teammate's latest message, shown to the current speaker. */
-export interface OtherContribution {
-    accountId: AccountId;
-    provider: WebProvider;
-    text: string;
-}
+import { getAccountDefinition } from "#internet/core/accounts";
+import { type TeamPromptStrategyId } from "#internet/team/prompt-strategy";
+import type { OtherContribution, TeamFailureDetail, TeamProgressEvent, TeamTurn } from "#internet/team/types";
+export type { TeamPromptStrategyId } from "#internet/team/prompt-strategy";
+export type { OtherContribution, TeamFailureDetail, TeamProgressEvent, TeamStage, TeamTurn, } from "#internet/team/types";
 /** Successful result of a team debate. */
 export interface TeamSuccess {
-    finalAnswer: string;
-    finalAccountId: AccountId;
-    finalProvider: WebProvider;
+    readonly finalAnswer: string;
+    readonly finalAccountId: AccountId;
+    readonly finalProvider: ReturnType<typeof getAccountDefinition>["provider"];
     /** Completed debate turns for this invocation; synthesis is not included. */
-    transcript: readonly TeamTurn[];
+    readonly transcript: readonly TeamTurn[];
 }
-/** Failed result of a team debate, retaining completed turns for optional audit output. */
+/** Failed result of a team debate, retaining completed turns for audit/diagnostics. */
 export interface TeamFailure {
-    error: {
-        accountId: AccountId;
-        provider: WebProvider;
-        message: string;
-    };
-    transcript: readonly TeamTurn[];
+    readonly error: TeamFailureDetail;
+    readonly transcript: readonly TeamTurn[];
 }
-/** Result of a team debate: a final answer or a failure with completed turns. */
 export type TeamResult = TeamSuccess | TeamFailure;
+export type TeamProgressObserver = (event: TeamProgressEvent) => void;
 /** Options for {@link runTeam}. */
 export interface TeamOptions {
-    task: string;
+    readonly task: string;
     /** Exact durable conversation owner key used for every account in this team lane. */
-    sessionId: string;
+    readonly sessionId: string;
     /** Number of debate rounds (each account speaks once per round). */
-    rounds?: number;
+    readonly rounds?: number;
     /** Whether to append a final synthesis turn. */
-    synthesize?: boolean;
+    readonly synthesize?: boolean;
     /** Account that performs the final synthesis, independent of speaking order. */
-    synthesizer?: AccountId;
+    readonly synthesizer?: AccountId;
     /** Ordered reasoning accounts; the first opens the debate. */
-    accounts?: readonly AccountId[];
+    readonly accounts?: readonly AccountId[];
+    /** Prompt composition purpose. The execution engine remains shared. */
+    readonly promptStrategy?: TeamPromptStrategyId;
     /** Show automated account browsers on the user-managed display. */
-    visible?: boolean;
-    signal?: AbortSignal;
+    readonly visible?: boolean;
+    readonly signal?: AbortSignal;
+    /** Best-effort structured lifecycle observer; observer failure never changes team correctness. */
+    readonly onProgress?: TeamProgressObserver;
 }
 /** A single-turn chat function, injected so the loop is unit-testable. */
 export type ChatFn = (accountId: AccountId, request: ChatRequest) => Promise<ChatResult>;
-/** Join display names with an Oxford comma: "A", "A and B", "A, B, and C". */
+/** Join display names with an Oxford comma. Retained as a small public utility. */
 export declare function joinNames(names: readonly string[]): string;
-/** Compose the prompt for one debate turn. */
+/** Compose the default generic prompt for one debate turn. */
 export declare function composeTurnPrompt(task: string, accountId: AccountId, others: readonly OtherContribution[], round: number): string;
-/** Compose the final synthesis prompt from the full debate transcript. */
+/** Compose the default generic final synthesis prompt. */
 export declare function composeSynthesisPrompt(task: string, transcript: readonly TeamTurn[]): string;
 /**
  * Run a multi-model debate using an exact durable conversation-session key.
- * Callers own namespace construction; this primitive does not append hidden
- * provider/tool-specific suffixes.
+ * Callers own namespace construction; this primitive owns the single authoritative
+ * round/synthesis loop and emits structured progress for optional durable observers.
  */
 export declare function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamResult>;
 //# sourceMappingURL=orchestrator.d.ts.map

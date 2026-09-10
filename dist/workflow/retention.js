@@ -56,6 +56,13 @@ function parseCompletedAudit(value) {
         return undefined;
     return value;
 }
+function assertPrivateRegularFile(path, label) {
+    const file = lstatSync(path);
+    if (!file.isFile())
+        throw new WorkflowRetentionError(`${label} is not a regular file`);
+    if (process.platform !== "win32" && (file.mode & 0o077) !== 0)
+        throw new WorkflowRetentionError(`${label} permissions must be 0600`);
+}
 /** Explicit operator-only retention manager. It never schedules or performs automatic deletion. */
 export class WorkflowRetentionManager {
     constructor(dataDir, jobs, policy = DEFAULT_WORKFLOW_RETENTION_POLICY, now = () => new Date()) {
@@ -65,6 +72,7 @@ export class WorkflowRetentionManager {
         this.now = now;
         this.auditDir = join(dataDir, "workflows", "cleanup-audit");
         this.handoffRoot = join(dataDir, "workflows", "handoffs");
+        this.traceRoot = join(dataDir, "workflows", "team-traces");
     }
     preview() {
         const nowMs = this.now().getTime();
@@ -123,12 +131,7 @@ export class WorkflowRetentionManager {
                 for (const name of names) {
                     if (!/^[0-9a-f]{64}\.json$/u.test(name))
                         throw new WorkflowRetentionError(`unexpected file in workflow handoff directory: ${name}`);
-                    const path = join(jobHandoffDir, name);
-                    const file = lstatSync(path);
-                    if (!file.isFile())
-                        throw new WorkflowRetentionError(`handoff cleanup target is not a regular file: ${name}`);
-                    if (process.platform !== "win32" && (file.mode & 0o077) !== 0)
-                        throw new WorkflowRetentionError(`handoff cleanup target permissions must be 0600: ${name}`);
+                    assertPrivateRegularFile(join(jobHandoffDir, name), `handoff cleanup target ${name}`);
                 }
                 for (const name of names) {
                     unlinkSync(join(jobHandoffDir, name));
@@ -136,12 +139,13 @@ export class WorkflowRetentionManager {
                 }
                 rmdirSync(jobHandoffDir);
             }
+            const tracePath = join(this.traceRoot, `${job.jobId}.json`);
+            if (existsSync(tracePath)) {
+                assertPrivateRegularFile(tracePath, "workflow team trace cleanup target");
+                unlinkSync(tracePath);
+            }
             const jobPath = this.jobs.pathFor(job.jobId);
-            const jobFile = lstatSync(jobPath);
-            if (!jobFile.isFile())
-                throw new WorkflowRetentionError("workflow cleanup target is not a regular job file");
-            if (process.platform !== "win32" && (jobFile.mode & 0o077) !== 0)
-                throw new WorkflowRetentionError("workflow cleanup target permissions must be 0600");
+            assertPrivateRegularFile(jobPath, "workflow cleanup target");
             unlinkSync(jobPath);
             const completed = {
                 ...base,
