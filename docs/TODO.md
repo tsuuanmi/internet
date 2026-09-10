@@ -58,25 +58,31 @@ This file is a closure boundary, not an instruction to keep adding numbered phas
 
 The concrete failure cases observed in real workflows justify implementing [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md). This is accepted work, not yet current runtime behavior.
 
-- ☐ Represent workflow work as durable executable nodes with explicit dependency edges.
+- ☐ Represent workflow work as durable executable nodes with explicit dependency edges and deterministic graph expansion.
 - ☐ Derive `READY` work from graph dependencies instead of replaying a team/round procedurally.
 - ☐ Persist stable logical node IDs separately from concrete execution-attempt IDs.
-- ☐ Preserve `COMPLETED` nodes unless an input dependency is explicitly invalidated.
+- ☐ Bind completed node results to exact correctness-bearing inputs so stale research/review/PR-head evidence cannot be reused.
+- ☐ Preserve `COMPLETED` nodes only while their exact input receipt still matches.
 - ☐ Retry/recover only the smallest failed or orphaned node, including individual member turns and synthesis.
-- ☐ Add execution fencing so stale late provider results cannot commit after a retry begins.
-- ☐ Reconcile durable `RUNNING`/`WAITING_USER`/`RECOVERING` nodes with live executions on restart and `/workflow continue`.
-- ☐ Introduce an append-only meaningful event journal and derive operator state from graph + execution projections.
-- ☐ Separate node state, execution state, and provider/browser state.
-- ☐ Replace one fixed 300-second completion timeout with meaningful-progress leases plus mode-aware stall/hard limits.
-- ☐ Do not let a static thinking indicator refresh progress indefinitely.
-- ☐ Add explicit `WAITING_USER` handling for permission/consent/OTP/2FA/CAPTCHA/login-confirmation style boundaries.
-- ☐ Suspend normal provider timeout and retry-budget consumption while a valid live execution waits for user action.
-- ☐ Prevent `/workflow continue` from duplicating a live `WAITING_USER` execution.
+- ☐ Refactor the existing shared team core into reusable deterministic plan/step primitives rather than creating a workflow-only duplicate debate loop.
+- ☐ Add execution ownership leases and fencing so stale late provider results cannot commit after a retry/recovery begins.
+- ☐ Reconcile durable `RUNNING`/`WAITING_USER`/`RECOVERING` nodes with valid execution ownership on restart and `/workflow continue`.
+- ☐ Reconcile uncertain provider responses and Writer external effects before resubmitting work; retain existing deterministic branch/one-PR idempotency.
+- ☐ Keep the durable graph/job snapshot authoritative and use an append-only ordered event journal for diagnostics/observability, not as a competing replay-only source of truth.
+- ☐ Separate workflow phase/lifecycle, logical node state, execution state, and provider/browser state.
+- ☐ Replace one fixed 300-second completion timeout with meaningful-progress leases plus mode-aware stall/hard limits, separate from execution ownership leases.
+- ☐ Do not let a static thinking indicator or unrelated DOM churn refresh progress indefinitely.
+- ☐ Preserve the existing scoped Website approval policy: recognized scope-valid eligible Writer confirmations remain auto-approved; only ambiguous/out-of-scope/user-owned or genuinely resumable interactions become action-required/`WAITING_USER` boundaries.
+- ☐ Support resumable user interaction for OTP/2FA/CAPTCHA/selected consent or confirmation cases without consuming normal provider retry budget while the live execution remains valid.
+- ☐ Prevent `/workflow continue` from duplicating a valid live `WAITING_USER` execution.
 - ☐ Classify deterministic browser-automation defects such as `InvalidSelectorError`/`AUTOMATION_BUG` separately from provider failures and do not loop them through automatic provider retries.
-- ☐ Rebuild `/workflow status|watch` as explainable graph projections: active execution, provider activity, blocked dependencies, recovery action, recent meaningful events, and next transition.
-- ☐ Remove stale projection states such as `Writer: waiting for research` after research is complete and Writer has already started/failed.
-- ☐ Supplement coarse `driver active` output with actual scheduler/execution health.
-- ☐ Add acceptance tests for later-member failure, orphaned synthesis, valid long thinking, stalled provider, permission waits, deterministic selector errors, live-wait continue, and restart recovery.
+- ☐ Preserve exact-head review/remediation/health/merge authority through review-cycle/head-specific graph inputs and nodes.
+- ☐ Rebuild `/workflow status|watch` as explainable graph projections: phase/lifecycle, active execution, provider activity, blocked dependencies, recovery/action reason, recent meaningful events, and next transition.
+- ☐ Remove stale projection states such as `Writer: waiting for research` after research is complete and Writer has already started/failed/recovered.
+- ☐ Supplement coarse `driver active` output with actual scheduler/execution health and orphan detection.
+- ☐ Preserve Research A/B and Review A/B workflow-level concurrency; account scheduling remains the only same-account capacity gate.
+- ☐ Do not introduce degraded one-team/quorum completion without a separate explicit product contract.
+- ☐ Add acceptance tests for later-member failure, orphaned synthesis, valid long thinking, stalled provider, eligible auto-approval, ambiguous confirmation/user wait, deterministic selector errors, uncertain provider completion, Writer external-action reconciliation, review-head invalidation, lane concurrency, restart recovery, and status consistency.
 - ☐ Remove obsolete coarse team/lane replay/retry paths once the graph scheduler is authoritative; do not preserve parallel legacy execution engines.
 
 ### Observed cases this work must solve
@@ -84,26 +90,29 @@ The concrete failure cases observed in real workflows justify implementing [`WOR
 ```text
 1. Team B fails at a later member/round
    -> current retry may replay more of Team B than necessary
-   -> desired: retry only that member node
+   -> desired: recover only that member node
 
-2. Team B synthesis is durable STARTED but no provider session remains
-   -> desired: mark execution orphaned and retry synthesis only
+2. Team B synthesis is durable STARTED but no valid execution remains
+   -> desired: mark execution orphaned/fenced and recover synthesis only
 
-3. Writer legitimately waits longer than 300000ms
+3. Writer legitimately runs longer than 300000ms
    -> current runtime reports a generic provider timeout
-   -> desired: distinguish meaningful thinking/progress from an actual stall
+   -> desired: distinguish meaningful progress from an actual stall
 
-4. Writer waits on GitHub permission
-   -> current runtime can time out instead of explaining that user action is required
-   -> desired: WAITING_USER with live-session/action projection
+4. Writer presents a GitHub confirmation
+   -> recognized scope-valid eligible implementation actions should continue through existing auto-approval
+   -> ambiguous/out-of-scope/user-owned interactions should become explicit action-required state rather than generic timeout
 
 5. Browser confirmation detection throws InvalidSelectorError
-   -> retrying the writer unchanged cannot repair deterministic selector syntax
-   -> desired: AUTOMATION_BUG/INVALID_SELECTOR surfaced directly
+   -> retrying the Writer unchanged cannot repair deterministic selector syntax
+   -> desired: AUTOMATION_BUG/INVALID_SELECTOR surfaced directly, without repeated provider retries
 
 6. FAILED_RETRYABLE status can still render Writer as "waiting for research"
    even though both research lanes are complete
    -> desired: graph-derived state with no stale child projection
+
+7. A timed-out provider/Writer execution may have completed or caused an external side effect after Local lost the result
+   -> desired: reconcile provider conversation and deterministic branch/PR receipts before resubmitting
 ```
 
 ## Current operator surface
@@ -158,6 +167,7 @@ Writer   -> chatgpt-writer
 - automatic task detection instead of explicit `/workflow`;
 - Website cross-conversation/project memory as workflow correctness state;
 - generic user-defined arbitrary DAG workflow language beyond the internal workflow dependency graph;
+- degraded one-team/reviewer quorum modes;
 - many writer accounts / automatic pooling;
 - sophisticated artifact database;
 - autonomous production deployment;
