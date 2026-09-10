@@ -14,6 +14,7 @@ const LOOPBACK = "127.0.0.1";
 const STARTUP_TIMEOUT_MS = 5_000;
 const VNC_SHUTDOWN_TIMEOUT_MS = 2_000;
 const CHROME_SHUTDOWN_TIMEOUT_MS = 10_000;
+const SUCCESS_CLOSE_GRACE_MS = 1_000;
 const SETTLED_GRACE_MS = 15_000;
 const MAX_DIAGNOSTIC_CHARS = 4_096;
 function childRunning(child) {
@@ -173,7 +174,7 @@ export class RemoteLoginSession {
         }
         finally {
             this.clearTimeout();
-            this.scheduleClose();
+            this.scheduleClose(this.state === "complete" ? SUCCESS_CLOSE_GRACE_MS : SETTLED_GRACE_MS);
         }
     }
     async cancel(message = "Remote login cancelled.") {
@@ -340,16 +341,16 @@ export class RemoteLoginSession {
             return;
         }
         if (request.method === "GET" && request.url === `${base}/status`) {
-            response.setHeader("Content-Type", "application/json; charset=utf-8");
-            response.end(JSON.stringify(this.status()));
+            void this.respondWithStatus(response);
             return;
         }
         if (request.method === "POST" && request.url === `${base}/save`) {
-            response
-                .writeHead(this.state === "waiting" ? 202 : 409)
-                .end(this.state === "waiting" ? "Accepted" : "Not waiting");
-            if (this.state === "waiting")
-                void this.requestSave();
+            if (this.state !== "waiting") {
+                response.writeHead(409).end("Not waiting");
+                return;
+            }
+            const finalization = this.requestSave();
+            void this.respondToSave(response, finalization);
             return;
         }
         if (request.method === "POST" && request.url === `${base}/cancel`) {
@@ -361,6 +362,41 @@ export class RemoteLoginSession {
             return;
         }
         response.writeHead(404).end("Not found");
+    }
+    async respondToSave(response, finalization) {
+        await finalization;
+        if (response.destroyed || response.writableEnded)
+            return;
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.setHeader("Connection", "close");
+        response.writeHead(200);
+        response.end(JSON.stringify(this.status()));
+    }
+    async respondWithStatus(response) {
+        const remote = this.status();
+        if (response.destroyed || response.writableEnded)
+            return;
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        if (remote.state !== "complete") {
+            response.end(JSON.stringify(remote));
+            return;
+        }
+        await new Promise((resolve) => {
+            let settled = false;
+            const finish = () => {
+                if (settled)
+                    return;
+                settled = true;
+                response.off("finish", finish);
+                response.off("close", finish);
+                resolve();
+            };
+            response.once("finish", finish);
+            response.once("close", finish);
+            response.setHeader("Connection", "close");
+            response.end(JSON.stringify(remote));
+        });
+        await this.dispose();
     }
     authorized(request, requireOrigin = false) {
         if (Object.keys(request.headers).some((name) => name.startsWith("x-forwarded-")))
@@ -449,10 +485,10 @@ export class RemoteLoginSession {
         await waitForExit(child, VNC_SHUTDOWN_TIMEOUT_MS);
         return false;
     }
-    scheduleClose() {
+    scheduleClose(delayMs = SETTLED_GRACE_MS) {
         if (this.closeTimer !== undefined)
             return;
-        this.closeTimer = setTimeout(() => void this.dispose(), SETTLED_GRACE_MS);
+        this.closeTimer = setTimeout(() => void this.dispose(), delayMs);
         this.closeTimer.unref();
     }
     clearTimeout() {

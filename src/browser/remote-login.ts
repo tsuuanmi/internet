@@ -17,6 +17,7 @@ const LOOPBACK = "127.0.0.1";
 const STARTUP_TIMEOUT_MS = 5_000;
 const VNC_SHUTDOWN_TIMEOUT_MS = 2_000;
 const CHROME_SHUTDOWN_TIMEOUT_MS = 10_000;
+const SUCCESS_CLOSE_GRACE_MS = 1_000;
 const SETTLED_GRACE_MS = 15_000;
 const MAX_DIAGNOSTIC_CHARS = 4_096;
 
@@ -228,7 +229,7 @@ export class RemoteLoginSession {
 			this.message = error instanceof Error ? error.message : "Remote login finalization failed.";
 		} finally {
 			this.clearTimeout();
-			this.scheduleClose();
+			this.scheduleClose(this.state === "complete" ? SUCCESS_CLOSE_GRACE_MS : SETTLED_GRACE_MS);
 		}
 	}
 
@@ -405,15 +406,16 @@ export class RemoteLoginSession {
 			return;
 		}
 		if (request.method === "GET" && request.url === `${base}/status`) {
-			response.setHeader("Content-Type", "application/json; charset=utf-8");
-			response.end(JSON.stringify(this.status()));
+			void this.respondWithStatus(response);
 			return;
 		}
 		if (request.method === "POST" && request.url === `${base}/save`) {
-			response
-				.writeHead(this.state === "waiting" ? 202 : 409)
-				.end(this.state === "waiting" ? "Accepted" : "Not waiting");
-			if (this.state === "waiting") void this.requestSave();
+			if (this.state !== "waiting") {
+				response.writeHead(409).end("Not waiting");
+				return;
+			}
+			const finalization = this.requestSave();
+			void this.respondToSave(response, finalization);
 			return;
 		}
 		if (request.method === "POST" && request.url === `${base}/cancel`) {
@@ -424,6 +426,40 @@ export class RemoteLoginSession {
 			return;
 		}
 		response.writeHead(404).end("Not found");
+	}
+
+	private async respondToSave(response: ServerResponse, finalization: Promise<void>): Promise<void> {
+		await finalization;
+		if (response.destroyed || response.writableEnded) return;
+		response.setHeader("Content-Type", "application/json; charset=utf-8");
+		response.setHeader("Connection", "close");
+		response.writeHead(200);
+		response.end(JSON.stringify(this.status()));
+	}
+
+	private async respondWithStatus(response: ServerResponse): Promise<void> {
+		const remote = this.status();
+		if (response.destroyed || response.writableEnded) return;
+		response.setHeader("Content-Type", "application/json; charset=utf-8");
+		if (remote.state !== "complete") {
+			response.end(JSON.stringify(remote));
+			return;
+		}
+		await new Promise<void>((resolve) => {
+			let settled = false;
+			const finish = (): void => {
+				if (settled) return;
+				settled = true;
+				response.off("finish", finish);
+				response.off("close", finish);
+				resolve();
+			};
+			response.once("finish", finish);
+			response.once("close", finish);
+			response.setHeader("Connection", "close");
+			response.end(JSON.stringify(remote));
+		});
+		await this.dispose();
 	}
 
 	private authorized(request: IncomingMessage, requireOrigin = false): boolean {
@@ -516,9 +552,9 @@ export class RemoteLoginSession {
 		return false;
 	}
 
-	private scheduleClose(): void {
+	private scheduleClose(delayMs = SETTLED_GRACE_MS): void {
 		if (this.closeTimer !== undefined) return;
-		this.closeTimer = setTimeout(() => void this.dispose(), SETTLED_GRACE_MS);
+		this.closeTimer = setTimeout(() => void this.dispose(), delayMs);
 		this.closeTimer.unref();
 	}
 
