@@ -3,12 +3,7 @@ import type { defineTool } from "@deepseek-ai/dsh-tools";
 import { BrowserManager } from "#internet/browser/runtime";
 import { defineInternetCommand } from "#internet/commands/internet";
 import { defineWorkflowCommand } from "#internet/commands/workflow";
-import {
-	ACCOUNT_IDS,
-	type AccountId,
-	DEFAULT_TEAM_ACCOUNTS,
-	getAccountDefinition,
-} from "#internet/core/accounts";
+import { ACCOUNT_IDS, type AccountId, DEFAULT_TEAM_ACCOUNTS, getAccountDefinition } from "#internet/core/accounts";
 import { resolveBrowserConfig } from "#internet/core/config";
 import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
 import { defineInternetChatTool } from "#internet/tools/internet-chat";

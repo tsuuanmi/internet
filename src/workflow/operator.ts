@@ -77,15 +77,18 @@ function traceForRun(
 	phase: "research" | "review",
 	run: WorkflowTeamRun,
 ): readonly WorkflowTeamTraceEvent[] {
-	return trace.filter(
-		(event) => event.phase === phase && event.lane === run.lane && event.attempt === run.attempts,
-	);
+	return trace.filter((event) => event.phase === phase && event.lane === run.lane && event.attempt === run.attempts);
 }
 
 function latestMeaningfulEvent(events: readonly WorkflowTeamTraceEvent[]): WorkflowTeamTraceEvent | undefined {
 	for (let index = events.length - 1; index >= 0; index--) {
 		const event = events[index];
-		if (event !== undefined && event.stage !== "team" && event.stage !== "complete" && event.stage !== "prepare_prompt") {
+		if (
+			event !== undefined &&
+			event.stage !== "team" &&
+			event.stage !== "complete" &&
+			event.stage !== "prepare_prompt"
+		) {
 			return event;
 		}
 	}
@@ -106,9 +109,7 @@ function describeEvent(job: WorkflowJob, event: WorkflowTeamTraceEvent | undefin
 
 function formatMemberProgress(job: WorkflowJob, events: readonly WorkflowTeamTraceEvent[]): string | undefined {
 	const summaries = job.accountRouting.thinkerAccounts.map((accountId, index) => {
-		const accountEvents = events.filter(
-			(event) => event.accountId === accountId && event.stage === "provider_turn",
-		);
+		const accountEvents = events.filter((event) => event.accountId === accountId && event.stage === "provider_turn");
 		const latest = accountEvents[accountEvents.length - 1];
 		if (latest === undefined) return `Member ${index + 1}=waiting`;
 		const round = latest.round === undefined ? "" : ` round ${latest.round}`;
@@ -142,7 +143,9 @@ function formatTeam(
 		lines.push(`  Error: ${kind}${retry}`);
 		if (message !== undefined && message.trim() !== "") lines.push(`    ${compact(message, 220)}`);
 		if (latest?.accountId !== undefined || latest?.provider !== undefined) {
-			lines.push(`  Diagnostic: ${latest.accountId ?? "unknown-account"} · ${latest.provider ?? "unknown-provider"}`);
+			lines.push(
+				`  Diagnostic: ${latest.accountId ?? "unknown-account"} · ${latest.provider ?? "unknown-provider"}`,
+			);
 		}
 	} else if (run.status === "completed") {
 		lines.push(`  Result: ${phase === "research" ? "ready for handoff" : "review result ready"}`);
@@ -174,7 +177,11 @@ function currentStep(job: WorkflowJob): string {
 }
 
 function writerStatus(job: WorkflowJob): string {
-	if (job.state === "CREATED" || job.state.startsWith("RESEARCH") || (job.state === "FAILED_RETRYABLE" && job.pullRequest === undefined)) {
+	if (
+		job.state === "CREATED" ||
+		job.state.startsWith("RESEARCH") ||
+		(job.state === "FAILED_RETRYABLE" && job.pullRequest === undefined)
+	) {
 		return "waiting for research";
 	}
 	if (job.state.startsWith("WRITER")) return "running";
@@ -281,7 +288,8 @@ export class WorkflowOperator {
 		const trace = this.traces.list(selected.jobId);
 		const latest = latestMeaningfulEvent(trace);
 		const cancelled = await this.driver.cancel(selected.jobId);
-		const stoppedAt = latest === undefined ? "unknown current operation" : (describeEvent(selected, latest) ?? latest.stage);
+		const stoppedAt =
+			latest === undefined ? "unknown current operation" : (describeEvent(selected, latest) ?? latest.stage);
 		return `Workflow ${cancelled.jobId} cancelled.\nStopped at: ${stoppedAt}\nState: ${cancelled.state}`;
 	}
 

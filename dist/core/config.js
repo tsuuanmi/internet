@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import S from "@deepseek-ai/schemastery";
-import { ACCOUNT_IDS, accountHasCapability } from "#internet/core/accounts";
+import { ACCOUNT_IDS, accountHasCapability, DEFAULT_TEAM_SYNTHESIZER } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 /** Known provider ids, used for provider implementation dispatch. */
 export const WEB_PROVIDERS = ["chatgpt-web", "gemini-web"];
@@ -27,7 +27,7 @@ export const DEFAULT_CONFIG = {
     teamMaxRounds: 4,
     teamTranscriptMaxChars: 50_000,
     teamSynthesis: true,
-    teamSynthesizer: "chatgpt-thinker",
+    teamSynthesizer: DEFAULT_TEAM_SYNTHESIZER,
     enableChatgpt: true,
     enableGemini: true,
     chatgptThinkingLevel: "high",

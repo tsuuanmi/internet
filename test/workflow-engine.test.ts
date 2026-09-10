@@ -70,7 +70,7 @@ describe("WorkflowEngine", () => {
 	it("runs research lanes logically concurrently and passes the same ordered member routing to both", async () => {
 		const pending = new Map<string, () => void>();
 		const started: string[] = [];
-		const routing: Array<readonly AccountId[]> = [];
+		const routing: Array<readonly string[]> = [];
 		const runner: WorkflowTeamRunner = {
 			run: (request: WorkflowTeamRunRequest) => {
 				started.push(request.sessionId);

@@ -1,9 +1,7 @@
-import { getAccountDefinition } from "#internet/core/accounts";
+import { DEFAULT_TEAM_ACCOUNTS, DEFAULT_TEAM_SYNTHESIZER, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError, isInternetError } from "#internet/core/errors";
 import { getTeamPromptStrategy } from "#internet/team/prompt-strategy";
 const DEFAULT_ROUNDS = 2;
-const DEFAULT_ACCOUNTS = ["chatgpt-thinker", "gemini-thinker"];
-const DEFAULT_SYNTHESIZER = "chatgpt-thinker";
 const DEFAULT_PROMPT_STRATEGY = "generic-debate";
 /** Join display names with an Oxford comma. Retained as a small public utility. */
 export function joinNames(names) {
@@ -57,23 +55,23 @@ function failureDetail(error, accountId, stage, round) {
     };
 }
 /** Compose the default generic prompt for one debate turn. */
-export function composeTurnPrompt(task, accountId, others, round) {
-    return getTeamPromptStrategy("generic-debate").turn({ task, accountId, others, round });
+export function composeTurnPrompt(task, accountId, others, round, members = [accountId, ...others.map((other) => other.accountId)]) {
+    return getTeamPromptStrategy("generic-debate").turn({ task, accountId, members, others, round });
 }
 /** Compose the default generic final synthesis prompt. */
-export function composeSynthesisPrompt(task, transcript) {
-    return getTeamPromptStrategy("generic-debate").synthesis({ task, transcript });
+export function composeSynthesisPrompt(task, transcript, members = [...new Set(transcript.map((turn) => turn.accountId))]) {
+    return getTeamPromptStrategy("generic-debate").synthesis({ task, members, transcript });
 }
 /**
- * Run a multi-model debate using an exact durable conversation-session key.
+ * Run a provider-agnostic member debate using an exact durable conversation-session key.
  * Callers own namespace construction; this primitive owns the single authoritative
  * round/synthesis loop and emits structured progress for optional durable observers.
  */
 export async function runTeam(chat, options) {
     const rounds = options.rounds ?? DEFAULT_ROUNDS;
     const synthesize = options.synthesize ?? true;
-    const synthesizer = options.synthesizer ?? DEFAULT_SYNTHESIZER;
-    const accounts = options.accounts ?? DEFAULT_ACCOUNTS;
+    const synthesizer = options.synthesizer ?? DEFAULT_TEAM_SYNTHESIZER;
+    const accounts = options.accounts ?? DEFAULT_TEAM_ACCOUNTS;
     const prompts = getTeamPromptStrategy(options.promptStrategy ?? DEFAULT_PROMPT_STRATEGY);
     if (!Number.isInteger(rounds) || rounds <= 0)
         throw new Error("team debate rounds must be a positive integer");
@@ -87,7 +85,7 @@ export async function runTeam(chat, options) {
         throw new Error("team debate sessionId must not be empty");
     const transcript = [];
     const lastByAccount = new Map();
-    let activeAccountId = accounts[0] ?? DEFAULT_SYNTHESIZER;
+    let activeAccountId = accounts[0] ?? DEFAULT_TEAM_SYNTHESIZER;
     let activeStage = "prepare_prompt";
     let activeRound = 1;
     let finalDebateAccountId = activeAccountId;
@@ -108,7 +106,7 @@ export async function runTeam(chat, options) {
                 }));
                 activeStage = "prepare_prompt";
                 emit(options.onProgress, { at: now(), stage: activeStage, status: "started", round, accountId, provider });
-                const prompt = prompts.turn({ task: options.task, accountId, others, round });
+                const prompt = prompts.turn({ task: options.task, accountId, members: accounts, others, round });
                 emit(options.onProgress, {
                     at: now(),
                     stage: activeStage,
@@ -151,7 +149,7 @@ export async function runTeam(chat, options) {
                 accountId: synthesizer,
                 provider,
             });
-            const prompt = prompts.synthesis({ task: options.task, transcript });
+            const prompt = prompts.synthesis({ task: options.task, members: accounts, transcript });
             const result = await chat(synthesizer, {
                 prompt,
                 sessionId: options.sessionId,

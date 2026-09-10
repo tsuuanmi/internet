@@ -1,7 +1,10 @@
 import type { WebProvider } from "#internet/core/config";
 /** Stable semantic account identities used by workflow routing. */
-export declare const ACCOUNT_IDS: readonly ["chatgpt-thinker", "chatgpt-writer", "gemini-thinker"];
+export declare const ACCOUNT_IDS: readonly ["chatgpt-thinker", "chatgpt-writer", "gemini-thinker", "chatgpt-thinker-2"];
 export type AccountId = (typeof ACCOUNT_IDS)[number];
+/** Default independent reasoning members used by team/workflow execution. */
+export declare const DEFAULT_TEAM_ACCOUNTS: readonly [AccountId, AccountId];
+export declare const DEFAULT_TEAM_SYNTHESIZER: AccountId;
 /** Coarse workflow role; capabilities provide the authoritative routing detail. */
 export declare const ACCOUNT_ROLES: readonly ["thinker", "writer"];
 export type AccountRole = (typeof ACCOUNT_ROLES)[number];
@@ -14,11 +17,7 @@ export interface AccountDefinition {
     role: AccountRole;
     capabilities: readonly AccountCapability[];
 }
-/**
- * Initial semantic account catalog. These definitions describe intended
- * workflow routing and authority boundaries; later multi-account work binds
- * each identity to isolated portable browser state.
- */
+/** Authenticated account catalog. Team roles are assigned by ordered membership, not provider identity. */
 export declare const ACCOUNTS: Readonly<Record<AccountId, AccountDefinition>>;
 export declare function isAccountId(value: unknown): value is AccountId;
 export declare function getAccountDefinition(accountId: AccountId): AccountDefinition;

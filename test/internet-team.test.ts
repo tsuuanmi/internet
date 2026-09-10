@@ -87,7 +87,9 @@ describe("defineInternetTeamTool", () => {
 		expect(result).toEqual({ finalAnswer: "B1", finalMember: 2 });
 		expect(calls.map(({ accountId }) => accountId)).toEqual(["chatgpt-thinker", "chatgpt-thinker-2"]);
 		expect(calls.map(({ request }) => request.visible)).toEqual([undefined, undefined]);
-		expect(calls.every(({ request }) => !request.prompt.includes("ChatGPT") && !request.prompt.includes("Gemini"))).toBe(true);
+		expect(
+			calls.every(({ request }) => !request.prompt.includes("ChatGPT") && !request.prompt.includes("Gemini")),
+		).toBe(true);
 	});
 
 	it("synthesizes through Member 1 and projects provider-agnostic transcript metadata", async () => {
@@ -132,7 +134,9 @@ describe("defineInternetTeamTool", () => {
 		expect(result).toEqual({ finalAnswer: "C1", finalMember: 2 });
 		expect(calls[0]?.request.prompt).toContain("Member 1");
 		expect(calls[1]?.request.prompt).toContain("Member 2");
-		expect(calls.every(({ request }) => !request.prompt.includes("Gemini") && !request.prompt.includes("ChatGPT"))).toBe(true);
+		expect(
+			calls.every(({ request }) => !request.prompt.includes("Gemini") && !request.prompt.includes("ChatGPT")),
+		).toBe(true);
 	});
 
 	it("rejects a non-thinker account instead of routing it by provider", async () => {

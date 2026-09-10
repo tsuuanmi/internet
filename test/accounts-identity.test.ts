@@ -12,12 +12,7 @@ import {
 
 describe("account identity catalog", () => {
 	it("defines stable account ids and appends the second thinker without shifting existing identities", () => {
-		expect(ACCOUNT_IDS).toEqual([
-			"chatgpt-thinker",
-			"chatgpt-writer",
-			"gemini-thinker",
-			"chatgpt-thinker-2",
-		]);
+		expect(ACCOUNT_IDS).toEqual(["chatgpt-thinker", "chatgpt-writer", "gemini-thinker", "chatgpt-thinker-2"]);
 		expect(DEFAULT_TEAM_ACCOUNTS).toEqual(["chatgpt-thinker", "chatgpt-thinker-2"]);
 	});
 

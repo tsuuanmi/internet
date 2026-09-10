@@ -5,11 +5,13 @@ export type TeamPromptStrategyId = (typeof TEAM_PROMPT_STRATEGIES)[number];
 interface TurnPromptInput {
     readonly task: string;
     readonly accountId: AccountId;
+    readonly members: readonly AccountId[];
     readonly others: readonly OtherContribution[];
     readonly round: number;
 }
 interface SynthesisPromptInput {
     readonly task: string;
+    readonly members: readonly AccountId[];
     readonly transcript: readonly TeamTurn[];
 }
 export interface TeamPromptStrategy {

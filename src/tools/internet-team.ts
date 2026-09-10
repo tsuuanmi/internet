@@ -153,7 +153,8 @@ export function defineInternetTeamTool(
 			render: (_args, value) => [{ type: "text", text: renderInternetTeamResult(value) }],
 			presentationMeta: (_args, value) => value,
 		},
-		timeoutMs: config.turnTimeoutMs * (config.teamMaxRounds * Math.max(DEFAULT_TEAM_ACCOUNTS.length, allowed.size) + 1),
+		timeoutMs:
+			config.turnTimeoutMs * (config.teamMaxRounds * Math.max(DEFAULT_TEAM_ACCOUNTS.length, allowed.size) + 1),
 		isConcurrencySafe: () => false,
 		async execute(args, exec) {
 			const input = parseTeamArgs(args);
