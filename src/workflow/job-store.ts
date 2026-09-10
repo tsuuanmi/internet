@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getAccountDefinition, isAccountId } from "#internet/core/accounts";
+import { accountHasCapability, getAccountDefinition, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 import {
 	WORKFLOW_STATES,
@@ -201,14 +201,23 @@ function assertTeamRuns(value: unknown, ownerSessionId: string, jobId: string): 
 
 function assertAccountRouting(value: unknown): void {
 	if (!isRecord(value) || !Array.isArray(value.thinkerAccounts)) throw new Error("invalid account routing");
+	if (value.thinkerAccounts.length !== 2) throw new Error("workflow requires exactly two thinker accounts");
+	const [first, second] = value.thinkerAccounts;
+	if (!isAccountId(first) || !isAccountId(second) || first === second) {
+		throw new Error("invalid workflow thinker account routing");
+	}
+	for (const accountId of [first, second]) {
+		if (!accountHasCapability(accountId, "team.reason") || !accountHasCapability(accountId, "team.review")) {
+			throw new Error(`workflow thinker account ${accountId} lacks required team capabilities`);
+		}
+	}
+	if (value.writerAccount !== "chatgpt-writer") throw new Error("workflow writer authority mismatch");
 	if (
-		value.thinkerAccounts.length !== 2 ||
-		value.thinkerAccounts[0] !== "chatgpt-thinker" ||
-		value.thinkerAccounts[1] !== "gemini-thinker" ||
-		value.writerAccount !== "chatgpt-writer" ||
-		value.synthesizerAccount !== "chatgpt-thinker"
+		!isAccountId(value.synthesizerAccount) ||
+		!value.thinkerAccounts.includes(value.synthesizerAccount) ||
+		!accountHasCapability(value.synthesizerAccount, "team.synthesize")
 	) {
-		throw new Error("workflow account routing authority mismatch");
+		throw new Error("invalid workflow synthesizer routing");
 	}
 }
 
