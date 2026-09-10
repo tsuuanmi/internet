@@ -4,7 +4,7 @@
 - **Last synchronized:** 2026-09-10
 - **Baseline:** workflow-team observability/control hardening plus provider-agnostic member routing
 
-This directory documents the current `@tsuuanmi/internet` runtime. The durable coding workflow, automatic driver, exact handoffs, separate writer, exact-head review/health/merge gates, provider-agnostic agent-team execution, concurrent workflow lanes, structured team traces, and user-facing workflow operator controls are implemented.
+This directory documents the current `@tsuuanmi/internet` runtime. The durable coding workflow, automatic driver, exact handoffs, separate writer, exact-head review/health/merge gates, provider-agnostic agent-team execution, concurrent workflow lanes, structured team traces, and user-facing workflow operator controls are implemented. New workflows pin a fresh upstream `main` HEAD rather than Local worktree HEAD, successful workflow merges are squash-only so they add one commit to `main`, and one exact workflow can be removed with `/workflow delete <jobId>`.
 
 The current default agent team uses two independent ChatGPT-backed thinker accounts as `Member 1` and `Member 2`. That is a routing choice, not a team semantic. Gemini remains supported for explicit direct chat/research/team use but is temporarily outside the default team/workflow route.
 
@@ -16,7 +16,7 @@ The current default agent team uses two independent ChatGPT-backed thinker accou
 - [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic state machine, driver, durable receipts, traces, retries, health and merge gates.
 - [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md) — implemented workflow-team observability/control/prompt/concurrency hardening and current routing adjustment.
 - [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md) — provider-agnostic team quality contract, current two-ChatGPT routing, and lane concurrency contract.
-- [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md) — start/list/status/watch/stop/continue operator semantics.
+- [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md) — start/list/status/watch/stop/continue/delete operator semantics.
 - [`SRS.md`](./SRS.md) — normative workflow requirements.
 - [`ROADMAP.md`](./ROADMAP.md) — completed P0-P13 roadmap and explicitly deferred directions.
 - [`TODO.md`](./TODO.md) — implementation closure boundary and intentionally deferred work.
