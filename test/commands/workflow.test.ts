@@ -13,7 +13,8 @@ const JOB_ID = "0123456789abcdef0123456789abcdef";
 function createRunner(overrides: Record<string, string | Error> = {}): GitRunner {
 	const outputs: Record<string, string | Error> = {
 		"rev-parse --show-toplevel": "/repo\n",
-		"rev-parse HEAD": `${REVISION}\n`,
+		"rev-parse HEAD": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+		"ls-remote --exit-code --heads origin refs/heads/main": `${REVISION}\trefs/heads/main\n`,
 		remote: "origin\n",
 		"rev-parse --abbrev-ref HEAD": "main\n",
 		"config --get branch.main.remote": "origin\n",
@@ -76,6 +77,7 @@ function operator(): WorkflowCommandOperator & {
 	watch: ReturnType<typeof vi.fn>;
 	stop: ReturnType<typeof vi.fn>;
 	continue: ReturnType<typeof vi.fn>;
+	delete: ReturnType<typeof vi.fn>;
 } {
 	return {
 		list: vi.fn(() => "LIST"),
@@ -83,6 +85,7 @@ function operator(): WorkflowCommandOperator & {
 		watch: vi.fn(() => "WATCH"),
 		stop: vi.fn(async () => "STOPPED"),
 		continue: vi.fn(() => "CONTINUED"),
+		delete: vi.fn(async () => "DELETED"),
 	};
 }
 
@@ -110,6 +113,12 @@ describe("defineWorkflowCommand", () => {
 			text: `Workflow ${JOB_ID} started for https://github.com/example/signal at 0123456789ab.`,
 		});
 		expect(runGit).toHaveBeenCalledWith("/repo", ["rev-parse", "--show-toplevel"], input.signal);
+		expect(runGit).toHaveBeenCalledWith(
+			"/repo",
+			["ls-remote", "--exit-code", "--heads", "origin", "refs/heads/main"],
+			input.signal,
+		);
+		expect(runGit).not.toHaveBeenCalledWith("/repo", ["rev-parse", "HEAD"], input.signal);
 		expect(workflow.start).toHaveBeenCalledWith({
 			objective: "Correct the login redirect.",
 			repository: "https://github.com/example/signal",
@@ -133,6 +142,7 @@ describe("defineWorkflowCommand", () => {
 			[`stop ${JOB_ID}`, "STOPPED"],
 			["continue", "CONTINUED"],
 			[`continue ${JOB_ID}`, "CONTINUED"],
+			[`delete ${JOB_ID}`, "DELETED"],
 		] as const) {
 			await expect(command.handler(invocation(raw) as never)).resolves.toEqual({ kind: "success", text: expected });
 		}
@@ -141,6 +151,7 @@ describe("defineWorkflowCommand", () => {
 		expect(op.watch).toHaveBeenCalledWith("1-1", JOB_ID);
 		expect(op.stop).toHaveBeenCalledWith("1-1", JOB_ID);
 		expect(op.continue).toHaveBeenCalledWith("1-1", JOB_ID);
+		expect(op.delete).toHaveBeenCalledWith("1-1", JOB_ID);
 		expect(runGit).not.toHaveBeenCalled();
 	});
 
@@ -158,6 +169,10 @@ describe("defineWorkflowCommand", () => {
 		await expect(command.handler(invocation("status one two") as never)).resolves.toMatchObject({
 			kind: "error",
 			text: expect.stringContaining("at most one jobId"),
+		});
+		await expect(command.handler(invocation("delete") as never)).resolves.toMatchObject({
+			kind: "error",
+			text: expect.stringContaining("requires exactly one jobId"),
 		});
 	});
 

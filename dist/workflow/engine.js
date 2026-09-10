@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { normalizeGitHubRepository } from "#internet/workflow/approval-policy";
 import { createWorkflowControlMessage } from "#internet/workflow/control";
+import { WORKFLOW_BASE_BRANCH } from "#internet/workflow/repository-context";
 import { parseWorkflowReviewResult } from "#internet/workflow/review-result";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { TERMINAL_WORKFLOW_STATES, } from "#internet/workflow/types";
@@ -352,6 +353,9 @@ export class WorkflowEngine {
         }
         if (result.status !== "PR_OPEN")
             throw new WorkflowEngineError("writer returned merge output outside merge phase");
+        if (result.pullRequest.base !== WORKFLOW_BASE_BRANCH) {
+            return this.writerBlocked(jobId, `writer pull request must target ${WORKFLOW_BASE_BRANCH}`, "WRITER_RUNNING");
+        }
         return this.update(jobId, (current) => ({
             ...withState(current, "PR_OPEN"),
             pullRequest: result.pullRequest,

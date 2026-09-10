@@ -1,4 +1,5 @@
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
+import { type WorkflowState } from "#internet/workflow/types";
 export declare const WORKFLOW_RETENTION_AUDIT_SCHEMA: "@tsuuanmi/internet-workflow-retention-audit";
 export interface WorkflowRetentionPolicy {
     readonly doneDays: number;
@@ -30,6 +31,15 @@ export interface WorkflowCleanupAudit {
     readonly completedAt?: string;
     readonly error?: string;
 }
+export interface WorkflowDeletionReceipt {
+    readonly jobId: string;
+    readonly state: WorkflowState;
+    readonly repository: string;
+    readonly operatorSessionId: string;
+    readonly deletedHandoffFiles: number;
+    readonly deletedTrace: boolean;
+    readonly deletedAt: string;
+}
 export declare class WorkflowRetentionError extends Error {
     constructor(message: string);
 }
@@ -43,6 +53,11 @@ export declare class WorkflowRetentionManager {
     private readonly now;
     constructor(dataDir: string, jobs: WorkflowJobStore, policy?: WorkflowRetentionPolicy, now?: () => Date);
     preview(): readonly WorkflowCleanupCandidate[];
+    deleteNow(input: {
+        jobId: string;
+        expectedUpdatedAt: string;
+        operatorSessionId: string;
+    }): WorkflowDeletionReceipt;
     cleanup(input: {
         jobId: string;
         expectedUpdatedAt: string;

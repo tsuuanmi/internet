@@ -1,4 +1,5 @@
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
+import type { WorkflowRetentionManager } from "#internet/workflow/retention";
 import type { WorkflowTeamTraceEvent, WorkflowTeamTraceStore } from "#internet/workflow/team-trace-store";
 import { TERMINAL_WORKFLOW_STATES, type WorkflowJob, type WorkflowTeamRun } from "#internet/workflow/types";
 
@@ -252,17 +253,20 @@ export class WorkflowOperator {
 	private readonly driver: WorkflowOperatorDriver;
 	private readonly jobs: WorkflowJobStore;
 	private readonly traces: WorkflowTeamTraceStore;
+	private readonly retention: WorkflowRetentionManager;
 
 	constructor(
 		engine: WorkflowOperatorEngine,
 		driver: WorkflowOperatorDriver,
 		jobs: WorkflowJobStore,
 		traces: WorkflowTeamTraceStore,
+		retention: WorkflowRetentionManager,
 	) {
 		this.engine = engine;
 		this.driver = driver;
 		this.jobs = jobs;
 		this.traces = traces;
+		this.retention = retention;
 	}
 
 	list(ownerSessionId: string): string {
@@ -291,6 +295,20 @@ export class WorkflowOperator {
 		const stoppedAt =
 			latest === undefined ? "unknown current operation" : (describeEvent(selected, latest) ?? latest.stage);
 		return `Workflow ${cancelled.jobId} cancelled.\nStopped at: ${stoppedAt}\nState: ${cancelled.state}`;
+	}
+
+	async delete(ownerSessionId: string, jobId?: string): Promise<string> {
+		if (jobId === undefined) throw new WorkflowOperatorError("/workflow delete requires an explicit jobId");
+		const selected = selectJob(this.jobs, ownerSessionId, jobId, false);
+		const terminal = TERMINAL_WORKFLOW_STATES.has(selected.state)
+			? selected
+			: await this.driver.cancel(selected.jobId);
+		const deleted = this.retention.deleteNow({
+			jobId: terminal.jobId,
+			expectedUpdatedAt: terminal.updatedAt,
+			operatorSessionId: ownerSessionId,
+		});
+		return `Workflow ${deleted.jobId} deleted. Previous state: ${deleted.state}. Removed ${deleted.deletedHandoffFiles} handoff file(s)${deleted.deletedTrace ? " and its team trace" : ""}.`;
 	}
 
 	continue(ownerSessionId: string, jobId?: string): string {

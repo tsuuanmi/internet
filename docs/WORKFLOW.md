@@ -21,6 +21,7 @@ Routine operator controls:
 /workflow watch [jobId]
 /workflow stop [jobId]
 /workflow continue [jobId]
+/workflow delete <jobId>
 ```
 
 The start command resolves the current Git worktree, authoritative upstream repository and exact base revision, creates one durable job, prints its job ID, and enqueues the automatic driver.
@@ -203,7 +204,8 @@ abort active driver work
 
 `CANCELLED` is not pause.
 
-`/workflow continue [jobId]` only resumes an explicit durable retry/recovery path approved by the engine. It does not reset to `CREATED` or blindly rerun completed work.
+`/workflow continue [jobId]
+/workflow delete <jobId>` only resumes an explicit durable retry/recovery path approved by the engine. It does not reset to `CREATED` or blindly rerun completed work.
 
 ## Exact handoffs
 

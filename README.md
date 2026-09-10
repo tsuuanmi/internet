@@ -109,6 +109,7 @@ Routine operation does not require inspecting `~/.dsh/internet/workflows/jobs/*.
 /workflow watch [jobId]
 /workflow stop [jobId]
 /workflow continue [jobId]
+/workflow delete <jobId>
 ```
 
 - **`list`** shows jobs owned by the current Local session, newest first.

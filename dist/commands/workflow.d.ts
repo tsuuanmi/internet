@@ -15,6 +15,7 @@ export interface WorkflowCommandOperator {
     watch(ownerSessionId: string, jobId?: string): string;
     stop(ownerSessionId: string, jobId?: string): Promise<string>;
     continue(ownerSessionId: string, jobId?: string): string;
+    delete(ownerSessionId: string, jobId?: string): Promise<string>;
 }
 export interface WorkflowCommandDependencies {
     readonly engine: WorkflowStarter;

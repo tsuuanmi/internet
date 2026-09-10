@@ -28,7 +28,8 @@ What is waiting on that result?
 /workflow status [jobId]              inspect one workflow
 /workflow watch [jobId]               show the current snapshot and rely on live PROGRESS events
 /workflow stop [jobId]                abort active work and persist CANCELLED
-/workflow continue [jobId]            resume an explicit retry-required boundary
+/workflow continue [jobId]
+/workflow delete <jobId>            resume an explicit retry-required boundary
 ```
 
 Starting a workflow prints its durable job ID immediately.
@@ -145,7 +146,8 @@ The response includes the most recent structured team/member context when availa
 
 `stop` is not pause. `CANCELLED` remains terminal.
 
-## `/workflow continue [jobId]`
+## `/workflow continue [jobId]
+/workflow delete <jobId>`
 
 `continue` resumes only an explicit durable retry/recovery path. It delegates validation to the workflow engine, restores the persisted resume state, and re-enqueues the driver.
 
@@ -215,3 +217,8 @@ The operator projection converts normal account identity to `Member N`; raw acco
 - continue requires an explicit durable recovery path;
 - A/B lane concurrency remains visible and preserved;
 - full model payloads are not injected into Local progress events.
+
+
+### Explicit deletion
+
+`/workflow delete <jobId>` always requires an exact workflow ID. If the selected workflow is still non-terminal, the operator cancels and settles it first, then removes that job's durable handoffs, bounded team trace, and job record. Omitted IDs are never inferred for deletion.

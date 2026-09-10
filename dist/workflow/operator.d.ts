@@ -1,4 +1,5 @@
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
+import type { WorkflowRetentionManager } from "#internet/workflow/retention";
 import type { WorkflowTeamTraceEvent, WorkflowTeamTraceStore } from "#internet/workflow/team-trace-store";
 import { type WorkflowJob } from "#internet/workflow/types";
 export interface WorkflowOperatorEngine {
@@ -21,11 +22,13 @@ export declare class WorkflowOperator {
     private readonly driver;
     private readonly jobs;
     private readonly traces;
-    constructor(engine: WorkflowOperatorEngine, driver: WorkflowOperatorDriver, jobs: WorkflowJobStore, traces: WorkflowTeamTraceStore);
+    private readonly retention;
+    constructor(engine: WorkflowOperatorEngine, driver: WorkflowOperatorDriver, jobs: WorkflowJobStore, traces: WorkflowTeamTraceStore, retention: WorkflowRetentionManager);
     list(ownerSessionId: string): string;
     status(ownerSessionId: string, jobId?: string): string;
     watch(ownerSessionId: string, jobId?: string): string;
     stop(ownerSessionId: string, jobId?: string): Promise<string>;
+    delete(ownerSessionId: string, jobId?: string): Promise<string>;
     continue(ownerSessionId: string, jobId?: string): string;
 }
 //# sourceMappingURL=operator.d.ts.map

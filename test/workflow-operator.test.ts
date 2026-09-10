@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowOperator } from "#internet/workflow/operator";
+import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowTeamTraceStore } from "#internet/workflow/team-trace-store";
 
 const roots: string[] = [];
@@ -21,7 +22,8 @@ function fixture() {
 		isActive: vi.fn(() => false),
 		cancel: vi.fn(async (jobId: string) => engine.cancel(jobId)),
 	};
-	const operator = new WorkflowOperator(engine, driver, jobs, traces);
+	const retention = new WorkflowRetentionManager(root, jobs);
+	const operator = new WorkflowOperator(engine, driver, jobs, traces, retention);
 	return { jobs, traces, engine, driver, operator };
 }
 
@@ -138,6 +140,23 @@ describe("WorkflowOperator", () => {
 		await expect(operator.stop("owner", job.jobId)).resolves.toContain("State: CANCELLED");
 		expect(driver.cancel).toHaveBeenCalledWith(job.jobId);
 		expect(engine.status(job.jobId).state).toBe("CANCELLED");
+	});
+
+	it("deletes one exact workflow id after cancelling active work", async () => {
+		const { jobs, traces, engine, driver, operator } = fixture();
+		const job = start(engine, "Delete me");
+		traces.append(job.jobId, {
+			phase: "research",
+			lane: "A",
+			attempt: 1,
+			at: "2026-09-09T10:00:00.000Z",
+			stage: "team",
+			status: "started",
+		});
+		await expect(operator.delete("owner", job.jobId)).resolves.toContain(`Workflow ${job.jobId} deleted.`);
+		expect(driver.cancel).toHaveBeenCalledWith(job.jobId);
+		expect(jobs.get(job.jobId)).toBeUndefined();
+		expect(traces.list(job.jobId)).toEqual([]);
 	});
 
 	it("continues only an explicit durable recovery path", () => {

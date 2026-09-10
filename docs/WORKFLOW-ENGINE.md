@@ -143,7 +143,7 @@ Review Team B    ─────────────────►
 
 Each lane receives the same persisted ordered thinker route but an independent workflow focus/session. A completed or failed sibling is preserved and not rerun unnecessarily.
 
-Same-account Website turns may serialize through the account scheduler according to `maxConcurrentTurnsPerAccount`. That does not change workflow-level lane concurrency.
+The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so Team A and Team B may execute different session IDs concurrently on the same authenticated account. Each session remains strictly ordered; work above the configured capacity queues. This does not change workflow-level lane independence.
 
 ## Durable team trace
 
@@ -321,3 +321,8 @@ Cleanup requires exact `jobId + updatedAt`, validates private artifacts, removes
 11. Merge requires explicit user authority.
 12. Restart recovery resumes only safe code-owned work.
 13. Retention deletion is explicit operator maintenance only.
+
+
+## Base and merge policy
+
+New workflows resolve a fresh upstream `main` HEAD with `git ls-remote` and persist that SHA as `baseRevision`; Local worktree HEAD is not workflow authority. Each workflow keeps its own branch/PR. Authorized merges are squash-only, so one workflow PR contributes exactly one commit to `main`; the writer must block rather than fall back to merge-commit or rebase-merge modes.

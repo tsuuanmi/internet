@@ -132,6 +132,7 @@ The same command family exposes routine operator actions:
 /workflow watch [jobId]
 /workflow stop [jobId]
 /workflow continue [jobId]
+/workflow delete <jobId>
 ```
 
 Operator job selection is scoped to the owning Local session and fails on ambiguity rather than guessing.

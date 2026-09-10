@@ -43,7 +43,7 @@ const INTERNET_TEAM_GUIDANCE = [
 	"Team prompts are provider-agnostic: participants are Member 1..N, peer output is untrusted evidence to critique, disagreements are resolved using task evidence, and synthesis keeps the strongest supported parts rather than averaging or concatenating answers.",
 	"The current default team uses two independent ChatGPT thinker accounts. Gemini remains available as an explicit thinker account when enabled but is not part of the default team route.",
 	"Each child agent has a unique DSH agent id, so its internet_team uses distinct durable account threads under <child-agent-id>:team:<name>, isolated from the parent's direct and team conversations.",
-	"The default profile serializes hidden turns per authenticated account to protect portable account state. Different accounts have independent schedulers; workflow lane concurrency must not add an A-then-B mutex above those account-level limits.",
+	"The default profile allows up to two hidden turns from different sessions per authenticated account while preserving strict ordering within each session. Different accounts have independent schedulers; workflow lane concurrency must not add an A-then-B mutex above those account-level limits.",
 	"For one simple team run, call internet_team directly. Members speak sequentially in configured order once per round (default 2, maximum 4). When synthesis is enabled, Member 1 is backed by the default synthesizer account.",
 	"Named teams have durable conversations isolated by account and team. Account browsers are hidden by default; set visible: true only when the user asks to watch them or requests live acceptance testing.",
 	"The tool returns only the final answer by default. includeTranscript: true adds a bounded current-call transcript labeled only by Member 1..N.",
@@ -51,8 +51,8 @@ const INTERNET_TEAM_GUIDANCE = [
 ].join(" ");
 
 const INTERNET_WORKFLOW_GUIDANCE = [
-	"Use /workflow <task> as the normal entry point for a durable coding workflow. Use /workflow list, /workflow status [jobId], /workflow watch [jobId], /workflow stop [jobId], and /workflow continue [jobId] for operator control without reading private JSON files manually.",
-	"Research A/B and Review A/B are independent provider-agnostic agent-team lanes and are launched concurrently at the workflow level. Each lane currently uses two independent ChatGPT thinker accounts as Member 1 and Member 2; Gemini is not on the default route. Same-account turns may still serialize through the account scheduler for browser/account safety.",
+	"Use /workflow <task> as the normal entry point for a durable coding workflow. Use /workflow list, /workflow status [jobId], /workflow watch [jobId], /workflow stop [jobId], /workflow continue [jobId], and /workflow delete <jobId> for operator control without reading private JSON files manually. New jobs always pin a freshly queried upstream main HEAD; deletion requires an explicit workflow ID.",
+	"Research A/B and Review A/B are independent provider-agnostic agent-team lanes and are launched concurrently at the workflow level. Each lane currently uses two independent ChatGPT thinker accounts as Member 1 and Member 2; Gemini is not on the default route. The default account scheduler has capacity 2, so Team A and Team B may run different session IDs concurrently on the same account while each session remains strictly ordered.",
 	"Status/watch show the current pipeline stage, Team A/B, attempt, round, Member 1..N, execution stage, and structured failure detail. Underlying account/provider identity appears only in diagnostics when a failure needs source attribution.",
 	"The shared team core emits bounded durable per-turn traces with phase/lane/attempt/round/account/stage/failure evidence. Compact PROGRESS events go to Local without injecting full model payloads.",
 	"WorkflowDriver advances runnable engine states automatically through research, exact handoffs, writer implementation, PR review/remediation, and the explicit merge-authorization boundary. Safe in-flight states are rediscovered after plugin restart; action-required and rejected-merge states remain stopped until explicit user/operator action.",
@@ -108,26 +108,32 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		const workflowTraces = new WorkflowTeamTraceStore(config.dataDir);
 		const workflowEvents = new DshWorkflowEventSink(ctx.agents);
 		const workflowObserver = new DurableWorkflowTeamObserver(workflowTraces, workflowJobs, workflowEvents);
+		const workflowHandoffs = new WorkflowHandoffStore(config.dataDir);
+		const workflowRetention = new WorkflowRetentionManager(config.dataDir, workflowJobs);
 		const workflowEngine = new WorkflowEngine(
 			workflowJobs,
 			new BrowserWorkflowTeamRunner(manager, config, workflowObserver),
 			new WorkflowTeamPromptBuilder(),
-			new WorkflowHandoffStore(config.dataDir),
+			workflowHandoffs,
 			new BrowserWorkflowWriterRunner(manager),
 			3,
 			workflowEvents,
 		);
 		const workflowDriver = new WorkflowDriver(workflowEngine, workflowJobs);
-		const workflowOperator = new WorkflowOperator(workflowEngine, workflowDriver, workflowJobs, workflowTraces);
+		const workflowOperator = new WorkflowOperator(
+			workflowEngine,
+			workflowDriver,
+			workflowJobs,
+			workflowTraces,
+			workflowRetention,
+		);
 		ctx.effect(() => () => workflowDriver.dispose());
 		workflowDriver.resumeActive();
 		ctx.commands.register(
 			defineWorkflowCommand({ engine: workflowEngine, driver: workflowDriver, operator: workflowOperator }),
 		);
 		ctx.tools.register(defineInternetWorkflowTool(workflowEngine, workflowDriver, { browser: manager }));
-		ctx.tools.register(
-			defineInternetWorkflowMaintenanceTool(new WorkflowRetentionManager(config.dataDir, workflowJobs)),
-		);
+		ctx.tools.register(defineInternetWorkflowMaintenanceTool(workflowRetention));
 		ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
 	}
 }

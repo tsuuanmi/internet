@@ -208,11 +208,12 @@ export function formatWorkflowStatus(job, trace, active) {
 }
 /** User-facing operations over authoritative durable workflow state. */
 export class WorkflowOperator {
-    constructor(engine, driver, jobs, traces) {
+    constructor(engine, driver, jobs, traces, retention) {
         this.engine = engine;
         this.driver = driver;
         this.jobs = jobs;
         this.traces = traces;
+        this.retention = retention;
     }
     list(ownerSessionId) {
         return formatWorkflowList(ownerJobs(this.jobs, ownerSessionId));
@@ -236,6 +237,20 @@ export class WorkflowOperator {
         const cancelled = await this.driver.cancel(selected.jobId);
         const stoppedAt = latest === undefined ? "unknown current operation" : (describeEvent(selected, latest) ?? latest.stage);
         return `Workflow ${cancelled.jobId} cancelled.\nStopped at: ${stoppedAt}\nState: ${cancelled.state}`;
+    }
+    async delete(ownerSessionId, jobId) {
+        if (jobId === undefined)
+            throw new WorkflowOperatorError("/workflow delete requires an explicit jobId");
+        const selected = selectJob(this.jobs, ownerSessionId, jobId, false);
+        const terminal = TERMINAL_WORKFLOW_STATES.has(selected.state)
+            ? selected
+            : await this.driver.cancel(selected.jobId);
+        const deleted = this.retention.deleteNow({
+            jobId: terminal.jobId,
+            expectedUpdatedAt: terminal.updatedAt,
+            operatorSessionId: ownerSessionId,
+        });
+        return `Workflow ${deleted.jobId} deleted. Previous state: ${deleted.state}. Removed ${deleted.deletedHandoffFiles} handoff file(s)${deleted.deletedTrace ? " and its team trace" : ""}.`;
     }
     continue(ownerSessionId, jobId) {
         const selected = selectJob(this.jobs, ownerSessionId, jobId, true);

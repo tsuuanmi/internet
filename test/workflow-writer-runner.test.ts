@@ -108,6 +108,8 @@ describe("BrowserWorkflowWriterRunner", () => {
 			job: job(),
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
+		expect(prompt).toContain("Required base branch: main");
+		expect(prompt).toContain("exact required base revision");
 		expect(prompt).toContain("PR idempotency key");
 		expect(prompt).toContain("If exactly one open PR exists, reuse/update that PR");
 		expect(prompt).toContain("Never create a second PR for the same workflow job/branch");

@@ -99,9 +99,16 @@ try {
 		},
 		{
 			config: { enableGemini: false },
-			tools: ["internet_browser", "internet_chat", "internet_research"],
-			commands: ["internet"],
-			sections: ["tool:internet_research", "tool:internet_chat"],
+			tools: [
+				"internet_browser",
+				"internet_chat",
+				"internet_research",
+				"internet_team",
+				"internet_workflow",
+				"internet_workflow_maintenance",
+			],
+			commands: ["internet", "workflow"],
+			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_team", "tool:internet_workflow"],
 		},
 		{
 			config: { enableChatgpt: false, enableGemini: false },

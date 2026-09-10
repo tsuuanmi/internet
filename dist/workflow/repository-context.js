@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { isIP } from "node:net";
 export class WorkflowRepositoryError extends Error {
 }
+export const WORKFLOW_BASE_BRANCH = "main";
 /** Run Git without a shell so branch and remote names are never interpolated. */
 export async function runGitCommand(cwd, args, signal) {
     return new Promise((resolve, reject) => {
@@ -99,17 +100,6 @@ export async function resolveWorkflowRepository(cwd, signal, runGit = runGitComm
             throw error;
         throw new WorkflowRepositoryError(`${source} requires the current session to be inside a Git worktree.`);
     }
-    let revision;
-    try {
-        revision = cleanOutput(await runGit(cwd, ["rev-parse", "HEAD"], signal));
-    }
-    catch (error) {
-        if (signal.aborted)
-            throw error;
-        throw new WorkflowRepositoryError(`${source} could not resolve the current Git revision.`);
-    }
-    if (!/^[0-9a-f]{40}$/iu.test(revision))
-        throw new WorkflowRepositoryError(`${source} could not resolve a valid Git revision.`);
     const remotes = cleanOutput((await optionalGit(runGit, cwd, ["remote"], signal)) ?? "")
         .split(/\r?\n/u)
         .map((remote) => remote.trim())
@@ -134,6 +124,19 @@ export async function resolveWorkflowRepository(cwd, signal, runGit = runGitComm
     const url = remoteUrl === undefined ? undefined : normalizeRepositoryUrl(remoteUrl);
     if (url === undefined) {
         throw new WorkflowRepositoryError(`${source} requires a publicly addressable Git remote for "${remote}"; local, private-network, and malformed remote URLs are not supported.`);
+    }
+    const expectedRef = `refs/heads/${WORKFLOW_BASE_BRANCH}`;
+    const remoteHead = await optionalGit(runGit, cwd, ["ls-remote", "--exit-code", "--heads", remote, expectedRef], signal);
+    const remoteHeadLines = remoteHead
+        ?.split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter((line) => line !== "");
+    if (remoteHeadLines === undefined || remoteHeadLines.length !== 1) {
+        throw new WorkflowRepositoryError(`${source} could not resolve upstream ${WORKFLOW_BASE_BRANCH} HEAD.`);
+    }
+    const [revision, ref] = remoteHeadLines[0].split(/\s+/u);
+    if (revision === undefined || ref !== expectedRef || !/^[0-9a-f]{40}$/iu.test(revision)) {
+        throw new WorkflowRepositoryError(`${source} could not resolve a valid upstream ${WORKFLOW_BASE_BRANCH} HEAD.`);
     }
     return { url, revision: revision.toLowerCase() };
 }

@@ -32,7 +32,7 @@ This file is a closure boundary, not an instruction to keep adding numbered phas
 - ✅ Purpose-specific prompt strategies exist for generic debate, workflow research and exact-head workflow review.
 - ✅ Research A/B are launched concurrently at the workflow-lane level.
 - ✅ Review A/B are launched concurrently at the workflow-lane level.
-- ✅ Same-account serialization remains an account-scheduler responsibility; workflow adds no A-then-B mutex.
+- ✅ Same-session ordering and bounded per-account capacity remain account-scheduler responsibilities; the default capacity is 2 and workflow adds no A-then-B mutex.
 - ✅ Regression tests protect both research and review lane concurrency.
 - ✅ Shared team execution emits structured round/account/stage progress and structured failure classification.
 - ✅ Provider failures preserve exact account/provider/stage/round/kind/retryability without becoming member contributions.

@@ -148,7 +148,7 @@ Review Team A    ─────────────────►
 Review Team B    ─────────────────►
 ```
 
-Same-account turns may serialize through `maxConcurrentTurnsPerAccount`. That account safety policy is separate from workflow-lane concurrency; workflow adds no A-then-B mutex.
+The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so Team A and Team B may execute different session IDs concurrently on the same authenticated account. Each native session remains strictly ordered, and work above the configured capacity queues. This account policy is separate from workflow-lane concurrency; workflow adds no A-then-B mutex.
 
 ## Login and stable ports
 
