@@ -410,10 +410,12 @@ export class RemoteLoginSession {
 			return;
 		}
 		if (request.method === "POST" && request.url === `${base}/save`) {
-			response
-				.writeHead(this.state === "waiting" ? 202 : 409)
-				.end(this.state === "waiting" ? "Accepted" : "Not waiting");
-			if (this.state === "waiting") void this.requestSave();
+			if (this.state !== "waiting") {
+				response.writeHead(409).end("Not waiting");
+				return;
+			}
+			const finalization = this.requestSave();
+			void this.respondToSave(response, finalization);
 			return;
 		}
 		if (request.method === "POST" && request.url === `${base}/cancel`) {
@@ -424,6 +426,38 @@ export class RemoteLoginSession {
 			return;
 		}
 		response.writeHead(404).end("Not found");
+	}
+
+	private async respondToSave(response: ServerResponse, finalization: Promise<void>): Promise<void> {
+		await finalization;
+		const terminal = this.status();
+		if (terminal.state === "complete") {
+			if (!response.destroyed && !response.writableEnded) {
+				await new Promise<void>((resolve) => {
+					let settled = false;
+					const finish = (): void => {
+						if (settled) return;
+						settled = true;
+						response.off("finish", finish);
+						response.off("close", finish);
+						resolve();
+					};
+					response.once("finish", finish);
+					response.once("close", finish);
+					response.setHeader("Content-Type", "application/json; charset=utf-8");
+					response.setHeader("Connection", "close");
+					response.writeHead(200);
+					response.end(JSON.stringify(terminal));
+				});
+			}
+			await this.dispose();
+			return;
+		}
+		if (response.destroyed || response.writableEnded) return;
+		response.setHeader("Content-Type", "application/json; charset=utf-8");
+		response.setHeader("Connection", "close");
+		response.writeHead(200);
+		response.end(JSON.stringify(terminal));
 	}
 
 	private authorized(request: IncomingMessage, requireOrigin = false): boolean {
