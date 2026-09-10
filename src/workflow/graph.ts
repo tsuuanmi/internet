@@ -11,6 +11,19 @@ export const WORKFLOW_LIFECYCLES = [
 ] as const;
 export type WorkflowLifecycle = (typeof WORKFLOW_LIFECYCLES)[number];
 
+export const WORKFLOW_NODE_KINDS = [
+	"TEAM_MEMBER",
+	"TEAM_SYNTHESIS",
+	"RESEARCH_HANDOFF_GATE",
+	"WRITER_IMPLEMENTATION",
+	"REVIEW_HANDOFF_GATE",
+	"WRITER_REMEDIATION",
+	"PR_HEALTH",
+	"MERGE_AUTHORIZATION",
+	"MERGE",
+] as const;
+export type WorkflowNodeKind = (typeof WORKFLOW_NODE_KINDS)[number];
+
 export const WORKFLOW_NODE_STATES = [
 	"WAITING",
 	"READY",
@@ -112,6 +125,7 @@ export interface WorkflowRecoveryPlan {
 
 export interface WorkflowGraphNode {
 	readonly nodeId: string;
+	readonly kind: WorkflowNodeKind;
 	readonly phase: WorkflowPhase;
 	readonly dependencies: readonly string[];
 	readonly state: WorkflowNodeState;
@@ -147,6 +161,9 @@ export const workflowNodeId = {
 	researchSynthesis(lane: WorkflowLane): string {
 		return `research:${lane}:synthesis`;
 	},
+	researchHandoffGate(): string {
+		return "research:handoff-gate";
+	},
 	writerImplementation(): string {
 		return "writer:implementation";
 	},
@@ -156,11 +173,17 @@ export const workflowNodeId = {
 	reviewSynthesis(cycle: number, lane: WorkflowLane): string {
 		return `review:cycle:${positiveInteger(cycle, "cycle")}:${lane}:synthesis`;
 	},
+	reviewHandoffGate(cycle: number): string {
+		return `review:cycle:${positiveInteger(cycle, "cycle")}:handoff-gate`;
+	},
 	writerRemediation(cycle: number): string {
 		return `writer:remediation:cycle:${positiveInteger(cycle, "cycle")}`;
 	},
 	prHealth(cycle: number): string {
 		return `pr-health:cycle:${positiveInteger(cycle, "cycle")}`;
+	},
+	mergeAuthorization(cycle: number): string {
+		return `merge-authorization:cycle:${positiveInteger(cycle, "cycle")}`;
 	},
 	merge(cycle: number): string {
 		return `merge:cycle:${positiveInteger(cycle, "cycle")}`;
@@ -191,6 +214,7 @@ export function assertWorkflowGraph(snapshot: WorkflowGraphSnapshot): void {
 		if (node.dependencies.includes(nodeId)) throw new Error(`workflow graph node cannot depend on itself: ${nodeId}`);
 		for (const dependencyId of node.dependencies) if (!snapshot.nodes[dependencyId]) throw new Error(`workflow graph node ${nodeId} has unknown dependency ${dependencyId}`);
 		if (["READY", "RUNNING", "WAITING_USER", "RECOVERING", "COMPLETED", "FAILED"].includes(node.state) && !node.input) throw new Error(`workflow graph node ${nodeId} in ${node.state} requires an input receipt`);
+		if (node.input && !/^[0-9a-f]{64}$/u.test(node.input.inputHash)) throw new Error(`workflow graph node ${nodeId} has invalid input hash`);
 		if (node.state === "COMPLETED") {
 			if (!node.output) throw new Error(`completed workflow graph node ${nodeId} requires an output receipt`);
 			if (!/^[0-9a-f]{64}$/u.test(node.output.resultId) || !/^[0-9a-f]{64}$/u.test(node.output.outputHash)) throw new Error(`completed workflow graph node ${nodeId} has invalid output receipt`);
