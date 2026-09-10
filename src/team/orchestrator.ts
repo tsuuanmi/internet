@@ -2,6 +2,7 @@ import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import type { AccountId } from "#internet/core/accounts";
 import { DEFAULT_TEAM_ACCOUNTS, DEFAULT_TEAM_SYNTHESIZER, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError, isInternetError } from "#internet/core/errors";
+import { buildTeamPlan, prepareTeamStep } from "#internet/team/plan";
 import { getTeamPromptStrategy, type TeamPromptStrategyId } from "#internet/team/prompt-strategy";
 import type {
 	OtherContribution,
@@ -139,95 +140,91 @@ export function composeSynthesisPrompt(
 
 /**
  * Run a provider-agnostic member debate using an exact durable conversation-session key.
- * Callers own namespace construction; this primitive owns the single authoritative
- * round/synthesis loop and emits structured progress for optional durable observers.
+ * The shared deterministic plan owns speaking order and prompt dependencies; this wrapper
+ * executes that plan in memory for callers that do not persist individual steps.
  */
 export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamResult> {
 	const rounds = options.rounds ?? DEFAULT_ROUNDS;
 	const synthesize = options.synthesize ?? true;
 	const synthesizer = options.synthesizer ?? DEFAULT_TEAM_SYNTHESIZER;
 	const accounts = options.accounts ?? DEFAULT_TEAM_ACCOUNTS;
-	const prompts = getTeamPromptStrategy(options.promptStrategy ?? DEFAULT_PROMPT_STRATEGY);
-	if (!Number.isInteger(rounds) || rounds <= 0) throw new Error("team debate rounds must be a positive integer");
-	if (accounts.length < 2) throw new Error("team debate requires at least two accounts");
-	if (new Set(accounts).size !== accounts.length) throw new Error("team debate accounts must not contain duplicates");
-	if (synthesize && !accounts.includes(synthesizer))
-		throw new Error("team synthesizer must be one of the selected accounts");
+	const promptStrategy = options.promptStrategy ?? DEFAULT_PROMPT_STRATEGY;
+	const plan = buildTeamPlan({ accounts, rounds, synthesize, synthesizer });
 	if (options.sessionId.trim() === "") throw new Error("team debate sessionId must not be empty");
 
 	const transcript: TeamTurn[] = [];
-	const lastByAccount = new Map<AccountId, string>();
 	let activeAccountId: AccountId = accounts[0] ?? DEFAULT_TEAM_SYNTHESIZER;
 	let activeStage: TeamStage = "prepare_prompt";
 	let activeRound: number | undefined = 1;
 	let finalDebateAccountId: AccountId = activeAccountId;
 
 	try {
-		for (let round = 1; round <= rounds; round++) {
-			for (const accountId of accounts) {
-				assertNotAborted(options.signal);
-				activeAccountId = accountId;
-				activeRound = round;
-				finalDebateAccountId = accountId;
-				const provider = getAccountDefinition(accountId).provider;
-				const others = accounts
-					.filter((other) => other !== accountId)
-					.map((other) => ({
-						accountId: other,
-						provider: getAccountDefinition(other).provider,
-						text: lastByAccount.get(other) ?? "",
-					}));
+		for (const step of plan.steps) {
+			assertNotAborted(options.signal);
+			activeAccountId = step.accountId;
+			activeRound = step.kind === "member" ? step.round : undefined;
+			const provider = getAccountDefinition(step.accountId).provider;
 
+			if (step.kind === "member") {
+				finalDebateAccountId = step.accountId;
 				activeStage = "prepare_prompt";
-				emit(options.onProgress, { at: now(), stage: activeStage, status: "started", round, accountId, provider });
-				const prompt = prompts.turn({ task: options.task, accountId, members: accounts, others, round });
+				emit(options.onProgress, {
+					at: now(),
+					stage: activeStage,
+					status: "started",
+					round: step.round,
+					accountId: step.accountId,
+					provider,
+				});
+				const prepared = prepareTeamStep(plan, step, options.task, transcript, promptStrategy);
 				emit(options.onProgress, {
 					at: now(),
 					stage: activeStage,
 					status: "completed",
-					round,
-					accountId,
+					round: step.round,
+					accountId: step.accountId,
 					provider,
 				});
 
 				activeStage = "provider_turn";
-				emit(options.onProgress, { at: now(), stage: activeStage, status: "started", round, accountId, provider });
-				const result = await chat(accountId, {
-					prompt,
+				emit(options.onProgress, {
+					at: now(),
+					stage: activeStage,
+					status: "started",
+					round: step.round,
+					accountId: step.accountId,
+					provider,
+				});
+				const result = await chat(step.accountId, {
+					prompt: prepared.prompt,
 					sessionId: options.sessionId,
 					visible: options.visible,
 					signal: options.signal,
 				});
-				lastByAccount.set(accountId, result.text);
-				transcript.push({ round, accountId, provider, text: result.text });
+				transcript.push({ round: step.round, accountId: step.accountId, provider, text: result.text });
 				emit(options.onProgress, {
 					at: now(),
 					stage: activeStage,
 					status: "completed",
-					round,
-					accountId,
+					round: step.round,
+					accountId: step.accountId,
 					provider,
 					text: result.text,
 				});
+				continue;
 			}
-		}
 
-		if (synthesize) {
-			assertNotAborted(options.signal);
-			activeAccountId = synthesizer;
-			activeRound = undefined;
 			activeStage = "synthesis";
-			const provider = getAccountDefinition(synthesizer).provider;
 			emit(options.onProgress, {
 				at: now(),
 				stage: activeStage,
 				status: "started",
-				accountId: synthesizer,
+				accountId: step.accountId,
 				provider,
 			});
-			const prompt = prompts.synthesis({ task: options.task, members: accounts, transcript });
-			const result = await chat(synthesizer, {
-				prompt,
+			const prepared = prepareTeamStep(plan, step, options.task, transcript, promptStrategy);
+			const result = await chat(step.accountId, {
+				prompt: prepared.prompt,
 				sessionId: options.sessionId,
 				visible: options.visible,
 				signal: options.signal,
@@ -236,7 +233,7 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 				at: now(),
 				stage: activeStage,
 				status: "completed",
-				accountId: synthesizer,
+				accountId: step.accountId,
 				provider,
 				text: result.text,
 			});
@@ -244,18 +241,18 @@ export async function runTeam(chat: ChatFn, options: TeamOptions): Promise<TeamR
 				at: now(),
 				stage: "complete",
 				status: "completed",
-				accountId: synthesizer,
+				accountId: step.accountId,
 				provider,
 			});
 			return {
 				finalAnswer: result.text,
-				finalAccountId: synthesizer,
+				finalAccountId: step.accountId,
 				finalProvider: provider,
 				transcript: [...transcript],
 			};
 		}
 
-		const finalAnswer = lastByAccount.get(finalDebateAccountId);
+		const finalAnswer = [...transcript].reverse().find((turn) => turn.accountId === finalDebateAccountId)?.text;
 		if (finalAnswer === undefined) throw new Error("team debate completed without a final turn");
 		const provider = getAccountDefinition(finalDebateAccountId).provider;
 		emit(options.onProgress, {
