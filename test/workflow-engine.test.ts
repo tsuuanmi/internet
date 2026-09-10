@@ -38,14 +38,14 @@ afterEach(async () => {
 });
 
 describe("WorkflowEngine", () => {
-	it("creates a durable account-routed job with deterministic lane identities", () => {
+	it("creates a durable provider-agnostic two-member job with deterministic lane identities", () => {
 		const { root, engine: workflow } = fixture();
 		const job = start(workflow);
 
 		expect(job.jobId).toMatch(/^[0-9a-f]{32}$/u);
 		expect(job.state).toBe("CREATED");
 		expect(job.accountRouting).toEqual({
-			thinkerAccounts: ["chatgpt-thinker", "gemini-thinker"],
+			thinkerAccounts: ["chatgpt-thinker", "chatgpt-thinker-2"],
 			writerAccount: "chatgpt-writer",
 			synthesizerAccount: "chatgpt-thinker",
 		});
@@ -67,12 +67,14 @@ describe("WorkflowEngine", () => {
 		if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
 	});
 
-	it("runs research lanes logically concurrently and persists both final results", async () => {
+	it("runs research lanes logically concurrently and passes the same ordered member routing to both", async () => {
 		const pending = new Map<string, () => void>();
 		const started: string[] = [];
+		const routing: Array<readonly AccountId[]> = [];
 		const runner: WorkflowTeamRunner = {
 			run: (request: WorkflowTeamRunRequest) => {
 				started.push(request.sessionId);
+				routing.push(request.accounts);
 				return new Promise((resolve) => {
 					pending.set(request.sessionId, () =>
 						resolve({
@@ -90,6 +92,10 @@ describe("WorkflowEngine", () => {
 		const running = workflow.runResearch(job.jobId);
 		await Promise.resolve();
 		expect(started).toEqual([`agent-7:workflow:${job.jobId}:research:A`, `agent-7:workflow:${job.jobId}:research:B`]);
+		expect(routing).toEqual([
+			["chatgpt-thinker", "chatgpt-thinker-2"],
+			["chatgpt-thinker", "chatgpt-thinker-2"],
+		]);
 		expect(workflow.status(job.jobId).teamRuns.research.map((run) => run.status)).toEqual(["running", "running"]);
 		for (const release of pending.values()) release();
 		const completed = await running;
@@ -147,8 +153,8 @@ describe("WorkflowEngine", () => {
 					return {
 						ok: false,
 						error: "temporary failure",
-						failedAccountId: "gemini-thinker",
-						failedProvider: "gemini-web",
+						failedAccountId: "chatgpt-thinker-2",
+						failedProvider: "chatgpt-web",
 					};
 				}
 				return { ok: true, finalAnswer: "done", finalAccountId: "chatgpt-thinker", finalProvider: "chatgpt-web" };
