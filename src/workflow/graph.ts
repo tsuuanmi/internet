@@ -85,6 +85,7 @@ export interface WorkflowNodeInputReceipt {
 }
 
 export interface WorkflowNodeOutputReceipt {
+	readonly resultId: string;
 	readonly outputHash: string;
 	readonly completedAt: string;
 }
@@ -135,9 +136,7 @@ export interface WorkflowGraphSnapshot {
 export type WorkflowLane = "A" | "B";
 
 function positiveInteger(value: number, name: string): number {
-	if (!Number.isInteger(value) || value < 1) {
-		throw new Error(`${name} must be a positive integer`);
-	}
+	if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`);
 	return value;
 }
 
@@ -168,17 +167,11 @@ export const workflowNodeId = {
 	},
 } as const;
 
-export function workflowNodeDependenciesCompleted(
-	node: WorkflowGraphNode,
-	nodes: Readonly<Record<string, WorkflowGraphNode>>,
-): boolean {
+export function workflowNodeDependenciesCompleted(node: WorkflowGraphNode, nodes: Readonly<Record<string, WorkflowGraphNode>>): boolean {
 	return node.dependencies.every((dependencyId) => nodes[dependencyId]?.state === "COMPLETED");
 }
 
-export function workflowNodeInputMatchesDependencies(
-	node: WorkflowGraphNode,
-	nodes: Readonly<Record<string, WorkflowGraphNode>>,
-): boolean {
+export function workflowNodeInputMatchesDependencies(node: WorkflowGraphNode, nodes: Readonly<Record<string, WorkflowGraphNode>>): boolean {
 	if (!node.input) return false;
 	return node.dependencies.every((dependencyId) => {
 		const dependency = nodes[dependencyId];
@@ -191,51 +184,30 @@ export function canReuseCompletedWorkflowNode(node: WorkflowGraphNode, inputHash
 }
 
 export function assertWorkflowGraph(snapshot: WorkflowGraphSnapshot): void {
-	if (snapshot.graphRevision < 0 || !Number.isInteger(snapshot.graphRevision)) {
-		throw new Error("workflow graphRevision must be a non-negative integer");
-	}
-	if (snapshot.eventSeq < 0 || !Number.isInteger(snapshot.eventSeq)) {
-		throw new Error("workflow eventSeq must be a non-negative integer");
-	}
-
+	if (snapshot.graphRevision < 0 || !Number.isInteger(snapshot.graphRevision)) throw new Error("workflow graphRevision must be a non-negative integer");
+	if (snapshot.eventSeq < 0 || !Number.isInteger(snapshot.eventSeq)) throw new Error("workflow eventSeq must be a non-negative integer");
 	for (const [nodeId, node] of Object.entries(snapshot.nodes)) {
 		if (node.nodeId !== nodeId) throw new Error(`workflow graph node key mismatch: ${nodeId}`);
 		if (node.dependencies.includes(nodeId)) throw new Error(`workflow graph node cannot depend on itself: ${nodeId}`);
-		for (const dependencyId of node.dependencies) {
-			if (!snapshot.nodes[dependencyId]) {
-				throw new Error(`workflow graph node ${nodeId} has unknown dependency ${dependencyId}`);
-			}
+		for (const dependencyId of node.dependencies) if (!snapshot.nodes[dependencyId]) throw new Error(`workflow graph node ${nodeId} has unknown dependency ${dependencyId}`);
+		if (["READY", "RUNNING", "WAITING_USER", "RECOVERING", "COMPLETED", "FAILED"].includes(node.state) && !node.input) throw new Error(`workflow graph node ${nodeId} in ${node.state} requires an input receipt`);
+		if (node.state === "COMPLETED") {
+			if (!node.output) throw new Error(`completed workflow graph node ${nodeId} requires an output receipt`);
+			if (!/^[0-9a-f]{64}$/u.test(node.output.resultId) || !/^[0-9a-f]{64}$/u.test(node.output.outputHash)) throw new Error(`completed workflow graph node ${nodeId} has invalid output receipt`);
 		}
-
-		if (["READY", "RUNNING", "WAITING_USER", "RECOVERING", "COMPLETED", "FAILED"].includes(node.state) && !node.input) {
-			throw new Error(`workflow graph node ${nodeId} in ${node.state} requires an input receipt`);
-		}
-		if (node.state === "COMPLETED" && !node.output) {
-			throw new Error(`completed workflow graph node ${nodeId} requires an output receipt`);
-		}
-		if (node.state === "WAITING" && node.dependencies.length === 0 && !node.waitReason) {
-			throw new Error(`waiting workflow graph node ${nodeId} requires a dependency or wait reason`);
-		}
+		if (node.state === "WAITING" && node.dependencies.length === 0 && !node.waitReason) throw new Error(`waiting workflow graph node ${nodeId} requires a dependency or wait reason`);
 		if (node.state === "RUNNING" || node.state === "WAITING_USER") {
-			if (!node.execution || !["STARTING", "ACTIVE"].includes(node.execution.state)) {
-				throw new Error(`${node.state.toLowerCase()} workflow graph node ${nodeId} requires a live execution`);
-			}
+			if (!node.execution || !["STARTING", "ACTIVE"].includes(node.execution.state)) throw new Error(`${node.state.toLowerCase()} workflow graph node ${nodeId} requires a live execution`);
 		}
-		if (node.state === "RECOVERING" && (!node.failure || !node.recovery)) {
-			throw new Error(`recovering workflow graph node ${nodeId} requires failure and recovery receipts`);
-		}
-		if (node.state === "FAILED" && !node.failure) {
-			throw new Error(`failed workflow graph node ${nodeId} requires a failure receipt`);
-		}
+		if (node.state === "RECOVERING" && (!node.failure || !node.recovery)) throw new Error(`recovering workflow graph node ${nodeId} requires failure and recovery receipts`);
+		if (node.state === "FAILED" && !node.failure) throw new Error(`failed workflow graph node ${nodeId} requires a failure receipt`);
 	}
-
 	assertAcyclic(snapshot.nodes);
 }
 
 function assertAcyclic(nodes: Readonly<Record<string, WorkflowGraphNode>>): void {
 	const visiting = new Set<string>();
 	const visited = new Set<string>();
-
 	const visit = (nodeId: string): void => {
 		if (visited.has(nodeId)) return;
 		if (visiting.has(nodeId)) throw new Error(`workflow graph contains a dependency cycle at ${nodeId}`);
@@ -244,6 +216,5 @@ function assertAcyclic(nodes: Readonly<Record<string, WorkflowGraphNode>>): void
 		visiting.delete(nodeId);
 		visited.add(nodeId);
 	};
-
 	for (const nodeId of Object.keys(nodes)) visit(nodeId);
 }

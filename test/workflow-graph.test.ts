@@ -10,6 +10,7 @@ import {
 } from "#internet/workflow/graph";
 
 const now = "2026-09-10T10:00:00.000Z";
+const resultId = "a".repeat(64);
 
 function completedNode(nodeId: string, dependencies: readonly string[] = []): WorkflowGraphNode {
 	return {
@@ -21,7 +22,7 @@ function completedNode(nodeId: string, dependencies: readonly string[] = []): Wo
 			inputHash: `input:${nodeId}`,
 			dependencyOutputHashes: Object.fromEntries(dependencies.map((dependency) => [dependency, `output:${dependency}`])),
 		},
-		output: { outputHash: `output:${nodeId}`, completedAt: now },
+		output: { resultId, outputHash: `output:${nodeId}`, completedAt: now },
 	};
 }
 

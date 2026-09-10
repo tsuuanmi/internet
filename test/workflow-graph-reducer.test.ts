@@ -16,6 +16,7 @@ import {
 } from "#internet/workflow/graph-reducer";
 
 const now = "2026-09-10T10:00:00.000Z";
+const resultId = "a".repeat(64);
 
 function graph(nodes: readonly WorkflowGraphNode[]): WorkflowGraphSnapshot {
 	return {
@@ -53,7 +54,7 @@ describe("workflow graph reducer", () => {
 			dependencies: [],
 			state: "COMPLETED",
 			input: input(),
-			output: { outputHash: "first-output", completedAt: now },
+			output: { resultId, outputHash: "first-output", completedAt: now },
 		};
 		const second: WorkflowGraphNode = { nodeId: "second", phase: "RESEARCH", dependencies: ["first"], state: "WAITING" };
 		const initial = graph([first, second]);
@@ -108,9 +109,10 @@ describe("workflow graph reducer", () => {
 		);
 		const retried = retryWorkflowNode(recovering, node.nodeId, execution("exec-new", 2));
 		expect(() =>
-			completeWorkflowNode(retried, node.nodeId, "exec-old", { outputHash: "late", completedAt: now }),
+			completeWorkflowNode(retried, node.nodeId, "exec-old", { resultId, outputHash: "late", completedAt: now }),
 		).toThrow("rejected stale execution");
 		const completed = completeWorkflowNode(retried, node.nodeId, "exec-new", {
+			resultId,
 			outputHash: "current",
 			completedAt: now,
 		});
