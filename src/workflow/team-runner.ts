@@ -17,6 +17,7 @@ export interface WorkflowTeamStepRequest {
 }
 
 export interface WorkflowTeamRunner {
+	readonly rounds: number;
 	runStep(request: WorkflowTeamStepRequest): Promise<TeamStepExecutionResult>;
 }
 
