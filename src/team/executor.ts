@@ -1,4 +1,5 @@
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
+import type { ProviderProgressEvent } from "#internet/browser/completion";
 import { type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError, isInternetError } from "#internet/core/errors";
 import { prepareTeamStep, type TeamPlan, type TeamPlanStep } from "#internet/team/plan";
@@ -17,8 +18,10 @@ export interface TeamStepExecutionOptions {
 	readonly sessionId: string;
 	readonly visible?: boolean;
 	readonly timeoutMs?: number;
+	readonly stallTimeoutMs?: number;
 	readonly signal?: AbortSignal;
 	readonly onProgress?: TeamProgressObserver;
+	readonly onProviderProgress?: (event: ProviderProgressEvent) => void;
 }
 
 export type TeamStepExecutionResult =
@@ -72,6 +75,18 @@ function failureDetail(error: unknown, accountId: AccountId, stage: TeamStage, r
 	};
 }
 
+function requestFor(options: TeamStepExecutionOptions, prompt: string): ChatRequest {
+	return {
+		prompt,
+		sessionId: options.sessionId,
+		visible: options.visible,
+		timeoutMs: options.timeoutMs,
+		stallTimeoutMs: options.stallTimeoutMs,
+		onProgress: options.onProviderProgress,
+		signal: options.signal,
+	};
+}
+
 export async function runTeamStep(
 	chat: TeamChatFn,
 	options: TeamStepExecutionOptions,
@@ -109,13 +124,7 @@ export async function runTeamStep(
 				accountId: step.accountId,
 				provider,
 			});
-			const result = await chat(step.accountId, {
-				prompt: prepared.prompt,
-				sessionId: options.sessionId,
-				visible: options.visible,
-				timeoutMs: options.timeoutMs,
-				signal: options.signal,
-			});
+			const result = await chat(step.accountId, requestFor(options, prepared.prompt));
 			const turn: TeamTurn = { round: step.round, accountId: step.accountId, provider, text: result.text };
 			emit(options.onProgress, {
 				at: now(),
@@ -131,13 +140,7 @@ export async function runTeamStep(
 
 		const prepared = prepareTeamStep(options.plan, step, options.task, options.transcript, options.promptStrategy);
 		emit(options.onProgress, { at: now(), stage, status: "started", accountId: step.accountId, provider });
-		const result = await chat(step.accountId, {
-			prompt: prepared.prompt,
-			sessionId: options.sessionId,
-			visible: options.visible,
-			timeoutMs: options.timeoutMs,
-			signal: options.signal,
-		});
+		const result = await chat(step.accountId, requestFor(options, prepared.prompt));
 		emit(options.onProgress, {
 			at: now(),
 			stage,
