@@ -6,6 +6,7 @@ import { BrowserWorkflowWriterRunner, type WorkflowWriterBrowser } from "#intern
 
 const jobId = "0123456789abcdef0123456789abcdef";
 const writerSessionId = `agent:workflow:${jobId}:writer`;
+const timeoutMs = 900_000;
 
 function job(): WorkflowJob {
 	const timestamp = "2026-09-08T00:00:00.000Z";
@@ -41,19 +42,21 @@ function job(): WorkflowJob {
 }
 
 describe("BrowserWorkflowWriterRunner", () => {
-	it("passes expected approval scope without self-asserting runtime account/session", async () => {
+	it("passes exact approval scope and workflow deadline without asserting runtime identity", async () => {
 		let observedAccount: string | undefined;
 		let observedConfirmation: unknown;
+		let observedTimeout: number | undefined;
 		const browser: WorkflowWriterBrowser = {
 			async chat(accountId, request) {
 				observedAccount = accountId;
 				observedConfirmation = request.confirmation;
+				observedTimeout = request.timeoutMs;
 				return {
 					text: '{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}',
 				};
 			},
 		};
-		const runner = new BrowserWorkflowWriterRunner(browser);
+		const runner = new BrowserWorkflowWriterRunner(browser, timeoutMs);
 		const current = job();
 		await runner.runControl({
 			sessionId: writerSessionId,
@@ -61,6 +64,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
 		expect(observedAccount).toBe("chatgpt-writer");
+		expect(observedTimeout).toBe(timeoutMs);
 		expect(observedConfirmation).toEqual({
 			jobId,
 			writerSessionId,
@@ -82,7 +86,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 					throw new WorkflowConfirmationError(kind, `confirmation: ${kind}`);
 				},
 			};
-			const result = await new BrowserWorkflowWriterRunner(browser).runControl({
+			const result = await new BrowserWorkflowWriterRunner(browser, timeoutMs).runControl({
 				sessionId: writerSessionId,
 				job: current,
 				control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
@@ -101,7 +105,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 				};
 			},
 		};
-		await new BrowserWorkflowWriterRunner(browser).runControl({
+		await new BrowserWorkflowWriterRunner(browser, timeoutMs).runControl({
 			sessionId: writerSessionId,
 			job: job(),
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
