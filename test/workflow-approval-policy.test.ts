@@ -17,7 +17,7 @@ function context(overrides: Partial<WorkflowApprovalContext> = {}): WorkflowAppr
 		sessionId: writerSession,
 		writerSessionId: writerSession,
 		repository: "https://github.com/Example/Repo",
-		state: "WRITER_RUNNING",
+		authority: "IMPLEMENTATION",
 		...overrides,
 	};
 }
@@ -47,7 +47,7 @@ describe("workflow scoped approval policy", () => {
 		).toEqual({ kind: "auto-approve", action: "write_file" });
 	});
 
-	it("fails closed on actual account, session, repository, branch, action, and state mismatches", () => {
+	it("fails closed on actual account, session, repository, branch, action, and authority mismatches", () => {
 		const branch = workflowWriterBranch(jobId);
 		expect(
 			classifyWorkflowConfirmation(context({ accountId: "chatgpt-thinker" }), {
@@ -78,7 +78,7 @@ describe("workflow scoped approval policy", () => {
 			}).kind,
 		).toBe("unknown");
 		expect(
-			classifyWorkflowConfirmation(context({ state: "PR_OPEN" }), {
+			classifyWorkflowConfirmation(context({ authority: "MERGE" }), {
 				action: "push_branch",
 				repository: "example/repo",
 				branch,
@@ -103,7 +103,7 @@ describe("workflow scoped approval policy", () => {
 			head: "internet-workflow/remediation",
 			headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		} as const;
-		const remediation = context({ state: "WRITER_REMEDIATING", pullRequest: pr });
+		const remediation = context({ authority: "REMEDIATION", pullRequest: pr });
 		expect(
 			classifyWorkflowConfirmation(remediation, {
 				action: "update_pull_request",
@@ -122,7 +122,7 @@ describe("workflow scoped approval policy", () => {
 		).toBe("unknown");
 		expect(
 			classifyWorkflowConfirmation(
-				context({ state: "WRITER_REMEDIATING", pullRequest: { ...pr, repository: "other/repo" } }),
+				context({ authority: "REMEDIATION", pullRequest: { ...pr, repository: "other/repo" } }),
 				{ action: "update_pull_request", repository: "example/repo", branch: pr.head, prNumber: 9 },
 			).kind,
 		).toBe("unknown");
