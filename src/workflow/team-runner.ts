@@ -1,3 +1,4 @@
+import type { ProviderProgressEvent } from "#internet/browser/completion";
 import type { BrowserManager } from "#internet/browser/runtime";
 import type { BrowserConfig } from "#internet/core/config";
 import { runTeamStep, type TeamStepExecutionResult } from "#internet/team/executor";
@@ -14,6 +15,7 @@ export interface WorkflowTeamStepRequest {
 	readonly sessionId: string;
 	readonly signal?: AbortSignal;
 	readonly onProgress?: (event: TeamProgressEvent) => void;
+	readonly onProviderProgress?: (event: ProviderProgressEvent) => void;
 }
 
 export interface WorkflowTeamRunner {
@@ -42,8 +44,10 @@ export class BrowserWorkflowTeamRunner implements WorkflowTeamRunner {
 			sessionId: request.sessionId,
 			visible: false,
 			timeoutMs: this.config.workflowHardTimeoutMs,
+			stallTimeoutMs: this.config.workflowStallTimeoutMs,
 			signal: request.signal,
 			onProgress: request.onProgress,
+			onProviderProgress: request.onProviderProgress,
 		});
 	}
 
