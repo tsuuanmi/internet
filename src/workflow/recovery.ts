@@ -48,6 +48,8 @@ export function classifyWorkflowFailure(error: unknown, at = new Date().toISOStr
 		switch (error.kind) {
 			case "timeout":
 				return { class: "PROVIDER", code: "HARD_TIMEOUT", message, retry: "RECREATE_SESSION", at };
+			case "provider_stalled":
+				return { class: "PROVIDER", code: "PROVIDER_STALLED", message, retry: "RECREATE_SESSION", at };
 			case "browser_unavailable":
 				return { class: "BROWSER", code: "BROWSER_UNAVAILABLE", message, retry: "RECREATE_SESSION", at };
 			case "provider_error":
