@@ -1,15 +1,9 @@
 import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
-import { getAccountDefinition, type AccountId } from "#internet/core/accounts";
+import { type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError, isInternetError } from "#internet/core/errors";
 import { prepareTeamStep, type TeamPlan, type TeamPlanStep } from "#internet/team/plan";
 import type { TeamPromptStrategyId } from "#internet/team/prompt-strategy";
-import type {
-	TeamFailureDetail,
-	TeamFailureKind,
-	TeamProgressEvent,
-	TeamStage,
-	TeamTurn,
-} from "#internet/team/types";
+import type { TeamFailureDetail, TeamFailureKind, TeamProgressEvent, TeamStage, TeamTurn } from "#internet/team/types";
 
 export type TeamChatFn = (accountId: AccountId, request: ChatRequest) => Promise<ChatResult>;
 export type TeamProgressObserver = (event: TeamProgressEvent) => void;
@@ -22,6 +16,7 @@ export interface TeamStepExecutionOptions {
 	readonly promptStrategy: TeamPromptStrategyId;
 	readonly sessionId: string;
 	readonly visible?: boolean;
+	readonly timeoutMs?: number;
 	readonly signal?: AbortSignal;
 	readonly onProgress?: TeamProgressObserver;
 }
@@ -55,7 +50,12 @@ function failureKind(error: unknown): TeamFailureKind {
 }
 
 function retryable(kind: TeamFailureKind): boolean {
-	return kind === "browser_unavailable" || kind === "provider_error" || kind === "timeout";
+	return (
+		kind === "browser_unavailable" ||
+		kind === "provider_error" ||
+		kind === "provider_stalled" ||
+		kind === "timeout"
+	);
 }
 
 function failureDetail(error: unknown, accountId: AccountId, stage: TeamStage, round?: number): TeamFailureDetail {
@@ -72,7 +72,10 @@ function failureDetail(error: unknown, accountId: AccountId, stage: TeamStage, r
 	};
 }
 
-export async function runTeamStep(chat: TeamChatFn, options: TeamStepExecutionOptions): Promise<TeamStepExecutionResult> {
+export async function runTeamStep(
+	chat: TeamChatFn,
+	options: TeamStepExecutionOptions,
+): Promise<TeamStepExecutionResult> {
 	if (options.sessionId.trim() === "") throw new Error("team debate sessionId must not be empty");
 	const { step } = options;
 	const provider = getAccountDefinition(step.accountId).provider;
@@ -110,6 +113,7 @@ export async function runTeamStep(chat: TeamChatFn, options: TeamStepExecutionOp
 				prompt: prepared.prompt,
 				sessionId: options.sessionId,
 				visible: options.visible,
+				timeoutMs: options.timeoutMs,
 				signal: options.signal,
 			});
 			const turn: TeamTurn = { round: step.round, accountId: step.accountId, provider, text: result.text };
@@ -131,6 +135,7 @@ export async function runTeamStep(chat: TeamChatFn, options: TeamStepExecutionOp
 			prompt: prepared.prompt,
 			sessionId: options.sessionId,
 			visible: options.visible,
+			timeoutMs: options.timeoutMs,
 			signal: options.signal,
 		});
 		emit(options.onProgress, {
