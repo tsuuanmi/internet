@@ -1,22 +1,29 @@
 import { InternetError } from "#internet/core/errors";
 import { htmlToMarkdown } from "#internet/core/markdown";
 
-/** A single polled view of the current provider response surface. */
 export interface CompletionSnapshot {
 	responsePresent: boolean;
-	/** Current visible text of the latest response. */
 	text: string;
-	/** Latest response innerHTML, used to render canonical markdown. */
 	html: string;
-	/** Whether a "stop generation" control is currently visible (still running). */
 	running: boolean;
 }
 
+export type ProviderProgressKind = "response_started" | "response_changed" | "generation_started" | "generation_stopped";
+
+export interface ProviderProgressEvent {
+	readonly kind: ProviderProgressKind;
+	readonly at: string;
+}
+
 export interface WaitOptions {
+	/** Absolute hard deadline for this provider turn. */
 	timeoutMs: number;
+	/** Optional no-meaningful-progress deadline; must be lower than timeoutMs. */
+	stallTimeoutMs?: number;
 	pollMs: number;
 	stableMs: number;
 	signal?: AbortSignal;
+	onProgress?: (event: ProviderProgressEvent) => void;
 }
 
 function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
@@ -39,19 +46,31 @@ function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
 	});
 }
 
+function emitProgress(observer: WaitOptions["onProgress"], kind: ProviderProgressKind, at: number): void {
+	if (observer === undefined) return;
+	try {
+		observer({ kind, at: new Date(at).toISOString() });
+	} catch {
+		// Progress projection must never change provider-turn correctness.
+	}
+}
+
 /**
- * Poll the provider response surface until it is present and its text stays
- * unchanged for `stableMs` while generation is not running, or until the
- * deadline. Returns the stable rendered text as canonical markdown. This
- * mirrors the completion policy of pi-internet's Gemini driver and is
- * intentionally conservative: an unchanged-but-still-running response is never
- * treated as complete.
+ * Wait for a stable completed response while distinguishing a hard deadline
+ * from a semantic no-progress stall. Only response/running transitions renew
+ * the progress lease; unrelated DOM churn and a static thinking control do not.
  */
 export async function waitForStableCompletion(
 	read: () => Promise<CompletionSnapshot>,
 	options: WaitOptions,
 ): Promise<string> {
-	const deadline = Date.now() + options.timeoutMs;
+	if (options.stallTimeoutMs !== undefined && options.stallTimeoutMs >= options.timeoutMs) {
+		throw new InternetError("config_error", "completion stallTimeoutMs must be lower than timeoutMs");
+	}
+	const startedAt = Date.now();
+	const deadline = startedAt + options.timeoutMs;
+	let lastMeaningfulProgressAt = startedAt;
+	let previous: CompletionSnapshot | undefined;
 	let candidate: { text: string; html: string } | undefined;
 	let stableSince: number | undefined;
 
@@ -62,14 +81,28 @@ export async function waitForStableCompletion(
 				: new InternetError("aborted", "browser turn aborted");
 		}
 		const snapshot = await read();
+		const at = Date.now();
 		const text = snapshot.text.trim();
+		if (previous === undefined || snapshot.responsePresent !== previous.responsePresent) {
+			if (snapshot.responsePresent) emitProgress(options.onProgress, "response_started", at);
+			lastMeaningfulProgressAt = at;
+		}
+		if (previous === undefined || snapshot.running !== previous.running) {
+			emitProgress(options.onProgress, snapshot.running ? "generation_started" : "generation_stopped", at);
+			lastMeaningfulProgressAt = at;
+		}
+		if (previous !== undefined && text !== previous.text.trim()) {
+			emitProgress(options.onProgress, "response_changed", at);
+			lastMeaningfulProgressAt = at;
+		}
+		previous = snapshot;
+
 		if (snapshot.responsePresent && text.length > 0) {
 			const unchanged = candidate !== undefined && candidate.text === text;
 			if (!snapshot.running && unchanged) {
-				stableSince ??= Date.now();
-				if (Date.now() - stableSince >= options.stableMs) {
-					const markdown = candidate?.html ? htmlToMarkdown(snapshot.html) : text;
-					return markdown;
+				stableSince ??= at;
+				if (at - stableSince >= options.stableMs) {
+					return candidate?.html ? htmlToMarkdown(snapshot.html) : text;
 				}
 			} else {
 				stableSince = undefined;
@@ -78,6 +111,13 @@ export async function waitForStableCompletion(
 		} else {
 			candidate = undefined;
 			stableSince = undefined;
+		}
+
+		if (options.stallTimeoutMs !== undefined && at - lastMeaningfulProgressAt >= options.stallTimeoutMs) {
+			throw new InternetError(
+				"provider_stalled",
+				`browser provider made no meaningful progress for ${options.stallTimeoutMs}ms`,
+			);
 		}
 		await delay(options.pollMs, options.signal);
 	}
