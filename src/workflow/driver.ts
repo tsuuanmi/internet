@@ -1,23 +1,23 @@
-import { normalizeGitHubRepository } from "#internet/workflow/approval-policy";
+import { randomBytes } from "node:crypto";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
-import { TERMINAL_WORKFLOW_STATES, type WorkflowJob, type WorkflowState } from "#internet/workflow/types";
+import type { WorkflowJob } from "#internet/workflow/types";
+import { workflowJobIsTerminal } from "#internet/workflow/types";
 
 export interface WorkflowDriverEngine {
 	status(jobId: string): WorkflowJob;
-	runResearch(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-	runWriterImplementation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-	runReview(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-	runWriterRemediation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-	runPrHealthCheck(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-	requestMergeAuthorization(jobId: string): WorkflowJob;
-	runWriterMerge(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-	markRetryRequired(jobId: string, message: string, resumeState: WorkflowState): WorkflowJob;
+	reconcile(jobId: string, ownerInstanceId: string, at?: number): WorkflowJob;
+	advance(jobId: string): WorkflowJob;
+	runnableNodeIds(jobId: string, at?: number): readonly string[];
+	nextRecoveryAt(jobId: string): string | undefined;
+	executeNode(jobId: string, nodeId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<WorkflowJob>;
 	cancel(jobId: string): WorkflowJob;
+	blockRuntime(jobId: string, message: string): WorkflowJob;
 }
 
 interface ActiveRun {
 	readonly controller: AbortController;
 	readonly promise: Promise<void>;
+	readonly ownerInstanceId: string;
 }
 
 function isAbort(error: unknown, signal: AbortSignal): boolean {
@@ -25,23 +25,28 @@ function isAbort(error: unknown, signal: AbortSignal): boolean {
 }
 
 function shouldResume(job: WorkflowJob): boolean {
-	if (job.state === "READY_FOR_MERGE_AUTHORIZATION") {
-		return job.lastEvent?.type !== "MERGE_AUTHORIZATION_REJECTED";
-	}
-	return new Set<WorkflowState>([
-		"CREATED",
-		"RESEARCH_RUNNING",
-		"RESEARCH_HANDOFFS_DELIVERING",
-		"WRITER_RUNNING",
-		"PR_OPEN",
-		"REVIEW_RUNNING",
-		"REVIEW_HANDOFFS_DELIVERING",
-		"WRITER_REMEDIATING",
-		"MERGING",
-	]).has(job.state);
+	return !workflowJobIsTerminal(job) && (job.graph.lifecycle === "RUNNING" || job.graph.lifecycle === "RECOVERING");
 }
 
-/** Deterministic background driver over WorkflowEngine primitives. It never decides implementation content. */
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		if (signal.aborted) {
+			reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+			return;
+		}
+		const timer = setTimeout(resolve, ms);
+		signal.addEventListener(
+			"abort",
+			() => {
+				clearTimeout(timer);
+				reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+			},
+			{ once: true },
+		);
+	});
+}
+
+/** Background owner for one durable graph scheduler. Semantic readiness remains in WorkflowEngine. */
 export class WorkflowDriver {
 	private readonly engine: WorkflowDriverEngine;
 	private readonly jobs: WorkflowJobStore;
@@ -60,33 +65,32 @@ export class WorkflowDriver {
 	enqueue(jobId: string): void {
 		if (this.disposed || this.active.has(jobId)) return;
 		const controller = new AbortController();
-		const promise = this.drive(jobId, controller.signal)
+		const ownerInstanceId = randomBytes(16).toString("hex");
+		const promise = this.drive(jobId, ownerInstanceId, controller.signal)
 			.catch((error: unknown) => {
 				if (isAbort(error, controller.signal)) return;
 				try {
 					const current = this.engine.status(jobId);
-					if (TERMINAL_WORKFLOW_STATES.has(current.state)) return;
-					this.engine.markRetryRequired(
-						jobId,
-						`automatic workflow driver failed: ${error instanceof Error ? error.message : String(error)}`,
-						current.state,
-					);
+					if (!workflowJobIsTerminal(current)) {
+						this.engine.blockRuntime(
+							jobId,
+							`workflow scheduler failed: ${error instanceof Error ? error.message : String(error)}`,
+						);
+					}
 				} catch {
-					// Durable-state failure cannot be repaired safely by the driver itself.
+					// If durable storage itself is unavailable, the driver cannot safely invent recovery state.
 				}
 			})
 			.finally(() => {
 				const current = this.active.get(jobId);
 				if (current?.promise === promise) this.active.delete(jobId);
 			});
-		this.active.set(jobId, { controller, promise });
+		this.active.set(jobId, { controller, promise, ownerInstanceId });
 	}
 
 	resumeActive(): void {
 		if (this.disposed) return;
-		for (const job of this.jobs.list()) {
-			if (shouldResume(job)) this.enqueue(job.jobId);
-		}
+		for (const job of this.jobs.list()) if (shouldResume(job)) this.enqueue(job.jobId);
 	}
 
 	async cancel(jobId: string): Promise<WorkflowJob> {
@@ -107,52 +111,34 @@ export class WorkflowDriver {
 		this.active.clear();
 	}
 
-	private async drive(jobId: string, signal: AbortSignal): Promise<void> {
+	private async drive(jobId: string, ownerInstanceId: string, signal: AbortSignal): Promise<void> {
+		this.engine.reconcile(jobId, ownerInstanceId);
 		while (!signal.aborted) {
-			const before = this.engine.status(jobId);
-			let after: WorkflowJob;
-			switch (before.state) {
-				case "CREATED":
-				case "RESEARCH_RUNNING":
-					after = await this.engine.runResearch(jobId, signal);
-					break;
-				case "RESEARCH_HANDOFFS_DELIVERING":
-				case "WRITER_RUNNING":
-					after = await this.engine.runWriterImplementation(jobId, signal);
-					break;
-				case "PR_OPEN":
-				case "REVIEW_RUNNING":
-					after = await this.engine.runReview(jobId, signal);
-					break;
-				case "REVIEW_HANDOFFS_DELIVERING":
-				case "WRITER_REMEDIATING":
-					after = await this.engine.runWriterRemediation(jobId, signal);
-					break;
-				case "READY_FOR_MERGE_AUTHORIZATION":
-					if (before.lastEvent?.type === "MERGE_AUTHORIZATION_REJECTED") return;
-					if (
-						before.pullRequest !== undefined &&
-						before.ciReceipt !== undefined &&
-						normalizeGitHubRepository(before.ciReceipt.repository) ===
-							normalizeGitHubRepository(before.pullRequest.repository) &&
-						before.ciReceipt.number === before.pullRequest.number &&
-						before.ciReceipt.url === before.pullRequest.url &&
-						before.ciReceipt.headSha === before.pullRequest.headSha &&
-						(before.ciReceipt.status === "PASS" || before.ciReceipt.status === "NONE")
-					)
-						after = this.engine.requestMergeAuthorization(jobId);
-					else after = await this.engine.runPrHealthCheck(jobId, signal);
-					break;
-				case "MERGING":
-					after = await this.engine.runWriterMerge(jobId, signal);
-					break;
-				default:
-					return;
+			let job = this.engine.advance(jobId);
+			if (workflowJobIsTerminal(job) || job.graph.lifecycle === "BLOCKED" || job.graph.lifecycle === "WAITING_USER") {
+				return;
 			}
-			if (signal.aborted) return;
-			if (after.state === before.state && after.revision <= before.revision) {
-				throw new Error(`workflow driver made no durable progress from ${before.state}`);
+
+			const runnable = this.engine.runnableNodeIds(jobId);
+			if (runnable.length > 0) {
+				await Promise.all(
+					runnable.map((nodeId) => this.engine.executeNode(jobId, nodeId, ownerInstanceId, signal)),
+				);
+				continue;
 			}
+
+			job = this.engine.reconcile(jobId, ownerInstanceId);
+			if (workflowJobIsTerminal(job) || job.graph.lifecycle === "BLOCKED" || job.graph.lifecycle === "WAITING_USER") {
+				return;
+			}
+			if (this.engine.runnableNodeIds(jobId).length > 0) continue;
+
+			const notBefore = this.engine.nextRecoveryAt(jobId);
+			if (notBefore !== undefined) {
+				await delay(Math.max(1, Date.parse(notBefore) - Date.now()), signal);
+				continue;
+			}
+			throw new Error(`no READY or scheduled recovery node exists while workflow is ${job.graph.lifecycle}`);
 		}
 	}
 }
