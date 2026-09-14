@@ -29,7 +29,7 @@ import {
 	chatgptSendDeepResearch,
 } from "#internet/browser/chatgpt-research";
 import { discoverChrome } from "#internet/browser/chrome";
-import { waitForStableCompletion } from "#internet/browser/completion";
+import { type ProviderProgressEvent, waitForStableCompletion } from "#internet/browser/completion";
 import {
 	type ConversationBinding,
 	ConversationStore,
@@ -71,8 +71,12 @@ export interface ChatRequest {
 	visible?: boolean;
 	/** Enables provider Deep Research before this request is submitted. */
 	research?: boolean;
-	/** Override the normal-turn completion deadline for a long research run. */
+	/** Override the normal-turn hard completion deadline. */
 	timeoutMs?: number;
+	/** Optional semantic no-progress deadline, independent from the hard deadline. */
+	stallTimeoutMs?: number;
+	/** Best-effort semantic provider progress observer. */
+	onProgress?: (event: ProviderProgressEvent) => void;
 	/** Optional fail-closed Website confirmation policy for the workflow writer turn. */
 	confirmation?: WorkflowApprovalScope;
 	signal?: AbortSignal;
@@ -160,7 +164,6 @@ export async function waitForBoundCompletion<T>(options: {
 		check();
 		const text = await options.observe(signal, () => Math.max(0, deadline - Date.now()));
 		check();
-		// A finished response may precede the SPA's canonical route update.
 		bindingDeadline = Math.min(deadline, Date.now() + 5_000);
 		return text;
 	})();
@@ -499,7 +502,6 @@ export class BrowserManager {
 		throw new InternetError("login_failed", `${provider} portable account capture failed.`);
 	}
 
-	/** Verify the IndexedDB-free fallback before it replaces a portable account. */
 	private async verifyFallbackStorageState(
 		provider: WebProvider,
 		browser: Browser,
@@ -536,7 +538,6 @@ export class BrowserManager {
 		);
 	}
 
-	/** Cancel any pending delayed-close timer for an account (the browser is needed now). */
 	private cancelPendingClose(accountId: AccountId): void {
 		const timer = this.pendingCloses.get(accountId);
 		if (timer === undefined) return;
@@ -544,7 +545,6 @@ export class BrowserManager {
 		this.pendingCloses.delete(accountId);
 	}
 
-	/** Schedule closing an account browser after its scheduler becomes idle. */
 	private scheduleCloseWhenIdle(accountId: AccountId): void {
 		const scheduler = this.scheduler(accountId);
 		void scheduler.waitForIdle().then(() => {
@@ -587,8 +587,7 @@ export class BrowserManager {
 
 	private async ensureBrowser(accountId: AccountId, headless: boolean, visible: boolean): Promise<ManagedBrowser> {
 		const existing = this.browsers.get(accountId);
-		if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible)
-			return existing;
+		if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible) return existing;
 		if (existing !== undefined) await this.closeBrowser(accountId);
 
 		const pending = this.browserLaunches.get(accountId);
@@ -681,7 +680,6 @@ export class BrowserManager {
 		}
 	}
 
-	/** Preserve a provider-rotated session after a recoverable failed turn. */
 	private async recoverAuthenticatedSnapshot(
 		accountId: AccountId,
 		provider: WebProvider,
@@ -706,10 +704,6 @@ export class BrowserManager {
 		}
 	}
 
-	/**
-	 * Persist reauth-required only when the canonical account is still the
-	 * bootstrapped revision and the lease is current, then invalidate turns.
-	 */
 	private async handleSignedOut(
 		accountId: AccountId,
 		lease: ProviderLease,
@@ -730,7 +724,6 @@ export class BrowserManager {
 			.catch(() => {});
 	}
 
-	/** Open the account's loopback noVNC login desktop for sign-in. */
 	async login(accountId: AccountId): Promise<AccountStatus> {
 		return this.runAccountExclusive(accountId, () => this.loginAccount(accountId));
 	}
@@ -788,7 +781,6 @@ export class BrowserManager {
 		this.accounts.writeReady(accountId, storageState);
 	}
 
-	/** Report persisted account and active remote-login state. */
 	async status(accountId: AccountId): Promise<AccountStatus> {
 		return this.accountStatus(accountId);
 	}
@@ -817,12 +809,10 @@ export class BrowserManager {
 		};
 	}
 
-	/** Run one long provider Deep Research request in an isolated durable conversation. */
 	async research(accountId: AccountId, request: ChatRequest): Promise<ChatResult> {
 		return this.chat(accountId, { ...request, research: true, timeoutMs: this.config.researchTimeoutMs });
 	}
 
-	/** Run one browser chat turn against an authenticated account and return rendered markdown. */
 	async chat(accountId: AccountId, request: ChatRequest): Promise<ChatResult> {
 		if (this.disposed) throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
 		this.cancelPendingClose(accountId);
@@ -850,11 +840,11 @@ export class BrowserManager {
 		this.cancelPendingClose(accountId);
 		const visible = request.visible === true;
 		const headless = visible ? false : this.config.headless;
-		const {
-			context,
-			accountRevision,
-			storageState: previousStorageState,
-		} = await this.ensureContext(accountId, headless, visible);
+		const { context, accountRevision, storageState: previousStorageState } = await this.ensureContext(
+			accountId,
+			headless,
+			visible,
+		);
 		const untrackContext = this.trackContext(accountId, lease, context);
 		let page: Page | undefined;
 		try {
@@ -869,8 +859,6 @@ export class BrowserManager {
 				);
 			}
 			const targetUrl = binding?.conversationUrl ?? this.homeUrl(provider);
-			// ChatGPT leaves transient post-response controls that can swallow the
-			// next submission; reload its bound conversation before follow-ups.
 			if ((provider === "chatgpt-web" && binding !== undefined) || page.url() !== targetUrl) {
 				await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
 			}
@@ -911,15 +899,18 @@ export class BrowserManager {
 
 			const waitOptions = {
 				timeoutMs: request.timeoutMs ?? this.config.turnTimeoutMs,
+				stallTimeoutMs: request.stallTimeoutMs,
 				pollMs: this.config.pollMs,
 				stableMs: this.config.stableMs,
 				signal: lease.signal,
+				onProgress: request.onProgress,
 			};
 			const observeBoundTurn = (observe: (signal: AbortSignal, remainingMs: () => number) => Promise<string>) =>
 				waitForBoundCompletion({
 					provider,
 					page: page!,
-					...waitOptions,
+					timeoutMs: waitOptions.timeoutMs,
+					signal: waitOptions.signal,
 					observe,
 					persist: (url) => {
 						try {
@@ -1011,7 +1002,6 @@ export class BrowserManager {
 		}
 	}
 
-	/** Close the account's managed inference browser, if one is open. */
 	async stop(accountId: AccountId): Promise<void> {
 		await this.runAccountExclusive(accountId, () => this.closeAccountResources(accountId));
 	}
@@ -1027,7 +1017,6 @@ export class BrowserManager {
 		await this.closeBrowser(accountId);
 	}
 
-	/** Close every managed inference browser (no leaked Chrome processes). */
 	async dispose(): Promise<void> {
 		if (this.disposed) return;
 		this.disposed = true;
