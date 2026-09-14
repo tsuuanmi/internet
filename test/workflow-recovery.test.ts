@@ -37,10 +37,16 @@ describe("workflow recovery policy", () => {
 		expect(recoveryPlanForFailure(failure, 1)).toBeUndefined();
 	});
 
-	it("classifies provider timeout for bounded same-node session recreation", () => {
+	it("classifies hard timeout for bounded same-node session recreation", () => {
 		const failure = classifyWorkflowFailure(new InternetError("timeout", "provider timeout"), startedAt);
 		expect(failure).toMatchObject({ class: "PROVIDER", code: "HARD_TIMEOUT", retry: "RECREATE_SESSION" });
 		expect(recoveryPlanForFailure(failure, 1)).toEqual({ action: "RECREATE_SESSION", attempt: 2, maxAttempts: 3 });
+	});
+
+	it("classifies no-progress stall separately while using the same smallest-node recovery", () => {
+		const failure = classifyWorkflowFailure(new InternetError("provider_stalled", "provider stopped progressing"), startedAt);
+		expect(failure).toMatchObject({ class: "PROVIDER", code: "PROVIDER_STALLED", retry: "RECREATE_SESSION" });
+		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "RECREATE_SESSION", attempt: 3, maxAttempts: 3 });
 	});
 
 	it("does not consume a new attempt for user-owned confirmation", () => {
