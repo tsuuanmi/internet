@@ -12,7 +12,7 @@ import {
 	workflowNodeId,
 } from "#internet/workflow/graph";
 
-export interface WorkflowResearchLaneInput {
+export interface WorkflowLaneInput {
 	readonly task: string;
 	readonly sessionId: string;
 }
@@ -23,8 +23,15 @@ export interface InitialWorkflowGraphInput {
 	readonly rounds: number;
 	readonly accounts: readonly AccountId[];
 	readonly synthesizer: AccountId;
-	readonly research: Readonly<Record<WorkflowLane, WorkflowResearchLaneInput>>;
-	readonly writerSessionId: string;
+	readonly research: Readonly<Record<WorkflowLane, WorkflowLaneInput>>;
+}
+
+export interface ReviewCycleGraphInput {
+	readonly cycle: number;
+	readonly sourceNodeId: string;
+	readonly rounds: number;
+	readonly accounts: readonly AccountId[];
+	readonly synthesizer: AccountId;
 }
 
 export interface TeamStepInputReceiptInput {
@@ -67,71 +74,28 @@ export function createTeamStepInputReceipt(input: TeamStepInputReceiptInput): Wo
 }
 
 export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): WorkflowGraphSnapshot {
-	const plan = buildTeamPlan({
-		accounts: input.accounts,
-		rounds: input.rounds,
-		synthesize: true,
-		synthesizer: input.synthesizer,
-	});
+	const plan = buildTeamPlan({ accounts: input.accounts, rounds: input.rounds, synthesize: true, synthesizer: input.synthesizer });
 	const nodes: Record<string, WorkflowGraphNode> = {};
-
 	for (const lane of ["A", "B"] as const) {
 		const laneInput = input.research[lane];
-		const nodeIdsByStepId = new Map<string, string>();
-		for (const step of plan.steps) {
-			const nodeId = researchStepNodeId(lane, step);
-			nodeIdsByStepId.set(step.stepId, nodeId);
-			const dependencies = step.dependsOnStepIds.map((stepId) => {
-				const dependencyId = nodeIdsByStepId.get(stepId);
-				if (dependencyId === undefined)
-					throw new Error(`team plan dependency ${stepId} must precede ${step.stepId}`);
-				return dependencyId;
-			});
-			const bindings = stepBindings(input, lane, laneInput, step);
-			const ready = dependencies.length === 0;
-			nodes[nodeId] = {
-				nodeId,
-				kind: step.kind === "member" ? "TEAM_MEMBER" : "TEAM_SYNTHESIS",
-				phase: "RESEARCH",
-				dependencies,
-				state: ready ? "READY" : "WAITING",
-				...(ready
-					? {
-							input: createTeamStepInputReceipt({
-								nodeId,
-								plan,
-								step,
-								task: laneInput.task,
-								transcript: [],
-								promptStrategy: "workflow-research",
-								dependencyOutputHashes: {},
-								bindings,
-							}),
-						}
-					: {}),
-			};
-		}
+		Object.assign(nodes, buildTeamNodes({
+			plan,
+			lane,
+			phase: "RESEARCH",
+			nodeIdForStep: (step) => researchStepNodeId(lane, step),
+			rootDependencies: [],
+			rootInput: laneInput,
+			bindings: { repository: input.repository, baseRevision: input.baseRevision, lane },
+			promptStrategy: "workflow-research",
+		}));
 	}
-
 	const handoffGateId = workflowNodeId.researchHandoffGate();
-	nodes[handoffGateId] = {
-		nodeId: handoffGateId,
-		kind: "RESEARCH_HANDOFF_GATE",
-		phase: "RESEARCH",
-		dependencies: [workflowNodeId.researchSynthesis("A"), workflowNodeId.researchSynthesis("B")],
-		state: "WAITING",
-	};
-
+	nodes[handoffGateId] = waitingNode(handoffGateId, "RESEARCH_HANDOFF_GATE", "RESEARCH", [
+		workflowNodeId.researchSynthesis("A"),
+		workflowNodeId.researchSynthesis("B"),
+	]);
 	const writerId = workflowNodeId.writerImplementation();
-	nodes[writerId] = {
-		nodeId: writerId,
-		kind: "WRITER_IMPLEMENTATION",
-		phase: "WRITER",
-		dependencies: [handoffGateId],
-		state: "WAITING",
-		waitReason: undefined,
-	};
-
+	nodes[writerId] = waitingNode(writerId, "WRITER_IMPLEMENTATION", "WRITER", [handoffGateId]);
 	const graph: WorkflowGraphSnapshot = {
 		schema: "@tsuuanmi/internet-workflow-graph",
 		version: 1,
@@ -145,25 +109,116 @@ export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): Wor
 	return graph;
 }
 
-function researchStepNodeId(lane: WorkflowLane, step: TeamPlanStep): string {
-	return step.kind === "member"
-		? workflowNodeId.researchMember(lane, step.round, step.member)
-		: workflowNodeId.researchSynthesis(lane);
+export function buildReviewCycleNodes(input: ReviewCycleGraphInput): readonly WorkflowGraphNode[] {
+	const plan = buildTeamPlan({ accounts: input.accounts, rounds: input.rounds, synthesize: true, synthesizer: input.synthesizer });
+	const nodes: WorkflowGraphNode[] = [];
+	for (const lane of ["A", "B"] as const) {
+		const byId = buildTeamNodes({
+			plan,
+			lane,
+			phase: "REVIEW",
+			nodeIdForStep: (step) => reviewStepNodeId(input.cycle, lane, step),
+			rootDependencies: [input.sourceNodeId],
+		});
+		nodes.push(...Object.values(byId));
+	}
+	const gateId = workflowNodeId.reviewHandoffGate(input.cycle);
+	nodes.push(
+		waitingNode(gateId, "REVIEW_HANDOFF_GATE", "REVIEW", [
+			workflowNodeId.reviewSynthesis(input.cycle, "A"),
+			workflowNodeId.reviewSynthesis(input.cycle, "B"),
+		]),
+	);
+	return nodes;
 }
 
-function stepBindings(
-	input: InitialWorkflowGraphInput,
-	lane: WorkflowLane,
-	laneInput: WorkflowResearchLaneInput,
-	step: TeamPlanStep,
-): Readonly<Record<string, string | number | boolean>> {
-	return {
-		repository: input.repository,
-		baseRevision: input.baseRevision,
-		lane,
-		sessionId: laneInput.sessionId,
-		taskHash: hashWorkflowGraphValue(laneInput.task),
-		stepId: step.stepId,
-		accountId: step.accountId,
-	};
+export function buildRemediationNode(cycle: number): WorkflowGraphNode {
+	const nodeId = workflowNodeId.writerRemediation(cycle);
+	return waitingNode(nodeId, "WRITER_REMEDIATION", "WRITER", [workflowNodeId.reviewHandoffGate(cycle)]);
+}
+
+export function buildHealthNode(cycle: number): WorkflowGraphNode {
+	const nodeId = workflowNodeId.prHealth(cycle);
+	return waitingNode(nodeId, "PR_HEALTH", "HEALTH", [workflowNodeId.reviewHandoffGate(cycle)]);
+}
+
+export function buildMergeAuthorizationNode(cycle: number): WorkflowGraphNode {
+	const nodeId = workflowNodeId.mergeAuthorization(cycle);
+	return waitingNode(nodeId, "MERGE_AUTHORIZATION", "MERGE", [workflowNodeId.prHealth(cycle)]);
+}
+
+export function buildMergeNode(cycle: number): WorkflowGraphNode {
+	const nodeId = workflowNodeId.merge(cycle);
+	return waitingNode(nodeId, "MERGE", "MERGE", [workflowNodeId.mergeAuthorization(cycle)]);
+}
+
+function buildTeamNodes(input: {
+	readonly plan: TeamPlan;
+	readonly lane: WorkflowLane;
+	readonly phase: "RESEARCH" | "REVIEW";
+	readonly nodeIdForStep: (step: TeamPlanStep) => string;
+	readonly rootDependencies: readonly string[];
+	readonly rootInput?: WorkflowLaneInput;
+	readonly bindings?: Readonly<Record<string, string | number | boolean>>;
+	readonly promptStrategy?: TeamPromptStrategyId;
+}): Record<string, WorkflowGraphNode> {
+	const nodes: Record<string, WorkflowGraphNode> = {};
+	const nodeIdsByStepId = new Map(input.plan.steps.map((step) => [step.stepId, input.nodeIdForStep(step)]));
+	for (const step of input.plan.steps) {
+		const nodeId = nodeIdsByStepId.get(step.stepId)!;
+		const planDependencies = step.dependsOnStepIds.map((stepId) => {
+			const dependencyId = nodeIdsByStepId.get(stepId);
+			if (dependencyId === undefined) throw new Error(`unknown team plan dependency ${stepId}`);
+			return dependencyId;
+		});
+		const dependencies = planDependencies.length === 0 ? [...input.rootDependencies] : planDependencies;
+		const ready = dependencies.length === 0 && input.rootInput !== undefined && input.bindings !== undefined && input.promptStrategy !== undefined;
+		nodes[nodeId] = {
+			nodeId,
+			kind: step.kind === "member" ? "TEAM_MEMBER" : "TEAM_SYNTHESIS",
+			phase: input.phase,
+			dependencies,
+			state: ready ? "READY" : "WAITING",
+			...(ready
+				? {
+						input: createTeamStepInputReceipt({
+							nodeId,
+							plan: input.plan,
+							step,
+							task: input.rootInput!.task,
+							transcript: [],
+							promptStrategy: input.promptStrategy!,
+							dependencyOutputHashes: {},
+							bindings: {
+								...input.bindings!,
+								sessionId: input.rootInput!.sessionId,
+								taskHash: hashWorkflowGraphValue(input.rootInput!.task),
+								stepId: step.stepId,
+								accountId: step.accountId,
+							},
+						}),
+					}
+				: {}),
+		};
+	}
+	return nodes;
+}
+
+function waitingNode(
+	nodeId: string,
+	kind: WorkflowGraphNode["kind"],
+	phase: WorkflowGraphNode["phase"],
+	dependencies: readonly string[],
+): WorkflowGraphNode {
+	return { nodeId, kind, phase, dependencies, state: "WAITING" };
+}
+
+function researchStepNodeId(lane: WorkflowLane, step: TeamPlanStep): string {
+	return step.kind === "member" ? workflowNodeId.researchMember(lane, step.round, step.member) : workflowNodeId.researchSynthesis(lane);
+}
+
+function reviewStepNodeId(cycle: number, lane: WorkflowLane, step: TeamPlanStep): string {
+	return step.kind === "member"
+		? workflowNodeId.reviewMember(cycle, lane, step.round, step.member)
+		: workflowNodeId.reviewSynthesis(cycle, lane);
 }
