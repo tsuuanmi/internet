@@ -19,6 +19,7 @@ export interface WorkflowWriterBrowser {
 		request: {
 			readonly prompt: string;
 			readonly sessionId: string;
+			readonly timeoutMs: number;
 			readonly confirmation?: WorkflowApprovalScope;
 			readonly signal?: AbortSignal;
 		},
@@ -114,7 +115,9 @@ function controlPrompt(job: WorkflowJob, control: WorkflowControlMessage): strin
 		].join("\n");
 	}
 	if (control.kind === "CHECK_PR_HEALTH") {
-		if (pr === undefined || control.expectedHeadSha === undefined) throw new Error("CHECK_PR_HEALTH requires a persisted PR and exact head");
+		if (pr === undefined || control.expectedHeadSha === undefined) {
+			throw new Error("CHECK_PR_HEALTH requires a persisted PR and exact head");
+		}
 		return [
 			"You are the workflow writer/executor. This is trusted read-only PR health control.",
 			`Repository: ${job.repository}`,
@@ -126,7 +129,9 @@ function controlPrompt(job: WorkflowJob, control: WorkflowControlMessage): strin
 		].join("\n");
 	}
 	if (control.kind === "MERGE_AUTHORIZED") {
-		if (pr === undefined || job.mergeAuthorization === undefined || control.expectedHeadSha === undefined) throw new Error("MERGE_AUTHORIZED requires persisted exact-head authorization");
+		if (pr === undefined || job.mergeAuthorization === undefined || control.expectedHeadSha === undefined) {
+			throw new Error("MERGE_AUTHORIZED requires persisted exact-head authorization");
+		}
 		return [
 			"You are the workflow writer/executor. This is trusted explicit merge authorization.",
 			`Repository: ${job.repository}`,
@@ -151,17 +156,23 @@ function requireRepository(value: unknown): string {
 }
 
 function requirePrNumber(value: unknown): number {
-	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) throw new Error("writer PR number is invalid");
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+		throw new Error("writer PR number is invalid");
+	}
 	return value;
 }
 
 function requireGitHubUrl(value: unknown): string {
-	if (typeof value !== "string" || !/^https:\/\/github\.com\//u.test(value)) throw new Error("writer PR URL is invalid");
+	if (typeof value !== "string" || !/^https:\/\/github\.com\//u.test(value)) {
+		throw new Error("writer PR URL is invalid");
+	}
 	return value;
 }
 
 function requireSha(value: unknown, label: string): string {
-	if (typeof value !== "string" || !/^[0-9a-f]{40}$/u.test(value)) throw new Error(`writer ${label} SHA is invalid`);
+	if (typeof value !== "string" || !/^[0-9a-f]{40}$/u.test(value)) {
+		throw new Error(`writer ${label} SHA is invalid`);
+	}
 	return value;
 }
 
@@ -174,12 +185,16 @@ export function parseWorkflowWriterResult(text: string): WorkflowWriterResult {
 	}
 	if (!isRecord(value)) throw new Error("workflow writer result must be an object");
 	if (value.status === "BLOCKED") {
-		if (typeof value.message !== "string" || value.message.trim() === "") throw new Error("workflow writer BLOCKED result requires a message");
+		if (typeof value.message !== "string" || value.message.trim() === "") {
+			throw new Error("workflow writer BLOCKED result requires a message");
+		}
 		return { status: "BLOCKED", message: value.message };
 	}
 	if (value.status === "PR_HEALTH") {
 		const health = String(value.health);
-		if (!["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"].includes(health)) throw new Error("writer health status is invalid");
+		if (!["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"].includes(health)) {
+			throw new Error("writer health status is invalid");
+		}
 		return {
 			status: "PR_HEALTH",
 			repository: requireRepository(value.repository),
@@ -200,7 +215,14 @@ export function parseWorkflowWriterResult(text: string): WorkflowWriterResult {
 		};
 	}
 	if (value.status !== "PR_OPEN") throw new Error("workflow writer result has an unsupported status");
-	if (typeof value.base !== "string" || value.base.trim() === "" || typeof value.head !== "string" || value.head.trim() === "") throw new Error("writer PR branch identity is invalid");
+	if (
+		typeof value.base !== "string" ||
+		value.base.trim() === "" ||
+		typeof value.head !== "string" ||
+		value.head.trim() === ""
+	) {
+		throw new Error("writer PR branch identity is invalid");
+	}
 	return {
 		status: "PR_OPEN",
 		pullRequest: {
@@ -216,15 +238,19 @@ export function parseWorkflowWriterResult(text: string): WorkflowWriterResult {
 
 export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 	private readonly browser: WorkflowWriterBrowser;
+	private readonly timeoutMs: number;
 
-	constructor(browser: WorkflowWriterBrowser) {
+	constructor(browser: WorkflowWriterBrowser, timeoutMs: number) {
+		if (!Number.isFinite(timeoutMs) || timeoutMs < 1) throw new Error("workflow writer timeout must be positive");
 		this.browser = browser;
+		this.timeoutMs = Math.floor(timeoutMs);
 	}
 
 	async deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void> {
 		await this.browser.chat("chatgpt-writer", {
 			prompt: request.payload,
 			sessionId: request.sessionId,
+			timeoutMs: this.timeoutMs,
 			signal: request.signal,
 		});
 	}
@@ -234,6 +260,7 @@ export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 			const result = await this.browser.chat("chatgpt-writer", {
 				prompt: controlPrompt(request.job, request.control),
 				sessionId: request.sessionId,
+				timeoutMs: this.timeoutMs,
 				confirmation: confirmationScope(request.job, request.control),
 				signal: request.signal,
 			});
