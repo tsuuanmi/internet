@@ -1,3 +1,4 @@
+import type { ProviderProgressEvent } from "#internet/browser/completion";
 import {
 	type WorkflowApprovalScope,
 	WorkflowConfirmationError,
@@ -20,23 +21,32 @@ export interface WorkflowWriterBrowser {
 			readonly prompt: string;
 			readonly sessionId: string;
 			readonly timeoutMs: number;
+			readonly stallTimeoutMs: number;
+			readonly onProgress?: (event: ProviderProgressEvent) => void;
 			readonly confirmation?: WorkflowApprovalScope;
 			readonly signal?: AbortSignal;
 		},
 	): Promise<{ readonly text: string }>;
 }
 
-export interface WorkflowWriterDeliveryRequest {
-	readonly sessionId: string;
-	readonly payload: string;
-	readonly signal?: AbortSignal;
+interface WorkflowWriterProviderPolicy {
+	readonly hardTimeoutMs: number;
+	readonly stallTimeoutMs: number;
 }
 
-export interface WorkflowWriterControlRequest {
+interface WorkflowWriterRequestBase {
 	readonly sessionId: string;
+	readonly signal?: AbortSignal;
+	readonly onProviderProgress?: (event: ProviderProgressEvent) => void;
+}
+
+export interface WorkflowWriterDeliveryRequest extends WorkflowWriterRequestBase {
+	readonly payload: string;
+}
+
+export interface WorkflowWriterControlRequest extends WorkflowWriterRequestBase {
 	readonly job: WorkflowJob;
 	readonly control: WorkflowControlMessage;
-	readonly signal?: AbortSignal;
 }
 
 export type WorkflowWriterResult =
@@ -238,32 +248,44 @@ export function parseWorkflowWriterResult(text: string): WorkflowWriterResult {
 
 export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 	private readonly browser: WorkflowWriterBrowser;
-	private readonly timeoutMs: number;
+	private readonly policy: WorkflowWriterProviderPolicy;
 
-	constructor(browser: WorkflowWriterBrowser, timeoutMs: number) {
-		if (!Number.isFinite(timeoutMs) || timeoutMs < 1) throw new Error("workflow writer timeout must be positive");
+	constructor(browser: WorkflowWriterBrowser, policy: WorkflowWriterProviderPolicy) {
+		if (!Number.isFinite(policy.hardTimeoutMs) || policy.hardTimeoutMs < 1) {
+			throw new Error("workflow writer hard timeout must be positive");
+		}
+		if (!Number.isFinite(policy.stallTimeoutMs) || policy.stallTimeoutMs < 1 || policy.stallTimeoutMs >= policy.hardTimeoutMs) {
+			throw new Error("workflow writer stall timeout must be positive and lower than hard timeout");
+		}
 		this.browser = browser;
-		this.timeoutMs = Math.floor(timeoutMs);
+		this.policy = {
+			hardTimeoutMs: Math.floor(policy.hardTimeoutMs),
+			stallTimeoutMs: Math.floor(policy.stallTimeoutMs),
+		};
+	}
+
+	private providerRequest(request: WorkflowWriterRequestBase, prompt: string, confirmation?: WorkflowApprovalScope) {
+		return {
+			prompt,
+			sessionId: request.sessionId,
+			timeoutMs: this.policy.hardTimeoutMs,
+			stallTimeoutMs: this.policy.stallTimeoutMs,
+			onProgress: request.onProviderProgress,
+			confirmation,
+			signal: request.signal,
+		};
 	}
 
 	async deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void> {
-		await this.browser.chat("chatgpt-writer", {
-			prompt: request.payload,
-			sessionId: request.sessionId,
-			timeoutMs: this.timeoutMs,
-			signal: request.signal,
-		});
+		await this.browser.chat("chatgpt-writer", this.providerRequest(request, request.payload));
 	}
 
 	async runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult> {
 		try {
-			const result = await this.browser.chat("chatgpt-writer", {
-				prompt: controlPrompt(request.job, request.control),
-				sessionId: request.sessionId,
-				timeoutMs: this.timeoutMs,
-				confirmation: confirmationScope(request.job, request.control),
-				signal: request.signal,
-			});
+			const result = await this.browser.chat(
+				"chatgpt-writer",
+				this.providerRequest(request, controlPrompt(request.job, request.control), confirmationScope(request.job, request.control)),
+			);
 			return parseWorkflowWriterResult(result.text);
 		} catch (error) {
 			if (!(error instanceof WorkflowConfirmationError)) throw error;
