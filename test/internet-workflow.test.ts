@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineInternetWorkflowTool, type WorkflowTestDependencies } from "#internet/tools/internet-workflow";
-import { createWorkflowTestRuntime } from "./workflow-test-fixture";
+import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
 
 const roots: string[] = [];
 
