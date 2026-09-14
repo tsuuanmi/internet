@@ -52,12 +52,14 @@ export function classifyWorkflowFailure(error: unknown, at = new Date().toISOStr
 				return { class: "BROWSER", code: "BROWSER_UNAVAILABLE", message, retry: "RECREATE_SESSION", at };
 			case "provider_error":
 				return { class: "PROVIDER", code: "PROVIDER_ERROR", message, retry: "IMMEDIATE", at };
-			case "authentication_required":
+			case "login_required":
+			case "login_failed":
+			case "not_authenticated":
 				return { class: "AUTH", code: "AUTH_EXPIRED", message, retry: "USER_ACTION", at };
+			case "config_error":
+				return { class: "AUTOMATION", code: "CONFIG_ERROR", message, retry: "CODE_FIX", at };
 			case "aborted":
 				return { class: "TRANSPORT", code: "EXECUTION_ABORTED", message, retry: "NONE", at };
-			default:
-				return { class: "AUTOMATION", code: error.kind.toUpperCase(), message, retry: "NONE", at };
 		}
 	}
 	return { class: "AUTOMATION", code: "UNEXPECTED_ERROR", message, retry: "CODE_FIX", at };
