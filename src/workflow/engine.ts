@@ -1,10 +1,6 @@
 import { randomBytes } from "node:crypto";
-import {
-	DEFAULT_TEAM_ACCOUNTS,
-	DEFAULT_TEAM_SYNTHESIZER,
-	getAccountDefinition,
-	type AccountId,
-} from "#internet/core/accounts";
+import type { ProviderProgressEvent } from "#internet/browser/completion";
+import { DEFAULT_TEAM_ACCOUNTS, DEFAULT_TEAM_SYNTHESIZER, getAccountDefinition } from "#internet/core/accounts";
 import { buildTeamPlan, type TeamPlanStep } from "#internet/team/plan";
 import type { TeamPromptStrategyId } from "#internet/team/prompt-strategy";
 import type { TeamFailureDetail, TeamProgressEvent, TeamTurn } from "#internet/team/types";
@@ -119,9 +115,7 @@ export class WorkflowEngine {
 	start(input: StartWorkflowInput): WorkflowJob {
 		if (input.objective.trim() === "") throw new Error("workflow objective is required");
 		if (input.ownerSessionId.trim() === "") throw new Error("workflow owner session is required");
-		if (!/^[0-9a-f]{40}$/u.test(input.baseRevision)) {
-			throw new Error("workflow base revision must be a full Git SHA");
-		}
+		if (!/^[0-9a-f]{40}$/u.test(input.baseRevision)) throw new Error("workflow base revision must be a full Git SHA");
 		const jobId = randomBytes(16).toString("hex");
 		const thinkerAccounts = DEFAULT_TEAM_ACCOUNTS;
 		const synthesizer = DEFAULT_TEAM_SYNTHESIZER;
@@ -183,18 +177,21 @@ export class WorkflowEngine {
 
 	advance(jobId: string): WorkflowJob {
 		const current = this.status(jobId);
-		if (workflowJobIsTerminal(current) || current.graph.lifecycle === "BLOCKED" || current.graph.lifecycle === "WAITING_USER") {
+		if (
+			workflowJobIsTerminal(current) ||
+			current.graph.lifecycle === "BLOCKED" ||
+			current.graph.lifecycle === "WAITING_USER"
+		) {
 			return current;
 		}
 		const graph = promoteReadyWorkflowNodes(current.graph, (node, candidate) =>
 			this.inputForNode(current, node, candidate),
 		);
 		if (graph === current.graph) return current;
-		return this.commit(
-			jobId,
-			{ type: "NODES_READY", class: "INTERNAL", at: new Date().toISOString() },
-			(job) => ({ ...job, graph: this.project(graph, job.pendingAction, job.mergeReceipt) }),
-		);
+		return this.commit(jobId, { type: "NODES_READY", class: "INTERNAL", at: new Date().toISOString() }, (job) => ({
+			...job,
+			graph: this.project(graph, job.pendingAction, job.mergeReceipt),
+		}));
 	}
 
 	runnableNodeIds(jobId: string, at = Date.now()): readonly string[] {
@@ -252,14 +249,10 @@ export class WorkflowEngine {
 				(job) => ({
 					...job,
 					graph: this.project(
-						recoverWorkflowNode(
-							job.graph,
-							node.nodeId,
-							node.execution!.executionId,
-							"ORPHANED",
-							failure,
-							{ ...recovery, action: "RECONCILE" },
-						),
+						recoverWorkflowNode(job.graph, node.nodeId, node.execution!.executionId, "ORPHANED", failure, {
+							...recovery,
+							action: "RECONCILE",
+						}),
 						undefined,
 						job.mergeReceipt,
 					),
@@ -330,14 +323,10 @@ export class WorkflowEngine {
 		if (job.pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED") return job;
 		const failed = Object.values(job.graph.nodes).filter((node) => node.state === "FAILED");
 		if (failed.length === 0) return job;
-		if (failed.length !== 1) {
-			throw new Error("workflow has multiple terminal failed nodes; code intervention is required");
-		}
+		if (failed.length !== 1) throw new Error("workflow has multiple terminal failed nodes; code intervention is required");
 		const node = failed[0]!;
 		const attempt = (node.execution?.attempt ?? 0) + 1;
-		if (attempt > this.recoveryPolicy.maxAttempts) {
-			throw new Error(`workflow node ${node.nodeId} exhausted retry budget`);
-		}
+		if (attempt > this.recoveryPolicy.maxAttempts) throw new Error(`workflow node ${node.nodeId} exhausted retry budget`);
 		const graph: WorkflowGraphSnapshot = {
 			...job.graph,
 			graphRevision: job.graph.graphRevision + 1,
@@ -435,17 +424,17 @@ export class WorkflowEngine {
 			case "TEAM_SYNTHESIS":
 				return this.runTeamNode(job, node, executionId, signal);
 			case "RESEARCH_HANDOFF_GATE":
-				return this.runResearchHandoffGate(job, signal);
+				return this.runResearchHandoffGate(job, node, executionId, signal);
 			case "WRITER_IMPLEMENTATION":
-				return this.runWriterImplementation(job, node, signal);
+				return this.runWriterImplementation(job, node, executionId, signal);
 			case "REVIEW_HANDOFF_GATE":
-				return this.runReviewGate(job, node, signal);
+				return this.runReviewGate(job, node, executionId, signal);
 			case "WRITER_REMEDIATION":
-				return this.runWriterRemediation(job, node, signal);
+				return this.runWriterRemediation(job, node, executionId, signal);
 			case "PR_HEALTH":
 				return this.runHealth(job, node, executionId, signal);
 			case "MERGE":
-				return this.runMerge(job, node, signal);
+				return this.runMerge(job, node, executionId, signal);
 			case "MERGE_AUTHORIZATION":
 				return undefined;
 		}
@@ -467,6 +456,7 @@ export class WorkflowEngine {
 			sessionId: context.sessionId,
 			signal,
 			onProgress: (event) => this.recordTeamProgress(job.jobId, node.nodeId, executionId, event),
+			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 		});
 		if (!result.ok) throw new TeamStepError(result.error);
 		if (result.turn !== undefined) return result.turn.text;
@@ -474,10 +464,13 @@ export class WorkflowEngine {
 		throw new Error(`team node ${node.nodeId} completed without output`);
 	}
 
-	private async runResearchHandoffGate(job: WorkflowJob, signal?: AbortSignal): Promise<string> {
-		const payloads = (["A", "B"] as const).map((lane) =>
-			this.nodePayload(job, workflowNodeId.researchSynthesis(lane)),
-		);
+	private async runResearchHandoffGate(
+		job: WorkflowJob,
+		node: WorkflowGraphNode,
+		executionId: string,
+		signal?: AbortSignal,
+	): Promise<string> {
+		const payloads = (["A", "B"] as const).map((lane) => this.nodePayload(job, workflowNodeId.researchSynthesis(lane)));
 		const receipts: WorkflowHandoffReceipt[] = [];
 		for (let index = 0; index < payloads.length; index += 1) {
 			const lane = index === 0 ? "A" : "B";
@@ -493,6 +486,7 @@ export class WorkflowEngine {
 					sessionId: job.writerConversation.sessionId,
 					payload: handoff.payload,
 					signal,
+					onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 				});
 			}
 			const delivered = this.handoffs.markDelivered(job.jobId, handoff.handoffId, handoff.payloadHash);
@@ -505,6 +499,7 @@ export class WorkflowEngine {
 	private async runWriterImplementation(
 		job: WorkflowJob,
 		node: WorkflowGraphNode,
+		executionId: string,
 		signal?: AbortSignal,
 	): Promise<string | undefined> {
 		const result = await this.writer.runControl({
@@ -512,6 +507,7 @@ export class WorkflowEngine {
 			job,
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", job.jobId),
 			signal,
+			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 		});
 		if (result.status !== "PR_OPEN") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
 		this.assertImplementationPr(job, result.pullRequest);
@@ -521,13 +517,12 @@ export class WorkflowEngine {
 	private async runReviewGate(
 		job: WorkflowJob,
 		node: WorkflowGraphNode,
+		executionId: string,
 		signal?: AbortSignal,
 	): Promise<string | undefined> {
 		const pr = this.requirePr(job);
 		const cycle = this.cycleFromNode(node.nodeId);
-		const payloads = (["A", "B"] as const).map((lane) =>
-			this.nodePayload(job, workflowNodeId.reviewSynthesis(cycle, lane)),
-		);
+		const payloads = (["A", "B"] as const).map((lane) => this.nodePayload(job, workflowNodeId.reviewSynthesis(cycle, lane)));
 		const reviews = payloads.map(parseWorkflowReviewResult);
 		for (const review of reviews) {
 			if (review.reviewedHeadSha !== pr.headSha) throw new Error("review result is bound to a stale PR head");
@@ -558,6 +553,7 @@ export class WorkflowEngine {
 					sessionId: job.writerConversation.sessionId,
 					payload: handoff.payload,
 					signal,
+					onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 				});
 			}
 			const delivered = this.handoffs.markDelivered(job.jobId, handoff.handoffId, handoff.payloadHash);
@@ -570,6 +566,7 @@ export class WorkflowEngine {
 	private async runWriterRemediation(
 		job: WorkflowJob,
 		node: WorkflowGraphNode,
+		executionId: string,
 		signal?: AbortSignal,
 	): Promise<string | undefined> {
 		const pr = this.requirePr(job);
@@ -578,6 +575,7 @@ export class WorkflowEngine {
 			job,
 			control: createWorkflowControlMessage("APPLY_REVIEWS", job.jobId, pr.headSha),
 			signal,
+			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 		});
 		if (result.status !== "PR_OPEN") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
 		this.assertRemediationPr(pr, result.pullRequest);
@@ -596,6 +594,7 @@ export class WorkflowEngine {
 			job,
 			control: createWorkflowControlMessage("CHECK_PR_HEALTH", job.jobId, pr.headSha),
 			signal,
+			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 		});
 		if (result.status !== "PR_HEALTH") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
 		this.assertHealth(pr, result);
@@ -608,6 +607,7 @@ export class WorkflowEngine {
 			checkedAt: new Date().toISOString(),
 		};
 		if (result.health === "PENDING") {
+			const attempt = node.execution?.attempt ?? 1;
 			const failure: WorkflowFailure = {
 				class: "PROVIDER",
 				code: "CI_PENDING",
@@ -615,25 +615,12 @@ export class WorkflowEngine {
 				retry: "BACKOFF",
 				at: receipt.checkedAt,
 			};
-			const recovery = recoveryPlanForFailure(
-				failure,
-				node.execution?.attempt ?? 1,
-				this.recoveryPolicy,
-			);
-			if (recovery === undefined) {
-				this.block(
-					job.jobId,
-					node.nodeId,
-					{
-						kind: "CI_HEALTH_UNKNOWN",
-						message: "CI remained pending after retry budget",
-						nodeId: node.nodeId,
-						expectedHeadSha: pr.headSha,
-					},
-					receipt,
-				);
-				return undefined;
-			}
+			const recovery = {
+				action: "BACKOFF" as const,
+				attempt,
+				maxAttempts: this.recoveryPolicy.maxAttempts,
+				notBefore: new Date(Date.now() + this.recoveryPolicy.backoffMs).toISOString(),
+			};
 			this.commit(
 				job.jobId,
 				{ type: "CI_PENDING", class: "PROGRESS", at: receipt.checkedAt, nodeId: node.nodeId },
@@ -641,14 +628,7 @@ export class WorkflowEngine {
 					...current,
 					ciReceipt: receipt,
 					graph: this.project(
-						recoverWorkflowNode(
-							current.graph,
-							node.nodeId,
-							executionId,
-							"FAILED",
-							failure,
-							recovery,
-						),
+						recoverWorkflowNode(current.graph, node.nodeId, executionId, "FAILED", failure, recovery),
 						undefined,
 						current.mergeReceipt,
 					),
@@ -676,6 +656,7 @@ export class WorkflowEngine {
 	private async runMerge(
 		job: WorkflowJob,
 		node: WorkflowGraphNode,
+		executionId: string,
 		signal?: AbortSignal,
 	): Promise<string | undefined> {
 		const pr = this.requirePr(job);
@@ -685,6 +666,7 @@ export class WorkflowEngine {
 			job,
 			control: createWorkflowControlMessage("MERGE_AUTHORIZED", job.jobId, pr.headSha),
 			signal,
+			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 		});
 		if (result.status !== "MERGED") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
 		if (
@@ -784,11 +766,7 @@ export class WorkflowEngine {
 		);
 	}
 
-	private commitReconciledResult(
-		job: WorkflowJob,
-		node: WorkflowGraphNode,
-		result: WorkflowNodeResult,
-	): WorkflowJob {
+	private commitReconciledResult(job: WorkflowJob, node: WorkflowGraphNode, result: WorkflowNodeResult): WorkflowJob {
 		if (node.state === "COMPLETED") return job;
 		if (node.state === "RUNNING" && node.execution !== undefined) {
 			return this.commitNodeResult(job.jobId, node.nodeId, node.execution.executionId, result);
@@ -812,12 +790,7 @@ export class WorkflowEngine {
 		return this.commitNodeResult(started.jobId, node.nodeId, execution.executionId, result);
 	}
 
-	private handleExecutionFailure(
-		jobId: string,
-		nodeId: string,
-		executionId: string,
-		error: unknown,
-	): WorkflowJob {
+	private handleExecutionFailure(jobId: string, nodeId: string, executionId: string, error: unknown): WorkflowJob {
 		const job = this.status(jobId);
 		const node = job.graph.nodes[nodeId];
 		if (node?.execution?.executionId !== executionId) return job;
@@ -916,11 +889,7 @@ export class WorkflowEngine {
 		);
 	}
 
-	private handleWriterNonSuccess(
-		jobId: string,
-		nodeId: string,
-		result: WorkflowWriterResult,
-	): undefined {
+	private handleWriterNonSuccess(jobId: string, nodeId: string, result: WorkflowWriterResult): undefined {
 		if (result.status === "UNKNOWN_CONFIRMATION") {
 			this.block(jobId, nodeId, {
 				kind: "UNKNOWN_CONFIRMATION",
@@ -941,20 +910,16 @@ export class WorkflowEngine {
 	}
 
 	private updateHandoffReceipts(jobId: string, receipts: readonly WorkflowHandoffReceipt[]): void {
-		this.commit(
-			jobId,
-			{ type: "HANDOFFS_DELIVERED", class: "INTERNAL", at: new Date().toISOString() },
-			(job) => {
-				const byId = new Map(job.handoffReceipts.map((receipt) => [receipt.handoffId, receipt]));
-				for (const receipt of receipts) byId.set(receipt.handoffId, receipt);
-				return {
-					...job,
-					handoffReceipts: [...byId.values()].sort(
-						(a, b) => a.source.localeCompare(b.source) || a.sequence - b.sequence,
-					),
-				};
-			},
-		);
+		this.commit(jobId, { type: "HANDOFFS_DELIVERED", class: "INTERNAL", at: new Date().toISOString() }, (job) => {
+			const byId = new Map(job.handoffReceipts.map((receipt) => [receipt.handoffId, receipt]));
+			for (const receipt of receipts) byId.set(receipt.handoffId, receipt);
+			return {
+				...job,
+				handoffReceipts: [...byId.values()].sort(
+					(a, b) => a.source.localeCompare(b.source) || a.sequence - b.sequence,
+				),
+			};
+		});
 	}
 
 	private heartbeat(jobId: string, nodeId: string, executionId: string): void {
@@ -1005,6 +970,31 @@ export class WorkflowEngine {
 			}));
 		} catch {
 			// Progress is diagnostic; durable completion or recovery wins races.
+		}
+	}
+
+	private recordProviderProgress(
+		jobId: string,
+		nodeId: string,
+		executionId: string,
+		event: ProviderProgressEvent,
+	): void {
+		try {
+			const current = this.status(jobId);
+			if (current.graph.nodes[nodeId]?.execution?.executionId !== executionId) return;
+			this.jobs.update(jobId, current.revision, (job) => ({
+				...job,
+				revision: job.revision + 1,
+				updatedAt: event.at,
+				graph: updateWorkflowExecution(job.graph, nodeId, executionId, (execution) => ({
+					...execution,
+					providerState: event.kind === "generation_started" ? "THINKING" : "STREAMING",
+					lastProviderEventAt: event.at,
+					lastMeaningfulProgressAt: event.at,
+				})),
+			}));
+		} catch {
+			// Semantic progress is diagnostic; durable completion/recovery wins races.
 		}
 	}
 
@@ -1135,9 +1125,7 @@ export class WorkflowEngine {
 				...(research[2] ? { round: Number(research[2]), member: Number(research[3]) } : {}),
 			};
 		}
-		const review = nodeId.match(
-			/^review:cycle:(\d+):([AB]):(?:(?:round:(\d+):member:(\d+))|(synthesis))$/u,
-		);
+		const review = nodeId.match(/^review:cycle:(\d+):([AB]):(?:(?:round:(\d+):member:(\d+))|(synthesis))$/u);
 		if (review) {
 			return {
 				phase: "review",
@@ -1154,10 +1142,7 @@ export class WorkflowEngine {
 		const now = new Date();
 		return {
 			executionId: randomBytes(16).toString("hex"),
-			attempt:
-				node.state === "RECOVERING"
-					? (node.recovery?.attempt ?? (node.execution?.attempt ?? 0) + 1)
-					: 1,
+			attempt: node.state === "RECOVERING" ? (node.recovery?.attempt ?? (node.execution?.attempt ?? 0) + 1) : 1,
 			state: "ACTIVE",
 			ownerInstanceId,
 			startedAt: now.toISOString(),
@@ -1201,9 +1186,7 @@ export class WorkflowEngine {
 	): WorkflowGraphSnapshot {
 		if (graph.lifecycle === "CANCELLED") return graph;
 		if (mergeReceipt !== undefined) return { ...graph, phase: "DONE", lifecycle: "COMPLETED" };
-		if (pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED") {
-			return { ...graph, phase: "MERGE", lifecycle: "WAITING_USER" };
-		}
+		if (pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED") return { ...graph, phase: "MERGE", lifecycle: "WAITING_USER" };
 		if (pendingAction !== undefined || Object.values(graph.nodes).some((node) => node.state === "FAILED")) {
 			return { ...graph, lifecycle: "BLOCKED" };
 		}
@@ -1213,10 +1196,7 @@ export class WorkflowEngine {
 		for (const phase of phaseOrder) {
 			if (
 				Object.values(graph.nodes).some(
-					(node) =>
-						node.phase === phase &&
-						node.state !== "COMPLETED" &&
-						node.state !== "CANCELLED",
+					(node) => node.phase === phase && node.state !== "COMPLETED" && node.state !== "CANCELLED",
 				)
 			) {
 				return { ...graph, phase, lifecycle: "RUNNING" };
@@ -1225,10 +1205,7 @@ export class WorkflowEngine {
 		return graph;
 	}
 
-	private dependencyHashes(
-		node: WorkflowGraphNode,
-		graph: WorkflowGraphSnapshot,
-	): Record<string, string> {
+	private dependencyHashes(node: WorkflowGraphNode, graph: WorkflowGraphSnapshot): Record<string, string> {
 		return Object.fromEntries(
 			node.dependencies.map((dependencyId) => {
 				const output = graph.nodes[dependencyId]?.output;
@@ -1242,9 +1219,7 @@ export class WorkflowEngine {
 		const output = job.graph.nodes[nodeId]?.output;
 		if (output === undefined) throw new Error(`workflow node ${nodeId} has no output`);
 		const result = this.results.get(job.jobId, output.resultId);
-		if (result === undefined || result.outputHash !== output.outputHash) {
-			throw new Error(`workflow node ${nodeId} exact result is unavailable`);
-		}
+		if (result === undefined || result.outputHash !== output.outputHash) throw new Error(`workflow node ${nodeId} exact result is unavailable`);
 		return result.payload;
 	}
 
@@ -1268,18 +1243,14 @@ export class WorkflowEngine {
 	}
 
 	private failureFromTeam(detail: TeamFailureDetail): WorkflowFailure {
-		const className =
-			detail.kind === "browser_unavailable"
-				? "BROWSER"
-				: detail.kind === "timeout" || detail.kind === "provider_error"
-					? "PROVIDER"
-					: "AUTOMATION";
+		const providerFailure = detail.kind === "timeout" || detail.kind === "provider_error" || detail.kind === "provider_stalled";
+		const className = detail.kind === "browser_unavailable" ? "BROWSER" : providerFailure ? "PROVIDER" : "AUTOMATION";
 		return {
 			class: className,
 			code: detail.kind.toUpperCase(),
 			message: detail.message,
 			retry: detail.retryable
-				? detail.kind === "browser_unavailable"
+				? detail.kind === "browser_unavailable" || detail.kind === "provider_stalled" || detail.kind === "timeout"
 					? "RECREATE_SESSION"
 					: "IMMEDIATE"
 				: "NONE",
