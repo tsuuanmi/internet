@@ -3,23 +3,25 @@ import { existsSync, lstatSync, readdirSync, readFileSync, rmdirSync, unlinkSync
 import { join } from "node:path";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
-import { TERMINAL_WORKFLOW_STATES, type WorkflowJob, type WorkflowState } from "#internet/workflow/types";
+import type { WorkflowLifecycle } from "#internet/workflow/graph";
+import type { WorkflowJob } from "#internet/workflow/types";
+import { workflowJobIsTerminal } from "#internet/workflow/types";
 
 export const WORKFLOW_RETENTION_AUDIT_SCHEMA = "@tsuuanmi/internet-workflow-retention-audit" as const;
 
 export interface WorkflowRetentionPolicy {
-	readonly doneDays: number;
+	readonly completedDays: number;
 	readonly cancelledDays: number;
 }
 
 export const DEFAULT_WORKFLOW_RETENTION_POLICY: WorkflowRetentionPolicy = {
-	doneDays: 30,
+	completedDays: 30,
 	cancelledDays: 14,
 };
 
 export interface WorkflowCleanupCandidate {
 	readonly jobId: string;
-	readonly state: "DONE" | "CANCELLED";
+	readonly lifecycle: "COMPLETED" | "CANCELLED";
 	readonly repository: string;
 	readonly updatedAt: string;
 	readonly retentionDays: number;
@@ -28,10 +30,10 @@ export interface WorkflowCleanupCandidate {
 
 export interface WorkflowCleanupAudit {
 	readonly schema: typeof WORKFLOW_RETENTION_AUDIT_SCHEMA;
-	readonly version: 1;
+	readonly version: 2;
 	readonly auditId: string;
 	readonly jobId: string;
-	readonly state: "DONE" | "CANCELLED";
+	readonly lifecycle: "COMPLETED" | "CANCELLED";
 	readonly repository: string;
 	readonly jobUpdatedAt: string;
 	readonly retentionDays: number;
@@ -39,18 +41,17 @@ export interface WorkflowCleanupAudit {
 	readonly operatorSessionId: string;
 	readonly requestedAt: string;
 	readonly status: "STARTED" | "COMPLETED" | "FAILED";
-	readonly deletedHandoffFiles: number;
+	readonly deletedFiles: number;
 	readonly completedAt?: string;
 	readonly error?: string;
 }
 
 export interface WorkflowDeletionReceipt {
 	readonly jobId: string;
-	readonly state: WorkflowState;
+	readonly lifecycle: "COMPLETED" | "CANCELLED";
 	readonly repository: string;
 	readonly operatorSessionId: string;
-	readonly deletedHandoffFiles: number;
-	readonly deletedTrace: boolean;
+	readonly deletedFiles: number;
 	readonly deletedAt: string;
 }
 
@@ -61,16 +62,20 @@ export class WorkflowRetentionError extends Error {
 	}
 }
 
-function retentionDaysFor(state: WorkflowState, policy: WorkflowRetentionPolicy): number | undefined {
-	if (state === "DONE") return policy.doneDays;
-	if (state === "CANCELLED") return policy.cancelledDays;
+function retentionDaysFor(
+	lifecycle: WorkflowLifecycle,
+	policy: WorkflowRetentionPolicy,
+): number | undefined {
+	if (lifecycle === "COMPLETED") return policy.completedDays;
+	if (lifecycle === "CANCELLED") return policy.cancelledDays;
 	return undefined;
 }
 
 function assertPolicy(policy: WorkflowRetentionPolicy): void {
 	for (const [name, value] of Object.entries(policy)) {
-		if (!Number.isSafeInteger(value) || value < 1)
+		if (!Number.isSafeInteger(value) || value < 1) {
 			throw new WorkflowRetentionError(`${name} must be a positive integer`);
+		}
 	}
 }
 
@@ -79,14 +84,14 @@ function candidateFor(
 	nowMs: number,
 	policy: WorkflowRetentionPolicy,
 ): WorkflowCleanupCandidate | undefined {
-	const retentionDays = retentionDaysFor(job.state, policy);
+	const retentionDays = retentionDaysFor(job.graph.lifecycle, policy);
 	if (retentionDays === undefined) return undefined;
 	const updatedMs = Date.parse(job.updatedAt);
 	const eligibleMs = updatedMs + retentionDays * 24 * 60 * 60 * 1000;
 	if (!Number.isFinite(updatedMs) || nowMs < eligibleMs) return undefined;
 	return {
 		jobId: job.jobId,
-		state: job.state as "DONE" | "CANCELLED",
+		lifecycle: job.graph.lifecycle as "COMPLETED" | "CANCELLED",
 		repository: job.repository,
 		updatedAt: job.updatedAt,
 		retentionDays,
@@ -103,61 +108,65 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseCompletedAudit(value: unknown): WorkflowCleanupAudit | undefined {
-	if (!isRecord(value) || value.schema !== WORKFLOW_RETENTION_AUDIT_SCHEMA || value.version !== 1) return undefined;
-	if (value.status !== "COMPLETED") return undefined;
+	if (
+		!isRecord(value) ||
+		value.schema !== WORKFLOW_RETENTION_AUDIT_SCHEMA ||
+		value.version !== 2 ||
+		value.status !== "COMPLETED"
+	) {
+		return undefined;
+	}
 	return value as unknown as WorkflowCleanupAudit;
 }
 
 function assertPrivateRegularFile(path: string, label: string): void {
 	const file = lstatSync(path);
 	if (!file.isFile()) throw new WorkflowRetentionError(`${label} is not a regular file`);
-	if (process.platform !== "win32" && (file.mode & 0o077) !== 0)
+	if (process.platform !== "win32" && (file.mode & 0o077) !== 0) {
 		throw new WorkflowRetentionError(`${label} permissions must be 0600`);
+	}
 }
 
-function deleteWorkflowArtifacts(
-	jobs: WorkflowJobStore,
-	handoffRoot: string,
-	traceRoot: string,
-	job: WorkflowJob,
-): { readonly deletedHandoffFiles: number; readonly deletedTrace: boolean } {
-	let deletedHandoffFiles = 0;
-	const jobHandoffDir = join(handoffRoot, job.jobId);
-	if (existsSync(jobHandoffDir)) {
-		const stat = lstatSync(jobHandoffDir);
-		if (!stat.isDirectory()) throw new WorkflowRetentionError("workflow handoff path is not a directory");
-		const names = readdirSync(jobHandoffDir).sort();
-		for (const name of names) {
-			if (!/^[0-9a-f]{64}\.json$/u.test(name))
-				throw new WorkflowRetentionError(`unexpected file in workflow handoff directory: ${name}`);
-			assertPrivateRegularFile(join(jobHandoffDir, name), `handoff cleanup target ${name}`);
-		}
-		for (const name of names) {
-			unlinkSync(join(jobHandoffDir, name));
-			deletedHandoffFiles += 1;
-		}
-		rmdirSync(jobHandoffDir);
+function deleteArtifactDirectory(path: string, filename: RegExp, label: string): number {
+	if (!existsSync(path)) return 0;
+	if (!lstatSync(path).isDirectory()) throw new WorkflowRetentionError(`${label} path is not a directory`);
+	const names = readdirSync(path).sort();
+	for (const name of names) {
+		if (!filename.test(name)) throw new WorkflowRetentionError(`unexpected file in ${label} directory: ${name}`);
+		assertPrivateRegularFile(join(path, name), `${label} cleanup target ${name}`);
 	}
+	for (const name of names) unlinkSync(join(path, name));
+	rmdirSync(path);
+	return names.length;
+}
 
-	const tracePath = join(traceRoot, `${job.jobId}.json`);
-	let deletedTrace = false;
-	if (existsSync(tracePath)) {
-		assertPrivateRegularFile(tracePath, "workflow team trace cleanup target");
-		unlinkSync(tracePath);
-		deletedTrace = true;
-	}
-
+function deleteWorkflowArtifacts(dataDir: string, jobs: WorkflowJobStore, job: WorkflowJob): number {
+	const workflowRoot = join(dataDir, "workflows");
+	let deletedFiles = 0;
+	deletedFiles += deleteArtifactDirectory(
+		join(workflowRoot, "handoffs", job.jobId),
+		/^[0-9a-f]{64}\.json$/u,
+		"workflow handoff",
+	);
+	deletedFiles += deleteArtifactDirectory(
+		join(workflowRoot, "node-results", job.jobId),
+		/^[0-9a-f]{64}\.json$/u,
+		"workflow node result",
+	);
+	deletedFiles += deleteArtifactDirectory(
+		join(workflowRoot, "events", job.jobId),
+		/^\d{12}\.json$/u,
+		"workflow event",
+	);
 	const jobPath = jobs.pathFor(job.jobId);
-	assertPrivateRegularFile(jobPath, "workflow cleanup target");
+	assertPrivateRegularFile(jobPath, "workflow job cleanup target");
 	unlinkSync(jobPath);
-	return { deletedHandoffFiles, deletedTrace };
+	return deletedFiles + 1;
 }
 
-/** Explicit operator-only retention manager. It never schedules or performs automatic deletion. */
 export class WorkflowRetentionManager {
+	private readonly dataDir: string;
 	private readonly auditDir: string;
-	private readonly handoffRoot: string;
-	private readonly traceRoot: string;
 	private readonly jobs: WorkflowJobStore;
 	private readonly policy: WorkflowRetentionPolicy;
 	private readonly now: () => Date;
@@ -169,12 +178,11 @@ export class WorkflowRetentionManager {
 		now: () => Date = () => new Date(),
 	) {
 		assertPolicy(policy);
+		this.dataDir = dataDir;
 		this.jobs = jobs;
 		this.policy = policy;
 		this.now = now;
 		this.auditDir = join(dataDir, "workflows", "cleanup-audit");
-		this.handoffRoot = join(dataDir, "workflows", "handoffs");
-		this.traceRoot = join(dataDir, "workflows", "team-traces");
 	}
 
 	preview(): readonly WorkflowCleanupCandidate[] {
@@ -186,31 +194,43 @@ export class WorkflowRetentionManager {
 			.sort((a, b) => a.eligibleAt.localeCompare(b.eligibleAt) || a.jobId.localeCompare(b.jobId));
 	}
 
-	deleteNow(input: { jobId: string; expectedUpdatedAt: string; operatorSessionId: string }): WorkflowDeletionReceipt {
+	deleteNow(input: {
+		jobId: string;
+		expectedUpdatedAt: string;
+		operatorSessionId: string;
+	}): WorkflowDeletionReceipt {
 		if (input.operatorSessionId.trim() === "") throw new WorkflowRetentionError("operator session id is required");
-		if (!Number.isFinite(Date.parse(input.expectedUpdatedAt)))
+		if (!Number.isFinite(Date.parse(input.expectedUpdatedAt))) {
 			throw new WorkflowRetentionError("expectedUpdatedAt must be an ISO timestamp");
+		}
 		const job = this.jobs.get(input.jobId);
 		if (job === undefined) throw new WorkflowRetentionError(`workflow job ${input.jobId} does not exist`);
-		if (job.updatedAt !== input.expectedUpdatedAt)
+		if (job.updatedAt !== input.expectedUpdatedAt) {
 			throw new WorkflowRetentionError("workflow job changed before deletion; refresh before deleting");
-		if (!TERMINAL_WORKFLOW_STATES.has(job.state))
+		}
+		if (!workflowJobIsTerminal(job)) {
 			throw new WorkflowRetentionError("workflow job must be terminal before deletion");
-		const deleted = deleteWorkflowArtifacts(this.jobs, this.handoffRoot, this.traceRoot, job);
+		}
+		const deletedFiles = deleteWorkflowArtifacts(this.dataDir, this.jobs, job);
 		return {
 			jobId: job.jobId,
-			state: job.state,
+			lifecycle: job.graph.lifecycle as "COMPLETED" | "CANCELLED",
 			repository: job.repository,
 			operatorSessionId: input.operatorSessionId,
-			...deleted,
+			deletedFiles,
 			deletedAt: this.now().toISOString(),
 		};
 	}
 
-	cleanup(input: { jobId: string; expectedUpdatedAt: string; operatorSessionId: string }): WorkflowCleanupAudit {
+	cleanup(input: {
+		jobId: string;
+		expectedUpdatedAt: string;
+		operatorSessionId: string;
+	}): WorkflowCleanupAudit {
 		if (input.operatorSessionId.trim() === "") throw new WorkflowRetentionError("operator session id is required");
-		if (!Number.isFinite(Date.parse(input.expectedUpdatedAt)))
+		if (!Number.isFinite(Date.parse(input.expectedUpdatedAt))) {
 			throw new WorkflowRetentionError("expectedUpdatedAt must be an ISO timestamp");
+		}
 		const id = auditId(input.jobId, input.expectedUpdatedAt);
 		const auditPath = join(this.auditDir, `${id}.json`);
 		if (existsSync(auditPath)) {
@@ -220,19 +240,21 @@ export class WorkflowRetentionManager {
 
 		const job = this.jobs.get(input.jobId);
 		if (job === undefined) throw new WorkflowRetentionError(`workflow job ${input.jobId} does not exist`);
-		if (job.updatedAt !== input.expectedUpdatedAt)
+		if (job.updatedAt !== input.expectedUpdatedAt) {
 			throw new WorkflowRetentionError("workflow job changed after cleanup preview; refresh before deleting");
+		}
 		const candidate = candidateFor(job, this.now().getTime(), this.policy);
-		if (candidate === undefined)
+		if (candidate === undefined) {
 			throw new WorkflowRetentionError("workflow job is not an eligible terminal cleanup candidate");
+		}
 
 		const requestedAt = this.now().toISOString();
 		const base: WorkflowCleanupAudit = {
 			schema: WORKFLOW_RETENTION_AUDIT_SCHEMA,
-			version: 1,
+			version: 2,
 			auditId: id,
 			jobId: job.jobId,
-			state: candidate.state,
+			lifecycle: candidate.lifecycle,
 			repository: job.repository,
 			jobUpdatedAt: job.updatedAt,
 			retentionDays: candidate.retentionDays,
@@ -240,20 +262,17 @@ export class WorkflowRetentionManager {
 			operatorSessionId: input.operatorSessionId,
 			requestedAt,
 			status: "STARTED",
-			deletedHandoffFiles: 0,
+			deletedFiles: 0,
 		};
 		ensurePrivateDirectory(this.auditDir);
 		writePrivateJson(auditPath, base);
 
-		let deletedHandoffFiles = 0;
 		try {
-			const deleted = deleteWorkflowArtifacts(this.jobs, this.handoffRoot, this.traceRoot, job);
-			deletedHandoffFiles = deleted.deletedHandoffFiles;
-
+			const deletedFiles = deleteWorkflowArtifacts(this.dataDir, this.jobs, job);
 			const completed: WorkflowCleanupAudit = {
 				...base,
 				status: "COMPLETED",
-				deletedHandoffFiles,
+				deletedFiles,
 				completedAt: this.now().toISOString(),
 			};
 			writePrivateJson(auditPath, completed);
@@ -262,7 +281,6 @@ export class WorkflowRetentionManager {
 			const failed: WorkflowCleanupAudit = {
 				...base,
 				status: "FAILED",
-				deletedHandoffFiles,
 				error: error instanceof Error ? error.message : String(error),
 			};
 			writePrivateJson(auditPath, failed);
