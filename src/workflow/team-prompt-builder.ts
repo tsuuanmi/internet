@@ -1,7 +1,18 @@
-import type { WorkflowJob } from "#internet/workflow/types";
+import type { WorkflowPullRequestReceipt } from "#internet/workflow/types";
 
 export type WorkflowTeamPhase = "research" | "review";
 export type WorkflowTeamLane = "A" | "B";
+
+export interface WorkflowPromptContext {
+	readonly objective: string;
+	readonly repository: string;
+	readonly baseRevision: string;
+}
+
+export interface WorkflowReviewPromptContext extends WorkflowPromptContext {
+	readonly pullRequest: WorkflowPullRequestReceipt;
+	readonly reviewCycle: number;
+}
 
 function laneFocus(phase: WorkflowTeamPhase, lane: WorkflowTeamLane): string {
 	if (phase === "research") {
@@ -14,16 +25,15 @@ function laneFocus(phase: WorkflowTeamPhase, lane: WorkflowTeamLane): string {
 		: "Review adversarially for edge cases, tests, security/reliability issues, concurrency/state bugs, and hidden failure modes.";
 }
 
-/** Build authoritative, deterministic workflow team tasks without an intermediary LLM. */
 export class WorkflowTeamPromptBuilder {
-	research(job: WorkflowJob, lane: WorkflowTeamLane): string {
+	research(context: WorkflowPromptContext, lane: WorkflowTeamLane): string {
 		return [
 			`Workflow research lane: ${lane}`,
-			`Repository: ${job.repository}`,
-			`Target base revision: ${job.baseRevision}`,
+			`Repository: ${context.repository}`,
+			`Target base revision: ${context.baseRevision}`,
 			"",
 			"Objective:",
-			job.objective,
+			context.objective,
 			"",
 			laneFocus("research", lane),
 			"",
@@ -31,21 +41,19 @@ export class WorkflowTeamPromptBuilder {
 		].join("\n");
 	}
 
-	review(job: WorkflowJob, lane: WorkflowTeamLane): string {
-		const pullRequest = job.pullRequest;
-		if (pullRequest === undefined)
-			throw new Error("workflow review prompt requires a persisted pull request receipt");
+	review(context: WorkflowReviewPromptContext, lane: WorkflowTeamLane): string {
+		const pullRequest = context.pullRequest;
 		return [
 			`Workflow review lane: ${lane}`,
-			`Repository: ${job.repository}`,
-			`Original base revision: ${job.baseRevision}`,
+			`Repository: ${context.repository}`,
+			`Original base revision: ${context.baseRevision}`,
 			`Pull request: ${pullRequest.url}`,
 			`PR number: ${pullRequest.number}`,
-			`Review cycle: ${job.reviewCycle}`,
+			`Review cycle: ${context.reviewCycle}`,
 			`Exact PR head SHA to review: ${pullRequest.headSha}`,
 			"",
 			"Objective:",
-			job.objective,
+			context.objective,
 			"",
 			laneFocus("review", lane),
 			"",
