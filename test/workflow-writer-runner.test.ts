@@ -6,7 +6,7 @@ import { BrowserWorkflowWriterRunner, type WorkflowWriterBrowser } from "#intern
 
 const jobId = "0123456789abcdef0123456789abcdef";
 const writerSessionId = `agent:workflow:${jobId}:writer`;
-const timeoutMs = 900_000;
+const policy = { hardTimeoutMs: 900_000, stallTimeoutMs: 180_000 } as const;
 
 function job(): WorkflowJob {
 	const timestamp = "2026-09-08T00:00:00.000Z";
@@ -42,21 +42,19 @@ function job(): WorkflowJob {
 }
 
 describe("BrowserWorkflowWriterRunner", () => {
-	it("passes exact approval scope and workflow deadline without asserting runtime identity", async () => {
+	it("passes exact approval scope and provider deadlines without asserting runtime identity", async () => {
 		let observedAccount: string | undefined;
-		let observedConfirmation: unknown;
-		let observedTimeout: number | undefined;
+		let observedRequest: Parameters<WorkflowWriterBrowser["chat"]>[1] | undefined;
 		const browser: WorkflowWriterBrowser = {
 			async chat(accountId, request) {
 				observedAccount = accountId;
-				observedConfirmation = request.confirmation;
-				observedTimeout = request.timeoutMs;
+				observedRequest = request;
 				return {
 					text: '{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}',
 				};
 			},
 		};
-		const runner = new BrowserWorkflowWriterRunner(browser, timeoutMs);
+		const runner = new BrowserWorkflowWriterRunner(browser, policy);
 		const current = job();
 		await runner.runControl({
 			sessionId: writerSessionId,
@@ -64,15 +62,18 @@ describe("BrowserWorkflowWriterRunner", () => {
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
 		expect(observedAccount).toBe("chatgpt-writer");
-		expect(observedTimeout).toBe(timeoutMs);
-		expect(observedConfirmation).toEqual({
-			jobId,
-			writerSessionId,
-			repository: current.repository,
-			authority: "IMPLEMENTATION",
+		expect(observedRequest).toMatchObject({
+			timeoutMs: policy.hardTimeoutMs,
+			stallTimeoutMs: policy.stallTimeoutMs,
+			confirmation: {
+				jobId,
+				writerSessionId,
+				repository: current.repository,
+				authority: "IMPLEMENTATION",
+			},
 		});
-		expect(observedConfirmation).not.toHaveProperty("accountId");
-		expect(observedConfirmation).not.toHaveProperty("sessionId");
+		expect(observedRequest?.confirmation).not.toHaveProperty("accountId");
+		expect(observedRequest?.confirmation).not.toHaveProperty("sessionId");
 	});
 
 	it("maps domain confirmation interruptions without depending on ChatGPT adapter errors", async () => {
@@ -86,7 +87,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 					throw new WorkflowConfirmationError(kind, `confirmation: ${kind}`);
 				},
 			};
-			const result = await new BrowserWorkflowWriterRunner(browser, timeoutMs).runControl({
+			const result = await new BrowserWorkflowWriterRunner(browser, policy).runControl({
 				sessionId: writerSessionId,
 				job: current,
 				control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
@@ -105,7 +106,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 				};
 			},
 		};
-		await new BrowserWorkflowWriterRunner(browser, timeoutMs).runControl({
+		await new BrowserWorkflowWriterRunner(browser, policy).runControl({
 			sessionId: writerSessionId,
 			job: job(),
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
