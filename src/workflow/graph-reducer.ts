@@ -4,8 +4,10 @@ import {
 	type WorkflowFailure,
 	type WorkflowGraphNode,
 	type WorkflowGraphSnapshot,
+	type WorkflowLifecycle,
 	type WorkflowNodeInputReceipt,
 	type WorkflowNodeOutputReceipt,
+	type WorkflowPhase,
 	type WorkflowRecoveryPlan,
 	workflowNodeDependenciesCompleted,
 	workflowNodeInputMatchesDependencies,
@@ -66,7 +68,7 @@ export function startWorkflowNode(
 	execution: WorkflowExecutionRecord,
 ): WorkflowGraphSnapshot {
 	const node = requireNode(graph, nodeId);
-	if (node.state !== "READY") {
+	if (node.state !== "READY" && node.state !== "RECOVERING") {
 		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot start from ${node.state}`);
 	}
 	if (!node.input || !workflowNodeInputMatchesDependencies(node, graph.nodes)) {
@@ -75,8 +77,78 @@ export function startWorkflowNode(
 	if (execution.state !== "STARTING" && execution.state !== "ACTIVE") {
 		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} start requires a live execution state`);
 	}
+	if (node.state === "RECOVERING" && node.recovery?.attempt !== execution.attempt) {
+		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} retry attempt does not match recovery plan`);
+	}
 	return checked(
-		replaceNode(graph, { ...node, state: "RUNNING", execution, failure: undefined, recovery: undefined }),
+		replaceNode(graph, {
+			...node,
+			state: "RUNNING",
+			execution,
+			failure: undefined,
+			recovery: undefined,
+			waitReason: undefined,
+		}),
+	);
+}
+
+export function updateWorkflowExecution(
+	graph: WorkflowGraphSnapshot,
+	nodeId: string,
+	executionId: string,
+	mutate: (current: WorkflowExecutionRecord) => WorkflowExecutionRecord,
+): WorkflowGraphSnapshot {
+	const node = requireCurrentExecution(graph, nodeId, executionId);
+	if (node.state !== "RUNNING" && node.state !== "WAITING_USER") {
+		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot update execution from ${node.state}`);
+	}
+	if (!node.execution) throw new WorkflowGraphTransitionError(`workflow node ${nodeId} has no execution`);
+	const execution = mutate(node.execution);
+	if (execution.executionId !== executionId) {
+		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} execution id cannot change in place`);
+	}
+	return checked(replaceNode(graph, { ...node, execution }));
+}
+
+export function waitWorkflowNodeForUser(
+	graph: WorkflowGraphSnapshot,
+	nodeId: string,
+	executionId: string,
+	failure: WorkflowFailure,
+): WorkflowGraphSnapshot {
+	const node = requireCurrentExecution(graph, nodeId, executionId);
+	if (node.state !== "RUNNING" || !node.execution) {
+		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot wait for user from ${node.state}`);
+	}
+	return checked(
+		replaceNode(graph, {
+			...node,
+			state: "WAITING_USER",
+			execution: { ...node.execution, providerState: "WAITING_USER" },
+			failure,
+			recovery: undefined,
+			waitReason: failure.code,
+		}),
+	);
+}
+
+export function resumeWorkflowNodeFromUserWait(
+	graph: WorkflowGraphSnapshot,
+	nodeId: string,
+	executionId: string,
+): WorkflowGraphSnapshot {
+	const node = requireCurrentExecution(graph, nodeId, executionId);
+	if (node.state !== "WAITING_USER" || !node.execution) {
+		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot resume user wait from ${node.state}`);
+	}
+	return checked(
+		replaceNode(graph, {
+			...node,
+			state: "RUNNING",
+			execution: { ...node.execution, providerState: undefined },
+			failure: undefined,
+			waitReason: undefined,
+		}),
 	);
 }
 
@@ -99,9 +171,37 @@ export function completeWorkflowNode(
 			...node,
 			state: "COMPLETED",
 			output,
-			execution: { ...execution, state: "SUCCEEDED" },
+			execution: { ...execution, state: "SUCCEEDED", providerState: "COMPLETED" },
 			failure: undefined,
 			recovery: undefined,
+			waitReason: undefined,
+		}),
+	);
+}
+
+export function completeWorkflowGateNode(
+	graph: WorkflowGraphSnapshot,
+	nodeId: string,
+	output: WorkflowNodeOutputReceipt,
+): WorkflowGraphSnapshot {
+	const node = requireNode(graph, nodeId);
+	if (node.state !== "READY") {
+		throw new WorkflowGraphTransitionError(`workflow gate ${nodeId} cannot complete from ${node.state}`);
+	}
+	if (node.execution !== undefined) {
+		throw new WorkflowGraphTransitionError(`workflow gate ${nodeId} must not own a provider execution`);
+	}
+	if (!node.input || !workflowNodeInputMatchesDependencies(node, graph.nodes)) {
+		throw new WorkflowGraphTransitionError(`workflow gate ${nodeId} cannot complete with stale dependency inputs`);
+	}
+	return checked(
+		replaceNode(graph, {
+			...node,
+			state: "COMPLETED",
+			output,
+			failure: undefined,
+			recovery: undefined,
+			waitReason: undefined,
 		}),
 	);
 }
@@ -126,6 +226,7 @@ export function recoverWorkflowNode(
 			execution: { ...node.execution, state: executionState },
 			failure,
 			recovery,
+			waitReason: undefined,
 		}),
 	);
 }
@@ -135,22 +236,7 @@ export function retryWorkflowNode(
 	nodeId: string,
 	execution: WorkflowExecutionRecord,
 ): WorkflowGraphSnapshot {
-	const node = requireNode(graph, nodeId);
-	if (node.state !== "RECOVERING") {
-		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot retry from ${node.state}`);
-	}
-	if (!node.input || !workflowNodeInputMatchesDependencies(node, graph.nodes)) {
-		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot retry with stale dependency inputs`);
-	}
-	if (execution.state !== "STARTING" && execution.state !== "ACTIVE") {
-		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} retry requires a live execution state`);
-	}
-	if (node.recovery?.attempt !== execution.attempt) {
-		throw new WorkflowGraphTransitionError(`workflow node ${nodeId} retry attempt does not match recovery plan`);
-	}
-	return checked(
-		replaceNode(graph, { ...node, state: "RUNNING", execution, failure: undefined, recovery: undefined }),
-	);
+	return startWorkflowNode(graph, nodeId, execution);
 }
 
 export function failWorkflowNode(
@@ -169,9 +255,58 @@ export function failWorkflowNode(
 			state: "FAILED",
 			failure,
 			recovery: undefined,
+			waitReason: undefined,
 			...(execution === undefined ? {} : { execution: { ...execution, state: "FAILED" as const } }),
 		}),
 	);
+}
+
+export function appendWorkflowNodes(
+	graph: WorkflowGraphSnapshot,
+	nodes: readonly WorkflowGraphNode[],
+): WorkflowGraphSnapshot {
+	if (nodes.length === 0) return graph;
+	const nextNodes: Record<string, WorkflowGraphNode> = { ...graph.nodes };
+	for (const node of nodes) {
+		if (nextNodes[node.nodeId] !== undefined) {
+			throw new WorkflowGraphTransitionError(`workflow graph node ${node.nodeId} already exists`);
+		}
+		nextNodes[node.nodeId] = node;
+	}
+	return checked({ ...graph, graphRevision: graph.graphRevision + 1, nodes: nextNodes });
+}
+
+export function setWorkflowGraphStatus(
+	graph: WorkflowGraphSnapshot,
+	phase: WorkflowPhase,
+	lifecycle: WorkflowLifecycle,
+): WorkflowGraphSnapshot {
+	if (graph.phase === phase && graph.lifecycle === lifecycle) return graph;
+	return checked({ ...graph, graphRevision: graph.graphRevision + 1, phase, lifecycle });
+}
+
+export function cancelWorkflowGraph(graph: WorkflowGraphSnapshot): WorkflowGraphSnapshot {
+	const nodes = Object.fromEntries(
+		Object.entries(graph.nodes).map(([nodeId, node]) => {
+			if (node.state === "COMPLETED" || node.state === "FAILED" || node.state === "CANCELLED") return [nodeId, node];
+			return [
+				nodeId,
+				{
+					...node,
+					state: "CANCELLED" as const,
+					...(node.execution === undefined
+						? {}
+						: { execution: { ...node.execution, state: "CANCELLED" as const } }),
+				},
+			];
+		}),
+	);
+	return checked({
+		...graph,
+		graphRevision: graph.graphRevision + 1,
+		lifecycle: "CANCELLED",
+		nodes,
+	});
 }
 
 function requireNode(graph: WorkflowGraphSnapshot, nodeId: string): WorkflowGraphNode {
