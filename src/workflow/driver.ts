@@ -11,7 +11,6 @@ export interface WorkflowDriverEngine {
 	nextRecoveryAt(jobId: string): string | undefined;
 	executeNode(jobId: string, nodeId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<WorkflowJob>;
 	cancel(jobId: string): WorkflowJob;
-	blockRuntime(jobId: string, message: string): WorkflowJob;
 }
 
 interface ActiveRun {
@@ -69,17 +68,7 @@ export class WorkflowDriver {
 		const promise = this.drive(jobId, ownerInstanceId, controller.signal)
 			.catch((error: unknown) => {
 				if (isAbort(error, controller.signal)) return;
-				try {
-					const current = this.engine.status(jobId);
-					if (!workflowJobIsTerminal(current)) {
-						this.engine.blockRuntime(
-							jobId,
-							`workflow scheduler failed: ${error instanceof Error ? error.message : String(error)}`,
-						);
-					}
-				} catch {
-					// If durable storage itself is unavailable, the driver cannot safely invent recovery state.
-				}
+				this.blockRuntimeFailure(jobId, error);
 			})
 			.finally(() => {
 				const current = this.active.get(jobId);
@@ -111,6 +100,30 @@ export class WorkflowDriver {
 		this.active.clear();
 	}
 
+	private blockRuntimeFailure(jobId: string, error: unknown): void {
+		try {
+			const current = this.engine.status(jobId);
+			if (workflowJobIsTerminal(current)) return;
+			const at = new Date().toISOString();
+			const message = `workflow scheduler failed: ${error instanceof Error ? error.message : String(error)}`;
+			this.jobs.update(jobId, current.revision, (job) => ({
+				...job,
+				revision: job.revision + 1,
+				updatedAt: at,
+				graph: {
+					...job.graph,
+					graphRevision: job.graph.graphRevision + 1,
+					eventSeq: job.graph.eventSeq + 1,
+					lifecycle: "BLOCKED",
+				},
+				pendingAction: { kind: "CODE_FIX_REQUIRED", message },
+				lastEvent: { type: "SCHEDULER_FAILED", class: "ACTION_REQUIRED", at, message },
+			}));
+		} catch {
+			// If durable storage itself is unavailable, the driver cannot safely invent recovery state.
+		}
+	}
+
 	private async drive(jobId: string, ownerInstanceId: string, signal: AbortSignal): Promise<void> {
 		this.engine.reconcile(jobId, ownerInstanceId);
 		while (!signal.aborted) {
@@ -121,9 +134,7 @@ export class WorkflowDriver {
 
 			const runnable = this.engine.runnableNodeIds(jobId);
 			if (runnable.length > 0) {
-				await Promise.all(
-					runnable.map((nodeId) => this.engine.executeNode(jobId, nodeId, ownerInstanceId, signal)),
-				);
+				await Promise.all(runnable.map((nodeId) => this.engine.executeNode(jobId, nodeId, ownerInstanceId, signal)));
 				continue;
 			}
 
