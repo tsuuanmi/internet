@@ -30,25 +30,24 @@ function createRunner(overrides: Record<string, string | Error> = {}): GitRunner
 }
 
 function fakeJob(input: StartWorkflowInput): WorkflowJob {
+	const at = "2026-09-08T00:00:00.000Z";
 	return {
 		schema: "@tsuuanmi/internet-workflow-job",
-		version: 1,
+		version: 2,
 		revision: 1,
 		jobId: JOB_ID,
 		ownerSessionId: "agent",
 		objective: input.objective,
 		repository: input.repository,
 		baseRevision: input.baseRevision,
-		state: "CREATED",
-		teamRuns: {
-			research: [
-				{ lane: "A", status: "pending", attempts: 0, sessionId: "research:A" },
-				{ lane: "B", status: "pending", attempts: 0, sessionId: "research:B" },
-			],
-			review: [
-				{ lane: "A", status: "pending", attempts: 0, sessionId: "review:A" },
-				{ lane: "B", status: "pending", attempts: 0, sessionId: "review:B" },
-			],
+		graph: {
+			schema: "@tsuuanmi/internet-workflow-graph",
+			version: 1,
+			graphRevision: 0,
+			eventSeq: 0,
+			phase: "RESEARCH",
+			lifecycle: "RUNNING",
+			nodes: {},
 		},
 		accountRouting: {
 			thinkerAccounts: ["chatgpt-thinker", "gemini-thinker"],
@@ -58,8 +57,8 @@ function fakeJob(input: StartWorkflowInput): WorkflowJob {
 		handoffReceipts: [],
 		writerConversation: { sessionId: "writer", accountId: "chatgpt-writer" },
 		reviewCycle: 0,
-		createdAt: "2026-09-08T00:00:00.000Z",
-		updatedAt: "2026-09-08T00:00:00.000Z",
+		createdAt: at,
+		updatedAt: at,
 	};
 }
 
