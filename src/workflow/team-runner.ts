@@ -41,6 +41,7 @@ export class BrowserWorkflowTeamRunner implements WorkflowTeamRunner {
 			promptStrategy: request.promptStrategy,
 			sessionId: request.sessionId,
 			visible: false,
+			timeoutMs: this.config.workflowHardTimeoutMs,
 			signal: request.signal,
 			onProgress: request.onProgress,
 		});
