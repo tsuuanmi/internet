@@ -117,7 +117,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 			new BrowserWorkflowTeamRunner(manager, config),
 			new WorkflowTeamPromptBuilder(),
 			handoffs,
-			new BrowserWorkflowWriterRunner(manager),
+			new BrowserWorkflowWriterRunner(manager, config.workflowHardTimeoutMs),
 			results,
 			eventSink,
 			journal,
