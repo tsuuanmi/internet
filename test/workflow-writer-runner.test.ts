@@ -9,28 +9,26 @@ const writerSessionId = `agent:workflow:${jobId}:writer`;
 
 function job(): WorkflowJob {
 	const timestamp = "2026-09-08T00:00:00.000Z";
-	const run = (lane: "A" | "B", phase: "research" | "review") => ({
-		lane,
-		status: "pending" as const,
-		attempts: 0,
-		sessionId: `agent:workflow:${jobId}:${phase}:${lane}`,
-	});
 	return {
 		schema: "@tsuuanmi/internet-workflow-job",
-		version: 1,
+		version: 2,
 		revision: 1,
 		jobId,
 		ownerSessionId: "agent",
 		objective: "Fix the race.",
 		repository: "https://github.com/example/repo",
 		baseRevision: "0123456789abcdef0123456789abcdef01234567",
-		state: "WRITER_RUNNING",
-		teamRuns: {
-			research: [run("A", "research"), run("B", "research")],
-			review: [run("A", "review"), run("B", "review")],
+		graph: {
+			schema: "@tsuuanmi/internet-workflow-graph",
+			version: 1,
+			graphRevision: 0,
+			eventSeq: 0,
+			phase: "WRITER",
+			lifecycle: "RUNNING",
+			nodes: {},
 		},
 		accountRouting: {
-			thinkerAccounts: ["chatgpt-thinker", "gemini-thinker"],
+			thinkerAccounts: ["chatgpt-thinker", "chatgpt-thinker-2"],
 			writerAccount: "chatgpt-writer",
 			synthesizerAccount: "chatgpt-thinker",
 		},
@@ -67,7 +65,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 			jobId,
 			writerSessionId,
 			repository: current.repository,
-			state: "WRITER_RUNNING",
+			authority: "IMPLEMENTATION",
 		});
 		expect(observedConfirmation).not.toHaveProperty("accountId");
 		expect(observedConfirmation).not.toHaveProperty("sessionId");
@@ -109,9 +107,9 @@ describe("BrowserWorkflowWriterRunner", () => {
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
 		expect(prompt).toContain("Required base branch: main");
-		expect(prompt).toContain("exact required base revision");
-		expect(prompt).toContain("PR idempotency key");
-		expect(prompt).toContain("If exactly one open PR exists, reuse/update that PR");
-		expect(prompt).toContain("Never create a second PR for the same workflow job/branch");
+		expect(prompt).toContain("Required base revision");
+		expect(prompt).toContain("Reconcile GitHub by the exact workflow branch");
+		expect(prompt).toContain("Reuse exactly one matching open PR");
+		expect(prompt).toContain("Never create a second workflow PR");
 	});
 });
