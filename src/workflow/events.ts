@@ -61,16 +61,14 @@ export function parseWorkflowGraphEvent(value: unknown): WorkflowGraphEvent {
 	const event = value as Record<string, unknown>;
 	if (event.schema !== "@tsuuanmi/internet-workflow-event" || event.version !== 1)
 		throw new Error("unsupported workflow event schema");
-	if (typeof event.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(event.jobId))
-		throw new Error("invalid workflow event job id");
+	if (typeof event.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(event.jobId)) throw new Error("invalid workflow event job id");
 	if (typeof event.eventSeq !== "number" || !Number.isSafeInteger(event.eventSeq) || event.eventSeq < 1)
 		throw new Error("invalid workflow event sequence");
 	if (typeof event.graphRevision !== "number" || !Number.isSafeInteger(event.graphRevision) || event.graphRevision < 0)
 		throw new Error("invalid workflow event graph revision");
 	if (typeof event.type !== "string" || typeof event.at !== "string" || !Number.isFinite(Date.parse(event.at)))
 		throw new Error("invalid workflow event fields");
-	if (!["INTERNAL", "PROGRESS", "ACTION_REQUIRED"].includes(String(event.class)))
-		throw new Error("invalid workflow event class");
+	if (!["INTERNAL", "PROGRESS", "ACTION_REQUIRED"].includes(String(event.class))) throw new Error("invalid workflow event class");
 	return value as WorkflowGraphEvent;
 }
 
@@ -99,8 +97,12 @@ export function formatWorkflowEvent(job: WorkflowJob, event: WorkflowEventRecord
 	if (event.nodeId !== undefined) lines.push(`node=${event.nodeId}`);
 	if (event.executionId !== undefined) lines.push(`execution=${event.executionId}`);
 	if (job.pullRequest !== undefined) lines.push(`pr=${job.pullRequest.url}`, `head_sha=${job.pullRequest.headSha}`);
+	if (job.writerConversation.url !== undefined) lines.push(`writer_chat=${job.writerConversation.url}`);
 	if (job.pendingAction !== undefined) lines.push(`pending_action=${job.pendingAction.kind}`);
 	if (event.message !== undefined && event.message.trim() !== "") lines.push(`message=${event.message}`);
+	if (job.graph.lifecycle === "COMPLETED" && job.pullRequest !== undefined) {
+		lines.push("handoff=Open the Writer chat for optional changes or merge. Review coverage ends at head_sha.");
+	}
 	lines.push("This compact control-plane event intentionally excludes research and review payloads.");
 	return lines.join("\n");
 }
