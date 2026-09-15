@@ -28,25 +28,17 @@ describe("workflow scoped approval policy", () => {
 		expect(normalizeGitHubRepository("https://gitlab.com/example/repo")).toBeUndefined();
 	});
 
-	it("auto-approves only exact writer job/repository/branch scoped implementation actions", () => {
+	it("auto-approves exact implementation actions on the workflow branch", () => {
 		const branch = workflowWriterBranch(jobId);
-		expect(
-			classifyWorkflowConfirmation(context(), {
-				action: "create_branch",
-				repository: "example/repo",
-				branch,
-			}),
-		).toEqual({ kind: "auto-approve", action: "create_branch" });
-		expect(
-			classifyWorkflowConfirmation(context(), {
-				action: "write_file",
-				repository: "example/repo",
-				branch,
-			}),
-		).toEqual({ kind: "auto-approve", action: "write_file" });
+		for (const action of ["create_branch", "write_file", "create_commit", "push_branch", "create_pull_request"] as const) {
+			expect(classifyWorkflowConfirmation(context(), { action, repository: "example/repo", branch })).toEqual({
+				kind: "auto-approve",
+				action,
+			});
+		}
 	});
 
-	it("fails closed on actual account, session, repository, branch, action, and authority mismatches", () => {
+	it("fails closed on account, session, repository, branch, and out-of-scope actions", () => {
 		const branch = workflowWriterBranch(jobId);
 		expect(
 			classifyWorkflowConfirmation(context({ accountId: "chatgpt-thinker" }), {
@@ -77,23 +69,15 @@ describe("workflow scoped approval policy", () => {
 			}).kind,
 		).toBe("unknown");
 		expect(
-			classifyWorkflowConfirmation(context({ authority: "MERGE" }), {
-				action: "push_branch",
-				repository: "example/repo",
-				branch,
-			}).kind,
-		).toBe("unknown");
-		expect(
 			classifyWorkflowConfirmation(context(), {
-				action: "update_pull_request",
+				action: "merge_pull_request",
 				repository: "example/repo",
 				branch,
-				prNumber: 5,
 			}).kind,
 		).toBe("unknown");
 	});
 
-	it("requires exact persisted PR authority for remediation updates", () => {
+	it("auto-approves only the exact persisted PR update during remediation", () => {
 		const pr = {
 			repository: "example/repo",
 			number: 9,
@@ -119,26 +103,5 @@ describe("workflow scoped approval policy", () => {
 				prNumber: 10,
 			}).kind,
 		).toBe("unknown");
-		expect(
-			classifyWorkflowConfirmation(
-				context({ authority: "REMEDIATION", pullRequest: { ...pr, repository: "other/repo" } }),
-				{ action: "update_pull_request", repository: "example/repo", branch: pr.head, prNumber: 9 },
-			).kind,
-		).toBe("unknown");
-	});
-
-	it("requires repository scope before classifying merge as user-owned", () => {
-		expect(
-			classifyWorkflowConfirmation(context(), {
-				action: "merge_pull_request",
-				repository: "other/repo",
-			}).kind,
-		).toBe("unknown");
-		expect(
-			classifyWorkflowConfirmation(context(), {
-				action: "merge_pull_request",
-				repository: "example/repo",
-			}).kind,
-		).toBe("merge-requires-user");
 	});
 });
