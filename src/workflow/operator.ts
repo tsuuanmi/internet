@@ -39,7 +39,8 @@ function selectJob(
 	const owned = ownerJobs(jobs, ownerSessionId);
 	if (explicitJobId !== undefined) {
 		const job = owned.find((candidate) => candidate.jobId === explicitJobId);
-		if (job === undefined) throw new WorkflowOperatorError(`workflow job ${explicitJobId} does not belong to this session`);
+		if (job === undefined)
+			throw new WorkflowOperatorError(`workflow job ${explicitJobId} does not belong to this session`);
 		if (requireActive && workflowJobIsTerminal(job)) {
 			throw new WorkflowOperatorError(`workflow job ${job.jobId} is already terminal (${job.graph.lifecycle})`);
 		}
@@ -73,7 +74,8 @@ function nodeLabel(nodeId: string): string {
 	if (nodeId === "research:handoff-gate") return "Research · Handoff";
 	if (nodeId === "writer:implementation") return "Writer · Implementation";
 	const reviewMember = nodeId.match(/^review:cycle:(\d+):([AB]):round:(\d+):member:(\d+)$/u);
-	if (reviewMember) return `Review ${reviewMember[2]} · Cycle ${reviewMember[1]} · R${reviewMember[3]} · Member ${reviewMember[4]}`;
+	if (reviewMember)
+		return `Review ${reviewMember[2]} · Cycle ${reviewMember[1]} · R${reviewMember[3]} · Member ${reviewMember[4]}`;
 	const reviewSynthesis = nodeId.match(/^review:cycle:(\d+):([AB]):synthesis$/u);
 	if (reviewSynthesis) return `Review ${reviewSynthesis[2]} · Cycle ${reviewSynthesis[1]} · Synthesis`;
 	const reviewGate = nodeId.match(/^review:cycle:(\d+):handoff-gate$/u);
@@ -116,7 +118,8 @@ function nextDescription(job: WorkflowJob): string {
 		.sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 	if (ready.length > 0) return ready.map((node) => nodeLabel(node.nodeId)).join(" + ");
 	const recovering = Object.values(job.graph.nodes).find((node) => node.state === "RECOVERING");
-	if (recovering !== undefined) return `${nodeLabel(recovering.nodeId)} · ${recovering.recovery?.action ?? "recovery"}`;
+	if (recovering !== undefined)
+		return `${nodeLabel(recovering.nodeId)} · ${recovering.recovery?.action ?? "recovery"}`;
 	const waiting = Object.values(job.graph.nodes).find((node) => node.state === "WAITING");
 	if (waiting !== undefined) return `${nodeLabel(waiting.nodeId)} waits on dependencies`;
 	return job.graph.lifecycle.toLowerCase();
@@ -135,7 +138,12 @@ export function formatWorkflowList(jobs: readonly WorkflowJob[]): string {
 
 export function formatWorkflowStatus(
 	job: WorkflowJob,
-	events: readonly { readonly eventSeq: number; readonly at: string; readonly type: string; readonly nodeId?: string }[],
+	events: readonly {
+		readonly eventSeq: number;
+		readonly at: string;
+		readonly type: string;
+		readonly nodeId?: string;
+	}[],
 	driverActive: boolean,
 ): string {
 	const lines = [
@@ -162,7 +170,8 @@ export function formatWorkflowStatus(
 				`    last_progress=${node.execution.lastMeaningfulProgressAt ?? "none"} lease_until=${node.execution.leaseUntil}`,
 			);
 		}
-		if (node.failure !== undefined) lines.push(`    failure=${node.failure.class}.${node.failure.code}: ${compact(node.failure.message, 180)}`);
+		if (node.failure !== undefined)
+			lines.push(`    failure=${node.failure.class}.${node.failure.code}: ${compact(node.failure.message, 180)}`);
 		if (node.recovery !== undefined) {
 			lines.push(
 				`    recovery=${node.recovery.action} attempt=${node.recovery.attempt}/${node.recovery.maxAttempts}${node.recovery.notBefore ? ` not_before=${node.recovery.notBefore}` : ""}`,
@@ -191,7 +200,12 @@ export function formatWorkflowStatus(
 		);
 	}
 
-	lines.push("", "Writer", `  account=${job.writerConversation.accountId}`, `  chat=${job.writerConversation.url ?? "pending"}`);
+	lines.push(
+		"",
+		"Writer",
+		`  account=${job.writerConversation.accountId}`,
+		`  chat=${job.writerConversation.url ?? "pending"}`,
+	);
 	if (job.graph.lifecycle === "COMPLETED" && job.pullRequest !== undefined) {
 		lines.push(
 			"",
@@ -205,13 +219,16 @@ export function formatWorkflowStatus(
 	if (job.pendingAction !== undefined) {
 		lines.push("", `ACTION REQUIRED: ${job.pendingAction.kind}`, `  ${job.pendingAction.message}`);
 		if (job.pendingAction.nodeId !== undefined) lines.push(`  node=${nodeLabel(job.pendingAction.nodeId)}`);
-		if (job.pendingAction.expectedHeadSha !== undefined) lines.push(`  expected_head=${job.pendingAction.expectedHeadSha}`);
+		if (job.pendingAction.expectedHeadSha !== undefined)
+			lines.push(`  expected_head=${job.pendingAction.expectedHeadSha}`);
 	}
 
 	lines.push("", "Recent events");
 	if (events.length === 0) lines.push("  none");
 	for (const event of events.slice(-8)) {
-		lines.push(`  #${event.eventSeq} ${event.at}  ${event.type}${event.nodeId === undefined ? "" : ` · ${nodeLabel(event.nodeId)}`}`);
+		lines.push(
+			`  #${event.eventSeq} ${event.at}  ${event.type}${event.nodeId === undefined ? "" : ` · ${nodeLabel(event.nodeId)}`}`,
+		);
 	}
 	lines.push("", "Next", `  ${nextDescription(job)}`, "", `Last durable update: ${job.updatedAt}`);
 	return lines.join("\n");
@@ -276,7 +293,8 @@ export class WorkflowOperator {
 
 	continue(ownerSessionId: string, jobId?: string): string {
 		const selected = selectJob(this.jobs, ownerSessionId, jobId, true);
-		if (this.driver.isActive(selected.jobId)) throw new WorkflowOperatorError(`workflow job ${selected.jobId} already has an active driver`);
+		if (this.driver.isActive(selected.jobId))
+			throw new WorkflowOperatorError(`workflow job ${selected.jobId} already has an active driver`);
 		if (selected.graph.lifecycle !== "BLOCKED" && selected.graph.lifecycle !== "RECOVERING") {
 			throw new WorkflowOperatorError(`workflow job ${selected.jobId} has no explicit recovery path`);
 		}
