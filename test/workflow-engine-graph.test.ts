@@ -48,33 +48,33 @@ afterEach(async () => {
 });
 
 describe("WorkflowEngine graph recovery", () => {
-	it("retries only the failed logical node and preserves completed siblings", async () => {
+	it("retries only the failed logical node with one stable exact request identity", async () => {
 		const calls = new Map<string, number>();
+		const retryKeys: string[] = [];
 		let failedOnce = false;
 		const teams: WorkflowTeamRunner = {
 			rounds: 1,
 			async runStep(request) {
 				const key = `${request.sessionId}:${request.step.stepId}`;
 				calls.set(key, (calls.get(key) ?? 0) + 1);
-				if (
-					request.sessionId.endsWith(":research:A") &&
-					request.step.stepId === "round:1:member:2" &&
-					!failedOnce
-				) {
-					failedOnce = true;
-					return {
-						ok: false,
-						error: {
-							accountId: request.step.accountId,
-							provider: getAccountDefinition(request.step.accountId).provider,
-							stage: "provider_turn",
-							round: 1,
-							kind: "timeout",
-							message: "provider timeout",
-							retryable: true,
-							failedAt: new Date().toISOString(),
-						},
-					};
+				if (request.sessionId.endsWith(":research:A") && request.step.stepId === "round:1:member:2") {
+					retryKeys.push(request.requestKey);
+					if (!failedOnce) {
+						failedOnce = true;
+						return {
+							ok: false,
+							error: {
+								accountId: request.step.accountId,
+								provider: getAccountDefinition(request.step.accountId).provider,
+								stage: "provider_turn",
+								round: 1,
+								kind: "timeout",
+								message: "provider timeout",
+								retryable: true,
+								failedAt: new Date().toISOString(),
+							},
+						};
+					}
 				}
 				return successfulStep(request);
 			},
@@ -105,6 +105,9 @@ describe("WorkflowEngine graph recovery", () => {
 		expect(current.graph.nodes[a2]?.state).toBe("COMPLETED");
 		expect(calls.get(`agent:workflow:${job.jobId}:research:A:round:1:member:1`)).toBe(1);
 		expect(calls.get(`agent:workflow:${job.jobId}:research:A:round:1:member:2`)).toBe(2);
+		expect(retryKeys).toHaveLength(2);
+		expect(new Set(retryKeys).size).toBe(1);
+		expect(retryKeys[0]).toBe(`${job.jobId}:${a2}:${current.graph.nodes[a2]?.input?.inputHash}`);
 	});
 
 	it("reconciles an exact persisted node result without rerunning the provider", async () => {
@@ -155,6 +158,32 @@ describe("WorkflowEngine graph recovery", () => {
 		});
 		expect(current.pendingAction).toMatchObject({ kind: "CODE_FIX_REQUIRED", nodeId });
 		expect(engine.runnableNodeIds(job.jobId)).not.toContain(nodeId);
+	});
+
+	it("requires both research lanes and never degrades to a one-lane quorum", async () => {
+		const teams: WorkflowTeamRunner = {
+			rounds: 1,
+			async runStep(request) {
+				if (request.sessionId.endsWith(":research:A")) {
+					throw new Error("InvalidSelectorError: deterministic lane failure");
+				}
+				return successfulStep(request);
+			},
+		};
+		const { engine } = createWorkflowTestRuntime(root(), { teams });
+		const job = start(engine);
+		const a1 = workflowNodeId.researchMember("A", 1, 1);
+		const b1 = workflowNodeId.researchMember("B", 1, 1);
+
+		await Promise.all([engine.executeNode(job.jobId, a1, "driver"), engine.executeNode(job.jobId, b1, "driver")]);
+		engine.advance(job.jobId);
+		const current = engine.status(job.jobId);
+
+		expect(current.graph.lifecycle).toBe("BLOCKED");
+		expect(current.graph.nodes[a1]?.state).toBe("FAILED");
+		expect(current.graph.nodes[b1]?.state).toBe("COMPLETED");
+		expect(current.graph.nodes[workflowNodeId.writerImplementation()]?.state).toBe("WAITING");
+		expect(engine.runnableNodeIds(job.jobId)).not.toContain(workflowNodeId.writerImplementation());
 	});
 
 	it("reconciles an orphaned running execution at the exact node boundary", async () => {
