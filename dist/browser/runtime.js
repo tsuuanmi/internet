@@ -15,6 +15,7 @@ import { geminiEnableDeepResearch, geminiStartResearchPlan } from "#internet/bro
 import { loginProfileArgs, loginProfileIgnoredDefaultArgs, loginProfileReopenEnv, } from "#internet/browser/login-profile";
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
+import { renderCompletedResponse } from "#internet/browser/response";
 import { accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
 import { hashProviderTurnText, ProviderTurnReceiptStore, reconcileProviderTurn, workflowJobIdFromRequestKey, } from "#internet/browser/turn-receipts";
 import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
@@ -697,6 +698,7 @@ export class BrowserManager {
                     throw new InternetError("provider_error", `DSH session ${request.sessionId} is bound to ${provider} conversation ${binding.conversationId}, not ${current.id}.`);
                 }
             }
+            const responseRepresentation = request.responseRepresentation ?? "markdown";
             const waitOptions = {
                 timeoutMs: request.timeoutMs ?? this.config.turnTimeoutMs,
                 stallTimeoutMs: request.stallTimeoutMs,
@@ -727,6 +729,7 @@ export class BrowserManager {
                 },
             });
             let result;
+            let completedSemanticText;
             const currentSnapshot = () => (provider === "chatgpt-web" ? chatgptSnapshot(page) : geminiSnapshot(page));
             let resumeSubmittedTurn = false;
             let previousResponseText;
@@ -760,7 +763,7 @@ export class BrowserManager {
                         const storageState = await this.captureAccountSnapshot(context, previousStorageState);
                         await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
                         return {
-                            text: snapshot.text.slice(0, this.config.maxOutputChars),
+                            text: renderCompletedResponse(snapshot, responseRepresentation).slice(0, this.config.maxOutputChars),
                             url: recoveredBinding.conversationUrl,
                             conversationId: recoveredBinding.conversationId,
                         };
@@ -801,16 +804,20 @@ export class BrowserManager {
                         await chatgptSend(page, request.prompt);
                     }
                 }
-                result = await observeBoundTurn((signal, remainingMs) => waitForStableCompletion(() => request.research === true
-                    ? chatgptDeepResearchSnapshot(page, previousResearchText)
-                    : (async () => {
-                        if (request.confirmation !== undefined) {
-                            await chatgptHandleWorkflowConfirmation(page, request.confirmation, accountId, request.sessionId);
-                        }
-                        return resumeSubmittedTurn
-                            ? chatgptSnapshot(page)
-                            : chatgptSnapshot(page, previousTurnText);
-                    })(), { ...waitOptions, signal, timeoutMs: remainingMs() }));
+                result = await observeBoundTurn(async (signal, remainingMs) => {
+                    const completed = await waitForStableCompletion(() => request.research === true
+                        ? chatgptDeepResearchSnapshot(page, previousResearchText)
+                        : (async () => {
+                            if (request.confirmation !== undefined) {
+                                await chatgptHandleWorkflowConfirmation(page, request.confirmation, accountId, request.sessionId);
+                            }
+                            return resumeSubmittedTurn
+                                ? chatgptSnapshot(page)
+                                : chatgptSnapshot(page, previousTurnText);
+                        })(), { ...waitOptions, signal, timeoutMs: remainingMs() });
+                    completedSemanticText = completed.text;
+                    return renderCompletedResponse(completed, responseRepresentation);
+                });
             }
             else {
                 const previousTurnText = previousResponseText ?? (await geminiLastResponseText(page));
@@ -826,15 +833,20 @@ export class BrowserManager {
                     if (request.research === true && !resumeSubmittedTurn) {
                         await geminiStartResearchPlan(page, { signal, timeoutMs: remainingMs() });
                     }
-                    return waitForStableCompletion(() => request.research === true
+                    const completed = await waitForStableCompletion(() => request.research === true
                         ? geminiDeepResearchSnapshot(page, previousResearchText)
                         : resumeSubmittedTurn
                             ? geminiSnapshot(page)
                             : geminiSnapshot(page, previousTurnText), { ...waitOptions, signal, timeoutMs: remainingMs() });
+                    completedSemanticText = completed.text;
+                    return renderCompletedResponse(completed, responseRepresentation);
                 });
             }
             if (request.requestKey !== undefined) {
-                this.turnReceiptStore(accountId, request.requestKey).complete(request.sessionId, request.requestKey, result.text, result.binding.conversationUrl);
+                if (completedSemanticText === undefined) {
+                    throw new InternetError("provider_error", "provider completion semantic text was unavailable");
+                }
+                this.turnReceiptStore(accountId, request.requestKey).complete(request.sessionId, request.requestKey, completedSemanticText, result.binding.conversationUrl);
             }
             const storageState = await this.captureAccountSnapshot(context, previousStorageState);
             await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);

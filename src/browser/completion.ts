@@ -1,11 +1,15 @@
 import { InternetError } from "#internet/core/errors";
-import { htmlToMarkdown } from "#internet/core/markdown";
 
 export interface CompletionSnapshot {
 	responsePresent: boolean;
 	text: string;
 	html: string;
 	running: boolean;
+}
+
+export interface CompletedResponse {
+	readonly text: string;
+	readonly html: string;
 }
 
 export type ProviderProgressKind =
@@ -67,7 +71,7 @@ function emitProgress(observer: WaitOptions["onProgress"], kind: ProviderProgres
 export async function waitForStableCompletion(
 	read: () => Promise<CompletionSnapshot>,
 	options: WaitOptions,
-): Promise<string> {
+): Promise<CompletedResponse> {
 	if (options.stallTimeoutMs !== undefined && options.stallTimeoutMs >= options.timeoutMs) {
 		throw new InternetError("config_error", "completion stallTimeoutMs must be lower than timeoutMs");
 	}
@@ -107,7 +111,7 @@ export async function waitForStableCompletion(
 			if (!snapshot.running && unchanged) {
 				stableSince ??= at;
 				if (at - stableSince >= options.stableMs) {
-					return candidate?.html ? htmlToMarkdown(snapshot.html) : text;
+					return { text, html: snapshot.html };
 				}
 			} else {
 				stableSince = undefined;

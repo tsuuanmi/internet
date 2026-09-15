@@ -4,6 +4,10 @@ export interface CompletionSnapshot {
     html: string;
     running: boolean;
 }
+export interface CompletedResponse {
+    readonly text: string;
+    readonly html: string;
+}
 export type ProviderProgressKind = "response_started" | "response_changed" | "generation_started" | "generation_stopped";
 export interface ProviderProgressEvent {
     readonly kind: ProviderProgressKind;
@@ -24,5 +28,5 @@ export interface WaitOptions {
  * from a semantic no-progress stall. Only response/running transitions renew
  * the progress lease; unrelated DOM churn and a static thinking control do not.
  */
-export declare function waitForStableCompletion(read: () => Promise<CompletionSnapshot>, options: WaitOptions): Promise<string>;
+export declare function waitForStableCompletion(read: () => Promise<CompletionSnapshot>, options: WaitOptions): Promise<CompletedResponse>;
 //# sourceMappingURL=completion.d.ts.map

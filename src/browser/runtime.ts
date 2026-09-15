@@ -56,6 +56,7 @@ import {
 } from "#internet/browser/login-profile";
 import { type ProviderLease, ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
+import { type ResponseRepresentation, renderCompletedResponse } from "#internet/browser/response";
 import { type AccountLocations, accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
 import {
 	hashProviderTurnText,
@@ -79,6 +80,8 @@ export interface ChatRequest {
 	visible?: boolean;
 	/** Enables provider Deep Research before this request is submitted. */
 	research?: boolean;
+	/** Representation returned after semantic provider completion. */
+	responseRepresentation?: ResponseRepresentation;
 	/** Override the normal-turn hard completion deadline. */
 	timeoutMs?: number;
 	/** Optional semantic no-progress deadline, independent from the hard deadline. */
@@ -918,6 +921,7 @@ export class BrowserManager {
 				}
 			}
 
+			const responseRepresentation = request.responseRepresentation ?? "markdown";
 			const waitOptions = {
 				timeoutMs: request.timeoutMs ?? this.config.turnTimeoutMs,
 				stallTimeoutMs: request.stallTimeoutMs,
@@ -955,6 +959,7 @@ export class BrowserManager {
 					},
 				});
 			let result: { text: string; binding: ConversationBinding };
+			let completedSemanticText: string | undefined;
 			const currentSnapshot = () => (provider === "chatgpt-web" ? chatgptSnapshot(page!) : geminiSnapshot(page!));
 			let resumeSubmittedTurn = false;
 			let previousResponseText: string | undefined;
@@ -1004,7 +1009,10 @@ export class BrowserManager {
 						const storageState = await this.captureAccountSnapshot(context, previousStorageState);
 						await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
 						return {
-							text: snapshot.text.slice(0, this.config.maxOutputChars),
+							text: renderCompletedResponse(snapshot, responseRepresentation).slice(
+								0,
+								this.config.maxOutputChars,
+							),
 							url: recoveredBinding.conversationUrl,
 							conversationId: recoveredBinding.conversationId,
 						};
@@ -1043,8 +1051,8 @@ export class BrowserManager {
 						await chatgptSend(page, request.prompt);
 					}
 				}
-				result = await observeBoundTurn((signal, remainingMs) =>
-					waitForStableCompletion(
+				result = await observeBoundTurn(async (signal, remainingMs) => {
+					const completed = await waitForStableCompletion(
 						() =>
 							request.research === true
 								? chatgptDeepResearchSnapshot(page!, previousResearchText)
@@ -1062,8 +1070,10 @@ export class BrowserManager {
 											: chatgptSnapshot(page!, previousTurnText);
 									})(),
 						{ ...waitOptions, signal, timeoutMs: remainingMs() },
-					),
-				);
+					);
+					completedSemanticText = completed.text;
+					return renderCompletedResponse(completed, responseRepresentation);
+				});
 			} else {
 				const previousTurnText = previousResponseText ?? (await geminiLastResponseText(page));
 				const previousResearchText =
@@ -1077,7 +1087,7 @@ export class BrowserManager {
 					if (request.research === true && !resumeSubmittedTurn) {
 						await geminiStartResearchPlan(page!, { signal, timeoutMs: remainingMs() });
 					}
-					return waitForStableCompletion(
+					const completed = await waitForStableCompletion(
 						() =>
 							request.research === true
 								? geminiDeepResearchSnapshot(page!, previousResearchText)
@@ -1086,13 +1096,18 @@ export class BrowserManager {
 									: geminiSnapshot(page!, previousTurnText),
 						{ ...waitOptions, signal, timeoutMs: remainingMs() },
 					);
+					completedSemanticText = completed.text;
+					return renderCompletedResponse(completed, responseRepresentation);
 				});
 			}
 			if (request.requestKey !== undefined) {
+				if (completedSemanticText === undefined) {
+					throw new InternetError("provider_error", "provider completion semantic text was unavailable");
+				}
 				this.turnReceiptStore(accountId, request.requestKey).complete(
 					request.sessionId,
 					request.requestKey,
-					result.text,
+					completedSemanticText,
 					result.binding.conversationUrl,
 				);
 			}

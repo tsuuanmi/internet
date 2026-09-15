@@ -23,11 +23,32 @@ import {
 	parseChatGptEffortSliderState,
 } from "#internet/browser/chatgpt";
 
-function fakePage(turns: string[]): { page: Page } {
-	const turn = (index: number) => ({
-		innerText: async () => turns[index] ?? "",
-		innerHTML: async () => `<p>${turns[index] ?? ""}</p>`,
-	});
+interface FakeAssistantTurn {
+	readonly text: string;
+	readonly html?: string;
+	readonly outerText?: string;
+}
+
+function fakePage(turns: Array<string | FakeAssistantTurn>): { page: Page } {
+	const normalized = turns.map((value) => (typeof value === "string" ? { text: value } : value));
+	const turn = (index: number) => {
+		const value = normalized[index] ?? { text: "" };
+		const message = {
+			innerText: async () => value.text,
+			innerHTML: async () => value.html ?? `<p>${value.text}</p>`,
+		};
+		return {
+			getAttribute: async () => null,
+			locator: () => ({
+				filter: () => ({
+					count: async () => 1,
+					first: () => message,
+				}),
+			}),
+			innerText: async () => value.outerText ?? value.text,
+			innerHTML: async () => value.html ?? `<p>${value.text}</p>`,
+		};
+	};
 	const page = {
 		locator(selector: string) {
 			if (selector === CHATGPT_STOP_BUTTON_SELECTOR) {
@@ -35,8 +56,8 @@ function fakePage(turns: string[]): { page: Page } {
 			}
 			return {
 				filter: () => ({
-					count: async () => turns.length,
-					last: () => turn(turns.length - 1),
+					count: async () => normalized.length,
+					last: () => turn(normalized.length - 1),
 				}),
 			};
 		},
@@ -352,9 +373,16 @@ describe("chatgptSend", () => {
 });
 
 describe("chatgptLastAssistantTurnText", () => {
-	it("returns the newest turn text, or empty when none", async () => {
+	it("returns the newest semantic assistant text, or empty when none", async () => {
 		expect(await chatgptLastAssistantTurnText(fakePage([]).page)).toBe("");
 		expect(await chatgptLastAssistantTurnText(fakePage(["old answer"]).page)).toBe("old answer");
+	});
+
+	it("excludes presentation metadata surrounding the semantic assistant message", async () => {
+		const json = '{"status":"PR_OPEN","repository":"example/repo"}';
+		const { page } = fakePage([{ text: json, html: `<p>${json}</p>`, outerText: `Worked for 2m 51s\n\n${json}` }]);
+		expect(await chatgptLastAssistantTurnText(page)).toBe(json);
+		expect(await chatgptSnapshot(page)).toMatchObject({ text: json, html: `<p>${json}</p>` });
 	});
 });
 

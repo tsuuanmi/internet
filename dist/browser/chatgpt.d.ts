@@ -58,13 +58,13 @@ export declare function chatgptWaitAuthenticated(page: Page, timeoutMs: number, 
 export declare function chatgptPromptTextMatches(prompt: string, observed: string): boolean;
 /** Commit the prompt through ChatGPT's editor and submit its verified Send action. */
 export declare function chatgptSend(page: Page, prompt: string): Promise<void>;
-/** Read the visible text of the current newest ChatGPT assistant turn (empty when none). */
+/** Read the semantic text of the current newest ChatGPT assistant message (empty when none). */
 export declare function chatgptLastAssistantTurnText(page: Page): Promise<string>;
 /**
- * Snapshot the newest assistant turn. Pass `previousTurnText` (the last turn's
- * text captured before sending) so a response is only treated as present once
- * the newest turn differs from it — robust to ChatGPT virtualizing/recycling
- * turns so the visible count does not increase on continuation.
+ * Snapshot the newest semantic assistant message. Pass `previousTurnText` (the
+ * last semantic message text captured before sending) so a response is only
+ * treated as present once the newest message differs from it — robust to
+ * ChatGPT virtualizing/recycling turns so the visible count does not increase.
  */
 export declare function chatgptSnapshot(page: Page, previousTurnText?: string): Promise<CompletionSnapshot>;
 export interface ChatGptEffortSliderState {

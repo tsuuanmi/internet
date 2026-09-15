@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { WorkflowConfirmationError } from "#internet/workflow/approval-policy";
 import { createWorkflowControlMessage } from "#internet/workflow/control";
 import type { WorkflowJob } from "#internet/workflow/types";
-import { BrowserWorkflowWriterRunner, type WorkflowWriterBrowser } from "#internet/workflow/writer-runner";
+import {
+	BrowserWorkflowWriterRunner,
+	parseWorkflowWriterResult,
+	type WorkflowWriterBrowser,
+} from "#internet/workflow/writer-runner";
 
 const jobId = "0123456789abcdef0123456789abcdef";
 const writerSessionId = `agent:workflow:${jobId}:writer`;
@@ -41,6 +45,17 @@ function job(): WorkflowJob {
 	};
 }
 
+describe("parseWorkflowWriterResult", () => {
+	it("accepts exact JSON and rejects presentation-prefixed JSON", () => {
+		const json =
+			'{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}';
+		expect(parseWorkflowWriterResult(json)).toMatchObject({ status: "PR_OPEN" });
+		expect(() => parseWorkflowWriterResult(`Worked for 2m 51s\n\n${json}`)).toThrow(
+			"workflow writer did not return the required JSON result",
+		);
+	});
+});
+
 describe("BrowserWorkflowWriterRunner", () => {
 	it("passes exact approval scope and provider deadlines without asserting runtime identity", async () => {
 		let observedAccount: string | undefined;
@@ -67,6 +82,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 			requestKey: "writer-request",
 			timeoutMs: policy.hardTimeoutMs,
 			stallTimeoutMs: policy.stallTimeoutMs,
+			responseRepresentation: "text",
 			confirmation: {
 				jobId,
 				writerSessionId,

@@ -8,9 +8,9 @@ function snapshot(text: string, running: boolean, html = `<p>${text}</p>`): Comp
 }
 
 describe("waitForStableCompletion", () => {
-	it("returns markdown once the response is present and stable while not running", async () => {
+	it("returns the semantic response once it is present and stable while not running", async () => {
 		let calls = 0;
-		const text = await waitForStableCompletion(
+		const response = await waitForStableCompletion(
 			async () => {
 				calls += 1;
 				if (calls < 5) return snapshot("Thinking...", true);
@@ -18,7 +18,7 @@ describe("waitForStableCompletion", () => {
 			},
 			{ timeoutMs: 2000, pollMs: 5, stableMs: 20 },
 		);
-		expect(text).toContain("Final answer");
+		expect(response).toEqual({ text: "Final answer", html: "<p>Final answer</p>" });
 	});
 
 	it("throws a hard timeout when the response keeps changing but never stabilizes", async () => {

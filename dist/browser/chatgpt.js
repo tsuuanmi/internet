@@ -50,6 +50,7 @@ export const CHATGPT_ASSISTANT_TURN_SELECTOR = [
     '[data-testid^="conversation-turn-"][data-message-author-role="assistant"]',
     '[data-testid^="conversation-turn-"]:has([data-message-author-role="assistant"])',
 ].join(", ");
+const CHATGPT_ASSISTANT_MESSAGE_SELECTOR = '[data-message-author-role="assistant"]';
 /** True when ChatGPT exposes both its composer and signed-in account control. */
 export async function chatgptIsAuthenticated(page) {
     const composers = page.locator(CHATGPT_COMPOSER_SELECTOR).filter({ visible: true });
@@ -247,35 +248,46 @@ export async function chatgptSend(page, prompt) {
     // not match the locator and therefore can never be activated as a fallback.
     await sendButton.press("Enter");
 }
-/** Read the visible text of the current newest ChatGPT assistant turn (empty when none). */
-export async function chatgptLastAssistantTurnText(page) {
+/** Resolve the semantic message inside the newest visible assistant turn. */
+async function newestChatGptAssistantMessage(page) {
     const turns = page.locator(CHATGPT_ASSISTANT_TURN_SELECTOR).filter({ visible: true });
     const count = await turns.count();
     if (count === 0)
-        return "";
-    return (await turns.last().innerText()).trim();
+        return undefined;
+    const turn = turns.last();
+    if ((await turn.getAttribute("data-message-author-role")) === "assistant")
+        return turn;
+    const messages = turn.locator(CHATGPT_ASSISTANT_MESSAGE_SELECTOR).filter({ visible: true });
+    const messageCount = await messages.count();
+    if (messageCount === 0)
+        return undefined;
+    if (messageCount !== 1) {
+        throw new InternetError("provider_error", `ChatGPT newest assistant turn exposed ${messageCount} visible semantic assistant messages.`);
+    }
+    return messages.first();
+}
+/** Read the semantic text of the current newest ChatGPT assistant message (empty when none). */
+export async function chatgptLastAssistantTurnText(page) {
+    const message = await newestChatGptAssistantMessage(page);
+    return message === undefined ? "" : (await message.innerText()).trim();
 }
 /**
- * Snapshot the newest assistant turn. Pass `previousTurnText` (the last turn's
- * text captured before sending) so a response is only treated as present once
- * the newest turn differs from it — robust to ChatGPT virtualizing/recycling
- * turns so the visible count does not increase on continuation.
+ * Snapshot the newest semantic assistant message. Pass `previousTurnText` (the
+ * last semantic message text captured before sending) so a response is only
+ * treated as present once the newest message differs from it — robust to
+ * ChatGPT virtualizing/recycling turns so the visible count does not increase.
  */
 export async function chatgptSnapshot(page, previousTurnText) {
-    const turns = page.locator(CHATGPT_ASSISTANT_TURN_SELECTOR).filter({ visible: true });
-    const count = await turns.count();
-    if (count === 0)
-        return { responsePresent: false, text: "", html: "", running: false };
-    const turn = turns.last();
-    const [text, html, running] = await Promise.all([
-        turn.innerText(),
-        turn.innerHTML(),
-        page
-            .locator(CHATGPT_STOP_BUTTON_SELECTOR)
-            .filter({ visible: true })
-            .count()
-            .then((count) => count > 0),
-    ]);
+    const runningPromise = page
+        .locator(CHATGPT_STOP_BUTTON_SELECTOR)
+        .filter({ visible: true })
+        .count()
+        .then((count) => count > 0);
+    const message = await newestChatGptAssistantMessage(page);
+    const running = await runningPromise;
+    if (message === undefined)
+        return { responsePresent: false, text: "", html: "", running };
+    const [text, html] = await Promise.all([message.innerText(), message.innerHTML()]);
     const trimmed = text.trim();
     const present = previousTurnText === undefined || previousTurnText === "" ? trimmed.length > 0 : trimmed !== previousTurnText;
     return { responsePresent: present, text: trimmed, html, running };

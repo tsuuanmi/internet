@@ -2,6 +2,7 @@ import { type Page } from "patchright-core";
 import { type AccountState, type ReauthDiagnostic } from "#internet/browser/accounts";
 import { type ProviderProgressEvent } from "#internet/browser/completion";
 import { type RemoteLoginStatus } from "#internet/browser/remote-login";
+import { type ResponseRepresentation } from "#internet/browser/response";
 import { type AccountId } from "#internet/core/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 import type { WorkflowApprovalScope } from "#internet/workflow/approval-policy";
@@ -15,6 +16,8 @@ export interface ChatRequest {
     visible?: boolean;
     /** Enables provider Deep Research before this request is submitted. */
     research?: boolean;
+    /** Representation returned after semantic provider completion. */
+    responseRepresentation?: ResponseRepresentation;
     /** Override the normal-turn hard completion deadline. */
     timeoutMs?: number;
     /** Optional semantic no-progress deadline, independent from the hard deadline. */

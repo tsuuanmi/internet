@@ -22,6 +22,7 @@ export interface WorkflowWriterBrowser {
 			readonly sessionId: string;
 			readonly timeoutMs: number;
 			readonly stallTimeoutMs: number;
+			readonly responseRepresentation: "text";
 			readonly onProgress?: (event: ProviderProgressEvent) => void;
 			readonly confirmation?: WorkflowApprovalScope;
 			readonly signal?: AbortSignal;
@@ -276,6 +277,7 @@ export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 			requestKey: request.requestKey,
 			timeoutMs: this.policy.hardTimeoutMs,
 			stallTimeoutMs: this.policy.stallTimeoutMs,
+			responseRepresentation: "text" as const,
 			onProgress: request.onProviderProgress,
 			confirmation,
 			signal: request.signal,
