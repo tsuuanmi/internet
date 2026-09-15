@@ -1,0 +1,555 @@
+name: Temporary semantic writer fix builder
+
+on:
+  push:
+    branches:
+      - fix/chatgpt-semantic-writer-response
+
+permissions:
+  contents: write
+
+jobs:
+  apply-build-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/chatgpt-semantic-writer-response
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply semantic response fix
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one replacement target, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          # ChatGPT: resolve the semantic assistant-message node inside the newest
+          # conversation turn, never the presentation wrapper.
+          replace_once(
+              "src/browser/chatgpt.ts",
+              '''export const CHATGPT_ASSISTANT_TURN_SELECTOR = [
+          \t'[data-testid^="conversation-turn-"][data-turn="assistant"]',
+          \t'[data-testid^="conversation-turn-"][data-message-author-role="assistant"]',
+          \t'[data-testid^="conversation-turn-"]:has([data-message-author-role="assistant"])',
+          ].join(", ");
+          ''',
+              '''export const CHATGPT_ASSISTANT_TURN_SELECTOR = [
+          \t'[data-testid^="conversation-turn-"][data-turn="assistant"]',
+          \t'[data-testid^="conversation-turn-"][data-message-author-role="assistant"]',
+          \t'[data-testid^="conversation-turn-"]:has([data-message-author-role="assistant"])',
+          ].join(", ");
+          const CHATGPT_ASSISTANT_MESSAGE_SELECTOR = '[data-message-author-role="assistant"]';
+          ''',
+          )
+
+          replace_once(
+              "src/browser/chatgpt.ts",
+              '''/** Read the visible text of the current newest ChatGPT assistant turn (empty when none). */
+          export async function chatgptLastAssistantTurnText(page: Page): Promise<string> {
+          \tconst turns = page.locator(CHATGPT_ASSISTANT_TURN_SELECTOR).filter({ visible: true });
+          \tconst count = await turns.count();
+          \tif (count === 0) return "";
+          \treturn (await turns.last().innerText()).trim();
+          }
+
+          /**
+           * Snapshot the newest assistant turn. Pass `previousTurnText` (the last turn's
+           * text captured before sending) so a response is only treated as present once
+           * the newest turn differs from it — robust to ChatGPT virtualizing/recycling
+           * turns so the visible count does not increase on continuation.
+           */
+          export async function chatgptSnapshot(page: Page, previousTurnText?: string): Promise<CompletionSnapshot> {
+          \tconst turns = page.locator(CHATGPT_ASSISTANT_TURN_SELECTOR).filter({ visible: true });
+          \tconst count = await turns.count();
+          \tif (count === 0) return { responsePresent: false, text: "", html: "", running: false };
+          \tconst turn = turns.last();
+          \tconst [text, html, running] = await Promise.all([
+          \t\tturn.innerText(),
+          \t\tturn.innerHTML(),
+          \t\tpage
+          \t\t\t.locator(CHATGPT_STOP_BUTTON_SELECTOR)
+          \t\t\t.filter({ visible: true })
+          \t\t\t.count()
+          \t\t\t.then((count) => count > 0),
+          \t]);
+          \tconst trimmed = text.trim();
+          \tconst present =
+          \t\tpreviousTurnText === undefined || previousTurnText === "" ? trimmed.length > 0 : trimmed !== previousTurnText;
+          \treturn { responsePresent: present, text: trimmed, html, running };
+          }
+          ''',
+              '''/** Resolve the semantic message inside the newest visible assistant turn. */
+          async function newestChatGptAssistantMessage(page: Page): Promise<Locator | undefined> {
+          \tconst turns = page.locator(CHATGPT_ASSISTANT_TURN_SELECTOR).filter({ visible: true });
+          \tconst count = await turns.count();
+          \tif (count === 0) return undefined;
+          \tconst turn = turns.last();
+          \tif ((await turn.getAttribute("data-message-author-role")) === "assistant") return turn;
+          \tconst messages = turn.locator(CHATGPT_ASSISTANT_MESSAGE_SELECTOR).filter({ visible: true });
+          \tconst messageCount = await messages.count();
+          \tif (messageCount === 0) return undefined;
+          \tif (messageCount !== 1) {
+          \t\tthrow new InternetError(
+          \t\t\t"provider_error",
+          \t\t\t`ChatGPT newest assistant turn exposed ${messageCount} visible semantic assistant messages.`,
+          \t\t);
+          \t}
+          \treturn messages.first();
+          }
+
+          /** Read the semantic text of the current newest ChatGPT assistant message (empty when none). */
+          export async function chatgptLastAssistantTurnText(page: Page): Promise<string> {
+          \tconst message = await newestChatGptAssistantMessage(page);
+          \treturn message === undefined ? "" : (await message.innerText()).trim();
+          }
+
+          /**
+           * Snapshot the newest semantic assistant message. Pass `previousTurnText` (the
+           * last semantic message text captured before sending) so a response is only
+           * treated as present once the newest message differs from it — robust to
+           * ChatGPT virtualizing/recycling turns so the visible count does not increase.
+           */
+          export async function chatgptSnapshot(page: Page, previousTurnText?: string): Promise<CompletionSnapshot> {
+          \tconst runningPromise = page
+          \t\t.locator(CHATGPT_STOP_BUTTON_SELECTOR)
+          \t\t.filter({ visible: true })
+          \t\t.count()
+          \t\t.then((count) => count > 0);
+          \tconst message = await newestChatGptAssistantMessage(page);
+          \tconst running = await runningPromise;
+          \tif (message === undefined) return { responsePresent: false, text: "", html: "", running };
+          \tconst [text, html] = await Promise.all([message.innerText(), message.innerHTML()]);
+          \tconst trimmed = text.trim();
+          \tconst present =
+          \t\tpreviousTurnText === undefined || previousTurnText === "" ? trimmed.length > 0 : trimmed !== previousTurnText;
+          \treturn { responsePresent: present, text: trimmed, html, running };
+          }
+          ''',
+          )
+
+          # Completion: only detect stability. Do not render HTML to Markdown here.
+          replace_once(
+              "src/browser/completion.ts",
+              'import { htmlToMarkdown } from "#internet/core/markdown";\n',
+              '',
+          )
+          replace_once(
+              "src/browser/completion.ts",
+              '''export type ProviderProgressKind =
+          ''',
+              '''export interface CompletedResponse {
+          \treadonly text: string;
+          \treadonly html: string;
+          }
+
+          export type ProviderProgressKind =
+          ''',
+          )
+          replace_once(
+              "src/browser/completion.ts",
+              '''): Promise<string> {
+          ''',
+              '''): Promise<CompletedResponse> {
+          ''',
+          )
+          replace_once(
+              "src/browser/completion.ts",
+              '''\t\t\t\tif (at - stableSince >= options.stableMs) {
+          \t\t\t\t\treturn candidate?.html ? htmlToMarkdown(snapshot.html) : text;
+          \t\t\t\t}
+          ''',
+              '''\t\t\t\tif (at - stableSince >= options.stableMs) {
+          \t\t\t\t\treturn { text, html: snapshot.html };
+          \t\t\t\t}
+          ''',
+          )
+
+          # Rendering is a separate representation boundary after semantic completion.
+          Path("src/browser/response.ts").write_text('''import type { CompletedResponse } from "#internet/browser/completion";
+          import { htmlToMarkdown } from "#internet/core/markdown";
+
+          export type ResponseRepresentation = "markdown" | "text";
+
+          /** Render one already-completed semantic provider response for its caller. */
+          export function renderCompletedResponse(
+          \tresponse: Pick<CompletedResponse, "text" | "html">,
+          \trepresentation: ResponseRepresentation,
+          ): string {
+          \tconst text = response.text.trim();
+          \tif (representation === "text") return text;
+          \treturn response.html.trim() === "" ? text : htmlToMarkdown(response.html);
+          }
+          ''')
+
+          # Browser runtime: keep semantic receipt identity separate from presentation.
+          replace_once(
+              "src/browser/runtime.ts",
+              'import { type ProviderProgressEvent, waitForStableCompletion } from "#internet/browser/completion";\n',
+              'import { type ProviderProgressEvent, waitForStableCompletion } from "#internet/browser/completion";\nimport { renderCompletedResponse, type ResponseRepresentation } from "#internet/browser/response";\n',
+          )
+          replace_once(
+              "src/browser/runtime.ts",
+              '''\t/** Enables provider Deep Research before this request is submitted. */
+          \tresearch?: boolean;
+          ''',
+              '''\t/** Enables provider Deep Research before this request is submitted. */
+          \tresearch?: boolean;
+          \t/** Representation returned after semantic provider completion. */
+          \tresponseRepresentation?: ResponseRepresentation;
+          ''',
+          )
+          replace_once(
+              "src/browser/runtime.ts",
+              '''\t\t\tconst waitOptions = {
+          ''',
+              '''\t\t\tconst responseRepresentation = request.responseRepresentation ?? "markdown";
+          \t\t\tconst waitOptions = {
+          ''',
+          )
+          replace_once(
+              "src/browser/runtime.ts",
+              '''\t\t\tlet result: { text: string; binding: ConversationBinding };
+          ''',
+              '''\t\t\tlet result: { text: string; binding: ConversationBinding };
+          \t\t\tlet completedSemanticText: string | undefined;
+          ''',
+          )
+          replace_once(
+              "src/browser/runtime.ts",
+              '''\t\t\t\t\t\treturn {
+          \t\t\t\t\t\t\ttext: snapshot.text.slice(0, this.config.maxOutputChars),
+          \t\t\t\t\t\t\turl: recoveredBinding.conversationUrl,
+          ''',
+              '''\t\t\t\t\t\treturn {
+          \t\t\t\t\t\t\ttext: renderCompletedResponse(snapshot, responseRepresentation).slice(0, this.config.maxOutputChars),
+          \t\t\t\t\t\t\turl: recoveredBinding.conversationUrl,
+          ''',
+          )
+
+          old_chatgpt = '''\t\t\t\tresult = await observeBoundTurn((signal, remainingMs) =>
+          \t\t\t\t\twaitForStableCompletion(
+          \t\t\t\t\t\t() =>
+          \t\t\t\t\t\t\trequest.research === true
+          \t\t\t\t\t\t\t\t? chatgptDeepResearchSnapshot(page!, previousResearchText)
+          \t\t\t\t\t\t\t\t: (async () => {
+          \t\t\t\t\t\t\t\t\t\tif (request.confirmation !== undefined) {
+          \t\t\t\t\t\t\t\t\t\t\tawait chatgptHandleWorkflowConfirmation(
+          \t\t\t\t\t\t\t\t\t\t\t\tpage!,
+          \t\t\t\t\t\t\t\t\t\t\t\trequest.confirmation,
+          \t\t\t\t\t\t\t\t\t\t\t\taccountId,
+          \t\t\t\t\t\t\t\t\t\t\t\trequest.sessionId,
+          \t\t\t\t\t\t\t\t\t\t\t);
+          \t\t\t\t\t\t\t\t\t\t}
+          \t\t\t\t\t\t\t\t\t\treturn resumeSubmittedTurn
+          \t\t\t\t\t\t\t\t\t\t\t? chatgptSnapshot(page!)
+          \t\t\t\t\t\t\t\t\t\t\t: chatgptSnapshot(page!, previousTurnText);
+          \t\t\t\t\t\t\t\t\t})(),
+          \t\t\t\t\t\t{ ...waitOptions, signal, timeoutMs: remainingMs() },
+          \t\t\t\t\t),
+          \t\t\t\t);
+          '''
+          new_chatgpt = '''\t\t\t\tresult = await observeBoundTurn(async (signal, remainingMs) => {
+          \t\t\t\t\tconst completed = await waitForStableCompletion(
+          \t\t\t\t\t\t() =>
+          \t\t\t\t\t\t\trequest.research === true
+          \t\t\t\t\t\t\t\t? chatgptDeepResearchSnapshot(page!, previousResearchText)
+          \t\t\t\t\t\t\t\t: (async () => {
+          \t\t\t\t\t\t\t\t\t\tif (request.confirmation !== undefined) {
+          \t\t\t\t\t\t\t\t\t\t\tawait chatgptHandleWorkflowConfirmation(
+          \t\t\t\t\t\t\t\t\t\t\t\tpage!,
+          \t\t\t\t\t\t\t\t\t\t\t\trequest.confirmation,
+          \t\t\t\t\t\t\t\t\t\t\t\taccountId,
+          \t\t\t\t\t\t\t\t\t\t\t\trequest.sessionId,
+          \t\t\t\t\t\t\t\t\t\t\t);
+          \t\t\t\t\t\t\t\t\t\t}
+          \t\t\t\t\t\t\t\t\t\treturn resumeSubmittedTurn
+          \t\t\t\t\t\t\t\t\t\t\t? chatgptSnapshot(page!)
+          \t\t\t\t\t\t\t\t\t\t\t: chatgptSnapshot(page!, previousTurnText);
+          \t\t\t\t\t\t\t\t\t})(),
+          \t\t\t\t\t\t{ ...waitOptions, signal, timeoutMs: remainingMs() },
+          \t\t\t\t\t);
+          \t\t\t\t\tcompletedSemanticText = completed.text;
+          \t\t\t\t\treturn renderCompletedResponse(completed, responseRepresentation);
+          \t\t\t\t});
+          '''
+          replace_once("src/browser/runtime.ts", old_chatgpt, new_chatgpt)
+
+          old_gemini = '''\t\t\t\tresult = await observeBoundTurn(async (signal, remainingMs) => {
+          \t\t\t\t\tif (request.research === true && !resumeSubmittedTurn) {
+          \t\t\t\t\t\tawait geminiStartResearchPlan(page!, { signal, timeoutMs: remainingMs() });
+          \t\t\t\t\t}
+          \t\t\t\t\treturn waitForStableCompletion(
+          \t\t\t\t\t\t() =>
+          \t\t\t\t\t\t\trequest.research === true
+          \t\t\t\t\t\t\t\t? geminiDeepResearchSnapshot(page!, previousResearchText)
+          \t\t\t\t\t\t\t\t: resumeSubmittedTurn
+          \t\t\t\t\t\t\t\t\t? geminiSnapshot(page!)
+          \t\t\t\t\t\t\t\t\t: geminiSnapshot(page!, previousTurnText),
+          \t\t\t\t\t\t{ ...waitOptions, signal, timeoutMs: remainingMs() },
+          \t\t\t\t\t);
+          \t\t\t\t});
+          '''
+          new_gemini = '''\t\t\t\tresult = await observeBoundTurn(async (signal, remainingMs) => {
+          \t\t\t\t\tif (request.research === true && !resumeSubmittedTurn) {
+          \t\t\t\t\t\tawait geminiStartResearchPlan(page!, { signal, timeoutMs: remainingMs() });
+          \t\t\t\t\t}
+          \t\t\t\t\tconst completed = await waitForStableCompletion(
+          \t\t\t\t\t\t() =>
+          \t\t\t\t\t\t\trequest.research === true
+          \t\t\t\t\t\t\t\t? geminiDeepResearchSnapshot(page!, previousResearchText)
+          \t\t\t\t\t\t\t\t: resumeSubmittedTurn
+          \t\t\t\t\t\t\t\t\t? geminiSnapshot(page!)
+          \t\t\t\t\t\t\t\t\t: geminiSnapshot(page!, previousTurnText),
+          \t\t\t\t\t\t{ ...waitOptions, signal, timeoutMs: remainingMs() },
+          \t\t\t\t\t);
+          \t\t\t\t\tcompletedSemanticText = completed.text;
+          \t\t\t\t\treturn renderCompletedResponse(completed, responseRepresentation);
+          \t\t\t\t});
+          '''
+          replace_once("src/browser/runtime.ts", old_gemini, new_gemini)
+
+          replace_once(
+              "src/browser/runtime.ts",
+              '''\t\t\tif (request.requestKey !== undefined) {
+          \t\t\t\tthis.turnReceiptStore(accountId, request.requestKey).complete(
+          \t\t\t\t\trequest.sessionId,
+          \t\t\t\t\trequest.requestKey,
+          \t\t\t\t\tresult.text,
+          \t\t\t\t\tresult.binding.conversationUrl,
+          \t\t\t\t);
+          \t\t\t}
+          ''',
+              '''\t\t\tif (request.requestKey !== undefined) {
+          \t\t\t\tif (completedSemanticText === undefined) {
+          \t\t\t\t\tthrow new InternetError("provider_error", "provider completion semantic text was unavailable");
+          \t\t\t\t}
+          \t\t\t\tthis.turnReceiptStore(accountId, request.requestKey).complete(
+          \t\t\t\t\trequest.sessionId,
+          \t\t\t\t\trequest.requestKey,
+          \t\t\t\t\tcompletedSemanticText,
+          \t\t\t\t\tresult.binding.conversationUrl,
+          \t\t\t\t);
+          \t\t\t}
+          ''',
+          )
+
+          # Writer control is machine-readable and must request exact semantic text.
+          replace_once(
+              "src/workflow/writer-runner.ts",
+              '''\t\t\treadonly stallTimeoutMs: number;
+          \t\t\treadonly onProgress?: (event: ProviderProgressEvent) => void;
+          ''',
+              '''\t\t\treadonly stallTimeoutMs: number;
+          \t\t\treadonly responseRepresentation: "text";
+          \t\t\treadonly onProgress?: (event: ProviderProgressEvent) => void;
+          ''',
+          )
+          replace_once(
+              "src/workflow/writer-runner.ts",
+              '''\t\t\tstallTimeoutMs: this.policy.stallTimeoutMs,
+          \t\t\tonProgress: request.onProviderProgress,
+          ''',
+              '''\t\t\tstallTimeoutMs: this.policy.stallTimeoutMs,
+          \t\t\tresponseRepresentation: "text" as const,
+          \t\t\tonProgress: request.onProviderProgress,
+          ''',
+          )
+
+          # Existing ChatGPT unit fixture now models semantic message descendants.
+          replace_once(
+              "test/chatgpt.test.ts",
+              '''function fakePage(turns: string[]): { page: Page } {
+          \tconst turn = (index: number) => ({
+          \t\tinnerText: async () => turns[index] ?? "",
+          \t\tinnerHTML: async () => `<p>${turns[index] ?? ""}</p>`,
+          \t});
+          \tconst page = {
+          \t\tlocator(selector: string) {
+          \t\t\tif (selector === CHATGPT_STOP_BUTTON_SELECTOR) {
+          \t\t\t\treturn { filter: () => ({ count: async () => 0 }) };
+          \t\t\t}
+          \t\t\treturn {
+          \t\t\t\tfilter: () => ({
+          \t\t\t\t\tcount: async () => turns.length,
+          \t\t\t\t\tlast: () => turn(turns.length - 1),
+          \t\t\t\t}),
+          \t\t\t};
+          \t\t},
+          \t} as unknown as Page;
+          \treturn { page };
+          }
+          ''',
+              '''interface FakeAssistantTurn {
+          \treadonly text: string;
+          \treadonly html?: string;
+          \treadonly outerText?: string;
+          }
+
+          function fakePage(turns: Array<string | FakeAssistantTurn>): { page: Page } {
+          \tconst normalized = turns.map((value) => (typeof value === "string" ? { text: value } : value));
+          \tconst turn = (index: number) => {
+          \t\tconst value = normalized[index] ?? { text: "" };
+          \t\tconst message = {
+          \t\t\tinnerText: async () => value.text,
+          \t\t\tinnerHTML: async () => value.html ?? `<p>${value.text}</p>`,
+          \t\t};
+          \t\treturn {
+          \t\t\tgetAttribute: async () => null,
+          \t\t\tlocator: () => ({
+          \t\t\t\tfilter: () => ({
+          \t\t\t\t\tcount: async () => 1,
+          \t\t\t\t\tfirst: () => message,
+          \t\t\t\t}),
+          \t\t\t}),
+          \t\t\tinnerText: async () => value.outerText ?? value.text,
+          \t\t\tinnerHTML: async () => value.html ?? `<p>${value.text}</p>`,
+          \t\t};
+          \t};
+          \tconst page = {
+          \t\tlocator(selector: string) {
+          \t\t\tif (selector === CHATGPT_STOP_BUTTON_SELECTOR) {
+          \t\t\t\treturn { filter: () => ({ count: async () => 0 }) };
+          \t\t\t}
+          \t\t\treturn {
+          \t\t\t\tfilter: () => ({
+          \t\t\t\t\tcount: async () => normalized.length,
+          \t\t\t\t\tlast: () => turn(normalized.length - 1),
+          \t\t\t\t}),
+          \t\t\t};
+          \t\t},
+          \t} as unknown as Page;
+          \treturn { page };
+          }
+          ''',
+          )
+
+          replace_once(
+              "test/chatgpt.test.ts",
+              '''describe("chatgptLastAssistantTurnText", () => {
+          \tit("returns the newest turn text, or empty when none", async () => {
+          \t\texpect(await chatgptLastAssistantTurnText(fakePage([]).page)).toBe("");
+          \t\texpect(await chatgptLastAssistantTurnText(fakePage(["old answer"]).page)).toBe("old answer");
+          \t});
+          });
+          ''',
+              '''describe("chatgptLastAssistantTurnText", () => {
+          \tit("returns the newest semantic assistant text, or empty when none", async () => {
+          \t\texpect(await chatgptLastAssistantTurnText(fakePage([]).page)).toBe("");
+          \t\texpect(await chatgptLastAssistantTurnText(fakePage(["old answer"]).page)).toBe("old answer");
+          \t});
+
+          \tit("excludes presentation metadata surrounding the semantic assistant message", async () => {
+          \t\tconst json = '{"status":"PR_OPEN","repository":"example/repo"}';
+          \t\tconst { page } = fakePage([{ text: json, html: `<p>${json}</p>`, outerText: `Worked for 2m 51s\\n\\n${json}` }]);
+          \t\texpect(await chatgptLastAssistantTurnText(page)).toBe(json);
+          \t\texpect(await chatgptSnapshot(page)).toMatchObject({ text: json, html: `<p>${json}</p>` });
+          \t});
+          });
+          ''',
+          )
+
+          # Completion tests now assert semantic completion, not presentation rendering.
+          replace_once(
+              "test/completion.test.ts",
+              '''\tit("returns markdown once the response is present and stable while not running", async () => {
+          \t\tlet calls = 0;
+          \t\tconst text = await waitForStableCompletion(
+          ''',
+              '''\tit("returns the semantic response once it is present and stable while not running", async () => {
+          \t\tlet calls = 0;
+          \t\tconst response = await waitForStableCompletion(
+          ''',
+          )
+          replace_once(
+              "test/completion.test.ts",
+              '''\t\texpect(text).toContain("Final answer");
+          ''',
+              '''\t\texpect(response).toEqual({ text: "Final answer", html: "<p>Final answer</p>" });
+          ''',
+          )
+
+          Path("test/response.test.ts").write_text('''import { describe, expect, it } from "vitest";
+          import { renderCompletedResponse } from "#internet/browser/response";
+
+          describe("renderCompletedResponse", () => {
+          \tit("preserves machine-readable semantic text exactly", () => {
+          \t\tconst text = '{"status":"PR_OPEN","repository":"example/repo"}';
+          \t\texpect(renderCompletedResponse({ text, html: `<p>${text}</p>` }, "text")).toBe(text);
+          \t});
+
+          \tit("still renders ordinary provider HTML as Markdown", () => {
+          \t\texpect(renderCompletedResponse({ text: "Important answer", html: "<p><strong>Important</strong> answer</p>" }, "markdown")).toBe(
+          \t\t\t"**Important** answer",
+          \t\t);
+          \t});
+          });
+          ''')
+
+          # Writer tests verify that machine-control calls request raw semantic text
+          # and that strict parsing remains strict.
+          replace_once(
+              "test/workflow-writer-runner.test.ts",
+              'import { BrowserWorkflowWriterRunner, type WorkflowWriterBrowser } from "#internet/workflow/writer-runner";\n',
+              'import { BrowserWorkflowWriterRunner, parseWorkflowWriterResult, type WorkflowWriterBrowser } from "#internet/workflow/writer-runner";\n',
+          )
+          replace_once(
+              "test/workflow-writer-runner.test.ts",
+              '''\t\texpect(observedRequest).toMatchObject({
+          \t\t\trequestKey: "writer-request",
+          \t\t\ttimeoutMs: policy.hardTimeoutMs,
+          \t\t\tstallTimeoutMs: policy.stallTimeoutMs,
+          ''',
+              '''\t\texpect(observedRequest).toMatchObject({
+          \t\t\trequestKey: "writer-request",
+          \t\t\ttimeoutMs: policy.hardTimeoutMs,
+          \t\t\tstallTimeoutMs: policy.stallTimeoutMs,
+          \t\t\tresponseRepresentation: "text",
+          ''',
+          )
+          replace_once(
+              "test/workflow-writer-runner.test.ts",
+              '''describe("BrowserWorkflowWriterRunner", () => {
+          ''',
+              '''describe("parseWorkflowWriterResult", () => {
+          \tit("accepts exact JSON and rejects presentation-prefixed JSON", () => {
+          \t\tconst json = '{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}';
+          \t\texpect(parseWorkflowWriterResult(json)).toMatchObject({ status: "PR_OPEN" });
+          \t\texpect(() => parseWorkflowWriterResult(`Worked for 2m 51s\\n\\n${json}`)).toThrow(
+          \t\t\t"workflow writer did not return the required JSON result",
+          \t\t);
+          \t});
+          });
+
+          describe("BrowserWorkflowWriterRunner", () => {
+          ''',
+          )
+          PY
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run verify-package
+
+      - name: Commit source, tests, and generated dist
+        shell: bash
+        run: |
+          git rm .github/workflows/tmp-semantic-writer-fix.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: preserve semantic writer responses"
+          git push origin HEAD:fix/chatgpt-semantic-writer-response
