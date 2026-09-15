@@ -116,7 +116,10 @@ async function primaryApprovalButton(root: Locator): Promise<Locator> {
 						menu.getAttribute("aria-haspopup"),
 					]);
 					if (primaryPopup !== null || menuPopup !== "menu") {
-						throw new WorkflowConfirmationError("unknown", "Website approval split control semantics are invalid");
+						throw new WorkflowConfirmationError(
+							"unknown",
+							"Website approval split control semantics are invalid",
+						);
 					}
 					return primary;
 				}
