@@ -36,6 +36,7 @@ interface WorkflowWriterProviderPolicy {
 
 interface WorkflowWriterRequestBase {
 	readonly sessionId: string;
+	readonly requestKey: string;
 	readonly signal?: AbortSignal;
 	readonly onProviderProgress?: (event: ProviderProgressEvent) => void;
 }
@@ -272,6 +273,7 @@ export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 		return {
 			prompt,
 			sessionId: request.sessionId,
+			requestKey: request.requestKey,
 			timeoutMs: this.policy.hardTimeoutMs,
 			stallTimeoutMs: this.policy.stallTimeoutMs,
 			onProgress: request.onProviderProgress,

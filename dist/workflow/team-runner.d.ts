@@ -12,6 +12,7 @@ export interface WorkflowTeamStepRequest {
     readonly transcript: readonly TeamTurn[];
     readonly promptStrategy: TeamPromptStrategyId;
     readonly sessionId: string;
+    readonly requestKey: string;
     readonly signal?: AbortSignal;
     readonly onProgress?: (event: TeamProgressEvent) => void;
     readonly onProviderProgress?: (event: ProviderProgressEvent) => void;

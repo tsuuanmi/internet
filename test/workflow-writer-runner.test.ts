@@ -58,11 +58,13 @@ describe("BrowserWorkflowWriterRunner", () => {
 		const current = job();
 		await runner.runControl({
 			sessionId: writerSessionId,
+			requestKey: "writer-request",
 			job: current,
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
 		expect(observedAccount).toBe("chatgpt-writer");
 		expect(observedRequest).toMatchObject({
+			requestKey: "writer-request",
 			timeoutMs: policy.hardTimeoutMs,
 			stallTimeoutMs: policy.stallTimeoutMs,
 			confirmation: {
@@ -89,6 +91,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 			};
 			const result = await new BrowserWorkflowWriterRunner(browser, policy).runControl({
 				sessionId: writerSessionId,
+				requestKey: `writer-${kind}`,
 				job: current,
 				control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 			});
@@ -108,6 +111,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 		};
 		await new BrowserWorkflowWriterRunner(browser, policy).runControl({
 			sessionId: writerSessionId,
+			requestKey: "writer-request",
 			job: job(),
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});

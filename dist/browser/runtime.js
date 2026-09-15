@@ -16,6 +16,7 @@ import { loginProfileArgs, loginProfileIgnoredDefaultArgs, loginProfileReopenEnv
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
+import { hashProviderTurnText, ProviderTurnReceiptStore, reconcileProviderTurn } from "#internet/browser/turn-receipts";
 import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -110,6 +111,7 @@ export class BrowserManager {
         this.schedulers = new Map();
         this.remoteLogins = new Map();
         this.conversations = new Map();
+        this.turnReceipts = new Map();
         this.pendingCloses = new Map();
         this.activeContexts = new Map();
         this.accountCommitQueues = new Map();
@@ -138,6 +140,14 @@ export class BrowserManager {
         if (store === undefined) {
             store = new ConversationStore(this.config.dataDir, accountId);
             this.conversations.set(accountId, store);
+        }
+        return store;
+    }
+    turnReceiptStore(accountId) {
+        let store = this.turnReceipts.get(accountId);
+        if (store === undefined) {
+            store = new ProviderTurnReceiptStore(this.config.dataDir, accountId);
+            this.turnReceipts.set(accountId, store);
         }
         return store;
     }
@@ -701,7 +711,11 @@ export class BrowserManager {
                 observe,
                 persist: (url) => {
                     try {
-                        return this.conversationStore(accountId).bind(request.sessionId, url);
+                        const persisted = this.conversationStore(accountId).bind(request.sessionId, url);
+                        if (request.requestKey !== undefined) {
+                            this.turnReceiptStore(accountId).bindConversation(request.sessionId, request.requestKey, persisted.conversationUrl);
+                        }
+                        return persisted;
                     }
                     catch (error) {
                         throw new InternetError("provider_error", error instanceof Error
@@ -711,16 +725,79 @@ export class BrowserManager {
                 },
             });
             let result;
-            if (provider === "chatgpt-web") {
-                const previousTurnText = await chatgptLastAssistantTurnText(page);
-                const previousResearchText = request.research === true ? (await chatgptDeepResearchSnapshot(page)).text : undefined;
+            const currentSnapshot = () => (provider === "chatgpt-web" ? chatgptSnapshot(page) : geminiSnapshot(page));
+            let resumeSubmittedTurn = false;
+            let previousResponseText;
+            if (request.requestKey !== undefined) {
                 if (request.research === true) {
-                    await chatgptEnableDeepResearch(page);
-                    await chatgptSendDeepResearch(page, request.prompt);
+                    throw new InternetError("config_error", "provider turn reconciliation is only supported for ordinary workflow turns");
+                }
+                const receipts = this.turnReceiptStore(accountId);
+                const snapshot = await currentSnapshot();
+                previousResponseText = snapshot.text;
+                const existing = receipts.read(request.sessionId, request.requestKey);
+                if (existing !== undefined) {
+                    if (existing.promptHash !== hashProviderTurnText(request.prompt)) {
+                        throw new InternetError("config_error", "workflow request key was reused with different provider input");
+                    }
+                    const reconciliation = reconcileProviderTurn(existing, snapshot);
+                    if (reconciliation === "AMBIGUOUS") {
+                        throw new InternetError("provider_reconciliation_failed", "provider conversation no longer matches the durable workflow turn receipt; inspect before retrying");
+                    }
+                    if (reconciliation === "RECOVER") {
+                        let recoveredBinding = binding ?? this.conversationStore(accountId).read(request.sessionId);
+                        if (recoveredBinding === undefined) {
+                            try {
+                                recoveredBinding = this.conversationStore(accountId).bind(request.sessionId, page.url());
+                            }
+                            catch {
+                                throw new InternetError("provider_reconciliation_failed", "provider response completed but its canonical conversation identity could not be reconciled");
+                            }
+                        }
+                        receipts.complete(request.sessionId, request.requestKey, snapshot.text, recoveredBinding.conversationUrl);
+                        const storageState = await this.captureAccountSnapshot(context, previousStorageState);
+                        await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
+                        return {
+                            text: snapshot.text.slice(0, this.config.maxOutputChars),
+                            url: recoveredBinding.conversationUrl,
+                            conversationId: recoveredBinding.conversationId,
+                        };
+                    }
+                    if (reconciliation === "WAIT") {
+                        resumeSubmittedTurn = true;
+                    }
+                    else {
+                        receipts.submit({
+                            sessionId: request.sessionId,
+                            requestKey: request.requestKey,
+                            prompt: request.prompt,
+                            previousResponse: snapshot.text,
+                            conversationUrl: binding?.conversationUrl,
+                        });
+                    }
                 }
                 else {
-                    await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
-                    await chatgptSend(page, request.prompt);
+                    receipts.submit({
+                        sessionId: request.sessionId,
+                        requestKey: request.requestKey,
+                        prompt: request.prompt,
+                        previousResponse: snapshot.text,
+                        conversationUrl: binding?.conversationUrl,
+                    });
+                }
+            }
+            if (provider === "chatgpt-web") {
+                const previousTurnText = previousResponseText ?? (await chatgptLastAssistantTurnText(page));
+                const previousResearchText = request.research === true ? (await chatgptDeepResearchSnapshot(page)).text : undefined;
+                if (!resumeSubmittedTurn) {
+                    if (request.research === true) {
+                        await chatgptEnableDeepResearch(page);
+                        await chatgptSendDeepResearch(page, request.prompt);
+                    }
+                    else {
+                        await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
+                        await chatgptSend(page, request.prompt);
+                    }
                 }
                 result = await observeBoundTurn((signal, remainingMs) => waitForStableCompletion(() => request.research === true
                     ? chatgptDeepResearchSnapshot(page, previousResearchText)
@@ -728,25 +805,34 @@ export class BrowserManager {
                         if (request.confirmation !== undefined) {
                             await chatgptHandleWorkflowConfirmation(page, request.confirmation, accountId, request.sessionId);
                         }
-                        return chatgptSnapshot(page, previousTurnText);
+                        return resumeSubmittedTurn
+                            ? chatgptSnapshot(page)
+                            : chatgptSnapshot(page, previousTurnText);
                     })(), { ...waitOptions, signal, timeoutMs: remainingMs() }));
             }
             else {
-                const previousTurnText = await geminiLastResponseText(page);
+                const previousTurnText = previousResponseText ?? (await geminiLastResponseText(page));
                 const previousResearchText = request.research === true ? await geminiLastDeepResearchReportText(page) : undefined;
-                if (request.research === true)
-                    await geminiEnableDeepResearch(page);
-                else
-                    await geminiSelectDefaultMode(page);
-                await geminiSend(page, request.prompt);
+                if (!resumeSubmittedTurn) {
+                    if (request.research === true)
+                        await geminiEnableDeepResearch(page);
+                    else
+                        await geminiSelectDefaultMode(page);
+                    await geminiSend(page, request.prompt);
+                }
                 result = await observeBoundTurn(async (signal, remainingMs) => {
-                    if (request.research === true) {
+                    if (request.research === true && !resumeSubmittedTurn) {
                         await geminiStartResearchPlan(page, { signal, timeoutMs: remainingMs() });
                     }
                     return waitForStableCompletion(() => request.research === true
                         ? geminiDeepResearchSnapshot(page, previousResearchText)
-                        : geminiSnapshot(page, previousTurnText), { ...waitOptions, signal, timeoutMs: remainingMs() });
+                        : resumeSubmittedTurn
+                            ? geminiSnapshot(page)
+                            : geminiSnapshot(page, previousTurnText), { ...waitOptions, signal, timeoutMs: remainingMs() });
                 });
+            }
+            if (request.requestKey !== undefined) {
+                this.turnReceiptStore(accountId).complete(request.sessionId, request.requestKey, result.text, result.binding.conversationUrl);
             }
             const storageState = await this.captureAccountSnapshot(context, previousStorageState);
             await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);

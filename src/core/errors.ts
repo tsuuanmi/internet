@@ -10,6 +10,7 @@ export type InternetErrorKind =
 	| "not_authenticated"
 	| "timeout"
 	| "provider_stalled"
+	| "provider_reconciliation_failed"
 	| "aborted"
 	| "provider_error"
 	| "config_error";

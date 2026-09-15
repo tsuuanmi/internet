@@ -473,6 +473,7 @@ export class WorkflowEngine {
 			transcript: context.transcript,
 			promptStrategy: context.promptStrategy,
 			sessionId: context.sessionId,
+			requestKey: this.nodeRequestKey(job, node),
 			signal,
 			onProgress: (event) => this.recordTeamProgress(job.jobId, node.nodeId, executionId, event),
 			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
@@ -505,6 +506,7 @@ export class WorkflowEngine {
 			if (handoff.status !== "delivered") {
 				await this.writer.deliverExact({
 					sessionId: job.writerConversation.sessionId,
+					requestKey: `${job.jobId}:handoff:${handoff.handoffId}`,
 					payload: handoff.payload,
 					signal,
 					onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
@@ -525,6 +527,7 @@ export class WorkflowEngine {
 	): Promise<string | undefined> {
 		const result = await this.writer.runControl({
 			sessionId: job.writerConversation.sessionId,
+			requestKey: this.nodeRequestKey(job, node),
 			job,
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", job.jobId),
 			signal,
@@ -574,6 +577,7 @@ export class WorkflowEngine {
 			if (handoff.status !== "delivered") {
 				await this.writer.deliverExact({
 					sessionId: job.writerConversation.sessionId,
+					requestKey: `${job.jobId}:handoff:${handoff.handoffId}`,
 					payload: handoff.payload,
 					signal,
 					onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
@@ -595,6 +599,7 @@ export class WorkflowEngine {
 		const pr = this.requirePr(job);
 		const result = await this.writer.runControl({
 			sessionId: job.writerConversation.sessionId,
+			requestKey: this.nodeRequestKey(job, node),
 			job,
 			control: createWorkflowControlMessage("APPLY_REVIEWS", job.jobId, pr.headSha),
 			signal,
@@ -614,6 +619,7 @@ export class WorkflowEngine {
 		const pr = this.requirePr(job);
 		const result = await this.writer.runControl({
 			sessionId: job.writerConversation.sessionId,
+			requestKey: this.nodeRequestKey(job, node),
 			job,
 			control: createWorkflowControlMessage("CHECK_PR_HEALTH", job.jobId, pr.headSha),
 			signal,
@@ -686,6 +692,7 @@ export class WorkflowEngine {
 		if (job.mergeAuthorization === undefined) throw new Error("merge requires exact authorization");
 		const result = await this.writer.runControl({
 			sessionId: job.writerConversation.sessionId,
+			requestKey: this.nodeRequestKey(job, node),
 			job,
 			control: createWorkflowControlMessage("MERGE_AUTHORIZED", job.jobId, pr.headSha),
 			signal,
@@ -1151,6 +1158,11 @@ export class WorkflowEngine {
 			};
 		}
 		throw new Error(`workflow node ${nodeId} is not a team node`);
+	}
+
+	private nodeRequestKey(job: WorkflowJob, node: WorkflowGraphNode): string {
+		if (node.input === undefined) throw new Error(`workflow node ${node.nodeId} has no exact input receipt`);
+		return `${job.jobId}:${node.nodeId}:${node.input.inputHash}`;
 	}
 
 	private newExecution(node: WorkflowGraphNode, ownerInstanceId: string): WorkflowExecutionRecord {

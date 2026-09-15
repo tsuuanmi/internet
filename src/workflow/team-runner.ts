@@ -13,6 +13,7 @@ export interface WorkflowTeamStepRequest {
 	readonly transcript: readonly TeamTurn[];
 	readonly promptStrategy: TeamPromptStrategyId;
 	readonly sessionId: string;
+	readonly requestKey: string;
 	readonly signal?: AbortSignal;
 	readonly onProgress?: (event: TeamProgressEvent) => void;
 	readonly onProviderProgress?: (event: ProviderProgressEvent) => void;
@@ -42,6 +43,7 @@ export class BrowserWorkflowTeamRunner implements WorkflowTeamRunner {
 			transcript: request.transcript,
 			promptStrategy: request.promptStrategy,
 			sessionId: request.sessionId,
+			requestKey: request.requestKey,
 			visible: false,
 			timeoutMs: this.config.workflowHardTimeoutMs,
 			stallTimeoutMs: this.config.workflowStallTimeoutMs,

@@ -50,6 +50,8 @@ export function classifyWorkflowFailure(error: unknown, at = new Date().toISOStr
 				return { class: "PROVIDER", code: "HARD_TIMEOUT", message, retry: "RECREATE_SESSION", at };
 			case "provider_stalled":
 				return { class: "PROVIDER", code: "PROVIDER_STALLED", message, retry: "RECREATE_SESSION", at };
+			case "provider_reconciliation_failed":
+				return { class: "OUTPUT", code: "RESULT_RECONCILIATION_AMBIGUOUS", message, retry: "USER_ACTION", at };
 			case "browser_unavailable":
 				return { class: "BROWSER", code: "BROWSER_UNAVAILABLE", message, retry: "RECREATE_SESSION", at };
 			case "provider_error":

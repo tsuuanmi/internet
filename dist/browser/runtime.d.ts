@@ -9,6 +9,8 @@ export interface ChatRequest {
     prompt: string;
     /** Durable owner key: the current DSH agent/session ID. */
     sessionId: string;
+    /** Stable logical request identity used to reconcile workflow retries. */
+    requestKey?: string;
     /** Show automated Chrome on the user-managed display instead of managed Xvfb. */
     visible?: boolean;
     /** Enables provider Deep Research before this request is submitted. */
@@ -74,6 +76,7 @@ export declare class BrowserManager {
     private readonly remoteLogins;
     private readonly accounts;
     private readonly conversations;
+    private readonly turnReceipts;
     private readonly pendingCloses;
     private readonly activeContexts;
     private readonly accountCommitQueues;
@@ -84,6 +87,7 @@ export declare class BrowserManager {
     private provider;
     private locations;
     private conversationStore;
+    private turnReceiptStore;
     private scheduler;
     private invalidateAccount;
     private runAccountExclusive;

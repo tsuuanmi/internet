@@ -22,6 +22,7 @@ export interface PluginContext {
 }
 export declare function apply(ctx: PluginContext, rawConfig: unknown): void;
 export { BrowserManager } from "#internet/browser/runtime";
+export { hashProviderTurnText, ProviderTurnReceiptStore, parseProviderTurnReceipt, providerTurnReceiptId, reconcileProviderTurn, } from "#internet/browser/turn-receipts";
 export type { AccountCapability, AccountDefinition, AccountId, AccountRole } from "#internet/core/accounts";
 export { ACCOUNT_CAPABILITIES, ACCOUNT_IDS, ACCOUNT_ROLES, ACCOUNTS, accountHasCapability, accountsForProvider, accountsWithCapabilities, DEFAULT_TEAM_ACCOUNTS, DEFAULT_TEAM_SYNTHESIZER, getAccountDefinition, isAccountId, } from "#internet/core/accounts";
 export type { BrowserConfig, ChatGptThinkingLevel, WebProvider } from "#internet/core/config";

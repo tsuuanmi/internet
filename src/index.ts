@@ -133,6 +133,13 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 }
 
 export { BrowserManager } from "#internet/browser/runtime";
+export {
+	hashProviderTurnText,
+	ProviderTurnReceiptStore,
+	parseProviderTurnReceipt,
+	providerTurnReceiptId,
+	reconcileProviderTurn,
+} from "#internet/browser/turn-receipts";
 export type { AccountCapability, AccountDefinition, AccountId, AccountRole } from "#internet/core/accounts";
 export {
 	ACCOUNT_CAPABILITIES,

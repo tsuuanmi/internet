@@ -101,7 +101,10 @@ export function parseProviderTurnReceipt(value: unknown): ProviderTurnReceipt {
 	if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !timestamp(value.submittedAt)) {
 		throw new Error("invalid provider turn receipt revision");
 	}
-	if (value.conversationUrl !== undefined && (typeof value.conversationUrl !== "string" || value.conversationUrl === "")) {
+	if (
+		value.conversationUrl !== undefined &&
+		(typeof value.conversationUrl !== "string" || value.conversationUrl === "")
+	) {
 		throw new Error("invalid provider turn receipt conversation URL");
 	}
 	if (value.status === "COMPLETED") {
@@ -161,7 +164,9 @@ export class ProviderTurnReceiptStore {
 				throw new ProviderTurnReceiptError("provider turn request key was reused with a different prompt");
 			}
 			if (current.previousResponseHash !== previousResponseHash) {
-				throw new ProviderTurnReceiptError("provider turn resubmission no longer matches its original response boundary");
+				throw new ProviderTurnReceiptError(
+					"provider turn resubmission no longer matches its original response boundary",
+				);
 			}
 		}
 		const next: ProviderTurnReceipt = {
@@ -176,7 +181,7 @@ export class ProviderTurnReceiptStore {
 			status: "SUBMITTED",
 			revision: (current?.revision ?? 0) + 1,
 			submittedAt: new Date().toISOString(),
-			...(input.conversationUrl ?? current?.conversationUrl
+			...((input.conversationUrl ?? current?.conversationUrl)
 				? { conversationUrl: input.conversationUrl ?? current?.conversationUrl }
 				: {}),
 		};
@@ -185,7 +190,8 @@ export class ProviderTurnReceiptStore {
 	}
 
 	bindConversation(sessionId: string, requestKey: string, conversationUrl: string): ProviderTurnReceipt {
-		if (conversationUrl.trim() === "") throw new ProviderTurnReceiptError("provider conversation URL must not be empty");
+		if (conversationUrl.trim() === "")
+			throw new ProviderTurnReceiptError("provider conversation URL must not be empty");
 		const current = this.require(sessionId, requestKey);
 		if (current.conversationUrl === conversationUrl) return current;
 		if (current.conversationUrl !== undefined) {
@@ -196,15 +202,11 @@ export class ProviderTurnReceiptStore {
 		return next;
 	}
 
-	complete(
-		sessionId: string,
-		requestKey: string,
-		response: string,
-		conversationUrl: string,
-	): ProviderTurnReceipt {
+	complete(sessionId: string, requestKey: string, response: string, conversationUrl: string): ProviderTurnReceipt {
 		const current = this.bindConversation(sessionId, requestKey, conversationUrl);
 		const responseHash = hashProviderTurnText(response.trim());
-		if (response.trim() === "") throw new ProviderTurnReceiptError("provider turn completion response must not be empty");
+		if (response.trim() === "")
+			throw new ProviderTurnReceiptError("provider turn completion response must not be empty");
 		if (current.status === "COMPLETED") {
 			if (current.responseHash !== responseHash) {
 				throw new ProviderTurnReceiptError("provider turn completed with conflicting response content");

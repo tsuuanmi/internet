@@ -12,6 +12,7 @@ export class BrowserWorkflowTeamRunner {
             transcript: request.transcript,
             promptStrategy: request.promptStrategy,
             sessionId: request.sessionId,
+            requestKey: request.requestKey,
             visible: false,
             timeoutMs: this.config.workflowHardTimeoutMs,
             stallTimeoutMs: this.config.workflowStallTimeoutMs,

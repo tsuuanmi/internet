@@ -194,6 +194,7 @@ export class BrowserWorkflowWriterRunner {
         return {
             prompt,
             sessionId: request.sessionId,
+            requestKey: request.requestKey,
             timeoutMs: this.policy.hardTimeoutMs,
             stallTimeoutMs: this.policy.stallTimeoutMs,
             onProgress: request.onProviderProgress,

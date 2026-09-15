@@ -13,6 +13,7 @@ export interface TeamStepExecutionOptions {
     readonly transcript: readonly TeamTurn[];
     readonly promptStrategy: TeamPromptStrategyId;
     readonly sessionId: string;
+    readonly requestKey?: string;
     readonly visible?: boolean;
     readonly timeoutMs?: number;
     readonly stallTimeoutMs?: number;
