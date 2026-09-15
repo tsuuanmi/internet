@@ -11,6 +11,7 @@ export interface WorkflowTestRuntime {
 	readonly engine: WorkflowEngine;
 	readonly jobs: WorkflowJobStore;
 	readonly events: WorkflowEventJournal;
+	readonly results: WorkflowNodeResultStore;
 }
 
 export interface WorkflowTestRuntimeOptions {
@@ -53,16 +54,17 @@ function defaultWriter(): WorkflowWriterRunner {
 export function createWorkflowTestRuntime(root: string, options: WorkflowTestRuntimeOptions = {}): WorkflowTestRuntime {
 	const jobs = new WorkflowJobStore(root);
 	const events = new WorkflowEventJournal(root);
+	const results = new WorkflowNodeResultStore(root);
 	const engine = new WorkflowEngine(
 		jobs,
 		options.teams ?? defaultTeams(),
 		new WorkflowTeamPromptBuilder(),
 		new WorkflowHandoffStore(root),
 		options.writer ?? defaultWriter(),
-		new WorkflowNodeResultStore(root),
+		results,
 		undefined,
 		events,
 		options.engine,
 	);
-	return { engine, jobs, events };
+	return { engine, jobs, events, results };
 }
