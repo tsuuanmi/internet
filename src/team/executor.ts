@@ -1,5 +1,5 @@
-import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import type { ProviderProgressEvent } from "#internet/browser/completion";
+import type { ChatRequest, ChatResult } from "#internet/browser/runtime";
 import { type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError, isInternetError } from "#internet/core/errors";
 import { prepareTeamStep, type TeamPlan, type TeamPlanStep } from "#internet/team/plan";
@@ -54,10 +54,7 @@ function failureKind(error: unknown): TeamFailureKind {
 
 function retryable(kind: TeamFailureKind): boolean {
 	return (
-		kind === "browser_unavailable" ||
-		kind === "provider_error" ||
-		kind === "provider_stalled" ||
-		kind === "timeout"
+		kind === "browser_unavailable" || kind === "provider_error" || kind === "provider_stalled" || kind === "timeout"
 	);
 }
 

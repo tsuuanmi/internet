@@ -43,9 +43,7 @@ function selectJob(
 			throw new WorkflowOperatorError(`workflow job ${explicitJobId} does not belong to this session`);
 		}
 		if (requireActive && workflowJobIsTerminal(job)) {
-			throw new WorkflowOperatorError(
-				`workflow job ${job.jobId} is already terminal (${job.graph.lifecycle})`,
-			);
+			throw new WorkflowOperatorError(`workflow job ${job.jobId} is already terminal (${job.graph.lifecycle})`);
 		}
 		return job;
 	}
@@ -144,7 +142,12 @@ export function formatWorkflowList(jobs: readonly WorkflowJob[]): string {
 
 export function formatWorkflowStatus(
 	job: WorkflowJob,
-	events: readonly { readonly eventSeq: number; readonly at: string; readonly type: string; readonly nodeId?: string }[],
+	events: readonly {
+		readonly eventSeq: number;
+		readonly at: string;
+		readonly type: string;
+		readonly nodeId?: string;
+	}[],
 	driverActive: boolean,
 ): string {
 	const lines = [
@@ -173,7 +176,8 @@ export function formatWorkflowStatus(
 				`    last_progress=${node.execution.lastMeaningfulProgressAt ?? "none"} lease_until=${node.execution.leaseUntil}`,
 			);
 		}
-		if (node.failure !== undefined) lines.push(`    failure=${node.failure.class}.${node.failure.code}: ${compact(node.failure.message, 180)}`);
+		if (node.failure !== undefined)
+			lines.push(`    failure=${node.failure.class}.${node.failure.code}: ${compact(node.failure.message, 180)}`);
 		if (node.recovery !== undefined) {
 			lines.push(
 				`    recovery=${node.recovery.action} attempt=${node.recovery.attempt}/${node.recovery.maxAttempts}${node.recovery.notBefore ? ` not_before=${node.recovery.notBefore}` : ""}`,
@@ -206,7 +210,8 @@ export function formatWorkflowStatus(
 	if (job.pendingAction !== undefined) {
 		lines.push("", `ACTION REQUIRED: ${job.pendingAction.kind}`, `  ${job.pendingAction.message}`);
 		if (job.pendingAction.nodeId !== undefined) lines.push(`  node=${nodeLabel(job.pendingAction.nodeId)}`);
-		if (job.pendingAction.expectedHeadSha !== undefined) lines.push(`  expected_head=${job.pendingAction.expectedHeadSha}`);
+		if (job.pendingAction.expectedHeadSha !== undefined)
+			lines.push(`  expected_head=${job.pendingAction.expectedHeadSha}`);
 	}
 
 	lines.push("", "Recent events");

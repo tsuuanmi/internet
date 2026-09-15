@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, rmdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
-import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowLifecycle } from "#internet/workflow/graph";
+import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowJob } from "#internet/workflow/types";
 import { workflowJobIsTerminal } from "#internet/workflow/types";
 
@@ -62,10 +62,7 @@ export class WorkflowRetentionError extends Error {
 	}
 }
 
-function retentionDaysFor(
-	lifecycle: WorkflowLifecycle,
-	policy: WorkflowRetentionPolicy,
-): number | undefined {
+function retentionDaysFor(lifecycle: WorkflowLifecycle, policy: WorkflowRetentionPolicy): number | undefined {
 	if (lifecycle === "COMPLETED") return policy.completedDays;
 	if (lifecycle === "CANCELLED") return policy.cancelledDays;
 	return undefined;
@@ -194,11 +191,7 @@ export class WorkflowRetentionManager {
 			.sort((a, b) => a.eligibleAt.localeCompare(b.eligibleAt) || a.jobId.localeCompare(b.jobId));
 	}
 
-	deleteNow(input: {
-		jobId: string;
-		expectedUpdatedAt: string;
-		operatorSessionId: string;
-	}): WorkflowDeletionReceipt {
+	deleteNow(input: { jobId: string; expectedUpdatedAt: string; operatorSessionId: string }): WorkflowDeletionReceipt {
 		if (input.operatorSessionId.trim() === "") throw new WorkflowRetentionError("operator session id is required");
 		if (!Number.isFinite(Date.parse(input.expectedUpdatedAt))) {
 			throw new WorkflowRetentionError("expectedUpdatedAt must be an ISO timestamp");
@@ -222,11 +215,7 @@ export class WorkflowRetentionManager {
 		};
 	}
 
-	cleanup(input: {
-		jobId: string;
-		expectedUpdatedAt: string;
-		operatorSessionId: string;
-	}): WorkflowCleanupAudit {
+	cleanup(input: { jobId: string; expectedUpdatedAt: string; operatorSessionId: string }): WorkflowCleanupAudit {
 		if (input.operatorSessionId.trim() === "") throw new WorkflowRetentionError("operator session id is required");
 		if (!Number.isFinite(Date.parse(input.expectedUpdatedAt))) {
 			throw new WorkflowRetentionError("expectedUpdatedAt must be an ISO timestamp");

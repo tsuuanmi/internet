@@ -587,7 +587,8 @@ export class BrowserManager {
 
 	private async ensureBrowser(accountId: AccountId, headless: boolean, visible: boolean): Promise<ManagedBrowser> {
 		const existing = this.browsers.get(accountId);
-		if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible) return existing;
+		if (existing?.browser.isConnected() && existing.headless === headless && existing.visible === visible)
+			return existing;
 		if (existing !== undefined) await this.closeBrowser(accountId);
 
 		const pending = this.browserLaunches.get(accountId);
@@ -840,11 +841,11 @@ export class BrowserManager {
 		this.cancelPendingClose(accountId);
 		const visible = request.visible === true;
 		const headless = visible ? false : this.config.headless;
-		const { context, accountRevision, storageState: previousStorageState } = await this.ensureContext(
-			accountId,
-			headless,
-			visible,
-		);
+		const {
+			context,
+			accountRevision,
+			storageState: previousStorageState,
+		} = await this.ensureContext(accountId, headless, visible);
 		const untrackContext = this.trackContext(accountId, lease, context);
 		let page: Page | undefined;
 		try {

@@ -2,8 +2,8 @@ import type { AccountId } from "#internet/core/accounts";
 import { DEFAULT_TEAM_ACCOUNTS, DEFAULT_TEAM_SYNTHESIZER, getAccountDefinition } from "#internet/core/accounts";
 import {
 	runTeamStep,
-	type TeamChatFn,
 	type TeamProgressObserver as StepProgressObserver,
+	type TeamChatFn,
 } from "#internet/team/executor";
 import { buildTeamPlan } from "#internet/team/plan";
 import { getTeamPromptStrategy, type TeamPromptStrategyId } from "#internet/team/prompt-strategy";

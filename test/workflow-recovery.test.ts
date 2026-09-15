@@ -32,7 +32,10 @@ describe("workflow recovery policy", () => {
 	});
 
 	it("classifies deterministic selector defects as code-fix failures", () => {
-		const failure = classifyWorkflowFailure(new Error("InvalidSelectorError: Error while parsing selector"), startedAt);
+		const failure = classifyWorkflowFailure(
+			new Error("InvalidSelectorError: Error while parsing selector"),
+			startedAt,
+		);
 		expect(failure).toMatchObject({ class: "AUTOMATION", code: "INVALID_SELECTOR", retry: "CODE_FIX" });
 		expect(recoveryPlanForFailure(failure, 1)).toBeUndefined();
 	});
@@ -44,13 +47,19 @@ describe("workflow recovery policy", () => {
 	});
 
 	it("classifies no-progress stall separately while using the same smallest-node recovery", () => {
-		const failure = classifyWorkflowFailure(new InternetError("provider_stalled", "provider stopped progressing"), startedAt);
+		const failure = classifyWorkflowFailure(
+			new InternetError("provider_stalled", "provider stopped progressing"),
+			startedAt,
+		);
 		expect(failure).toMatchObject({ class: "PROVIDER", code: "PROVIDER_STALLED", retry: "RECREATE_SESSION" });
 		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "RECREATE_SESSION", attempt: 3, maxAttempts: 3 });
 	});
 
 	it("does not consume a new attempt for user-owned confirmation", () => {
-		const failure = classifyWorkflowFailure(new WorkflowConfirmationError("unknown", "inspect confirmation"), startedAt);
+		const failure = classifyWorkflowFailure(
+			new WorkflowConfirmationError("unknown", "inspect confirmation"),
+			startedAt,
+		);
 		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "USER_ACTION", attempt: 2, maxAttempts: 3 });
 	});
 });

@@ -118,7 +118,10 @@ export function classifyWorkflowConfirmation(
 	if (authoritativeRepository !== observedRepository) {
 		return { kind: "unknown", reason: "confirmation repository does not match the workflow repository" };
 	}
-	if (context.pullRequest !== undefined && normalizeGitHubRepository(context.pullRequest.repository) !== authoritativeRepository) {
+	if (
+		context.pullRequest !== undefined &&
+		normalizeGitHubRepository(context.pullRequest.repository) !== authoritativeRepository
+	) {
 		return { kind: "unknown", reason: "persisted pull-request repository does not match workflow authority" };
 	}
 
@@ -154,10 +157,14 @@ export function classifyWorkflowConfirmation(
 
 	const allowed = allowedActions(context.authority);
 	if (allowed === undefined || !allowed.has(observation.action)) {
-		return { kind: "unknown", reason: `confirmation action is not permitted for ${context.authority.toLowerCase()} authority` };
+		return {
+			kind: "unknown",
+			reason: `confirmation action is not permitted for ${context.authority.toLowerCase()} authority`,
+		};
 	}
 	if (BRANCH_BOUND_ACTIONS.has(observation.action)) {
-		if (observation.branch === undefined) return { kind: "unknown", reason: "confirmation branch identity is missing" };
+		if (observation.branch === undefined)
+			return { kind: "unknown", reason: "confirmation branch identity is missing" };
 		if (observation.branch !== expectedBranch(context)) {
 			return { kind: "unknown", reason: "confirmation branch does not match the workflow branch" };
 		}

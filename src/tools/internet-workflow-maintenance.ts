@@ -12,9 +12,17 @@ export function defineInternetWorkflowMaintenanceTool(
 		description:
 			"Preview retention-eligible terminal workflow jobs or explicitly clean one exact unchanged graph job. Cleanup is never automatic.",
 		parameters: {
-			operation: { type: "string", required: true, enum: [...WORKFLOW_MAINTENANCE_OPERATIONS], description: "Maintenance operation." },
+			operation: {
+				type: "string",
+				required: true,
+				enum: [...WORKFLOW_MAINTENANCE_OPERATIONS],
+				description: "Maintenance operation.",
+			},
 			jobId: { type: "string", description: "Exact workflow job ID for cleanup." },
-			expectedUpdatedAt: { type: "string", description: "Exact updatedAt returned by preview. Cleanup fails if the job changed afterward." },
+			expectedUpdatedAt: {
+				type: "string",
+				description: "Exact updatedAt returned by preview. Cleanup fails if the job changed afterward.",
+			},
 		},
 		output: {
 			schema: {
@@ -76,6 +84,10 @@ export function defineInternetWorkflowMaintenanceTool(
 				return { ok: false, operation, message: error instanceof Error ? error.message : String(error) };
 			}
 		},
-		presentCall: (args) => ({ card: "generic", title: `internet_workflow_maintenance ${String(args.operation)}`, kind: "other" }),
+		presentCall: (args) => ({
+			card: "generic",
+			title: `internet_workflow_maintenance ${String(args.operation)}`,
+			kind: "other",
+		}),
 	});
 }

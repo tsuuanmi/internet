@@ -69,12 +69,12 @@ describe("resolveBrowserConfig", () => {
 	});
 
 	it("requires the workflow stall deadline to be below the hard deadline", () => {
-		expect(() =>
-			resolveBrowserConfig({ workflowStallTimeoutMs: 120_000, workflowHardTimeoutMs: 120_000 }),
-		).toThrow(/must be less than workflowHardTimeoutMs/);
-		expect(() =>
-			resolveBrowserConfig({ workflowStallTimeoutMs: 180_000, workflowHardTimeoutMs: 120_000 }),
-		).toThrow(/must be less than workflowHardTimeoutMs/);
+		expect(() => resolveBrowserConfig({ workflowStallTimeoutMs: 120_000, workflowHardTimeoutMs: 120_000 })).toThrow(
+			/must be less than workflowHardTimeoutMs/,
+		);
+		expect(() => resolveBrowserConfig({ workflowStallTimeoutMs: 180_000, workflowHardTimeoutMs: 120_000 })).toThrow(
+			/must be less than workflowHardTimeoutMs/,
+		);
 	});
 
 	it("honors team config overrides", () => {

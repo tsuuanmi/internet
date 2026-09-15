@@ -35,7 +35,8 @@ export class WorkflowEventJournal {
 		const path = join(directory, `${String(entry.eventSeq).padStart(12, "0")}.json`);
 		if (existsSync(path)) {
 			const current = parseWorkflowGraphEvent(JSON.parse(readFileSync(path, "utf8")));
-			if (JSON.stringify(current) !== JSON.stringify(entry)) throw new Error(`workflow event sequence ${entry.eventSeq} already exists with different content`);
+			if (JSON.stringify(current) !== JSON.stringify(entry))
+				throw new Error(`workflow event sequence ${entry.eventSeq} already exists with different content`);
 			return current;
 		}
 		ensurePrivateDirectory(directory);
@@ -58,12 +59,18 @@ export class WorkflowEventJournal {
 export function parseWorkflowGraphEvent(value: unknown): WorkflowGraphEvent {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("invalid workflow event");
 	const event = value as Record<string, unknown>;
-	if (event.schema !== "@tsuuanmi/internet-workflow-event" || event.version !== 1) throw new Error("unsupported workflow event schema");
-	if (typeof event.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(event.jobId)) throw new Error("invalid workflow event job id");
-	if (typeof event.eventSeq !== "number" || !Number.isSafeInteger(event.eventSeq) || event.eventSeq < 1) throw new Error("invalid workflow event sequence");
-	if (typeof event.graphRevision !== "number" || !Number.isSafeInteger(event.graphRevision) || event.graphRevision < 0) throw new Error("invalid workflow event graph revision");
-	if (typeof event.type !== "string" || typeof event.at !== "string" || !Number.isFinite(Date.parse(event.at))) throw new Error("invalid workflow event fields");
-	if (!["INTERNAL", "PROGRESS", "ACTION_REQUIRED"].includes(String(event.class))) throw new Error("invalid workflow event class");
+	if (event.schema !== "@tsuuanmi/internet-workflow-event" || event.version !== 1)
+		throw new Error("unsupported workflow event schema");
+	if (typeof event.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(event.jobId))
+		throw new Error("invalid workflow event job id");
+	if (typeof event.eventSeq !== "number" || !Number.isSafeInteger(event.eventSeq) || event.eventSeq < 1)
+		throw new Error("invalid workflow event sequence");
+	if (typeof event.graphRevision !== "number" || !Number.isSafeInteger(event.graphRevision) || event.graphRevision < 0)
+		throw new Error("invalid workflow event graph revision");
+	if (typeof event.type !== "string" || typeof event.at !== "string" || !Number.isFinite(Date.parse(event.at)))
+		throw new Error("invalid workflow event fields");
+	if (!["INTERNAL", "PROGRESS", "ACTION_REQUIRED"].includes(String(event.class)))
+		throw new Error("invalid workflow event class");
 	return value as WorkflowGraphEvent;
 }
 

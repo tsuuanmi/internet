@@ -57,10 +57,13 @@ describe("waitForStableCompletion", () => {
 		];
 		const events: ProviderProgressEvent[] = [];
 		let index = 0;
-		await waitForStableCompletion(
-			async () => sequence[Math.min(index++, sequence.length - 1)]!,
-			{ timeoutMs: 1000, stallTimeoutMs: 300, pollMs: 5, stableMs: 8, onProgress: (event) => events.push(event) },
-		);
+		await waitForStableCompletion(async () => sequence[Math.min(index++, sequence.length - 1)]!, {
+			timeoutMs: 1000,
+			stallTimeoutMs: 300,
+			pollMs: 5,
+			stableMs: 8,
+			onProgress: (event) => events.push(event),
+		});
 		expect(events.map((event) => event.kind)).toEqual([
 			"generation_stopped",
 			"response_started",

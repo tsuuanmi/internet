@@ -13,11 +13,7 @@ import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { defineInternetWorkflowMaintenanceTool } from "#internet/tools/internet-workflow-maintenance";
 import { WorkflowDriver } from "#internet/workflow/driver";
 import { WorkflowEngine } from "#internet/workflow/engine";
-import {
-	DshWorkflowEventSink,
-	WorkflowEventJournal,
-	type WorkflowAgentRegistry,
-} from "#internet/workflow/events";
+import { DshWorkflowEventSink, type WorkflowAgentRegistry, WorkflowEventJournal } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
@@ -154,6 +150,7 @@ export {
 export type { BrowserConfig, ChatGptThinkingLevel, WebProvider } from "#internet/core/config";
 export { CHATGPT_THINKING_LEVELS, Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
+export { runTeamStep } from "#internet/team/executor";
 export type {
 	OtherContribution,
 	TeamFailure,
@@ -166,7 +163,6 @@ export type {
 	TeamTurn,
 } from "#internet/team/orchestrator";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
-export { runTeamStep } from "#internet/team/executor";
 export type { TeamPromptStrategy, TeamPromptStrategyId } from "#internet/team/prompt-strategy";
 export { getTeamPromptStrategy, TEAM_PROMPT_STRATEGIES } from "#internet/team/prompt-strategy";
 export type { ChatInput, ResearchInput, TeamInput } from "#internet/tools/args";

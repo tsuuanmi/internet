@@ -118,13 +118,23 @@ async function runAcceptanceTest(
 	exec: { agent?: unknown; signal: AbortSignal },
 ) {
 	if (dependencies.browser === undefined) {
-		return { ok: false, operation: "test", result: "FAIL" as const, message: "workflow test requires browser account status access" };
+		return {
+			ok: false,
+			operation: "test",
+			result: "FAIL" as const,
+			message: "workflow test requires browser account status access",
+		};
 	}
 	const agent = exec.agent as { id?: unknown; session?: { header?: { cwd?: unknown } } } | undefined;
 	const cwd = agent?.session?.header?.cwd;
 	const ownerSessionId = String(agent?.id ?? "");
 	if (typeof cwd !== "string" || cwd.trim() === "" || ownerSessionId === "") {
-		return { ok: false, operation: "test", result: "FAIL" as const, message: "workflow test requires a session working directory and owner session" };
+		return {
+			ok: false,
+			operation: "test",
+			result: "FAIL" as const,
+			message: "workflow test requires a session working directory and owner session",
+		};
 	}
 
 	const statuses = await Promise.all(ACCOUNT_IDS.map((accountId) => dependencies.browser!.status(accountId)));
@@ -197,7 +207,12 @@ export function defineInternetWorkflowTool(
 		description:
 			"Create and control graph-driven durable coding workflows. test performs a full real acceptance workflow and authorizes only the exact reviewed healthy PR head.",
 		parameters: {
-			operation: { type: "string", required: true, enum: [...WORKFLOW_OPERATIONS], description: "Workflow operation." },
+			operation: {
+				type: "string",
+				required: true,
+				enum: [...WORKFLOW_OPERATIONS],
+				description: "Workflow operation.",
+			},
 			jobId: { type: "string", description: "32-character workflow job ID for non-start/test operations." },
 			objective: { type: "string", description: "Coding objective for start." },
 			repository: { type: "string", description: "Authoritative repository URL for start." },
@@ -257,7 +272,11 @@ export function defineInternetWorkflowTool(
 			try {
 				if (operation === "test") return await runAcceptanceTest(engine, driver, testDependencies, exec as never);
 				if (operation === "start") {
-					if (typeof args.objective !== "string" || typeof args.repository !== "string" || typeof args.baseRevision !== "string") {
+					if (
+						typeof args.objective !== "string" ||
+						typeof args.repository !== "string" ||
+						typeof args.baseRevision !== "string"
+					) {
 						return { ok: false, operation, message: "start requires objective, repository, and baseRevision" };
 					}
 					const job = engine.start({

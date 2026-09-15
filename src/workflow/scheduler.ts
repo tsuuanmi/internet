@@ -1,9 +1,5 @@
 import type { WorkflowGraphNode, WorkflowGraphSnapshot, WorkflowNodeInputReceipt } from "#internet/workflow/graph";
-import {
-	promotableWorkflowNodeIds,
-	promoteWorkflowNode,
-	readyWorkflowNodeIds,
-} from "#internet/workflow/graph-reducer";
+import { promotableWorkflowNodeIds, promoteWorkflowNode, readyWorkflowNodeIds } from "#internet/workflow/graph-reducer";
 
 export type WorkflowNodeInputFactory = (
 	node: WorkflowGraphNode,

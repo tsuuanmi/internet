@@ -110,11 +110,17 @@ function asPositiveInteger(value: unknown, fallback: number, name: string): numb
 function asTeamSynthesizer(value: unknown): AccountId {
 	const selected = value ?? DEFAULT_CONFIG.teamSynthesizer;
 	if (typeof selected !== "string" || !(ACCOUNT_IDS as readonly string[]).includes(selected)) {
-		throw new InternetError("config_error", `browser config teamSynthesizer must be one of ${ACCOUNT_IDS.join(", ")}`);
+		throw new InternetError(
+			"config_error",
+			`browser config teamSynthesizer must be one of ${ACCOUNT_IDS.join(", ")}`,
+		);
 	}
 	const accountId = selected as AccountId;
 	if (!accountHasCapability(accountId, "team.synthesize")) {
-		throw new InternetError("config_error", `browser config teamSynthesizer account ${accountId} cannot synthesize teams`);
+		throw new InternetError(
+			"config_error",
+			`browser config teamSynthesizer account ${accountId} cannot synthesize teams`,
+		);
 	}
 	return accountId;
 }
@@ -147,13 +153,19 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 	);
 	const maxRemoteLoginBasePort = 65_535 - (ACCOUNT_IDS.length - 1);
 	if (remoteLoginPort > maxRemoteLoginBasePort) {
-		throw new InternetError("config_error", `browser config remoteLoginPort must not exceed ${maxRemoteLoginBasePort}`);
+		throw new InternetError(
+			"config_error",
+			`browser config remoteLoginPort must not exceed ${maxRemoteLoginBasePort}`,
+		);
 	}
 	if (teamRounds > teamMaxRounds) {
 		throw new InternetError("config_error", "browser config teamRounds must not exceed teamMaxRounds");
 	}
 	if (workflowStallTimeoutMs >= workflowHardTimeoutMs) {
-		throw new InternetError("config_error", "browser config workflowStallTimeoutMs must be less than workflowHardTimeoutMs");
+		throw new InternetError(
+			"config_error",
+			"browser config workflowStallTimeoutMs must be less than workflowHardTimeoutMs",
+		);
 	}
 	return {
 		chromePath:

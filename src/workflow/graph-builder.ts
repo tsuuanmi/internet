@@ -74,20 +74,28 @@ export function createTeamStepInputReceipt(input: TeamStepInputReceiptInput): Wo
 }
 
 export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): WorkflowGraphSnapshot {
-	const plan = buildTeamPlan({ accounts: input.accounts, rounds: input.rounds, synthesize: true, synthesizer: input.synthesizer });
+	const plan = buildTeamPlan({
+		accounts: input.accounts,
+		rounds: input.rounds,
+		synthesize: true,
+		synthesizer: input.synthesizer,
+	});
 	const nodes: Record<string, WorkflowGraphNode> = {};
 	for (const lane of ["A", "B"] as const) {
 		const laneInput = input.research[lane];
-		Object.assign(nodes, buildTeamNodes({
-			plan,
-			lane,
-			phase: "RESEARCH",
-			nodeIdForStep: (step) => researchStepNodeId(lane, step),
-			rootDependencies: [],
-			rootInput: laneInput,
-			bindings: { repository: input.repository, baseRevision: input.baseRevision, lane },
-			promptStrategy: "workflow-research",
-		}));
+		Object.assign(
+			nodes,
+			buildTeamNodes({
+				plan,
+				lane,
+				phase: "RESEARCH",
+				nodeIdForStep: (step) => researchStepNodeId(lane, step),
+				rootDependencies: [],
+				rootInput: laneInput,
+				bindings: { repository: input.repository, baseRevision: input.baseRevision, lane },
+				promptStrategy: "workflow-research",
+			}),
+		);
 	}
 	const handoffGateId = workflowNodeId.researchHandoffGate();
 	nodes[handoffGateId] = waitingNode(handoffGateId, "RESEARCH_HANDOFF_GATE", "RESEARCH", [
@@ -110,7 +118,12 @@ export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): Wor
 }
 
 export function buildReviewCycleNodes(input: ReviewCycleGraphInput): readonly WorkflowGraphNode[] {
-	const plan = buildTeamPlan({ accounts: input.accounts, rounds: input.rounds, synthesize: true, synthesizer: input.synthesizer });
+	const plan = buildTeamPlan({
+		accounts: input.accounts,
+		rounds: input.rounds,
+		synthesize: true,
+		synthesizer: input.synthesizer,
+	});
 	const nodes: WorkflowGraphNode[] = [];
 	for (const lane of ["A", "B"] as const) {
 		const byId = buildTeamNodes({
@@ -172,7 +185,11 @@ function buildTeamNodes(input: {
 			return dependencyId;
 		});
 		const dependencies = planDependencies.length === 0 ? [...input.rootDependencies] : planDependencies;
-		const ready = dependencies.length === 0 && input.rootInput !== undefined && input.bindings !== undefined && input.promptStrategy !== undefined;
+		const ready =
+			dependencies.length === 0 &&
+			input.rootInput !== undefined &&
+			input.bindings !== undefined &&
+			input.promptStrategy !== undefined;
 		nodes[nodeId] = {
 			nodeId,
 			kind: step.kind === "member" ? "TEAM_MEMBER" : "TEAM_SYNTHESIS",
@@ -214,7 +231,9 @@ function waitingNode(
 }
 
 function researchStepNodeId(lane: WorkflowLane, step: TeamPlanStep): string {
-	return step.kind === "member" ? workflowNodeId.researchMember(lane, step.round, step.member) : workflowNodeId.researchSynthesis(lane);
+	return step.kind === "member"
+		? workflowNodeId.researchMember(lane, step.round, step.member)
+		: workflowNodeId.researchSynthesis(lane);
 }
 
 function reviewStepNodeId(cycle: number, lane: WorkflowLane, step: TeamPlanStep): string {

@@ -8,7 +8,11 @@ export interface CompletionSnapshot {
 	running: boolean;
 }
 
-export type ProviderProgressKind = "response_started" | "response_changed" | "generation_started" | "generation_stopped";
+export type ProviderProgressKind =
+	| "response_started"
+	| "response_changed"
+	| "generation_started"
+	| "generation_stopped";
 
 export interface ProviderProgressEvent {
 	readonly kind: ProviderProgressKind;

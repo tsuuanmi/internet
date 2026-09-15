@@ -254,7 +254,11 @@ export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 		if (!Number.isFinite(policy.hardTimeoutMs) || policy.hardTimeoutMs < 1) {
 			throw new Error("workflow writer hard timeout must be positive");
 		}
-		if (!Number.isFinite(policy.stallTimeoutMs) || policy.stallTimeoutMs < 1 || policy.stallTimeoutMs >= policy.hardTimeoutMs) {
+		if (
+			!Number.isFinite(policy.stallTimeoutMs) ||
+			policy.stallTimeoutMs < 1 ||
+			policy.stallTimeoutMs >= policy.hardTimeoutMs
+		) {
 			throw new Error("workflow writer stall timeout must be positive and lower than hard timeout");
 		}
 		this.browser = browser;
@@ -284,7 +288,11 @@ export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 		try {
 			const result = await this.browser.chat(
 				"chatgpt-writer",
-				this.providerRequest(request, controlPrompt(request.job, request.control), confirmationScope(request.job, request.control)),
+				this.providerRequest(
+					request,
+					controlPrompt(request.job, request.control),
+					confirmationScope(request.job, request.control),
+				),
 			);
 			return parseWorkflowWriterResult(result.text);
 		} catch (error) {

@@ -8,6 +8,15 @@ import { normalizeGitHubRepository } from "#internet/workflow/approval-policy";
 import { createWorkflowControlMessage } from "#internet/workflow/control";
 import type { WorkflowEventJournal, WorkflowEventSink } from "#internet/workflow/events";
 import {
+	type WorkflowExecutionRecord,
+	type WorkflowFailure,
+	type WorkflowGraphNode,
+	type WorkflowGraphSnapshot,
+	type WorkflowLane,
+	type WorkflowNodeInputReceipt,
+	workflowNodeId,
+} from "#internet/workflow/graph";
+import {
 	buildHealthNode,
 	buildInitialWorkflowGraph,
 	buildMergeAuthorizationNode,
@@ -29,15 +38,6 @@ import {
 	startWorkflowNode,
 	updateWorkflowExecution,
 } from "#internet/workflow/graph-reducer";
-import {
-	type WorkflowExecutionRecord,
-	type WorkflowFailure,
-	type WorkflowGraphNode,
-	type WorkflowGraphSnapshot,
-	type WorkflowLane,
-	type WorkflowNodeInputReceipt,
-	workflowNodeId,
-} from "#internet/workflow/graph";
 import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowNodeResult, WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
@@ -48,8 +48,8 @@ import {
 	recoveryPlanForFailure,
 	type WorkflowRecoveryPolicy,
 } from "#internet/workflow/recovery";
-import { parseWorkflowReviewResult } from "#internet/workflow/review-result";
 import { WORKFLOW_BASE_BRANCH } from "#internet/workflow/repository-context";
+import { parseWorkflowReviewResult } from "#internet/workflow/review-result";
 import { promoteReadyWorkflowNodes } from "#internet/workflow/scheduler";
 import type { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
@@ -323,10 +323,12 @@ export class WorkflowEngine {
 		if (job.pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED") return job;
 		const failed = Object.values(job.graph.nodes).filter((node) => node.state === "FAILED");
 		if (failed.length === 0) return job;
-		if (failed.length !== 1) throw new Error("workflow has multiple terminal failed nodes; code intervention is required");
+		if (failed.length !== 1)
+			throw new Error("workflow has multiple terminal failed nodes; code intervention is required");
 		const node = failed[0]!;
 		const attempt = (node.execution?.attempt ?? 0) + 1;
-		if (attempt > this.recoveryPolicy.maxAttempts) throw new Error(`workflow node ${node.nodeId} exhausted retry budget`);
+		if (attempt > this.recoveryPolicy.maxAttempts)
+			throw new Error(`workflow node ${node.nodeId} exhausted retry budget`);
 		const graph: WorkflowGraphSnapshot = {
 			...job.graph,
 			graphRevision: job.graph.graphRevision + 1,
@@ -353,7 +355,8 @@ export class WorkflowEngine {
 
 	authorizeMerge(jobId: string, ownerSessionId: string, expectedHeadSha: string): WorkflowJob {
 		const job = this.status(jobId);
-		if (job.ownerSessionId !== ownerSessionId) throw new Error("merge authorization owner does not match workflow owner");
+		if (job.ownerSessionId !== ownerSessionId)
+			throw new Error("merge authorization owner does not match workflow owner");
 		if (job.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED" || job.pullRequest === undefined) {
 			throw new Error("workflow is not waiting for merge authorization");
 		}
@@ -470,7 +473,9 @@ export class WorkflowEngine {
 		executionId: string,
 		signal?: AbortSignal,
 	): Promise<string> {
-		const payloads = (["A", "B"] as const).map((lane) => this.nodePayload(job, workflowNodeId.researchSynthesis(lane)));
+		const payloads = (["A", "B"] as const).map((lane) =>
+			this.nodePayload(job, workflowNodeId.researchSynthesis(lane)),
+		);
 		const receipts: WorkflowHandoffReceipt[] = [];
 		for (let index = 0; index < payloads.length; index += 1) {
 			const lane = index === 0 ? "A" : "B";
@@ -522,7 +527,9 @@ export class WorkflowEngine {
 	): Promise<string | undefined> {
 		const pr = this.requirePr(job);
 		const cycle = this.cycleFromNode(node.nodeId);
-		const payloads = (["A", "B"] as const).map((lane) => this.nodePayload(job, workflowNodeId.reviewSynthesis(cycle, lane)));
+		const payloads = (["A", "B"] as const).map((lane) =>
+			this.nodePayload(job, workflowNodeId.reviewSynthesis(cycle, lane)),
+		);
 		const reviews = payloads.map(parseWorkflowReviewResult);
 		for (const review of reviews) {
 			if (review.reviewedHeadSha !== pr.headSha) throw new Error("review result is bound to a stale PR head");
@@ -734,11 +741,7 @@ export class WorkflowEngine {
 					if (graph.nodes[followup.nodeId] === undefined) graph = appendWorkflowNodes(graph, [followup]);
 					next = {
 						...next,
-						graph: setWorkflowGraphStatus(
-							graph,
-							decision.verdict === "PASS" ? "HEALTH" : "WRITER",
-							"RUNNING",
-						),
+						graph: setWorkflowGraphStatus(graph, decision.verdict === "PASS" ? "HEALTH" : "WRITER", "RUNNING"),
 					};
 				} else if (node.kind === "PR_HEALTH") {
 					const ciReceipt = JSON.parse(result.payload) as WorkflowCiReceipt;
@@ -794,7 +797,8 @@ export class WorkflowEngine {
 		const job = this.status(jobId);
 		const node = job.graph.nodes[nodeId];
 		if (node?.execution?.executionId !== executionId) return job;
-		const failure = error instanceof TeamStepError ? this.failureFromTeam(error.detail) : classifyWorkflowFailure(error);
+		const failure =
+			error instanceof TeamStepError ? this.failureFromTeam(error.detail) : classifyWorkflowFailure(error);
 		const recovery = recoveryPlanForFailure(failure, node.execution.attempt, this.recoveryPolicy);
 		if (recovery !== undefined && recovery.action !== "USER_ACTION" && recovery.action !== "CODE_FIX") {
 			return this.commit(
@@ -948,12 +952,7 @@ export class WorkflowEngine {
 		}
 	}
 
-	private recordTeamProgress(
-		jobId: string,
-		nodeId: string,
-		executionId: string,
-		event: TeamProgressEvent,
-	): void {
+	private recordTeamProgress(jobId: string, nodeId: string, executionId: string, event: TeamProgressEvent): void {
 		try {
 			const current = this.status(jobId);
 			if (current.graph.nodes[nodeId]?.execution?.executionId !== executionId) return;
@@ -1186,7 +1185,8 @@ export class WorkflowEngine {
 	): WorkflowGraphSnapshot {
 		if (graph.lifecycle === "CANCELLED") return graph;
 		if (mergeReceipt !== undefined) return { ...graph, phase: "DONE", lifecycle: "COMPLETED" };
-		if (pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED") return { ...graph, phase: "MERGE", lifecycle: "WAITING_USER" };
+		if (pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED")
+			return { ...graph, phase: "MERGE", lifecycle: "WAITING_USER" };
 		if (pendingAction !== undefined || Object.values(graph.nodes).some((node) => node.state === "FAILED")) {
 			return { ...graph, lifecycle: "BLOCKED" };
 		}
@@ -1219,7 +1219,8 @@ export class WorkflowEngine {
 		const output = job.graph.nodes[nodeId]?.output;
 		if (output === undefined) throw new Error(`workflow node ${nodeId} has no output`);
 		const result = this.results.get(job.jobId, output.resultId);
-		if (result === undefined || result.outputHash !== output.outputHash) throw new Error(`workflow node ${nodeId} exact result is unavailable`);
+		if (result === undefined || result.outputHash !== output.outputHash)
+			throw new Error(`workflow node ${nodeId} exact result is unavailable`);
 		return result.payload;
 	}
 
@@ -1243,7 +1244,8 @@ export class WorkflowEngine {
 	}
 
 	private failureFromTeam(detail: TeamFailureDetail): WorkflowFailure {
-		const providerFailure = detail.kind === "timeout" || detail.kind === "provider_error" || detail.kind === "provider_stalled";
+		const providerFailure =
+			detail.kind === "timeout" || detail.kind === "provider_error" || detail.kind === "provider_stalled";
 		const className = detail.kind === "browser_unavailable" ? "BROWSER" : providerFailure ? "PROVIDER" : "AUTOMATION";
 		return {
 			class: className,
