@@ -30,6 +30,31 @@ describe("team plan", () => {
 		]);
 	});
 
+	it("binds every consumed peer contribution for teams larger than two members", () => {
+		const plan = buildTeamPlan({
+			accounts: ["chatgpt-thinker", "chatgpt-thinker-2", "gemini-thinker"],
+			rounds: 2,
+			synthesize: true,
+			synthesizer: "chatgpt-thinker",
+		});
+		expect(plan.steps.map((step) => step.dependsOnStepIds)).toEqual([
+			[],
+			["round:1:member:1"],
+			["round:1:member:1", "round:1:member:2"],
+			["round:1:member:2", "round:1:member:3"],
+			["round:1:member:3", "round:2:member:1"],
+			["round:2:member:1", "round:2:member:2"],
+			[
+				"round:1:member:1",
+				"round:1:member:2",
+				"round:1:member:3",
+				"round:2:member:1",
+				"round:2:member:2",
+				"round:2:member:3",
+			],
+		]);
+	});
+
 	it("prepares a member step from only the latest completed peer contribution", () => {
 		const plan = buildTeamPlan({ accounts, rounds: 2, synthesize: true, synthesizer: "chatgpt-thinker" });
 		const transcript: TeamTurn[] = [
