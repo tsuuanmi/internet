@@ -1,12 +1,22 @@
 from pathlib import Path
+import re
 
 
 def replace_once(path: str, old: str, new: str) -> None:
     file = Path(path)
     text = file.read_text()
     if old not in text:
-        raise RuntimeError(f"missing patch anchor in {path}: {old[:80]!r}")
+        raise RuntimeError(f"missing patch anchor in {path}: {old[:100]!r}")
     file.write_text(text.replace(old, new, 1))
+
+
+def sub_once(path: str, pattern: str, replacement: str) -> None:
+    file = Path(path)
+    text = file.read_text()
+    next_text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+    if count != 1:
+        raise RuntimeError(f"expected one patch match in {path}, got {count}: {pattern[:100]!r}")
+    file.write_text(next_text)
 
 
 replace_once(
@@ -83,78 +93,20 @@ replace_once(
 
 \tprivate scheduler(accountId: AccountId): ProviderScheduler {''',
 )
-replace_once(
+sub_once(
     "src/browser/runtime.ts",
-    '''\t\t\t\tpersist: (url) => {
-\t\t\t\t\ttry {
-\t\t\t\t\t\treturn this.conversationStore(accountId).bind(request.sessionId, url);
-\t\t\t\t\t} catch (error) {''',
-    '''\t\t\t\tpersist: (url) => {
-\t\t\t\t\ttry {
-\t\t\t\t\t\tconst persisted = this.conversationStore(accountId).bind(request.sessionId, url);
-\t\t\t\t\t\tif (request.requestKey !== undefined) {
-\t\t\t\t\t\t\tthis.turnReceiptStore(accountId).bindConversation(
-\t\t\t\t\t\t\t\trequest.sessionId,
-\t\t\t\t\t\t\t\trequest.requestKey,
-\t\t\t\t\t\t\t\tpersisted.conversationUrl,
-\t\t\t\t\t\t\t);
-\t\t\t\t\t\t}
-\t\t\t\t\t\treturn persisted;
-\t\t\t\t\t} catch (error) {''',
+    r'(\s+persist: \(url\) => \{\n\s+try \{\n)\s+return this\.conversationStore\(accountId\)\.bind\(request\.sessionId, url\);',
+    r'''\1\t\t\t\t\t\t\tconst persisted = this.conversationStore(accountId).bind(request.sessionId, url);
+\t\t\t\t\t\t\tif (request.requestKey !== undefined) {
+\t\t\t\t\t\t\t\tthis.turnReceiptStore(accountId).bindConversation(
+\t\t\t\t\t\t\t\t\trequest.sessionId,
+\t\t\t\t\t\t\t\t\trequest.requestKey,
+\t\t\t\t\t\t\t\t\tpersisted.conversationUrl,
+\t\t\t\t\t\t\t\t);
+\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\treturn persisted;''',
 )
 
-old_turn = '''\t\t\tlet result: { text: string; binding: ConversationBinding };
-\t\t\tif (provider === "chatgpt-web") {
-\t\t\t\tconst previousTurnText = await chatgptLastAssistantTurnText(page);
-\t\t\t\tconst previousResearchText =
-\t\t\t\t\trequest.research === true ? (await chatgptDeepResearchSnapshot(page)).text : undefined;
-\t\t\t\tif (request.research === true) {
-\t\t\t\t\tawait chatgptEnableDeepResearch(page);
-\t\t\t\t\tawait chatgptSendDeepResearch(page, request.prompt);
-\t\t\t\t} else {
-\t\t\t\t\tawait chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
-\t\t\t\t\tawait chatgptSend(page, request.prompt);
-\t\t\t\t}
-\t\t\t\tresult = await observeBoundTurn((signal, remainingMs) =>
-\t\t\t\t\twaitForStableCompletion(
-\t\t\t\t\t\t() =>
-\t\t\t\t\t\t\trequest.research === true
-\t\t\t\t\t\t\t\t? chatgptDeepResearchSnapshot(page!, previousResearchText)
-\t\t\t\t\t\t\t\t: (async () => {
-\t\t\t\t\t\t\t\t\t\tif (request.confirmation !== undefined) {
-\t\t\t\t\t\t\t\t\t\t\tawait chatgptHandleWorkflowConfirmation(
-\t\t\t\t\t\t\t\t\t\t\t\tpage!,
-\t\t\t\t\t\t\t\t\t\t\t\trequest.confirmation,
-\t\t\t\t\t\t\t\t\t\t\t\taccountId,
-\t\t\t\t\t\t\t\t\t\t\t\trequest.sessionId,
-\t\t\t\t\t\t\t\t\t\t\t);
-\t\t\t\t\t\t\t\t\t\t}
-\t\t\t\t\t\t\t\t\t\treturn chatgptSnapshot(page!, previousTurnText);
-\t\t\t\t\t\t\t\t\t})(),
-\t\t\t\t\t\t{ ...waitOptions, signal, timeoutMs: remainingMs() },
-\t\t\t\t\t),
-\t\t\t\t);
-\t\t\t} else {
-\t\t\t\tconst previousTurnText = await geminiLastResponseText(page);
-\t\t\t\tconst previousResearchText =
-\t\t\t\t\trequest.research === true ? await geminiLastDeepResearchReportText(page) : undefined;
-\t\t\t\tif (request.research === true) await geminiEnableDeepResearch(page);
-\t\t\t\telse await geminiSelectDefaultMode(page);
-\t\t\t\tawait geminiSend(page, request.prompt);
-\t\t\t\tresult = await observeBoundTurn(async (signal, remainingMs) => {
-\t\t\t\t\tif (request.research === true) {
-\t\t\t\t\t\tawait geminiStartResearchPlan(page!, { signal, timeoutMs: remainingMs() });
-\t\t\t\t\t}
-\t\t\t\t\treturn waitForStableCompletion(
-\t\t\t\t\t\t() =>
-\t\t\t\t\t\t\trequest.research === true
-\t\t\t\t\t\t\t\t? geminiDeepResearchSnapshot(page!, previousResearchText)
-\t\t\t\t\t\t\t\t: geminiSnapshot(page!, previousTurnText),
-\t\t\t\t\t\t{ ...waitOptions, signal, timeoutMs: remainingMs() },
-\t\t\t\t\t);
-\t\t\t\t});
-\t\t\t}
-'''
 new_turn = '''\t\t\tlet result: { text: string; binding: ConversationBinding };
 \t\t\tconst currentSnapshot = () =>
 \t\t\t\tprovider === "chatgpt-web" ? chatgptSnapshot(page!) : geminiSnapshot(page!);
@@ -248,9 +200,7 @@ new_turn = '''\t\t\tlet result: { text: string; binding: ConversationBinding };
 \t\t\t\t\t\t\t\t\t\t\t\trequest.sessionId,
 \t\t\t\t\t\t\t\t\t\t\t);
 \t\t\t\t\t\t\t\t\t\t}
-\t\t\t\t\t\t\t\t\t\treturn resumeSubmittedTurn
-\t\t\t\t\t\t\t\t\t\t\t? chatgptSnapshot(page!)
-\t\t\t\t\t\t\t\t\t\t\t: chatgptSnapshot(page!, previousTurnText);
+\t\t\t\t\t\t\t\t\t\treturn resumeSubmittedTurn ? chatgptSnapshot(page!) : chatgptSnapshot(page!, previousTurnText);
 \t\t\t\t\t\t\t\t\t})(),
 \t\t\t\t\t\t{ ...waitOptions, signal, timeoutMs: remainingMs() },
 \t\t\t\t\t),
@@ -288,28 +238,33 @@ new_turn = '''\t\t\tlet result: { text: string; binding: ConversationBinding };
 \t\t\t\t);
 \t\t\t}
 '''
-replace_once("src/browser/runtime.ts", old_turn, new_turn)
+sub_once(
+    "src/browser/runtime.ts",
+    r'\t\t\tlet result: \{ text: string; binding: ConversationBinding \};\n.*?\n(?=\t\t\tconst storageState = await this\.captureAccountSnapshot)',
+    new_turn,
+)
 
 replace_once(
     "src/workflow/engine.ts",
     '\t\t\tpromptStrategy: context.promptStrategy,\n\t\t\tsessionId: context.sessionId,',
     '\t\t\tpromptStrategy: context.promptStrategy,\n\t\t\tsessionId: context.sessionId,\n\t\t\trequestKey: this.nodeRequestKey(job, node),',
 )
-replace_once(
-    "src/workflow/engine.ts",
-    '\t\t\t\t\tsessionId: job.writerConversation.sessionId,\n\t\t\t\t\tpayload: handoff.payload,',
-    '\t\t\t\t\tsessionId: job.writerConversation.sessionId,\n\t\t\t\t\trequestKey: handoff.handoffId,\n\t\t\t\t\tpayload: handoff.payload,',
+
+engine = Path("src/workflow/engine.ts")
+text = engine.read_text()
+text, delivery_count = re.subn(
+    r'(sessionId: job\.writerConversation\.sessionId,\n)(\s+payload: handoff\.payload,)',
+    r'\1\t\t\t\t\trequestKey: `${job.jobId}:handoff:${handoff.handoffId}`,\n\2',
+    text,
 )
-# The review handoff loop contains the same delivery block; patch its remaining occurrence.
-replace_once(
-    "src/workflow/engine.ts",
-    '\t\t\t\t\tsessionId: job.writerConversation.sessionId,\n\t\t\t\t\tpayload: handoff.payload,',
-    '\t\t\t\t\tsessionId: job.writerConversation.sessionId,\n\t\t\t\t\trequestKey: handoff.handoffId,\n\t\t\t\t\tpayload: handoff.payload,',
-)
+if delivery_count != 2:
+    raise RuntimeError(f"expected two handoff delivery patches, got {delivery_count}")
 for control in ["START_IMPLEMENTATION", "APPLY_REVIEWS", "CHECK_PR_HEALTH", "MERGE_AUTHORIZED"]:
-    anchor = '\t\t\tsessionId: job.writerConversation.sessionId,\n\t\t\tjob,\n\t\t\tcontrol: createWorkflowControlMessage("' + control + '"'
-    replacement = '\t\t\tsessionId: job.writerConversation.sessionId,\n\t\t\trequestKey: this.nodeRequestKey(job, node),\n\t\t\tjob,\n\t\t\tcontrol: createWorkflowControlMessage("' + control + '"'
-    replace_once("src/workflow/engine.ts", anchor, replacement)
+    pattern = rf'(sessionId: job\.writerConversation\.sessionId,\n)(\s+job,\n\s+control: createWorkflowControlMessage\("{control}")'
+    text, count = re.subn(pattern, r'\1\t\t\trequestKey: this.nodeRequestKey(job, node),\n\2', text, count=1)
+    if count != 1:
+        raise RuntimeError(f"expected one {control} request-key patch, got {count}")
+engine.write_text(text)
 replace_once(
     "src/workflow/engine.ts",
     '\tprivate newExecution(node: WorkflowGraphNode, ownerInstanceId: string): WorkflowExecutionRecord {',
@@ -321,14 +276,12 @@ replace_once(
 \tprivate newExecution(node: WorkflowGraphNode, ownerInstanceId: string): WorkflowExecutionRecord {''',
 )
 
-# Public surface for tests and downstream diagnostics.
 replace_once(
     "src/index.ts",
     'export { BrowserManager } from "#internet/browser/runtime";\n',
     'export { BrowserManager } from "#internet/browser/runtime";\nexport {\n\thashProviderTurnText,\n\tparseProviderTurnReceipt,\n\tProviderTurnReceiptStore,\n\tproviderTurnReceiptId,\n\treconcileProviderTurn,\n} from "#internet/browser/turn-receipts";\n',
 )
 
-# Existing writer-runner tests now provide the stable request identity required by workflow turns.
 writer_test = Path("test/workflow-writer-runner.test.ts")
 text = writer_test.read_text()
 text = text.replace(
@@ -346,5 +299,6 @@ text = text.replace(
 text = text.replace(
     '\t\t\ttimeoutMs: policy.hardTimeoutMs,',
     '\t\t\trequestKey: "writer-request",\n\t\t\ttimeoutMs: policy.hardTimeoutMs,',
+    1,
 )
 writer_test.write_text(text)
