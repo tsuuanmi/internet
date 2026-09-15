@@ -30,7 +30,13 @@ describe("workflow scoped approval policy", () => {
 
 	it("auto-approves exact implementation actions on the workflow branch", () => {
 		const branch = workflowWriterBranch(jobId);
-		for (const action of ["create_branch", "write_file", "create_commit", "push_branch", "create_pull_request"] as const) {
+		for (const action of [
+			"create_branch",
+			"write_file",
+			"create_commit",
+			"push_branch",
+			"create_pull_request",
+		] as const) {
 			expect(classifyWorkflowConfirmation(context(), { action, repository: "example/repo", branch })).toEqual({
 				kind: "auto-approve",
 				action,
