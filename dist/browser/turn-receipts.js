@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 export const PROVIDER_TURN_RECEIPT_SCHEMA = "@tsuuanmi/internet-provider-turn-receipt";
 export class ProviderTurnReceiptError extends Error {
@@ -17,11 +18,25 @@ function identityHash(value, name) {
         throw new ProviderTurnReceiptError(`${name} must not be empty`);
     return hashProviderTurnText(value);
 }
-function receiptId(accountId, sessionHash, requestKeyHash) {
-    return hashProviderTurnText(`${accountId}\0${sessionHash}\0${requestKeyHash}`);
+function assertWorkflowJobId(value) {
+    if (!/^[0-9a-f]{32}$/u.test(value)) {
+        throw new ProviderTurnReceiptError("workflow job id must be 32 lowercase hex characters");
+    }
 }
-export function providerTurnReceiptId(accountId, sessionId, requestKey) {
-    return receiptId(accountId, identityHash(sessionId, "session id"), identityHash(requestKey, "request key"));
+export function workflowJobIdFromRequestKey(requestKey) {
+    const workflowJobId = requestKey.split(":", 1)[0] ?? "";
+    assertWorkflowJobId(workflowJobId);
+    if (!requestKey.startsWith(`${workflowJobId}:`) || requestKey.length === workflowJobId.length + 1) {
+        throw new ProviderTurnReceiptError("workflow request key must contain a scoped logical key");
+    }
+    return workflowJobId;
+}
+function receiptId(workflowJobId, accountId, sessionHash, requestKeyHash) {
+    return hashProviderTurnText(`${workflowJobId}\0${accountId}\0${sessionHash}\0${requestKeyHash}`);
+}
+export function providerTurnReceiptId(workflowJobId, accountId, sessionId, requestKey) {
+    assertWorkflowJobId(workflowJobId);
+    return receiptId(workflowJobId, accountId, identityHash(sessionId, "session id"), identityHash(requestKey, "request key"));
 }
 export function reconcileProviderTurn(receipt, snapshot) {
     const text = snapshot.text.trim();
@@ -51,10 +66,15 @@ export function parseProviderTurnReceipt(value) {
     if (!isRecord(value) || value.schema !== PROVIDER_TURN_RECEIPT_SCHEMA || value.version !== 1) {
         throw new Error("unsupported provider turn receipt schema");
     }
+    if (typeof value.workflowJobId !== "string" || !/^[0-9a-f]{32}$/u.test(value.workflowJobId)) {
+        throw new Error("invalid provider turn workflow job id");
+    }
+    if (!isAccountId(value.accountId))
+        throw new Error("invalid provider turn account id");
     if (!hex(value.receiptId) || !hex(value.sessionHash) || !hex(value.requestKeyHash)) {
         throw new Error("invalid provider turn receipt identity");
     }
-    if (typeof value.accountId !== "string" || !hex(value.promptHash) || !hex(value.previousResponseHash)) {
+    if (!hex(value.promptHash) || !hex(value.previousResponseHash)) {
         throw new Error("invalid provider turn receipt hashes");
     }
     if (value.status !== "SUBMITTED" && value.status !== "COMPLETED") {
@@ -75,18 +95,20 @@ export function parseProviderTurnReceipt(value) {
     else if (value.responseHash !== undefined || value.completedAt !== undefined) {
         throw new Error("submitted provider turn receipt cannot contain completion identity");
     }
-    const expectedId = receiptId(value.accountId, value.sessionHash, value.requestKeyHash);
+    const expectedId = receiptId(value.workflowJobId, value.accountId, value.sessionHash, value.requestKeyHash);
     if (value.receiptId !== expectedId)
         throw new Error("provider turn receipt id does not match logical identity");
     return value;
 }
 export class ProviderTurnReceiptStore {
-    constructor(dataDir, accountId) {
+    constructor(dataDir, workflowJobId, accountId) {
+        assertWorkflowJobId(workflowJobId);
+        this.workflowJobId = workflowJobId;
         this.accountId = accountId;
-        this.root = join(dataDir, accountId, "turn-receipts");
+        this.root = join(dataDir, "workflows", "provider-turns", workflowJobId, accountId);
     }
     read(sessionId, requestKey) {
-        const id = providerTurnReceiptId(this.accountId, sessionId, requestKey);
+        const id = providerTurnReceiptId(this.workflowJobId, this.accountId, sessionId, requestKey);
         const path = join(this.root, `${id}.json`);
         if (!existsSync(path))
             return undefined;
@@ -104,9 +126,12 @@ export class ProviderTurnReceiptStore {
         }
     }
     submit(input) {
+        if (workflowJobIdFromRequestKey(input.requestKey) !== this.workflowJobId) {
+            throw new ProviderTurnReceiptError("workflow request key belongs to a different job");
+        }
         const sessionHash = identityHash(input.sessionId, "session id");
         const requestKeyHash = identityHash(input.requestKey, "request key");
-        const id = receiptId(this.accountId, sessionHash, requestKeyHash);
+        const id = receiptId(this.workflowJobId, this.accountId, sessionHash, requestKeyHash);
         const current = this.read(input.sessionId, input.requestKey);
         const promptHash = hashProviderTurnText(input.prompt);
         const previousResponseHash = hashProviderTurnText(input.previousResponse.trim());
@@ -122,6 +147,7 @@ export class ProviderTurnReceiptStore {
             schema: PROVIDER_TURN_RECEIPT_SCHEMA,
             version: 1,
             receiptId: id,
+            workflowJobId: this.workflowJobId,
             accountId: this.accountId,
             sessionHash,
             requestKeyHash,
@@ -138,8 +164,9 @@ export class ProviderTurnReceiptStore {
         return next;
     }
     bindConversation(sessionId, requestKey, conversationUrl) {
-        if (conversationUrl.trim() === "")
+        if (conversationUrl.trim() === "") {
             throw new ProviderTurnReceiptError("provider conversation URL must not be empty");
+        }
         const current = this.require(sessionId, requestKey);
         if (current.conversationUrl === conversationUrl)
             return current;
@@ -153,8 +180,9 @@ export class ProviderTurnReceiptStore {
     complete(sessionId, requestKey, response, conversationUrl) {
         const current = this.bindConversation(sessionId, requestKey, conversationUrl);
         const responseHash = hashProviderTurnText(response.trim());
-        if (response.trim() === "")
+        if (response.trim() === "") {
             throw new ProviderTurnReceiptError("provider turn completion response must not be empty");
+        }
         if (current.status === "COMPLETED") {
             if (current.responseHash !== responseHash) {
                 throw new ProviderTurnReceiptError("provider turn completed with conflicting response content");

@@ -116,12 +116,7 @@ describe("ProviderTurnReceiptStore", () => {
 
 		expect(reconcileProviderTurn(completed, { text: "different response", running: false })).toBe("AMBIGUOUS");
 		expect(() =>
-			receipts.complete(
-				"workflow-session",
-				requestKey,
-				"conflicting response",
-				"https://chatgpt.com/c/example",
-			),
+			receipts.complete("workflow-session", requestKey, "conflicting response", "https://chatgpt.com/c/example"),
 		).toThrow("conflicting response");
 	});
 });

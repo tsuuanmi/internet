@@ -88,7 +88,12 @@ describe("WorkflowRetentionManager", () => {
 		expect(jobs.get(old.jobId)).toBeUndefined();
 		expect(handoffs.get(old.jobId, handoff.handoffId)).toBeUndefined();
 		expect(results.get(old.jobId, result.resultId)).toBeUndefined();
-		expect(turnReceipts.read(`owner:workflow:${old.jobId}:research:A`, `${old.jobId}:${rootNode.nodeId}:${rootNode.input.inputHash}`)).toBeUndefined();
+		expect(
+			turnReceipts.read(
+				`owner:workflow:${old.jobId}:research:A`,
+				`${old.jobId}:${rootNode.nodeId}:${rootNode.input.inputHash}`,
+			),
+		).toBeUndefined();
 		expect(existsSync(join(root, "workflows", "provider-turns", old.jobId))).toBe(false);
 		expect(existsSync(join(root, "workflows", "events", old.jobId))).toBe(false);
 		expect(existsSync(join(root, "workflows", "cleanup-audit", `${audit.auditId}.json`))).toBe(true);

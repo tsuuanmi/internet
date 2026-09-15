@@ -16,7 +16,7 @@ import { loginProfileArgs, loginProfileIgnoredDefaultArgs, loginProfileReopenEnv
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
-import { hashProviderTurnText, ProviderTurnReceiptStore, reconcileProviderTurn } from "#internet/browser/turn-receipts";
+import { hashProviderTurnText, ProviderTurnReceiptStore, reconcileProviderTurn, workflowJobIdFromRequestKey, } from "#internet/browser/turn-receipts";
 import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -143,11 +143,13 @@ export class BrowserManager {
         }
         return store;
     }
-    turnReceiptStore(accountId) {
-        let store = this.turnReceipts.get(accountId);
+    turnReceiptStore(accountId, requestKey) {
+        const workflowJobId = workflowJobIdFromRequestKey(requestKey);
+        const key = `${workflowJobId}:${accountId}`;
+        let store = this.turnReceipts.get(key);
         if (store === undefined) {
-            store = new ProviderTurnReceiptStore(this.config.dataDir, accountId);
-            this.turnReceipts.set(accountId, store);
+            store = new ProviderTurnReceiptStore(this.config.dataDir, workflowJobId, accountId);
+            this.turnReceipts.set(key, store);
         }
         return store;
     }
@@ -713,7 +715,7 @@ export class BrowserManager {
                     try {
                         const persisted = this.conversationStore(accountId).bind(request.sessionId, url);
                         if (request.requestKey !== undefined) {
-                            this.turnReceiptStore(accountId).bindConversation(request.sessionId, request.requestKey, persisted.conversationUrl);
+                            this.turnReceiptStore(accountId, request.requestKey).bindConversation(request.sessionId, request.requestKey, persisted.conversationUrl);
                         }
                         return persisted;
                     }
@@ -732,7 +734,7 @@ export class BrowserManager {
                 if (request.research === true) {
                     throw new InternetError("config_error", "provider turn reconciliation is only supported for ordinary workflow turns");
                 }
-                const receipts = this.turnReceiptStore(accountId);
+                const receipts = this.turnReceiptStore(accountId, request.requestKey);
                 const snapshot = await currentSnapshot();
                 previousResponseText = snapshot.text;
                 const existing = receipts.read(request.sessionId, request.requestKey);
@@ -832,7 +834,7 @@ export class BrowserManager {
                 });
             }
             if (request.requestKey !== undefined) {
-                this.turnReceiptStore(accountId).complete(request.sessionId, request.requestKey, result.text, result.binding.conversationUrl);
+                this.turnReceiptStore(accountId, request.requestKey).complete(request.sessionId, request.requestKey, result.text, result.binding.conversationUrl);
             }
             const storageState = await this.captureAccountSnapshot(context, previousStorageState);
             await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);

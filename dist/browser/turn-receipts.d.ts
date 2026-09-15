@@ -1,10 +1,11 @@
-import type { AccountId } from "#internet/core/accounts";
+import { type AccountId } from "#internet/core/accounts";
 export declare const PROVIDER_TURN_RECEIPT_SCHEMA: "@tsuuanmi/internet-provider-turn-receipt";
 export type ProviderTurnReceiptStatus = "SUBMITTED" | "COMPLETED";
 export interface ProviderTurnReceipt {
     readonly schema: typeof PROVIDER_TURN_RECEIPT_SCHEMA;
     readonly version: 1;
     readonly receiptId: string;
+    readonly workflowJobId: string;
     readonly accountId: AccountId;
     readonly sessionHash: string;
     readonly requestKeyHash: string;
@@ -26,13 +27,15 @@ export declare class ProviderTurnReceiptError extends Error {
     constructor(message: string);
 }
 export declare function hashProviderTurnText(value: string): string;
-export declare function providerTurnReceiptId(accountId: AccountId, sessionId: string, requestKey: string): string;
+export declare function workflowJobIdFromRequestKey(requestKey: string): string;
+export declare function providerTurnReceiptId(workflowJobId: string, accountId: AccountId, sessionId: string, requestKey: string): string;
 export declare function reconcileProviderTurn(receipt: ProviderTurnReceipt, snapshot: ProviderTurnSnapshot): ProviderTurnReconciliation;
 export declare function parseProviderTurnReceipt(value: unknown): ProviderTurnReceipt;
 export declare class ProviderTurnReceiptStore {
     private readonly root;
+    private readonly workflowJobId;
     private readonly accountId;
-    constructor(dataDir: string, accountId: AccountId);
+    constructor(dataDir: string, workflowJobId: string, accountId: AccountId);
     read(sessionId: string, requestKey: string): ProviderTurnReceipt | undefined;
     submit(input: {
         readonly sessionId: string;

@@ -64,12 +64,7 @@ export function workflowJobIdFromRequestKey(requestKey: string): string {
 	return workflowJobId;
 }
 
-function receiptId(
-	workflowJobId: string,
-	accountId: AccountId,
-	sessionHash: string,
-	requestKeyHash: string,
-): string {
+function receiptId(workflowJobId: string, accountId: AccountId, sessionHash: string, requestKeyHash: string): string {
 	return hashProviderTurnText(`${workflowJobId}\0${accountId}\0${sessionHash}\0${requestKeyHash}`);
 }
 

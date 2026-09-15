@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, rmdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 import { workflowJobIsTerminal } from "#internet/workflow/types";
 export const WORKFLOW_RETENTION_AUDIT_SCHEMA = "@tsuuanmi/internet-workflow-retention-audit";
@@ -84,12 +85,44 @@ function deleteArtifactDirectory(path, filename, label) {
     rmdirSync(path);
     return names.length;
 }
+function deleteProviderTurnReceipts(path) {
+    if (!existsSync(path))
+        return 0;
+    if (!lstatSync(path).isDirectory()) {
+        throw new WorkflowRetentionError("workflow provider turn receipt path is not a directory");
+    }
+    const accountIds = readdirSync(path).sort();
+    let deletedFiles = 0;
+    for (const accountId of accountIds) {
+        if (!isAccountId(accountId)) {
+            throw new WorkflowRetentionError(`unexpected provider turn receipt account directory: ${accountId}`);
+        }
+        const accountPath = join(path, accountId);
+        if (!lstatSync(accountPath).isDirectory()) {
+            throw new WorkflowRetentionError(`provider turn receipt account path is not a directory: ${accountId}`);
+        }
+        const filenames = readdirSync(accountPath).sort();
+        for (const filename of filenames) {
+            if (!/^[0-9a-f]{64}\.json$/u.test(filename)) {
+                throw new WorkflowRetentionError(`unexpected provider turn receipt file: ${filename}`);
+            }
+            assertPrivateRegularFile(join(accountPath, filename), `provider turn receipt cleanup target ${filename}`);
+        }
+        for (const filename of filenames)
+            unlinkSync(join(accountPath, filename));
+        rmdirSync(accountPath);
+        deletedFiles += filenames.length;
+    }
+    rmdirSync(path);
+    return deletedFiles;
+}
 function deleteWorkflowArtifacts(dataDir, jobs, job) {
     const workflowRoot = join(dataDir, "workflows");
     let deletedFiles = 0;
     deletedFiles += deleteArtifactDirectory(join(workflowRoot, "handoffs", job.jobId), /^[0-9a-f]{64}\.json$/u, "workflow handoff");
     deletedFiles += deleteArtifactDirectory(join(workflowRoot, "node-results", job.jobId), /^[0-9a-f]{64}\.json$/u, "workflow node result");
     deletedFiles += deleteArtifactDirectory(join(workflowRoot, "events", job.jobId), /^\d{12}\.json$/u, "workflow event");
+    deletedFiles += deleteProviderTurnReceipts(join(workflowRoot, "provider-turns", job.jobId));
     const jobPath = jobs.pathFor(job.jobId);
     assertPrivateRegularFile(jobPath, "workflow job cleanup target");
     unlinkSync(jobPath);

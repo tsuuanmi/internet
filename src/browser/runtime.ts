@@ -57,7 +57,12 @@ import {
 import { type ProviderLease, ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { type AccountLocations, accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
-import { hashProviderTurnText, ProviderTurnReceiptStore, reconcileProviderTurn } from "#internet/browser/turn-receipts";
+import {
+	hashProviderTurnText,
+	ProviderTurnReceiptStore,
+	reconcileProviderTurn,
+	workflowJobIdFromRequestKey,
+} from "#internet/browser/turn-receipts";
 import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";
@@ -228,7 +233,7 @@ export class BrowserManager {
 	private readonly remoteLogins = new Map<AccountId, RemoteLoginSession>();
 	private readonly accounts: AccountStore;
 	private readonly conversations = new Map<AccountId, ConversationStore>();
-	private readonly turnReceipts = new Map<AccountId, ProviderTurnReceiptStore>();
+	private readonly turnReceipts = new Map<string, ProviderTurnReceiptStore>();
 	private readonly pendingCloses = new Map<AccountId, NodeJS.Timeout>();
 	private readonly activeContexts = new Map<AccountId, Map<AbortSignal, BrowserContext>>();
 	private readonly accountCommitQueues = new Map<AccountId, Promise<void>>();
@@ -268,11 +273,13 @@ export class BrowserManager {
 		return store;
 	}
 
-	private turnReceiptStore(accountId: AccountId): ProviderTurnReceiptStore {
-		let store = this.turnReceipts.get(accountId);
+	private turnReceiptStore(accountId: AccountId, requestKey: string): ProviderTurnReceiptStore {
+		const workflowJobId = workflowJobIdFromRequestKey(requestKey);
+		const key = `${workflowJobId}:${accountId}`;
+		let store = this.turnReceipts.get(key);
 		if (store === undefined) {
-			store = new ProviderTurnReceiptStore(this.config.dataDir, accountId);
-			this.turnReceipts.set(accountId, store);
+			store = new ProviderTurnReceiptStore(this.config.dataDir, workflowJobId, accountId);
+			this.turnReceipts.set(key, store);
 		}
 		return store;
 	}
@@ -930,7 +937,7 @@ export class BrowserManager {
 						try {
 							const persisted = this.conversationStore(accountId).bind(request.sessionId, url);
 							if (request.requestKey !== undefined) {
-								this.turnReceiptStore(accountId).bindConversation(
+								this.turnReceiptStore(accountId, request.requestKey).bindConversation(
 									request.sessionId,
 									request.requestKey,
 									persisted.conversationUrl,
@@ -958,7 +965,7 @@ export class BrowserManager {
 						"provider turn reconciliation is only supported for ordinary workflow turns",
 					);
 				}
-				const receipts = this.turnReceiptStore(accountId);
+				const receipts = this.turnReceiptStore(accountId, request.requestKey);
 				const snapshot = await currentSnapshot();
 				previousResponseText = snapshot.text;
 				const existing = receipts.read(request.sessionId, request.requestKey);
@@ -1082,7 +1089,7 @@ export class BrowserManager {
 				});
 			}
 			if (request.requestKey !== undefined) {
-				this.turnReceiptStore(accountId).complete(
+				this.turnReceiptStore(accountId, request.requestKey).complete(
 					request.sessionId,
 					request.requestKey,
 					result.text,
