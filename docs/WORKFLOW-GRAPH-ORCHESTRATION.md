@@ -1,18 +1,18 @@
 # Workflow Graph Orchestration, Recovery, and Observability
 
-- **Status:** proposed implementation contract
-- **Last synchronized:** 2026-09-10
+- **Status:** current as-built execution contract
+- **Last synchronized:** 2026-09-15
 - **Scope:** workflow execution graph, durable node state, recovery, retry granularity, provider progress, human-action boundaries, and operator observability
 
-This document specifies the next workflow-runtime hardening step after real long-running browser-provider failures. It is intentionally separate from the current as-built documents until the implementation lands.
+This document specifies the current workflow execution, recovery, and observability contract implemented after real long-running browser-provider failures exposed coarse retry and timeout boundaries.
 
-The current engine already has durable workflow jobs, lane-level retry/recovery, team traces, an automatic driver, exact handoffs, one-PR idempotency, exact-head review/health gates, and scoped Website approval policy. The remaining problem is that execution is still too coarse at failure boundaries: a later member/round or synthesis failure can force a larger rerun than necessary, `RUNNING` does not prove that a live provider execution exists, provider waits are flattened into generic timeouts, and operator status does not always explain what is active, blocked, stalled, recovering, or waiting for a user.
+The current engine implements durable graph nodes, exact input/output receipts, node-level recovery, execution ownership leases and fencing, an ordered diagnostic event journal, semantic provider progress leases, exact handoffs, one-PR idempotency, exact-head review/health gates, and scoped Website approval policy. Coarse lane/team replay state and the obsolete team trace store are no longer part of the authoritative runtime.
 
-The authoritative direction is to make workflow execution a **durable dependency graph** whose scheduler drives only ready nodes, whose completed work is reusable only against the exact inputs that produced it, and whose status is an explainable projection of durable graph and live execution state.
+Workflow execution is a **durable dependency graph** whose scheduler drives only ready nodes, whose completed work is reusable only against the exact inputs that produced it, and whose status is an explainable projection of durable graph and live execution state.
 
 ## Existing contracts this design must preserve
 
-This proposal refines execution and recovery. It does not weaken existing accepted workflow authority.
+This contract defines execution and recovery. It does not weaken existing accepted workflow authority.
 
 The implementation must preserve:
 
@@ -652,7 +652,7 @@ member node fails terminally
 -> research/review gate evaluates its required dependency set
 ```
 
-This proposal does **not** introduce degraded research/review quorum. Under the current workflow contract, required Team A/B handoffs remain required unless a separate future specification changes that policy.
+This contract does **not** introduce degraded research/review quorum. Under the current workflow contract, required Team A/B handoffs remain required unless a separate future specification changes that policy.
 
 While automatic recovery exists, use `RECOVERING`, not a contradictory terminal-looking `FAILED + retryable` combination.
 
