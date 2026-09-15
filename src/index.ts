@@ -55,7 +55,8 @@ const INTERNET_WORKFLOW_GUIDANCE = [
 	"Status/watch project the authoritative graph: phase/lifecycle, exact active or recovering node, execution attempt, provider activity, dependency blockers, recent meaningful events, required user action, and the next transition.",
 	"WorkflowDriver reconciles orphaned execution leases after restart, schedules only READY/recoverable nodes, and retries the smallest failed logical node. Exact node outputs are stored separately from diagnostics so restart recovery can reconstruct prompts without replaying completed work.",
 	"Research and review finals are materialized as exact SHA-256-bound durable handoffs. The separate chatgpt-writer account receives exact payloads and trusted controls in one persistent per-job conversation.",
-	"Scoped Website confirmation classification is fail-closed. Recognized scope-valid writer confirmations remain auto-approved; ambiguous confirmations stop explicitly. Exact-head review, PR health, merge authorization, and immediate pre-merge revalidation remain authoritative merge gates.",
+	"Scoped Website confirmation classification is fail-closed. Recognized scope-valid Writer confirmations for PR preparation remain auto-approved; merge is never workflow-authorized or auto-approved.",
+	"The workflow completes when the exact PR head passes review, then returns the PR identity and persistent Writer chat URL. Any later edits or merge are user-controlled outside the workflow review guarantee.",
 	"internet_workflow remains the deterministic lower-level control-plane tool, including the real end-to-end acceptance test. Workflow retention remains explicit operator maintenance only.",
 ].join(" ");
 
@@ -256,16 +257,14 @@ export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 export type {
 	StartWorkflowInput,
 	WorkflowAccountRouting,
-	WorkflowCiReceipt,
-	WorkflowCiStatus,
-	WorkflowDecisionInput,
 	WorkflowEventRecord,
 	WorkflowHandoffReceipt,
 	WorkflowJob,
 	WorkflowPendingAction,
 	WorkflowPullRequestReceipt,
+	WorkflowWriterConversation,
 } from "#internet/workflow/types";
-export { WORKFLOW_CI_STATUSES, workflowJobIsTerminal } from "#internet/workflow/types";
+export { workflowJobIsTerminal } from "#internet/workflow/types";
 export type {
 	WorkflowWriterControlRequest,
 	WorkflowWriterDeliveryRequest,
