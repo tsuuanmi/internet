@@ -1,4 +1,4 @@
-import { isInternetError, type InternetErrorKind } from "#internet/core/errors";
+import { type InternetErrorKind, isInternetError } from "#internet/core/errors";
 import type { TeamFailureDetail } from "#internet/team/types";
 import { WorkflowConfirmationError } from "#internet/workflow/approval-policy";
 import type {
@@ -37,11 +37,7 @@ function selectorFailure(message: string, at: string): WorkflowFailure | undefin
 		: undefined;
 }
 
-function classifyInternetFailure(
-	kind: InternetErrorKind,
-	message: string,
-	at: string,
-): WorkflowFailure {
+function classifyInternetFailure(kind: InternetErrorKind, message: string, at: string): WorkflowFailure {
 	switch (kind) {
 		case "timeout":
 			return { class: "PROVIDER", code: "HARD_TIMEOUT", message, retry: "RECREATE_SESSION", at };
