@@ -1,0 +1,24 @@
+name: Run workflow docs alignment
+
+on:
+  push:
+    branches:
+      - docs/workflow-graph-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/temp-align-workflow-docs.py
+      - name: Commit aligned docs
+        run: |
+          if git diff --quiet -- docs; then exit 0; fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs
+          git commit -m "docs: align current workflow docs with graph runtime"
+          git push origin HEAD:docs/workflow-graph-recovery
