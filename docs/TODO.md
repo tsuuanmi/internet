@@ -26,6 +26,7 @@ This file is a closure boundary, not an instruction to keep adding numbered phas
 
 - ✅ `internet_team` and workflow research/review use one shared provider-agnostic execution core.
 - ✅ Team plans expose deterministic member/synthesis steps that workflow graph nodes can execute independently.
+- ✅ Member dependencies bind every prior peer contribution actually consumed by the prepared prompt, including teams larger than two members; synthesis binds the complete member transcript.
 - ✅ Team prompts identify participants only as `Member 1..N`, treat peer output as untrusted evidence, and optimize for the strongest supported combined answer.
 - ✅ Current default workflow route uses `chatgpt-thinker` + `chatgpt-thinker-2`; Gemini remains available for explicit direct/research/team use.
 - ✅ Same-session ordering and bounded account capacity remain provider-scheduler responsibilities; workflow adds no A-then-B mutex.
@@ -41,6 +42,7 @@ This file is a closure boundary, not an instruction to keep adding numbered phas
 - ✅ Stable logical node IDs are separate from concrete execution-attempt IDs.
 - ✅ Completed results are bound to exact correctness-bearing input hashes and dependency output hashes.
 - ✅ Exact persisted results are reconciled without rerunning the provider.
+- ✅ Provider turns persist job-scoped request receipts so timeout/restart recovery reconciles a submitted logical turn before any bounded resubmission.
 - ✅ `COMPLETED` work is not replayed because a downstream member, synthesis, writer or health node fails.
 - ✅ Recovery targets the smallest failed/orphaned node with bounded attempt policy.
 - ✅ Execution ownership leases and execution IDs fence stale attempts and late results.
@@ -50,7 +52,7 @@ This file is a closure boundary, not an instruction to keep adding numbered phas
 - ✅ Provider completion separates hard deadlines from semantic no-progress stall leases.
 - ✅ A static thinking indicator or unrelated DOM churn cannot refresh provider progress indefinitely.
 - ✅ Provider progress is persisted only against the current execution ID.
-- ✅ `PROVIDER_STALLED`, hard timeout, browser failure, auth failure and deterministic automation defects have distinct classifications/recovery policy.
+- ✅ `PROVIDER_STALLED`, hard timeout, browser failure, auth failure, provider-result ambiguity and deterministic automation defects have distinct classifications/recovery policy.
 - ✅ `InvalidSelectorError`/selector parsing defects become `AUTOMATION` + `CODE_FIX`; unchanged code is not retried as a provider failure.
 - ✅ CI `PENDING` is dependency polling/backoff and does not consume the normal provider retry budget.
 - ✅ Scheduler/runtime failures transition durably through `WorkflowEngine`; `WorkflowDriver` only schedules, reconciles ownership and manages cancellation.
@@ -63,10 +65,15 @@ This file is a closure boundary, not an instruction to keep adding numbered phas
 
 Automated coverage includes the invariants that motivated this hardening:
 
-- ✅ later member failure retries only that logical node while completed siblings remain complete;
+- ✅ later member failure retries only that logical node with one stable exact request identity while completed siblings remain complete;
 - ✅ exact persisted node results reconcile without a provider rerun;
-- ✅ orphaned running execution recovers at the same node boundary;
+- ✅ an orphaned synthesis retries only synthesis while exact completed member receipts remain unchanged;
+- ✅ a new engine instance can load a durable `RUNNING` execution and reconcile its expired owner lease at the same node boundary;
+- ✅ ambiguous provider completion is classified as output reconciliation ambiguity and fails closed instead of blind resubmission;
 - ✅ deterministic selector defects block for a code fix rather than entering automatic provider retry;
+- ✅ exact-head remediation creates a fresh review cycle bound to the new PR head; prior-cycle review evidence cannot satisfy it;
+- ✅ both research lanes remain required; there is no degraded one-lane quorum;
+- ✅ graph-derived operator status exposes the authoritative failed node, recovery/action reason and dependency blockers;
 - ✅ scheduler failure is persisted through the engine event boundary;
 - ✅ semantic provider stalls are distinct from hard provider deadlines;
 - ✅ Writer requests receive workflow hard/stall deadlines and scoped confirmation authority;
