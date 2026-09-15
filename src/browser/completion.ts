@@ -83,7 +83,8 @@ export async function waitForStableCompletion(
 		const snapshot = await read();
 		const at = Date.now();
 		const text = snapshot.text.trim();
-		if (previous === undefined || snapshot.responsePresent !== previous.responsePresent) {
+		const responseTransition = previous === undefined || snapshot.responsePresent !== previous.responsePresent;
+		if (responseTransition) {
 			if (snapshot.responsePresent) emitProgress(options.onProgress, "response_started", at);
 			lastMeaningfulProgressAt = at;
 		}
@@ -91,7 +92,7 @@ export async function waitForStableCompletion(
 			emitProgress(options.onProgress, snapshot.running ? "generation_started" : "generation_stopped", at);
 			lastMeaningfulProgressAt = at;
 		}
-		if (previous !== undefined && text !== previous.text.trim()) {
+		if (previous !== undefined && !responseTransition && text !== previous.text.trim()) {
 			emitProgress(options.onProgress, "response_changed", at);
 			lastMeaningfulProgressAt = at;
 		}
