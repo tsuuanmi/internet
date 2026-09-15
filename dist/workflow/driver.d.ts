@@ -1,18 +1,16 @@
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
-import { type WorkflowJob, type WorkflowState } from "#internet/workflow/types";
+import type { WorkflowJob } from "#internet/workflow/types";
 export interface WorkflowDriverEngine {
     status(jobId: string): WorkflowJob;
-    runResearch(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-    runWriterImplementation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-    runReview(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-    runWriterRemediation(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-    runPrHealthCheck(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-    requestMergeAuthorization(jobId: string): WorkflowJob;
-    runWriterMerge(jobId: string, signal?: AbortSignal): Promise<WorkflowJob>;
-    markRetryRequired(jobId: string, message: string, resumeState: WorkflowState): WorkflowJob;
+    reconcile(jobId: string, ownerInstanceId: string, at?: number): WorkflowJob;
+    advance(jobId: string): WorkflowJob;
+    runnableNodeIds(jobId: string, at?: number): readonly string[];
+    nextRecoveryAt(jobId: string): string | undefined;
+    executeNode(jobId: string, nodeId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<WorkflowJob>;
+    blockSchedulerFailure(jobId: string, error: unknown): WorkflowJob;
     cancel(jobId: string): WorkflowJob;
 }
-/** Deterministic background driver over WorkflowEngine primitives. It never decides implementation content. */
+/** Background owner for one durable graph scheduler. Semantic readiness remains in WorkflowEngine. */
 export declare class WorkflowDriver {
     private readonly engine;
     private readonly jobs;

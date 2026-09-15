@@ -1,11 +1,10 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { WorkflowRetentionError } from "#internet/workflow/retention";
 export const WORKFLOW_MAINTENANCE_OPERATIONS = ["preview", "cleanup"];
-/** Explicit operator-facing workflow retention surface. No automatic deletion is performed. */
 export function defineInternetWorkflowMaintenanceTool(manager) {
     return defineTool({
         name: "internet_workflow_maintenance",
-        description: "Preview retention-eligible terminal workflow jobs or explicitly clean one exact unchanged job. Cleanup is never automatic.",
+        description: "Preview retention-eligible terminal workflow jobs or explicitly clean one exact unchanged graph job. Cleanup is never automatic.",
         parameters: {
             operation: {
                 type: "string",
@@ -31,7 +30,7 @@ export function defineInternetWorkflowMaintenanceTool(manager) {
                     jobId: { type: "string" },
                     auditId: { type: "string" },
                     status: { type: "string" },
-                    deletedHandoffFiles: { type: "number" },
+                    deletedFiles: { type: "number" },
                     completedAt: { type: "string" },
                     message: { type: "string" },
                 },
@@ -50,7 +49,7 @@ export function defineInternetWorkflowMaintenanceTool(manager) {
                         operation,
                         eligibleCount: candidates.length,
                         candidates: candidates
-                            .map((item) => `${item.jobId} state=${item.state} updatedAt=${item.updatedAt} eligibleAt=${item.eligibleAt} retentionDays=${item.retentionDays} repo=${item.repository}`)
+                            .map((item) => `${item.jobId} lifecycle=${item.lifecycle} updatedAt=${item.updatedAt} eligibleAt=${item.eligibleAt} retentionDays=${item.retentionDays} repo=${item.repository}`)
                             .join("\n"),
                     };
                 }
@@ -68,7 +67,7 @@ export function defineInternetWorkflowMaintenanceTool(manager) {
                     jobId: audit.jobId,
                     auditId: audit.auditId,
                     status: audit.status,
-                    deletedHandoffFiles: audit.deletedHandoffFiles,
+                    deletedFiles: audit.deletedFiles,
                     ...(audit.completedAt === undefined ? {} : { completedAt: audit.completedAt }),
                 };
             }

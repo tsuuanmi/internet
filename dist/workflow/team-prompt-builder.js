@@ -8,37 +8,34 @@ function laneFocus(phase, lane) {
         ? "Review for correctness, architecture, scope discipline, regressions, and whether the implementation actually satisfies the objective."
         : "Review adversarially for edge cases, tests, security/reliability issues, concurrency/state bugs, and hidden failure modes.";
 }
-/** Build authoritative, deterministic workflow team tasks without an intermediary LLM. */
 export class WorkflowTeamPromptBuilder {
-    research(job, lane) {
+    research(context, lane) {
         return [
             `Workflow research lane: ${lane}`,
-            `Repository: ${job.repository}`,
-            `Target base revision: ${job.baseRevision}`,
+            `Repository: ${context.repository}`,
+            `Target base revision: ${context.baseRevision}`,
             "",
             "Objective:",
-            job.objective,
+            context.objective,
             "",
             laneFocus("research", lane),
             "",
             "Analyze independently from the other workflow lane. Use the repository and exact base revision as authoritative scope. Produce one implementation-ready final answer for the writer: concrete files/components to inspect, recommended changes, validation strategy, risks, and any blocker. Do not assume another agent will summarize your final answer.",
         ].join("\n");
     }
-    review(job, lane) {
-        const pullRequest = job.pullRequest;
-        if (pullRequest === undefined)
-            throw new Error("workflow review prompt requires a persisted pull request receipt");
+    review(context, lane) {
+        const pullRequest = context.pullRequest;
         return [
             `Workflow review lane: ${lane}`,
-            `Repository: ${job.repository}`,
-            `Original base revision: ${job.baseRevision}`,
+            `Repository: ${context.repository}`,
+            `Original base revision: ${context.baseRevision}`,
             `Pull request: ${pullRequest.url}`,
             `PR number: ${pullRequest.number}`,
-            `Review cycle: ${job.reviewCycle}`,
+            `Review cycle: ${context.reviewCycle}`,
             `Exact PR head SHA to review: ${pullRequest.headSha}`,
             "",
             "Objective:",
-            job.objective,
+            context.objective,
             "",
             laneFocus("review", lane),
             "",

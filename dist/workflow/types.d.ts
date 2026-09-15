@@ -1,27 +1,5 @@
 import type { AccountId } from "#internet/core/accounts";
-import type { WebProvider } from "#internet/core/config";
-import type { WorkflowReviewVerdict } from "#internet/workflow/review-result";
-export declare const WORKFLOW_STATES: readonly ["CREATED", "RESEARCH_RUNNING", "RESEARCH_HANDOFFS_DELIVERING", "WRITER_RUNNING", "PR_OPEN", "REVIEW_RUNNING", "REVIEW_HANDOFFS_DELIVERING", "WRITER_REMEDIATING", "READY_FOR_MERGE_AUTHORIZATION", "AWAITING_MERGE_AUTHORIZATION", "MERGING", "DONE", "BLOCKED", "UNKNOWN_CONFIRMATION", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"];
-export type WorkflowState = (typeof WORKFLOW_STATES)[number];
-export declare const WORKFLOW_TEAM_STATUSES: readonly ["pending", "running", "completed", "failed"];
-export type WorkflowTeamStatus = (typeof WORKFLOW_TEAM_STATUSES)[number];
-export interface WorkflowTeamResult {
-    readonly finalAnswer: string;
-    readonly finalAccountId: AccountId;
-    readonly finalProvider: WebProvider;
-    readonly completedAt: string;
-    readonly reviewedHeadSha?: string;
-    readonly reviewVerdict?: WorkflowReviewVerdict;
-}
-export interface WorkflowTeamRun {
-    readonly lane: "A" | "B";
-    readonly status: WorkflowTeamStatus;
-    readonly attempts: number;
-    readonly sessionId: string;
-    readonly result?: WorkflowTeamResult;
-    readonly error?: string;
-}
-/** Durable backing-account routing. Member identity is derived from tuple order. */
+import type { WorkflowGraphSnapshot, WorkflowLifecycle } from "#internet/workflow/graph";
 export interface WorkflowAccountRouting {
     readonly thinkerAccounts: readonly [AccountId, AccountId];
     readonly writerAccount: "chatgpt-writer";
@@ -72,33 +50,32 @@ export interface WorkflowMergeReceipt {
     readonly executorAccountId: "chatgpt-writer";
     readonly mergedAt: string;
 }
+export declare const WORKFLOW_PENDING_ACTION_KINDS: readonly ["MERGE_AUTHORIZATION_REQUIRED", "WRITER_BLOCKED", "UNKNOWN_CONFIRMATION", "REVIEW_LIMIT_REACHED", "ACCOUNT_REAUTH_REQUIRED", "CI_HEALTH_FAILED", "CI_HEALTH_UNKNOWN", "USER_ACTION_REQUIRED", "CODE_FIX_REQUIRED"];
+export type WorkflowPendingActionKind = (typeof WORKFLOW_PENDING_ACTION_KINDS)[number];
 export interface WorkflowPendingAction {
-    readonly kind: "MERGE_AUTHORIZATION_REQUIRED" | "WRITER_BLOCKED" | "UNKNOWN_CONFIRMATION" | "REVIEW_LIMIT_REACHED" | "ACCOUNT_REAUTH_REQUIRED" | "CI_HEALTH_FAILED" | "CI_HEALTH_UNKNOWN" | "RETRY_REQUIRED";
+    readonly kind: WorkflowPendingActionKind;
     readonly message: string;
+    readonly nodeId?: string;
     readonly expectedHeadSha?: string;
-    /** State to resume after a manually handled non-terminal exception. */
-    readonly resumeState?: WorkflowState;
 }
 export interface WorkflowEventRecord {
     readonly type: string;
     readonly class: "INTERNAL" | "PROGRESS" | "ACTION_REQUIRED";
     readonly at: string;
     readonly message?: string;
+    readonly nodeId?: string;
+    readonly executionId?: string;
 }
 export interface WorkflowJob {
     readonly schema: "@tsuuanmi/internet-workflow-job";
-    readonly version: 1;
+    readonly version: 2;
     readonly revision: number;
     readonly jobId: string;
     readonly ownerSessionId: string;
     readonly objective: string;
     readonly repository: string;
     readonly baseRevision: string;
-    readonly state: WorkflowState;
-    readonly teamRuns: {
-        readonly research: readonly [WorkflowTeamRun, WorkflowTeamRun];
-        readonly review: readonly [WorkflowTeamRun, WorkflowTeamRun];
-    };
+    readonly graph: WorkflowGraphSnapshot;
     readonly accountRouting: WorkflowAccountRouting;
     readonly handoffReceipts: readonly WorkflowHandoffReceipt[];
     readonly writerConversation: {
@@ -125,5 +102,6 @@ export interface WorkflowDecisionInput {
     readonly jobId: string;
     readonly expectedHeadSha?: string;
 }
-export declare const TERMINAL_WORKFLOW_STATES: ReadonlySet<WorkflowState>;
+export declare const TERMINAL_WORKFLOW_LIFECYCLES: ReadonlySet<WorkflowLifecycle>;
+export declare function workflowJobIsTerminal(job: WorkflowJob): boolean;
 //# sourceMappingURL=types.d.ts.map

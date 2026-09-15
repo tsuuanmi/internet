@@ -1,7 +1,7 @@
+import type { WorkflowEventJournal } from "#internet/workflow/events";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowRetentionManager } from "#internet/workflow/retention";
-import type { WorkflowTeamTraceEvent, WorkflowTeamTraceStore } from "#internet/workflow/team-trace-store";
-import { type WorkflowJob } from "#internet/workflow/types";
+import type { WorkflowJob } from "#internet/workflow/types";
 export interface WorkflowOperatorEngine {
     status(jobId: string): WorkflowJob;
     continue(jobId: string): WorkflowJob;
@@ -15,15 +15,19 @@ export declare class WorkflowOperatorError extends Error {
     constructor(message: string);
 }
 export declare function formatWorkflowList(jobs: readonly WorkflowJob[]): string;
-export declare function formatWorkflowStatus(job: WorkflowJob, trace: readonly WorkflowTeamTraceEvent[], active: boolean): string;
-/** User-facing operations over authoritative durable workflow state. */
+export declare function formatWorkflowStatus(job: WorkflowJob, events: readonly {
+    readonly eventSeq: number;
+    readonly at: string;
+    readonly type: string;
+    readonly nodeId?: string;
+}[], driverActive: boolean): string;
 export declare class WorkflowOperator {
     private readonly engine;
     private readonly driver;
     private readonly jobs;
-    private readonly traces;
+    private readonly events;
     private readonly retention;
-    constructor(engine: WorkflowOperatorEngine, driver: WorkflowOperatorDriver, jobs: WorkflowJobStore, traces: WorkflowTeamTraceStore, retention: WorkflowRetentionManager);
+    constructor(engine: WorkflowOperatorEngine, driver: WorkflowOperatorDriver, jobs: WorkflowJobStore, events: WorkflowEventJournal, retention: WorkflowRetentionManager);
     list(ownerSessionId: string): string;
     status(ownerSessionId: string, jobId?: string): string;
     watch(ownerSessionId: string, jobId?: string): string;

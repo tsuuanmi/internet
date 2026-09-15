@@ -51,7 +51,6 @@ export async function waitForBoundCompletion(options) {
         check();
         const text = await options.observe(signal, () => Math.max(0, deadline - Date.now()));
         check();
-        // A finished response may precede the SPA's canonical route update.
         bindingDeadline = Math.min(deadline, Date.now() + 5_000);
         return text;
     })();
@@ -343,7 +342,6 @@ export class BrowserManager {
         }
         throw new InternetError("login_failed", `${provider} portable account capture failed.`);
     }
-    /** Verify the IndexedDB-free fallback before it replaces a portable account. */
     async verifyFallbackStorageState(provider, browser, storageState, viewport) {
         const context = await browser.newContext({ storageState, viewport });
         try {
@@ -370,7 +368,6 @@ export class BrowserManager {
             .map(([accountId]) => accountId);
         await Promise.all(accountIds.map((accountId) => this.runAccountExclusive(accountId, () => this.closeBrowser(accountId)).catch(() => { })));
     }
-    /** Cancel any pending delayed-close timer for an account (the browser is needed now). */
     cancelPendingClose(accountId) {
         const timer = this.pendingCloses.get(accountId);
         if (timer === undefined)
@@ -378,7 +375,6 @@ export class BrowserManager {
         clearTimeout(timer);
         this.pendingCloses.delete(accountId);
     }
-    /** Schedule closing an account browser after its scheduler becomes idle. */
     scheduleCloseWhenIdle(accountId) {
         const scheduler = this.scheduler(accountId);
         void scheduler.waitForIdle().then(() => {
@@ -513,7 +509,6 @@ export class BrowserManager {
                 this.accountCommitQueues.delete(accountId);
         }
     }
-    /** Preserve a provider-rotated session after a recoverable failed turn. */
     async recoverAuthenticatedSnapshot(accountId, provider, page, context, lease, accountRevision, previousStorageState) {
         try {
             if (!this.scheduler(accountId).isCurrent(lease))
@@ -532,10 +527,6 @@ export class BrowserManager {
             // Keep the original turn error; recovery is an opportunistic state refresh.
         }
     }
-    /**
-     * Persist reauth-required only when the canonical account is still the
-     * bootstrapped revision and the lease is current, then invalidate turns.
-     */
     async handleSignedOut(accountId, lease, accountRevision, evidence) {
         if (!this.scheduler(accountId).isCurrent(lease))
             return;
@@ -550,7 +541,6 @@ export class BrowserManager {
             .runExclusive(() => this.closeBrowser(accountId))
             .catch(() => { });
     }
-    /** Open the account's loopback noVNC login desktop for sign-in. */
     async login(accountId) {
         return this.runAccountExclusive(accountId, () => this.loginAccount(accountId));
     }
@@ -604,7 +594,6 @@ export class BrowserManager {
         const storageState = await this.verifyStorageState(provider, bootstrapState);
         this.accounts.writeReady(accountId, storageState);
     }
-    /** Report persisted account and active remote-login state. */
     async status(accountId) {
         return this.accountStatus(accountId);
     }
@@ -631,11 +620,9 @@ export class BrowserManager {
             ...(remoteLogin === undefined ? {} : { remoteLogin }),
         };
     }
-    /** Run one long provider Deep Research request in an isolated durable conversation. */
     async research(accountId, request) {
         return this.chat(accountId, { ...request, research: true, timeoutMs: this.config.researchTimeoutMs });
     }
-    /** Run one browser chat turn against an authenticated account and return rendered markdown. */
     async chat(accountId, request) {
         if (this.disposed)
             throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
@@ -672,8 +659,6 @@ export class BrowserManager {
                 throw new InternetError("provider_error", error instanceof Error ? error.message : `Failed to read the ${provider} conversation binding.`);
             }
             const targetUrl = binding?.conversationUrl ?? this.homeUrl(provider);
-            // ChatGPT leaves transient post-response controls that can swallow the
-            // next submission; reload its bound conversation before follow-ups.
             if ((provider === "chatgpt-web" && binding !== undefined) || page.url() !== targetUrl) {
                 await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
             }
@@ -702,14 +687,17 @@ export class BrowserManager {
             }
             const waitOptions = {
                 timeoutMs: request.timeoutMs ?? this.config.turnTimeoutMs,
+                stallTimeoutMs: request.stallTimeoutMs,
                 pollMs: this.config.pollMs,
                 stableMs: this.config.stableMs,
                 signal: lease.signal,
+                onProgress: request.onProgress,
             };
             const observeBoundTurn = (observe) => waitForBoundCompletion({
                 provider,
                 page: page,
-                ...waitOptions,
+                timeoutMs: waitOptions.timeoutMs,
+                signal: waitOptions.signal,
                 observe,
                 persist: (url) => {
                     try {
@@ -779,7 +767,6 @@ export class BrowserManager {
             await context.close().catch(() => { });
         }
     }
-    /** Close the account's managed inference browser, if one is open. */
     async stop(accountId) {
         await this.runAccountExclusive(accountId, () => this.closeAccountResources(accountId));
     }
@@ -794,7 +781,6 @@ export class BrowserManager {
         }
         await this.closeBrowser(accountId);
     }
-    /** Close every managed inference browser (no leaked Chrome processes). */
     async dispose() {
         if (this.disposed)
             return;

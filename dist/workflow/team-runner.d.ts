@@ -1,40 +1,32 @@
+import type { ProviderProgressEvent } from "#internet/browser/completion";
 import type { BrowserManager } from "#internet/browser/runtime";
-import type { AccountId } from "#internet/core/accounts";
-import type { BrowserConfig, WebProvider } from "#internet/core/config";
-import type { TeamFailureDetail, TeamTurn } from "#internet/team/types";
-import type { WorkflowTeamObserver } from "#internet/workflow/team-observer";
-export interface WorkflowTeamRunRequest {
+import type { BrowserConfig } from "#internet/core/config";
+import { type TeamStepExecutionResult } from "#internet/team/executor";
+import type { TeamPlan, TeamPlanStep } from "#internet/team/plan";
+import type { TeamPromptStrategyId } from "#internet/team/prompt-strategy";
+import type { TeamProgressEvent, TeamTurn } from "#internet/team/types";
+export interface WorkflowTeamStepRequest {
+    readonly plan: TeamPlan;
+    readonly step: TeamPlanStep;
     readonly task: string;
+    readonly transcript: readonly TeamTurn[];
+    readonly promptStrategy: TeamPromptStrategyId;
     readonly sessionId: string;
-    readonly accounts: readonly AccountId[];
-    readonly synthesizer: AccountId;
     readonly signal?: AbortSignal;
+    readonly onProgress?: (event: TeamProgressEvent) => void;
+    readonly onProviderProgress?: (event: ProviderProgressEvent) => void;
 }
-export type WorkflowTeamRunResult = {
-    readonly ok: true;
-    readonly finalAnswer: string;
-    readonly finalAccountId: AccountId;
-    readonly finalProvider: WebProvider;
-    readonly transcript?: readonly TeamTurn[];
-} | {
-    readonly ok: false;
-    readonly error: string;
-    readonly failedAccountId: AccountId;
-    readonly failedProvider: WebProvider;
-    readonly failure?: TeamFailureDetail;
-    readonly transcript?: readonly TeamTurn[];
-};
 export interface WorkflowTeamRunner {
-    run(request: WorkflowTeamRunRequest): Promise<WorkflowTeamRunResult>;
+    readonly rounds: number;
+    runStep(request: WorkflowTeamStepRequest): Promise<TeamStepExecutionResult>;
 }
 type TeamManager = Pick<BrowserManager, "chat">;
-/** Workflow-owned adapter over the single shared team engine. */
 export declare class BrowserWorkflowTeamRunner implements WorkflowTeamRunner {
     private readonly manager;
     private readonly config;
-    private readonly observer;
-    constructor(manager: TeamManager, config: BrowserConfig, observer: WorkflowTeamObserver);
-    run(request: WorkflowTeamRunRequest): Promise<WorkflowTeamRunResult>;
+    constructor(manager: TeamManager, config: BrowserConfig);
+    runStep(request: WorkflowTeamStepRequest): Promise<TeamStepExecutionResult>;
+    get rounds(): number;
 }
 export {};
 //# sourceMappingURL=team-runner.d.ts.map

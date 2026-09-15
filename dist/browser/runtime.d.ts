@@ -1,5 +1,6 @@
 import { type Page } from "patchright-core";
 import { type AccountState, type ReauthDiagnostic } from "#internet/browser/accounts";
+import { type ProviderProgressEvent } from "#internet/browser/completion";
 import { type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { type AccountId } from "#internet/core/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
@@ -12,8 +13,12 @@ export interface ChatRequest {
     visible?: boolean;
     /** Enables provider Deep Research before this request is submitted. */
     research?: boolean;
-    /** Override the normal-turn completion deadline for a long research run. */
+    /** Override the normal-turn hard completion deadline. */
     timeoutMs?: number;
+    /** Optional semantic no-progress deadline, independent from the hard deadline. */
+    stallTimeoutMs?: number;
+    /** Best-effort semantic provider progress observer. */
+    onProgress?: (event: ProviderProgressEvent) => void;
     /** Optional fail-closed Website confirmation policy for the workflow writer turn. */
     confirmation?: WorkflowApprovalScope;
     signal?: AbortSignal;
@@ -96,13 +101,10 @@ export declare class BrowserManager {
     private captureLoginState;
     private inferenceArgs;
     private verifyStorageState;
-    /** Verify the IndexedDB-free fallback before it replaces a portable account. */
     private verifyFallbackStorageState;
     private closeBrowser;
     private closeVirtualDisplaySessions;
-    /** Cancel any pending delayed-close timer for an account (the browser is needed now). */
     private cancelPendingClose;
-    /** Schedule closing an account browser after its scheduler becomes idle. */
     private scheduleCloseWhenIdle;
     private scheduleClose;
     private launchBrowser;
@@ -111,30 +113,19 @@ export declare class BrowserManager {
     private trackContext;
     private captureAccountSnapshot;
     private commitAccountSnapshot;
-    /** Preserve a provider-rotated session after a recoverable failed turn. */
     private recoverAuthenticatedSnapshot;
-    /**
-     * Persist reauth-required only when the canonical account is still the
-     * bootstrapped revision and the lease is current, then invalidate turns.
-     */
     private handleSignedOut;
-    /** Open the account's loopback noVNC login desktop for sign-in. */
     login(accountId: AccountId): Promise<AccountStatus>;
     private loginAccount;
     private startRemoteLogin;
     private persistLoginProfile;
-    /** Report persisted account and active remote-login state. */
     status(accountId: AccountId): Promise<AccountStatus>;
     private accountStatus;
-    /** Run one long provider Deep Research request in an isolated durable conversation. */
     research(accountId: AccountId, request: ChatRequest): Promise<ChatResult>;
-    /** Run one browser chat turn against an authenticated account and return rendered markdown. */
     chat(accountId: AccountId, request: ChatRequest): Promise<ChatResult>;
     private chatAccount;
-    /** Close the account's managed inference browser, if one is open. */
     stop(accountId: AccountId): Promise<void>;
     private closeAccountResources;
-    /** Close every managed inference browser (no leaked Chrome processes). */
     dispose(): Promise<void>;
 }
 //# sourceMappingURL=runtime.d.ts.map
