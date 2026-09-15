@@ -17,10 +17,7 @@ import {
 	workflowNodeId,
 } from "#internet/workflow/graph";
 import {
-	buildHealthNode,
 	buildInitialWorkflowGraph,
-	buildMergeAuthorizationNode,
-	buildMergeNode,
 	buildRemediationNode,
 	buildReviewCycleNodes,
 	createTeamStepInputReceipt,
@@ -30,7 +27,6 @@ import {
 import {
 	appendWorkflowNodes,
 	cancelWorkflowGraph,
-	completeWorkflowGateNode,
 	completeWorkflowNode,
 	failWorkflowNode,
 	recoverWorkflowNode,
@@ -56,11 +52,9 @@ import type { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-b
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
 import {
 	type StartWorkflowInput,
-	type WorkflowCiReceipt,
 	type WorkflowEventRecord,
 	type WorkflowHandoffReceipt,
 	type WorkflowJob,
-	type WorkflowMergeAuthorization,
 	type WorkflowPendingAction,
 	type WorkflowPullRequestReceipt,
 	workflowJobIsTerminal,
@@ -146,7 +140,7 @@ export class WorkflowEngine {
 		const at = new Date().toISOString();
 		return this.jobs.create({
 			schema: "@tsuuanmi/internet-workflow-job",
-			version: 2,
+			version: 3,
 			revision: 1,
 			jobId,
 			ownerSessionId: input.ownerSessionId,
@@ -178,20 +172,14 @@ export class WorkflowEngine {
 
 	advance(jobId: string): WorkflowJob {
 		const current = this.status(jobId);
-		if (
-			workflowJobIsTerminal(current) ||
-			current.graph.lifecycle === "BLOCKED" ||
-			current.graph.lifecycle === "WAITING_USER"
-		) {
-			return current;
-		}
+		if (workflowJobIsTerminal(current) || current.graph.lifecycle === "BLOCKED") return current;
 		const graph = promoteReadyWorkflowNodes(current.graph, (node, candidate) =>
 			this.inputForNode(current, node, candidate),
 		);
 		if (graph === current.graph) return current;
 		return this.commit(jobId, { type: "NODES_READY", class: "INTERNAL", at: new Date().toISOString() }, (job) => ({
 			...job,
-			graph: this.project(graph, job.pendingAction, job.mergeReceipt),
+			graph: this.project(graph, job.pendingAction),
 		}));
 	}
 
@@ -199,7 +187,7 @@ export class WorkflowEngine {
 		const job = this.status(jobId);
 		return Object.values(job.graph.nodes)
 			.filter((node) => {
-				if (node.state === "READY") return node.kind !== "MERGE_AUTHORIZATION";
+				if (node.state === "READY") return true;
 				if (node.state !== "RECOVERING" || node.recovery === undefined) return false;
 				if (node.recovery.action === "USER_ACTION" || node.recovery.action === "CODE_FIX") return false;
 				return node.recovery.notBefore === undefined || Date.parse(node.recovery.notBefore) <= at;
@@ -220,7 +208,7 @@ export class WorkflowEngine {
 		let current = this.status(jobId);
 		if (workflowJobIsTerminal(current)) return current;
 		for (const node of Object.values(current.graph.nodes)) {
-			if ((node.state !== "RUNNING" && node.state !== "WAITING_USER") || node.execution === undefined) continue;
+			if (node.state !== "RUNNING" || node.execution === undefined) continue;
 			if (node.execution.ownerInstanceId === ownerInstanceId && !executionLeaseExpired(node.execution, at)) continue;
 			const failure: WorkflowFailure = {
 				class: "TRANSPORT",
@@ -255,7 +243,6 @@ export class WorkflowEngine {
 							action: "RECONCILE",
 						}),
 						undefined,
-						job.mergeReceipt,
 					),
 					pendingAction: undefined,
 				}),
@@ -278,7 +265,6 @@ export class WorkflowEngine {
 
 		const persisted = this.results.getForInput(jobId, nodeId, node.input.inputHash);
 		if (persisted !== undefined) return this.commitReconciledResult(job, node, persisted);
-		if (node.kind === "MERGE_AUTHORIZATION") return job;
 
 		const execution = this.newExecution(node, ownerInstanceId);
 		job = this.commit(
@@ -292,7 +278,7 @@ export class WorkflowEngine {
 			},
 			(current) => ({
 				...current,
-				graph: this.project(startWorkflowNode(current.graph, nodeId, execution), undefined, current.mergeReceipt),
+				graph: this.project(startWorkflowNode(current.graph, nodeId, execution), undefined),
 				pendingAction: undefined,
 			}),
 		);
@@ -303,12 +289,7 @@ export class WorkflowEngine {
 		try {
 			const payload = await this.runNode(job, nodeId, execution.executionId, signal);
 			if (payload === undefined) return this.status(jobId);
-			const result = this.results.create({
-				jobId,
-				nodeId,
-				inputHash: node.input.inputHash,
-				payload,
-			});
+			const result = this.results.create({ jobId, nodeId, inputHash: node.input.inputHash, payload });
 			return this.commitNodeResult(jobId, nodeId, execution.executionId, result);
 		} catch (error) {
 			if (signal?.aborted) throw error;
@@ -321,15 +302,12 @@ export class WorkflowEngine {
 	continue(jobId: string): WorkflowJob {
 		const job = this.status(jobId);
 		if (workflowJobIsTerminal(job)) throw new Error(`workflow job ${jobId} is terminal`);
-		if (job.pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED") return job;
 		const failed = Object.values(job.graph.nodes).filter((node) => node.state === "FAILED");
 		if (failed.length === 0) return job;
-		if (failed.length !== 1)
-			throw new Error("workflow has multiple terminal failed nodes; code intervention is required");
+		if (failed.length !== 1) throw new Error("workflow has multiple terminal failed nodes; code intervention is required");
 		const node = failed[0]!;
 		const attempt = (node.execution?.attempt ?? 0) + 1;
-		if (attempt > this.recoveryPolicy.maxAttempts)
-			throw new Error(`workflow node ${node.nodeId} exhausted retry budget`);
+		if (attempt > this.recoveryPolicy.maxAttempts) throw new Error(`workflow node ${node.nodeId} exhausted retry budget`);
 		const graph: WorkflowGraphSnapshot = {
 			...job.graph,
 			graphRevision: job.graph.graphRevision + 1,
@@ -339,11 +317,7 @@ export class WorkflowEngine {
 				[node.nodeId]: {
 					...node,
 					state: "RECOVERING",
-					recovery: {
-						action: "RECONCILE",
-						attempt,
-						maxAttempts: this.recoveryPolicy.maxAttempts,
-					},
+					recovery: { action: "RECONCILE", attempt, maxAttempts: this.recoveryPolicy.maxAttempts },
 				},
 			},
 		};
@@ -354,58 +328,6 @@ export class WorkflowEngine {
 		);
 	}
 
-	authorizeMerge(jobId: string, ownerSessionId: string, expectedHeadSha: string): WorkflowJob {
-		const job = this.status(jobId);
-		if (job.ownerSessionId !== ownerSessionId)
-			throw new Error("merge authorization owner does not match workflow owner");
-		if (job.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED" || job.pullRequest === undefined) {
-			throw new Error("workflow is not waiting for merge authorization");
-		}
-		if (job.pullRequest.headSha !== expectedHeadSha) throw new Error("merge authorization head SHA is stale");
-		const authorization: WorkflowMergeAuthorization = {
-			repository: job.pullRequest.repository,
-			number: job.pullRequest.number,
-			url: job.pullRequest.url,
-			head: job.pullRequest.head,
-			headSha: job.pullRequest.headSha,
-			reviewCycle: job.reviewCycle,
-			authorizedAt: new Date().toISOString(),
-			authorizedByOwnerSessionId: ownerSessionId,
-		};
-		const authNode = buildMergeAuthorizationNode(job.reviewCycle);
-		const dependencyHashes = this.dependencyHashes(authNode, job.graph);
-		const input = createWorkflowNodeInputReceipt(authNode.nodeId, dependencyHashes, {
-			headSha: expectedHeadSha,
-			reviewCycle: job.reviewCycle,
-			ownerSessionId,
-		});
-		const result = this.results.create({
-			jobId,
-			nodeId: authNode.nodeId,
-			inputHash: input.inputHash,
-			payload: JSON.stringify(authorization),
-		});
-		let graph = appendWorkflowNodes(job.graph, [{ ...authNode, state: "READY", input }]);
-		graph = completeWorkflowGateNode(graph, authNode.nodeId, this.outputReceipt(result));
-		graph = appendWorkflowNodes(graph, [buildMergeNode(job.reviewCycle)]);
-		graph = setWorkflowGraphStatus(graph, "MERGE", "RUNNING");
-		return this.commit(
-			jobId,
-			{
-				type: "MERGE_AUTHORIZED",
-				class: "PROGRESS",
-				at: authorization.authorizedAt,
-				nodeId: authNode.nodeId,
-			},
-			(current) => ({
-				...current,
-				graph,
-				mergeAuthorization: authorization,
-				pendingAction: undefined,
-			}),
-		);
-	}
-
 	blockSchedulerFailure(jobId: string, error: unknown): WorkflowJob {
 		const job = this.status(jobId);
 		if (workflowJobIsTerminal(job) || job.graph.lifecycle === "BLOCKED") return job;
@@ -413,11 +335,7 @@ export class WorkflowEngine {
 		const message = `workflow scheduler failed: ${error instanceof Error ? error.message : String(error)}`;
 		return this.commit(jobId, { type: "SCHEDULER_FAILED", class: "ACTION_REQUIRED", at, message }, (current) => ({
 			...current,
-			graph: {
-				...current.graph,
-				graphRevision: current.graph.graphRevision + 1,
-				lifecycle: "BLOCKED",
-			},
+			graph: { ...current.graph, graphRevision: current.graph.graphRevision + 1, lifecycle: "BLOCKED" },
 			pendingAction: { kind: "CODE_FIX_REQUIRED", message },
 		}));
 	}
@@ -451,12 +369,6 @@ export class WorkflowEngine {
 				return this.runReviewGate(job, node, executionId, signal);
 			case "WRITER_REMEDIATION":
 				return this.runWriterRemediation(job, node, executionId, signal);
-			case "PR_HEALTH":
-				return this.runHealth(job, node, executionId, signal);
-			case "MERGE":
-				return this.runMerge(job, node, executionId, signal);
-			case "MERGE_AUTHORIZATION":
-				return undefined;
 		}
 	}
 
@@ -491,9 +403,7 @@ export class WorkflowEngine {
 		executionId: string,
 		signal?: AbortSignal,
 	): Promise<string> {
-		const payloads = (["A", "B"] as const).map((lane) =>
-			this.nodePayload(job, workflowNodeId.researchSynthesis(lane)),
-		);
+		const payloads = (["A", "B"] as const).map((lane) => this.nodePayload(job, workflowNodeId.researchSynthesis(lane)));
 		const receipts: WorkflowHandoffReceipt[] = [];
 		for (let index = 0; index < payloads.length; index += 1) {
 			const lane = index === 0 ? "A" : "B";
@@ -505,13 +415,14 @@ export class WorkflowEngine {
 				payload: payloads[index]!,
 			});
 			if (handoff.status !== "delivered") {
-				await this.writer.deliverExact({
+				const delivery = await this.writer.deliverExact({
 					sessionId: job.writerConversation.sessionId,
 					requestKey: `${job.jobId}:handoff:${handoff.handoffId}`,
 					payload: handoff.payload,
 					signal,
 					onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 				});
+				this.updateWriterConversationUrl(job.jobId, delivery.conversationUrl);
 			}
 			const delivered = this.handoffs.markDelivered(job.jobId, handoff.handoffId, handoff.payloadHash);
 			receipts.push(this.handoffReceipt(delivered));
@@ -534,6 +445,7 @@ export class WorkflowEngine {
 			signal,
 			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 		});
+		this.captureWriterConversation(job.jobId, result);
 		if (result.status !== "PR_OPEN") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
 		this.assertImplementationPr(job, result.pullRequest);
 		return JSON.stringify(result.pullRequest);
@@ -547,9 +459,7 @@ export class WorkflowEngine {
 	): Promise<string | undefined> {
 		const pr = this.requirePr(job);
 		const cycle = this.cycleFromNode(node.nodeId);
-		const payloads = (["A", "B"] as const).map((lane) =>
-			this.nodePayload(job, workflowNodeId.reviewSynthesis(cycle, lane)),
-		);
+		const payloads = (["A", "B"] as const).map((lane) => this.nodePayload(job, workflowNodeId.reviewSynthesis(cycle, lane)));
 		const reviews = payloads.map(parseWorkflowReviewResult);
 		for (const review of reviews) {
 			if (review.reviewedHeadSha !== pr.headSha) throw new Error("review result is bound to a stale PR head");
@@ -576,13 +486,14 @@ export class WorkflowEngine {
 				payload: payloads[index]!,
 			});
 			if (handoff.status !== "delivered") {
-				await this.writer.deliverExact({
+				const delivery = await this.writer.deliverExact({
 					sessionId: job.writerConversation.sessionId,
 					requestKey: `${job.jobId}:handoff:${handoff.handoffId}`,
 					payload: handoff.payload,
 					signal,
 					onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 				});
+				this.updateWriterConversationUrl(job.jobId, delivery.conversationUrl);
 			}
 			const delivered = this.handoffs.markDelivered(job.jobId, handoff.handoffId, handoff.payloadHash);
 			receipts.push(this.handoffReceipt(delivered));
@@ -606,116 +517,10 @@ export class WorkflowEngine {
 			signal,
 			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 		});
+		this.captureWriterConversation(job.jobId, result);
 		if (result.status !== "PR_OPEN") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
 		this.assertRemediationPr(pr, result.pullRequest);
 		return JSON.stringify(result.pullRequest);
-	}
-
-	private async runHealth(
-		job: WorkflowJob,
-		node: WorkflowGraphNode,
-		executionId: string,
-		signal?: AbortSignal,
-	): Promise<string | undefined> {
-		const pr = this.requirePr(job);
-		const result = await this.writer.runControl({
-			sessionId: job.writerConversation.sessionId,
-			requestKey: this.nodeRequestKey(job, node),
-			job,
-			control: createWorkflowControlMessage("CHECK_PR_HEALTH", job.jobId, pr.headSha),
-			signal,
-			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
-		});
-		if (result.status !== "PR_HEALTH") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
-		this.assertHealth(pr, result);
-		const receipt: WorkflowCiReceipt = {
-			repository: result.repository,
-			number: result.number,
-			url: result.url,
-			headSha: result.headSha,
-			status: result.health,
-			checkedAt: new Date().toISOString(),
-		};
-		if (result.health === "PENDING") {
-			const attempt = node.execution?.attempt ?? 1;
-			const failure: WorkflowFailure = {
-				class: "PROVIDER",
-				code: "CI_PENDING",
-				message: "required PR checks are still pending",
-				retry: "BACKOFF",
-				at: receipt.checkedAt,
-			};
-			const recovery = {
-				action: "BACKOFF" as const,
-				attempt,
-				maxAttempts: this.recoveryPolicy.maxAttempts,
-				notBefore: new Date(Date.now() + this.recoveryPolicy.backoffMs).toISOString(),
-			};
-			this.commit(
-				job.jobId,
-				{ type: "CI_PENDING", class: "PROGRESS", at: receipt.checkedAt, nodeId: node.nodeId },
-				(current) => ({
-					...current,
-					ciReceipt: receipt,
-					graph: this.project(
-						recoverWorkflowNode(current.graph, node.nodeId, executionId, "FAILED", failure, recovery),
-						undefined,
-						current.mergeReceipt,
-					),
-				}),
-			);
-			return undefined;
-		}
-		if (result.health === "FAIL" || result.health === "UNKNOWN") {
-			this.block(
-				job.jobId,
-				node.nodeId,
-				{
-					kind: result.health === "FAIL" ? "CI_HEALTH_FAILED" : "CI_HEALTH_UNKNOWN",
-					message: `PR health is ${result.health}`,
-					nodeId: node.nodeId,
-					expectedHeadSha: pr.headSha,
-				},
-				receipt,
-			);
-			return undefined;
-		}
-		return JSON.stringify(receipt);
-	}
-
-	private async runMerge(
-		job: WorkflowJob,
-		node: WorkflowGraphNode,
-		executionId: string,
-		signal?: AbortSignal,
-	): Promise<string | undefined> {
-		const pr = this.requirePr(job);
-		if (job.mergeAuthorization === undefined) throw new Error("merge requires exact authorization");
-		const result = await this.writer.runControl({
-			sessionId: job.writerConversation.sessionId,
-			requestKey: this.nodeRequestKey(job, node),
-			job,
-			control: createWorkflowControlMessage("MERGE_AUTHORIZED", job.jobId, pr.headSha),
-			signal,
-			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
-		});
-		if (result.status !== "MERGED") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
-		if (
-			result.headSha !== pr.headSha ||
-			result.number !== pr.number ||
-			normalizeGitHubRepository(result.repository) !== normalizeGitHubRepository(pr.repository)
-		) {
-			throw new Error("merge result does not match authorized PR head");
-		}
-		return JSON.stringify({
-			repository: result.repository,
-			number: result.number,
-			url: result.url,
-			headSha: result.headSha,
-			mergedSha: result.mergedSha,
-			executorAccountId: "chatgpt-writer",
-			mergedAt: new Date().toISOString(),
-		});
 	}
 
 	private commitNodeResult(
@@ -726,13 +531,7 @@ export class WorkflowEngine {
 	): WorkflowJob {
 		return this.commit(
 			jobId,
-			{
-				type: "NODE_COMPLETED",
-				class: "PROGRESS",
-				at: result.completedAt,
-				nodeId,
-				executionId,
-			},
+			{ type: "NODE_COMPLETED", class: "PROGRESS", at: result.completedAt, nodeId, executionId },
 			(job) => {
 				let graph = completeWorkflowNode(job.graph, nodeId, executionId, this.outputReceipt(result));
 				const node = graph.nodes[nodeId]!;
@@ -755,40 +554,19 @@ export class WorkflowEngine {
 						graph: setWorkflowGraphStatus(graph, "REVIEW", "RUNNING"),
 						pullRequest: pr,
 						reviewCycle: cycle,
-						ciReceipt: undefined,
-						mergeAuthorization: undefined,
 					};
 				} else if (node.kind === "REVIEW_HANDOFF_GATE") {
 					const decision = JSON.parse(result.payload) as { verdict: "PASS" | "CHANGES_REQUIRED" };
 					const cycle = this.cycleFromNode(nodeId);
-					const followup = decision.verdict === "PASS" ? buildHealthNode(cycle) : buildRemediationNode(cycle);
-					if (graph.nodes[followup.nodeId] === undefined) graph = appendWorkflowNodes(graph, [followup]);
-					next = {
-						...next,
-						graph: setWorkflowGraphStatus(graph, decision.verdict === "PASS" ? "HEALTH" : "WRITER", "RUNNING"),
-					};
-				} else if (node.kind === "PR_HEALTH") {
-					const ciReceipt = JSON.parse(result.payload) as WorkflowCiReceipt;
-					next = {
-						...next,
-						ciReceipt,
-						graph: setWorkflowGraphStatus(graph, "MERGE", "WAITING_USER"),
-						pendingAction: {
-							kind: "MERGE_AUTHORIZATION_REQUIRED",
-							message: "explicit exact-head merge authorization is required",
-							expectedHeadSha: job.pullRequest?.headSha,
-						},
-					};
-				} else if (node.kind === "MERGE") {
-					const mergeReceipt = JSON.parse(result.payload) as NonNullable<WorkflowJob["mergeReceipt"]>;
-					next = {
-						...next,
-						mergeReceipt,
-						graph: setWorkflowGraphStatus(graph, "DONE", "COMPLETED"),
-						pendingAction: undefined,
-					};
+					if (decision.verdict === "PASS") {
+						next = { ...next, graph: setWorkflowGraphStatus(graph, "DONE", "COMPLETED"), pendingAction: undefined };
+					} else {
+						const remediation = buildRemediationNode(cycle);
+						if (graph.nodes[remediation.nodeId] === undefined) graph = appendWorkflowNodes(graph, [remediation]);
+						next = { ...next, graph: setWorkflowGraphStatus(graph, "WRITER", "RUNNING") };
+					}
 				}
-				return { ...next, graph: this.project(next.graph, next.pendingAction, next.mergeReceipt) };
+				return { ...next, graph: this.project(next.graph, next.pendingAction) };
 			},
 		);
 	}
@@ -809,10 +587,7 @@ export class WorkflowEngine {
 				nodeId: node.nodeId,
 				executionId: execution.executionId,
 			},
-			(current) => ({
-				...current,
-				graph: startWorkflowNode(current.graph, node.nodeId, execution),
-			}),
+			(current) => ({ ...current, graph: startWorkflowNode(current.graph, node.nodeId, execution) }),
 		);
 		return this.commitNodeResult(started.jobId, node.nodeId, execution.executionId, result);
 	}
@@ -821,8 +596,7 @@ export class WorkflowEngine {
 		const job = this.status(jobId);
 		const node = job.graph.nodes[nodeId];
 		if (node?.execution?.executionId !== executionId) return job;
-		const failure =
-			error instanceof TeamStepError ? classifyTeamFailure(error.detail) : classifyWorkflowFailure(error);
+		const failure = error instanceof TeamStepError ? classifyTeamFailure(error.detail) : classifyWorkflowFailure(error);
 		const recovery = recoveryPlanForFailure(failure, node.execution.attempt, this.recoveryPolicy);
 		if (recovery !== undefined && recovery.action !== "USER_ACTION" && recovery.action !== "CODE_FIX") {
 			return this.commit(
@@ -837,11 +611,7 @@ export class WorkflowEngine {
 				},
 				(current) => ({
 					...current,
-					graph: this.project(
-						recoverWorkflowNode(current.graph, nodeId, executionId, "FAILED", failure, recovery),
-						undefined,
-						current.mergeReceipt,
-					),
+					graph: this.project(recoverWorkflowNode(current.graph, nodeId, executionId, "FAILED", failure, recovery), undefined),
 					pendingAction: undefined,
 				}),
 			);
@@ -863,13 +633,7 @@ export class WorkflowEngine {
 	): WorkflowJob {
 		return this.commit(
 			jobId,
-			{
-				type: "NODE_FAILED",
-				class: "ACTION_REQUIRED",
-				at: failure.at,
-				nodeId,
-				message: failure.message,
-			},
+			{ type: "NODE_FAILED", class: "ACTION_REQUIRED", at: failure.at, nodeId, message: failure.message },
 			(job) => ({
 				...job,
 				graph: setWorkflowGraphStatus(
@@ -882,12 +646,7 @@ export class WorkflowEngine {
 		);
 	}
 
-	private block(
-		jobId: string,
-		nodeId: string,
-		pendingAction: WorkflowPendingAction,
-		ciReceipt?: WorkflowCiReceipt,
-	): WorkflowJob {
+	private block(jobId: string, nodeId: string, pendingAction: WorkflowPendingAction): WorkflowJob {
 		const failure: WorkflowFailure = {
 			class: "USER",
 			code: pendingAction.kind,
@@ -897,16 +656,9 @@ export class WorkflowEngine {
 		};
 		return this.commit(
 			jobId,
-			{
-				type: pendingAction.kind,
-				class: "ACTION_REQUIRED",
-				at: failure.at,
-				nodeId,
-				message: failure.message,
-			},
+			{ type: pendingAction.kind, class: "ACTION_REQUIRED", at: failure.at, nodeId, message: failure.message },
 			(job) => ({
 				...job,
-				...(ciReceipt === undefined ? {} : { ciReceipt }),
 				graph: setWorkflowGraphStatus(
 					failWorkflowNode(job.graph, nodeId, failure),
 					job.graph.nodes[nodeId]?.phase ?? job.graph.phase,
@@ -919,22 +671,27 @@ export class WorkflowEngine {
 
 	private handleWriterNonSuccess(jobId: string, nodeId: string, result: WorkflowWriterResult): undefined {
 		if (result.status === "UNKNOWN_CONFIRMATION") {
-			this.block(jobId, nodeId, {
-				kind: "UNKNOWN_CONFIRMATION",
-				message: result.message,
-				nodeId,
-			});
+			this.block(jobId, nodeId, { kind: "UNKNOWN_CONFIRMATION", message: result.message, nodeId });
 			return undefined;
 		}
 		if (result.status === "BLOCKED") {
-			this.block(jobId, nodeId, {
-				kind: "WRITER_BLOCKED",
-				message: result.message,
-				nodeId,
-			});
+			this.block(jobId, nodeId, { kind: "WRITER_BLOCKED", message: result.message, nodeId });
 			return undefined;
 		}
 		throw new Error(`unexpected writer result ${result.status}`);
+	}
+
+	private captureWriterConversation(jobId: string, result: WorkflowWriterResult): void {
+		if (result.conversationUrl !== undefined) this.updateWriterConversationUrl(jobId, result.conversationUrl);
+	}
+
+	private updateWriterConversationUrl(jobId: string, url: string): void {
+		const current = this.status(jobId);
+		if (current.writerConversation.url === url) return;
+		this.commit(jobId, { type: "WRITER_CONVERSATION_BOUND", class: "INTERNAL", at: new Date().toISOString() }, (job) => ({
+			...job,
+			writerConversation: { ...job.writerConversation, url },
+		}));
 	}
 
 	private updateHandoffReceipts(jobId: string, receipts: readonly WorkflowHandoffReceipt[]): void {
@@ -943,9 +700,7 @@ export class WorkflowEngine {
 			for (const receipt of receipts) byId.set(receipt.handoffId, receipt);
 			return {
 				...job,
-				handoffReceipts: [...byId.values()].sort(
-					(a, b) => a.source.localeCompare(b.source) || a.sequence - b.sequence,
-				),
+				handoffReceipts: [...byId.values()].sort((a, b) => a.source.localeCompare(b.source) || a.sequence - b.sequence),
 			};
 		});
 	}
@@ -954,12 +709,7 @@ export class WorkflowEngine {
 		try {
 			const current = this.status(jobId);
 			const node = current.graph.nodes[nodeId];
-			if (
-				node?.execution?.executionId !== executionId ||
-				(node.state !== "RUNNING" && node.state !== "WAITING_USER")
-			) {
-				return;
-			}
+			if (node?.execution?.executionId !== executionId || node.state !== "RUNNING") return;
 			const now = new Date();
 			this.jobs.update(jobId, current.revision, (job) => ({
 				...job,
@@ -996,12 +746,7 @@ export class WorkflowEngine {
 		}
 	}
 
-	private recordProviderProgress(
-		jobId: string,
-		nodeId: string,
-		executionId: string,
-		event: ProviderProgressEvent,
-	): void {
+	private recordProviderProgress(jobId: string, nodeId: string, executionId: string, event: ProviderProgressEvent): void {
 		try {
 			const current = this.status(jobId);
 			if (current.graph.nodes[nodeId]?.execution?.executionId !== executionId) return;
@@ -1044,12 +789,7 @@ export class WorkflowEngine {
 					taskHash: hashWorkflowGraphValue(context.task),
 					stepId: context.step.stepId,
 					accountId: context.step.accountId,
-					...(job.pullRequest === undefined
-						? {}
-						: {
-								headSha: job.pullRequest.headSha,
-								reviewCycle: job.reviewCycle,
-							}),
+					...(job.pullRequest === undefined ? {} : { headSha: job.pullRequest.headSha, reviewCycle: job.reviewCycle }),
 				},
 			});
 		}
@@ -1091,10 +831,7 @@ export class WorkflowEngine {
 			parsed.kind === "synthesis"
 				? plan.steps.find((candidate) => candidate.kind === "synthesis")
 				: plan.steps.find(
-						(candidate) =>
-							candidate.kind === "member" &&
-							candidate.round === parsed.round &&
-							candidate.member === parsed.member,
+						(candidate) => candidate.kind === "member" && candidate.round === parsed.round && candidate.member === parsed.member,
 					);
 		if (step === undefined) throw new Error(`workflow node ${node.nodeId} does not map to the current team plan`);
 		const task =
@@ -1207,25 +944,14 @@ export class WorkflowEngine {
 		return saved;
 	}
 
-	private project(
-		graph: WorkflowGraphSnapshot,
-		pendingAction: WorkflowPendingAction | undefined,
-		mergeReceipt: WorkflowJob["mergeReceipt"],
-	): WorkflowGraphSnapshot {
-		if (graph.lifecycle === "CANCELLED") return graph;
-		if (mergeReceipt !== undefined) return { ...graph, phase: "DONE", lifecycle: "COMPLETED" };
-		if (pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED")
-			return { ...graph, phase: "MERGE", lifecycle: "WAITING_USER" };
+	private project(graph: WorkflowGraphSnapshot, pendingAction: WorkflowPendingAction | undefined): WorkflowGraphSnapshot {
+		if (graph.lifecycle === "CANCELLED" || graph.lifecycle === "COMPLETED") return graph;
 		if (pendingAction !== undefined || Object.values(graph.nodes).some((node) => node.state === "FAILED")) {
 			return { ...graph, lifecycle: "BLOCKED" };
 		}
-		const waitingForUser = Object.values(graph.nodes).find((node) => node.state === "WAITING_USER");
-		if (waitingForUser !== undefined) {
-			return { ...graph, phase: waitingForUser.phase, lifecycle: "WAITING_USER" };
-		}
 		const recovering = Object.values(graph.nodes).find((node) => node.state === "RECOVERING");
 		if (recovering !== undefined) return { ...graph, phase: recovering.phase, lifecycle: "RECOVERING" };
-		const phaseOrder = ["RESEARCH", "WRITER", "REVIEW", "HEALTH", "MERGE"] as const;
+		const phaseOrder = ["RESEARCH", "WRITER", "REVIEW"] as const;
 		for (const phase of phaseOrder) {
 			if (
 				Object.values(graph.nodes).some(
@@ -1235,7 +961,7 @@ export class WorkflowEngine {
 				return { ...graph, phase, lifecycle: "RUNNING" };
 			}
 		}
-		return graph;
+		return { ...graph, phase: "DONE", lifecycle: "COMPLETED" };
 	}
 
 	private dependencyHashes(node: WorkflowGraphNode, graph: WorkflowGraphSnapshot): Record<string, string> {
@@ -1258,11 +984,7 @@ export class WorkflowEngine {
 	}
 
 	private outputReceipt(result: WorkflowNodeResult) {
-		return {
-			resultId: result.resultId,
-			outputHash: result.outputHash,
-			completedAt: result.completedAt,
-		};
+		return { resultId: result.resultId, outputHash: result.outputHash, completedAt: result.completedAt };
 	}
 
 	private handoffReceipt(handoff: WorkflowHandoff): WorkflowHandoffReceipt {
@@ -1295,20 +1017,6 @@ export class WorkflowEngine {
 			next.head !== current.head
 		) {
 			throw new Error("writer remediation must update exactly the existing workflow PR");
-		}
-	}
-
-	private assertHealth(
-		pr: WorkflowPullRequestReceipt,
-		result: Extract<WorkflowWriterResult, { status: "PR_HEALTH" }>,
-	): void {
-		if (
-			normalizeGitHubRepository(result.repository) !== normalizeGitHubRepository(pr.repository) ||
-			result.number !== pr.number ||
-			result.url !== pr.url ||
-			result.headSha !== pr.headSha
-		) {
-			throw new Error("PR health result does not match exact workflow PR head");
 		}
 	}
 
