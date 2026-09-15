@@ -1,5 +1,5 @@
 import type { AccountId } from "#internet/core/accounts";
-import type { WorkflowMergeAuthorization, WorkflowPullRequestReceipt } from "#internet/workflow/types";
+import type { WorkflowPullRequestReceipt } from "#internet/workflow/types";
 
 export const WORKFLOW_CONFIRMATION_ACTIONS = [
 	"create_branch",
@@ -12,8 +12,7 @@ export const WORKFLOW_CONFIRMATION_ACTIONS = [
 ] as const;
 
 export type WorkflowConfirmationAction = (typeof WORKFLOW_CONFIRMATION_ACTIONS)[number];
-export type WorkflowConfirmationIssue = "unknown" | "merge-requires-user";
-export type WorkflowWriterAuthority = "IMPLEMENTATION" | "REMEDIATION" | "MERGE";
+export type WorkflowWriterAuthority = "IMPLEMENTATION" | "REMEDIATION";
 
 export interface WorkflowConfirmationObservation {
 	readonly action?: WorkflowConfirmationAction;
@@ -28,7 +27,6 @@ export interface WorkflowApprovalScope {
 	readonly repository: string;
 	readonly authority: WorkflowWriterAuthority;
 	readonly pullRequest?: WorkflowPullRequestReceipt;
-	readonly mergeAuthorization?: WorkflowMergeAuthorization;
 }
 
 export interface WorkflowApprovalContext extends WorkflowApprovalScope {
@@ -38,16 +36,12 @@ export interface WorkflowApprovalContext extends WorkflowApprovalScope {
 
 export type WorkflowConfirmationDecision =
 	| { readonly kind: "auto-approve"; readonly action: WorkflowConfirmationAction }
-	| { readonly kind: "merge-requires-user"; readonly reason: string }
 	| { readonly kind: "unknown"; readonly reason: string };
 
 export class WorkflowConfirmationError extends Error {
-	readonly kind: WorkflowConfirmationIssue;
-
-	constructor(kind: WorkflowConfirmationIssue, message: string) {
+	constructor(message: string) {
 		super(message);
 		this.name = "WorkflowConfirmationError";
-		this.kind = kind;
 	}
 }
 
@@ -92,10 +86,8 @@ function expectedBranch(context: WorkflowApprovalContext): string {
 	return context.pullRequest?.head ?? workflowWriterBranch(context.jobId);
 }
 
-function allowedActions(authority: WorkflowWriterAuthority): ReadonlySet<WorkflowConfirmationAction> | undefined {
-	if (authority === "IMPLEMENTATION") return IMPLEMENTATION_ACTIONS;
-	if (authority === "REMEDIATION") return REMEDIATION_ACTIONS;
-	return undefined;
+function allowedActions(authority: WorkflowWriterAuthority): ReadonlySet<WorkflowConfirmationAction> {
+	return authority === "IMPLEMENTATION" ? IMPLEMENTATION_ACTIONS : REMEDIATION_ACTIONS;
 }
 
 export function classifyWorkflowConfirmation(
@@ -125,38 +117,8 @@ export function classifyWorkflowConfirmation(
 		return { kind: "unknown", reason: "persisted pull-request repository does not match workflow authority" };
 	}
 
-	if (observation.action === "merge_pull_request") {
-		if (context.pullRequest === undefined) {
-			return context.authority === "MERGE"
-				? { kind: "unknown", reason: "merge confirmation requires the persisted workflow PR" }
-				: { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
-		}
-		if (observation.prNumber !== undefined && observation.prNumber !== context.pullRequest.number) {
-			return { kind: "unknown", reason: "merge confirmation PR number does not match the workflow PR" };
-		}
-		if (observation.branch !== undefined && observation.branch !== context.pullRequest.head) {
-			return { kind: "unknown", reason: "merge confirmation branch does not match the workflow PR head" };
-		}
-		if (context.authority !== "MERGE" || context.mergeAuthorization === undefined) {
-			return { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
-		}
-		const authorization = context.mergeAuthorization;
-		if (normalizeGitHubRepository(authorization.repository) !== authoritativeRepository) {
-			return { kind: "unknown", reason: "merge authorization repository does not match workflow authority" };
-		}
-		if (
-			authorization.number !== context.pullRequest.number ||
-			authorization.url !== context.pullRequest.url ||
-			authorization.head !== context.pullRequest.head ||
-			authorization.headSha !== context.pullRequest.headSha
-		) {
-			return { kind: "unknown", reason: "merge authorization is stale or bound to a different pull request" };
-		}
-		return { kind: "auto-approve", action: "merge_pull_request" };
-	}
-
 	const allowed = allowedActions(context.authority);
-	if (allowed === undefined || !allowed.has(observation.action)) {
+	if (!allowed.has(observation.action)) {
 		return {
 			kind: "unknown",
 			reason: `confirmation action is not permitted for ${context.authority.toLowerCase()} authority`,
