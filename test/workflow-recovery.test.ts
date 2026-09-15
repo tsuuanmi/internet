@@ -55,6 +55,19 @@ describe("workflow recovery policy", () => {
 		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "RECREATE_SESSION", attempt: 3, maxAttempts: 3 });
 	});
 
+	it("fails closed on ambiguous provider reconciliation without consuming a retry attempt", () => {
+		const failure = classifyWorkflowFailure(
+			new InternetError("provider_reconciliation_failed", "provider result identity is ambiguous"),
+			startedAt,
+		);
+		expect(failure).toMatchObject({
+			class: "OUTPUT",
+			code: "RESULT_RECONCILIATION_AMBIGUOUS",
+			retry: "USER_ACTION",
+		});
+		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "USER_ACTION", attempt: 2, maxAttempts: 3 });
+	});
+
 	it("does not consume a new attempt for user-owned confirmation", () => {
 		const failure = classifyWorkflowFailure(
 			new WorkflowConfirmationError("unknown", "inspect confirmation"),
