@@ -11,6 +11,54 @@ export function providerProgressStalled(execution, stallTimeoutMs, at = Date.now
     const progressAt = execution.lastMeaningfulProgressAt ?? execution.startedAt;
     return at - Date.parse(progressAt) >= stallTimeoutMs;
 }
+function selectorFailure(message, at) {
+    return /InvalidSelectorError|Error while parsing selector/iu.test(message)
+        ? { class: "AUTOMATION", code: "INVALID_SELECTOR", message, retry: "CODE_FIX", at }
+        : undefined;
+}
+function classifyInternetFailure(kind, message, at) {
+    switch (kind) {
+        case "timeout":
+            return { class: "PROVIDER", code: "HARD_TIMEOUT", message, retry: "RECREATE_SESSION", at };
+        case "provider_stalled":
+            return { class: "PROVIDER", code: "PROVIDER_STALLED", message, retry: "RECREATE_SESSION", at };
+        case "provider_reconciliation_failed":
+            return {
+                class: "OUTPUT",
+                code: "RESULT_RECONCILIATION_AMBIGUOUS",
+                message,
+                retry: "USER_ACTION",
+                at,
+            };
+        case "browser_unavailable":
+            return { class: "BROWSER", code: "BROWSER_UNAVAILABLE", message, retry: "RECREATE_SESSION", at };
+        case "provider_error":
+            return { class: "PROVIDER", code: "PROVIDER_ERROR", message, retry: "IMMEDIATE", at };
+        case "login_required":
+        case "login_failed":
+        case "not_authenticated":
+            return { class: "AUTH", code: "AUTH_EXPIRED", message, retry: "USER_ACTION", at };
+        case "config_error":
+            return { class: "AUTOMATION", code: "CONFIG_ERROR", message, retry: "CODE_FIX", at };
+        case "aborted":
+            return { class: "TRANSPORT", code: "EXECUTION_ABORTED", message, retry: "NONE", at };
+    }
+}
+export function classifyTeamFailure(detail) {
+    const selector = selectorFailure(detail.message, detail.failedAt);
+    if (selector !== undefined)
+        return selector;
+    if (detail.kind === "unexpected_error") {
+        return {
+            class: "AUTOMATION",
+            code: "UNEXPECTED_ERROR",
+            message: detail.message,
+            retry: "CODE_FIX",
+            at: detail.failedAt,
+        };
+    }
+    return classifyInternetFailure(detail.kind, detail.message, detail.failedAt);
+}
 export function classifyWorkflowFailure(error, at = new Date().toISOString()) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof WorkflowConfirmationError) {
@@ -22,31 +70,11 @@ export function classifyWorkflowFailure(error, at = new Date().toISOString()) {
             at,
         };
     }
-    if (/InvalidSelectorError|Error while parsing selector/iu.test(message)) {
-        return { class: "AUTOMATION", code: "INVALID_SELECTOR", message, retry: "CODE_FIX", at };
-    }
-    if (isInternetError(error)) {
-        switch (error.kind) {
-            case "timeout":
-                return { class: "PROVIDER", code: "HARD_TIMEOUT", message, retry: "RECREATE_SESSION", at };
-            case "provider_stalled":
-                return { class: "PROVIDER", code: "PROVIDER_STALLED", message, retry: "RECREATE_SESSION", at };
-            case "provider_reconciliation_failed":
-                return { class: "OUTPUT", code: "RESULT_RECONCILIATION_AMBIGUOUS", message, retry: "USER_ACTION", at };
-            case "browser_unavailable":
-                return { class: "BROWSER", code: "BROWSER_UNAVAILABLE", message, retry: "RECREATE_SESSION", at };
-            case "provider_error":
-                return { class: "PROVIDER", code: "PROVIDER_ERROR", message, retry: "IMMEDIATE", at };
-            case "login_required":
-            case "login_failed":
-            case "not_authenticated":
-                return { class: "AUTH", code: "AUTH_EXPIRED", message, retry: "USER_ACTION", at };
-            case "config_error":
-                return { class: "AUTOMATION", code: "CONFIG_ERROR", message, retry: "CODE_FIX", at };
-            case "aborted":
-                return { class: "TRANSPORT", code: "EXECUTION_ABORTED", message, retry: "NONE", at };
-        }
-    }
+    const selector = selectorFailure(message, at);
+    if (selector !== undefined)
+        return selector;
+    if (isInternetError(error))
+        return classifyInternetFailure(error.kind, message, at);
     return { class: "AUTOMATION", code: "UNEXPECTED_ERROR", message, retry: "CODE_FIX", at };
 }
 export function recoveryPlanForFailure(failure, currentAttempt, policy = DEFAULT_WORKFLOW_RECOVERY_POLICY, at = Date.now()) {
