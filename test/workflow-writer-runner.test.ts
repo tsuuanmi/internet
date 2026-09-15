@@ -113,7 +113,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 		});
 		expect(prompt).toContain("Required base branch: main");
 		expect(prompt).toContain("Required base revision");
-		expect(prompt).toContain("Reconcile GitHub by the exact workflow branch");
+		expect(prompt).toContain("reconcile GitHub by the exact workflow branch");
 		expect(prompt).toContain("Reuse exactly one matching open PR");
 		expect(prompt).toContain("Never create a second workflow PR");
 	});
