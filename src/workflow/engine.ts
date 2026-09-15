@@ -304,10 +304,12 @@ export class WorkflowEngine {
 		if (workflowJobIsTerminal(job)) throw new Error(`workflow job ${jobId} is terminal`);
 		const failed = Object.values(job.graph.nodes).filter((node) => node.state === "FAILED");
 		if (failed.length === 0) return job;
-		if (failed.length !== 1) throw new Error("workflow has multiple terminal failed nodes; code intervention is required");
+		if (failed.length !== 1)
+			throw new Error("workflow has multiple terminal failed nodes; code intervention is required");
 		const node = failed[0]!;
 		const attempt = (node.execution?.attempt ?? 0) + 1;
-		if (attempt > this.recoveryPolicy.maxAttempts) throw new Error(`workflow node ${node.nodeId} exhausted retry budget`);
+		if (attempt > this.recoveryPolicy.maxAttempts)
+			throw new Error(`workflow node ${node.nodeId} exhausted retry budget`);
 		const graph: WorkflowGraphSnapshot = {
 			...job.graph,
 			graphRevision: job.graph.graphRevision + 1,
@@ -403,7 +405,9 @@ export class WorkflowEngine {
 		executionId: string,
 		signal?: AbortSignal,
 	): Promise<string> {
-		const payloads = (["A", "B"] as const).map((lane) => this.nodePayload(job, workflowNodeId.researchSynthesis(lane)));
+		const payloads = (["A", "B"] as const).map((lane) =>
+			this.nodePayload(job, workflowNodeId.researchSynthesis(lane)),
+		);
 		const receipts: WorkflowHandoffReceipt[] = [];
 		for (let index = 0; index < payloads.length; index += 1) {
 			const lane = index === 0 ? "A" : "B";
@@ -459,7 +463,9 @@ export class WorkflowEngine {
 	): Promise<string | undefined> {
 		const pr = this.requirePr(job);
 		const cycle = this.cycleFromNode(node.nodeId);
-		const payloads = (["A", "B"] as const).map((lane) => this.nodePayload(job, workflowNodeId.reviewSynthesis(cycle, lane)));
+		const payloads = (["A", "B"] as const).map((lane) =>
+			this.nodePayload(job, workflowNodeId.reviewSynthesis(cycle, lane)),
+		);
 		const reviews = payloads.map(parseWorkflowReviewResult);
 		for (const review of reviews) {
 			if (review.reviewedHeadSha !== pr.headSha) throw new Error("review result is bound to a stale PR head");
@@ -559,7 +565,11 @@ export class WorkflowEngine {
 					const decision = JSON.parse(result.payload) as { verdict: "PASS" | "CHANGES_REQUIRED" };
 					const cycle = this.cycleFromNode(nodeId);
 					if (decision.verdict === "PASS") {
-						next = { ...next, graph: setWorkflowGraphStatus(graph, "DONE", "COMPLETED"), pendingAction: undefined };
+						next = {
+							...next,
+							graph: setWorkflowGraphStatus(graph, "DONE", "COMPLETED"),
+							pendingAction: undefined,
+						};
 					} else {
 						const remediation = buildRemediationNode(cycle);
 						if (graph.nodes[remediation.nodeId] === undefined) graph = appendWorkflowNodes(graph, [remediation]);
@@ -596,7 +606,8 @@ export class WorkflowEngine {
 		const job = this.status(jobId);
 		const node = job.graph.nodes[nodeId];
 		if (node?.execution?.executionId !== executionId) return job;
-		const failure = error instanceof TeamStepError ? classifyTeamFailure(error.detail) : classifyWorkflowFailure(error);
+		const failure =
+			error instanceof TeamStepError ? classifyTeamFailure(error.detail) : classifyWorkflowFailure(error);
 		const recovery = recoveryPlanForFailure(failure, node.execution.attempt, this.recoveryPolicy);
 		if (recovery !== undefined && recovery.action !== "USER_ACTION" && recovery.action !== "CODE_FIX") {
 			return this.commit(
@@ -611,7 +622,10 @@ export class WorkflowEngine {
 				},
 				(current) => ({
 					...current,
-					graph: this.project(recoverWorkflowNode(current.graph, nodeId, executionId, "FAILED", failure, recovery), undefined),
+					graph: this.project(
+						recoverWorkflowNode(current.graph, nodeId, executionId, "FAILED", failure, recovery),
+						undefined,
+					),
 					pendingAction: undefined,
 				}),
 			);
@@ -688,10 +702,14 @@ export class WorkflowEngine {
 	private updateWriterConversationUrl(jobId: string, url: string): void {
 		const current = this.status(jobId);
 		if (current.writerConversation.url === url) return;
-		this.commit(jobId, { type: "WRITER_CONVERSATION_BOUND", class: "INTERNAL", at: new Date().toISOString() }, (job) => ({
-			...job,
-			writerConversation: { ...job.writerConversation, url },
-		}));
+		this.commit(
+			jobId,
+			{ type: "WRITER_CONVERSATION_BOUND", class: "INTERNAL", at: new Date().toISOString() },
+			(job) => ({
+				...job,
+				writerConversation: { ...job.writerConversation, url },
+			}),
+		);
 	}
 
 	private updateHandoffReceipts(jobId: string, receipts: readonly WorkflowHandoffReceipt[]): void {
@@ -700,7 +718,9 @@ export class WorkflowEngine {
 			for (const receipt of receipts) byId.set(receipt.handoffId, receipt);
 			return {
 				...job,
-				handoffReceipts: [...byId.values()].sort((a, b) => a.source.localeCompare(b.source) || a.sequence - b.sequence),
+				handoffReceipts: [...byId.values()].sort(
+					(a, b) => a.source.localeCompare(b.source) || a.sequence - b.sequence,
+				),
 			};
 		});
 	}
@@ -746,7 +766,12 @@ export class WorkflowEngine {
 		}
 	}
 
-	private recordProviderProgress(jobId: string, nodeId: string, executionId: string, event: ProviderProgressEvent): void {
+	private recordProviderProgress(
+		jobId: string,
+		nodeId: string,
+		executionId: string,
+		event: ProviderProgressEvent,
+	): void {
 		try {
 			const current = this.status(jobId);
 			if (current.graph.nodes[nodeId]?.execution?.executionId !== executionId) return;
@@ -789,7 +814,9 @@ export class WorkflowEngine {
 					taskHash: hashWorkflowGraphValue(context.task),
 					stepId: context.step.stepId,
 					accountId: context.step.accountId,
-					...(job.pullRequest === undefined ? {} : { headSha: job.pullRequest.headSha, reviewCycle: job.reviewCycle }),
+					...(job.pullRequest === undefined
+						? {}
+						: { headSha: job.pullRequest.headSha, reviewCycle: job.reviewCycle }),
 				},
 			});
 		}
@@ -831,7 +858,10 @@ export class WorkflowEngine {
 			parsed.kind === "synthesis"
 				? plan.steps.find((candidate) => candidate.kind === "synthesis")
 				: plan.steps.find(
-						(candidate) => candidate.kind === "member" && candidate.round === parsed.round && candidate.member === parsed.member,
+						(candidate) =>
+							candidate.kind === "member" &&
+							candidate.round === parsed.round &&
+							candidate.member === parsed.member,
 					);
 		if (step === undefined) throw new Error(`workflow node ${node.nodeId} does not map to the current team plan`);
 		const task =
@@ -944,7 +974,10 @@ export class WorkflowEngine {
 		return saved;
 	}
 
-	private project(graph: WorkflowGraphSnapshot, pendingAction: WorkflowPendingAction | undefined): WorkflowGraphSnapshot {
+	private project(
+		graph: WorkflowGraphSnapshot,
+		pendingAction: WorkflowPendingAction | undefined,
+	): WorkflowGraphSnapshot {
 		if (graph.lifecycle === "CANCELLED" || graph.lifecycle === "COMPLETED") return graph;
 		if (pendingAction !== undefined || Object.values(graph.nodes).some((node) => node.state === "FAILED")) {
 			return { ...graph, lifecycle: "BLOCKED" };
