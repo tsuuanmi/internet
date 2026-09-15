@@ -22,7 +22,7 @@ function uniqueAction(text: string): WorkflowConfirmationAction | undefined {
 	const lower = text.toLowerCase();
 	const matches: WorkflowConfirmationAction[] = [];
 	if (/\bmerge(?: this)? pull request\b|\bmerge pull request\b/u.test(lower)) matches.push("merge_pull_request");
-	if (/\bcreate pull request\b|\bopen pull request\b/u.test(lower)) matches.push("create_pull_request");
+	if (/\b(?:create|open)(?: a)? pull request\b/u.test(lower)) matches.push("create_pull_request");
 	if (/\bupdate pull request\b|\bedit pull request\b/u.test(lower)) matches.push("update_pull_request");
 	if (/\bcreate branch\b/u.test(lower)) matches.push("create_branch");
 	if (/\b(?:create|update|edit) file\b/u.test(lower)) matches.push("write_file");
@@ -35,7 +35,8 @@ function repositoryFromText(text: string): string | undefined {
 	const url = text.match(/https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/u);
 	if (url) return `${url[1]}/${url[2].replace(/\.git$/u, "")}`;
 	const label = text.match(/(?:repository|repo)\s*[:=]\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/iu);
-	return label?.[1];
+	if (label) return label[1];
+	return text.match(/\bin\s+the\s+([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\s+repository\b/iu)?.[1];
 }
 
 function branchFromText(text: string): string | undefined {
