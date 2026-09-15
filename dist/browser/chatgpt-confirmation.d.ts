@@ -1,7 +1,6 @@
 import type { Page } from "patchright-core";
 import type { AccountId } from "#internet/core/accounts";
-import { type WorkflowApprovalScope, type WorkflowConfirmationObservation } from "#internet/workflow/approval-policy";
-export declare function parseChatGptConfirmationText(text: string): WorkflowConfirmationObservation;
+import { type WorkflowApprovalScope } from "#internet/workflow/approval-policy";
 /**
  * Inspect one visible ChatGPT Website GitHub confirmation and either approve
  * the exact in-scope action or fail closed. Actual account/session identity is
