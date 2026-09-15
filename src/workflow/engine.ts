@@ -405,6 +405,22 @@ export class WorkflowEngine {
 		);
 	}
 
+	blockSchedulerFailure(jobId: string, error: unknown): WorkflowJob {
+		const job = this.status(jobId);
+		if (workflowJobIsTerminal(job) || job.graph.lifecycle === "BLOCKED") return job;
+		const at = new Date().toISOString();
+		const message = `workflow scheduler failed: ${error instanceof Error ? error.message : String(error)}`;
+		return this.commit(jobId, { type: "SCHEDULER_FAILED", class: "ACTION_REQUIRED", at, message }, (current) => ({
+			...current,
+			graph: {
+				...current.graph,
+				graphRevision: current.graph.graphRevision + 1,
+				lifecycle: "BLOCKED",
+			},
+			pendingAction: { kind: "CODE_FIX_REQUIRED", message },
+		}));
+	}
+
 	cancel(jobId: string): WorkflowJob {
 		const job = this.status(jobId);
 		if (workflowJobIsTerminal(job)) return job;

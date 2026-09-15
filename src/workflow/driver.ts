@@ -10,6 +10,7 @@ export interface WorkflowDriverEngine {
 	runnableNodeIds(jobId: string, at?: number): readonly string[];
 	nextRecoveryAt(jobId: string): string | undefined;
 	executeNode(jobId: string, nodeId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<WorkflowJob>;
+	blockSchedulerFailure(jobId: string, error: unknown): WorkflowJob;
 	cancel(jobId: string): WorkflowJob;
 }
 
@@ -68,7 +69,7 @@ export class WorkflowDriver {
 		const promise = this.drive(jobId, ownerInstanceId, controller.signal)
 			.catch((error: unknown) => {
 				if (isAbort(error, controller.signal)) return;
-				this.blockRuntimeFailure(jobId, error);
+				this.engine.blockSchedulerFailure(jobId, error);
 			})
 			.finally(() => {
 				const current = this.active.get(jobId);
@@ -98,30 +99,6 @@ export class WorkflowDriver {
 		for (const run of runs) run.controller.abort();
 		await Promise.allSettled(runs.map((run) => run.promise));
 		this.active.clear();
-	}
-
-	private blockRuntimeFailure(jobId: string, error: unknown): void {
-		try {
-			const current = this.engine.status(jobId);
-			if (workflowJobIsTerminal(current)) return;
-			const at = new Date().toISOString();
-			const message = `workflow scheduler failed: ${error instanceof Error ? error.message : String(error)}`;
-			this.jobs.update(jobId, current.revision, (job) => ({
-				...job,
-				revision: job.revision + 1,
-				updatedAt: at,
-				graph: {
-					...job.graph,
-					graphRevision: job.graph.graphRevision + 1,
-					eventSeq: job.graph.eventSeq + 1,
-					lifecycle: "BLOCKED",
-				},
-				pendingAction: { kind: "CODE_FIX_REQUIRED", message },
-				lastEvent: { type: "SCHEDULER_FAILED", class: "ACTION_REQUIRED", at, message },
-			}));
-		} catch {
-			// If durable storage itself is unavailable, the driver cannot safely invent recovery state.
-		}
 	}
 
 	private async drive(jobId: string, ownerInstanceId: string, signal: AbortSignal): Promise<void> {
