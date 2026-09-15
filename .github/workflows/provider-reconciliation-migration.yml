@@ -18,7 +18,20 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: python3 scripts/temp-provider-reconciliation.py
+      - name: Run migration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/temp-provider-reconciliation.py")
+          text = path.read_text()
+          text = text.replace("'''\\t\\t\\t\\tpersist: (url) => {", "'''\\t\\t\\t\\t\\tpersist: (url) => {")
+          text = text.replace("\\n\\t\\t\\t\\t\\ttry {\\n\\t\\t\\t\\t\\t\\treturn this.conversationStore(accountId).bind(request.sessionId, url);", "\\n\\t\\t\\t\\t\\t\\ttry {\\n\\t\\t\\t\\t\\t\\t\\treturn this.conversationStore(accountId).bind(request.sessionId, url);")
+          text = text.replace("\\n\\t\\t\\t\\t\\t} catch (error) {'''", "\\n\\t\\t\\t\\t\\t\\t} catch (error) {'''")
+          text = text.replace("'''\\t\\t\\t\\tpersist: (url) => {", "'''\\t\\t\\t\\t\\tpersist: (url) => {")
+          text = text.replace("\\n\\t\\t\\t\\t\\ttry {\\n\\t\\t\\t\\t\\t\\tconst persisted", "\\n\\t\\t\\t\\t\\t\\ttry {\\n\\t\\t\\t\\t\\t\\t\\tconst persisted")
+          path.write_text(text)
+          PY
+          python3 scripts/temp-provider-reconciliation.py
       - run: npx biome check --write src test scripts
       - run: npm run check
       - run: npm test
