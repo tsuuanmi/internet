@@ -25,7 +25,10 @@ function listLocator<T extends FakeLocator>(items: T[]): Locator {
 	} as unknown as Locator;
 }
 
-function approvalPage(text: string, options?: { extraSplitButton?: boolean }): {
+function approvalPage(
+	text: string,
+	options?: { extraSplitButton?: boolean },
+): {
 	page: Page;
 	primary: FakeLocator;
 	menu: FakeLocator;
@@ -58,12 +61,10 @@ function approvalPage(text: string, options?: { extraSplitButton?: boolean }): {
 	const root: FakeLocator = {
 		innerText: async () => text,
 		waitFor,
-		locator: (selector: string) =>
-			listLocator(selector === '[data-testid="tool-action-buttons"]' ? [actionBar] : []),
+		locator: (selector: string) => listLocator(selector === '[data-testid="tool-action-buttons"]' ? [actionBar] : []),
 	};
 	const page = {
-		locator: (selector: string) =>
-			listLocator(selector === '[data-testid="tool-approval-card"]' ? [root] : []),
+		locator: (selector: string) => listLocator(selector === '[data-testid="tool-approval-card"]' ? [root] : []),
 	} as unknown as Page;
 	return { page, primary, menu, reject, waitFor };
 }
