@@ -1,7 +1,7 @@
 # Internet Runtime TODO
 
-- **Status:** current implementation complete through provider-agnostic team routing and workflow observability hardening; graph-orchestration hardening accepted next
-- **Last synchronized:** 2026-09-10
+- **Status:** current implementation complete through durable graph orchestration and recovery hardening
+- **Last synchronized:** 2026-09-15
 
 This file is a closure boundary, not an instruction to keep adding numbered phases. New work should be added only for a concrete observed problem.
 
@@ -12,108 +12,66 @@ This file is a closure boundary, not an instruction to keep adding numbered phas
 - ✅ `chatgpt-writer` remains isolated as the only workflow mutation authority.
 - ✅ `/workflow <task>` creates and automatically drives a durable coding job.
 - ✅ New workflows pin a freshly queried upstream `main` HEAD; Local worktree `HEAD` is not workflow base authority.
-- ✅ Writer PRs must target `main` and use the deterministic workflow branch from the exact persisted base revision.
-- ✅ Deterministic per-job research/review/writer session identities.
+- ✅ Writer PRs target `main` and use the deterministic workflow branch from the exact persisted base revision.
+- ✅ Deterministic per-job research/review/writer Website session identities.
 - ✅ Exact SHA-256-bound durable research/review handoffs.
 - ✅ Deterministic branch / one-PR reconciliation and durable exact PR receipt.
 - ✅ Exact-head PR review/remediation with a bounded review cycle.
 - ✅ Exact-head PR/CI health gating and explicit user merge authorization.
 - ✅ Authorized workflow merges are squash-only, so each workflow PR contributes exactly one commit to `main`.
 - ✅ Fail-closed Website confirmation policy and pre-merge revalidation.
-- ✅ Restart recovery, explicit retry-required boundaries and terminal cancellation.
-- ✅ Exact-ID `/workflow delete <jobId>` removes one selected workflow's local durable job/handoffs/trace, cancelling active work first.
-- ✅ Operator-only terminal retention cleanup with durable audit receipts.
+- ✅ Terminal cancellation, exact-ID deletion and explicit operator retention cleanup.
 
-## Completed agent-team and workflow hardening
+## Completed team runtime
 
-- ✅ `internet_team` and workflow research/review use one shared team execution core.
-- ✅ Team prompts are provider-agnostic and identify participants only as `Member 1..N`.
-- ✅ Current default team routing uses two independent ChatGPT thinker accounts: `chatgpt-thinker` + `chatgpt-thinker-2`.
-- ✅ Gemini remains supported for direct chat/research and explicit team composition but is not required by the default workflow.
-- ✅ Every normal workflow lane remains a full two-member team.
-- ✅ Team prompting targets the **best combined answer**, not averaging, neutral summarization, or concatenation.
-- ✅ Peer member output is delimited as untrusted content/evidence rather than instruction authority.
-- ✅ Purpose-specific prompt strategies exist for generic debate, workflow research and exact-head workflow review.
-- ✅ Research A/B are launched concurrently at the workflow-lane level.
-- ✅ Review A/B are launched concurrently at the workflow-lane level.
-- ✅ Same-session ordering and bounded per-account capacity remain account-scheduler responsibilities; the default capacity is 2 and workflow adds no A-then-B mutex.
-- ✅ Regression tests protect both research and review lane concurrency.
-- ✅ Shared team execution emits structured round/account/stage progress and structured failure classification.
-- ✅ Provider failures preserve exact account/provider/stage/round/kind/retryability without becoming member contributions.
-- ✅ Completed-turn evidence is retained in a bounded private per-job team trace outside compact job state.
-- ✅ Team trace progress is lane-tagged and can safely interleave across concurrent A/B execution.
-- ✅ Compact Local `PROGRESS` events exclude full research/review payloads.
-- ✅ `/workflow list` discovers jobs owned by the current Local session.
-- ✅ `/workflow status [jobId]` renders a pipeline summary plus Team A/B, attempt, round, Member N, stage, structured failure, writer, PR/CI and action state.
-- ✅ `/workflow watch [jobId]` returns the authoritative current snapshot and relies on the existing durable event stream for live follow-up rather than creating a second state machine.
-- ✅ Normal status/watch uses member identities; raw account/provider identity appears only for explicit diagnostics.
-- ✅ `/workflow stop [jobId]` uses `WorkflowDriver.cancel()` to abort active work, settle it, persist `CANCELLED`, and prevent restart resume.
-- ✅ `/workflow continue [jobId]` resumes only an explicit durable recovery path.
-- ✅ `/workflow delete <jobId>` requires an explicit ID and never guesses across jobs.
-- ✅ Omitted job IDs resolve only when unambiguous for commands that permit omission.
-- ✅ Team traces are removed with their terminal workflow during explicit retention cleanup or exact-ID deletion.
-- ✅ Existing durable jobs keep their persisted account routing; new jobs use the current default route.
+- ✅ `internet_team` and workflow research/review use one shared provider-agnostic execution core.
+- ✅ Team plans expose deterministic member/synthesis steps that workflow graph nodes can execute independently.
+- ✅ Team prompts identify participants only as `Member 1..N`, treat peer output as untrusted evidence, and optimize for the strongest supported combined answer.
+- ✅ Current default workflow route uses `chatgpt-thinker` + `chatgpt-thinker-2`; Gemini remains available for explicit direct/research/team use.
+- ✅ Same-session ordering and bounded account capacity remain provider-scheduler responsibilities; workflow adds no A-then-B mutex.
+- ✅ Research A/B and Review A/B readiness remains independent at workflow level.
+- ✅ Provider/account/stage failure details remain structured diagnostic data rather than member contributions.
 
-## Accepted next hardening — durable graph orchestration
+## Completed durable graph orchestration
 
-The concrete failure cases observed in real workflows justify implementing [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md). This is accepted work, not yet current runtime behavior.
+[`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md) is now the as-built execution contract.
 
-- ☐ Represent workflow work as durable executable nodes with explicit dependency edges and deterministic graph expansion.
-- ☐ Derive `READY` work from graph dependencies instead of replaying a team/round procedurally.
-- ☐ Persist stable logical node IDs separately from concrete execution-attempt IDs.
-- ☐ Bind completed node results to exact correctness-bearing inputs so stale research/review/PR-head evidence cannot be reused.
-- ☐ Preserve `COMPLETED` nodes only while their exact input receipt still matches.
-- ☐ Retry/recover only the smallest failed or orphaned node, including individual member turns and synthesis.
-- ☐ Refactor the existing shared team core into reusable deterministic plan/step primitives rather than creating a workflow-only duplicate debate loop.
-- ☐ Add execution ownership leases and fencing so stale late provider results cannot commit after a retry/recovery begins.
-- ☐ Reconcile durable `RUNNING`/`WAITING_USER`/`RECOVERING` nodes with valid execution ownership on restart and `/workflow continue`.
-- ☐ Reconcile uncertain provider responses and Writer external effects before resubmitting work; retain existing deterministic branch/one-PR idempotency.
-- ☐ Keep the durable graph/job snapshot authoritative and use an append-only ordered event journal for diagnostics/observability, not as a competing replay-only source of truth.
-- ☐ Separate workflow phase/lifecycle, logical node state, execution state, and provider/browser state.
-- ☐ Replace one fixed 300-second completion timeout with meaningful-progress leases plus mode-aware stall/hard limits, separate from execution ownership leases.
-- ☐ Do not let a static thinking indicator or unrelated DOM churn refresh progress indefinitely.
-- ☐ Preserve the existing scoped Website approval policy: recognized scope-valid eligible Writer confirmations remain auto-approved; only ambiguous/out-of-scope/user-owned or genuinely resumable interactions become action-required/`WAITING_USER` boundaries.
-- ☐ Support resumable user interaction for OTP/2FA/CAPTCHA/selected consent or confirmation cases without consuming normal provider retry budget while the live execution remains valid.
-- ☐ Prevent `/workflow continue` from duplicating a valid live `WAITING_USER` execution.
-- ☐ Classify deterministic browser-automation defects such as `InvalidSelectorError`/`AUTOMATION_BUG` separately from provider failures and do not loop them through automatic provider retries.
-- ☐ Preserve exact-head review/remediation/health/merge authority through review-cycle/head-specific graph inputs and nodes.
-- ☐ Rebuild `/workflow status|watch` as explainable graph projections: phase/lifecycle, active execution, provider activity, blocked dependencies, recovery/action reason, recent meaningful events, and next transition.
-- ☐ Remove stale projection states such as `Writer: waiting for research` after research is complete and Writer has already started/failed/recovered.
-- ☐ Supplement coarse `driver active` output with actual scheduler/execution health and orphan detection.
-- ☐ Preserve Research A/B and Review A/B workflow-level concurrency; account scheduling remains the only same-account capacity gate.
-- ☐ Do not introduce degraded one-team/quorum completion without a separate explicit product contract.
-- ☐ Add acceptance tests for later-member failure, orphaned synthesis, valid long thinking, stalled provider, eligible auto-approval, ambiguous confirmation/user wait, deterministic selector errors, uncertain provider completion, Writer external-action reconciliation, review-head invalidation, lane concurrency, restart recovery, and status consistency.
-- ☐ Remove obsolete coarse team/lane replay/retry paths once the graph scheduler is authoritative; do not preserve parallel legacy execution engines.
+- ✅ Workflow work is represented as deterministic durable nodes with explicit dependencies.
+- ✅ `READY` work is derived from dependency completion; the scheduler does not replay a team procedurally.
+- ✅ Stable logical node IDs are separate from concrete execution-attempt IDs.
+- ✅ Completed results are bound to exact correctness-bearing input hashes and dependency output hashes.
+- ✅ Exact persisted results are reconciled without rerunning the provider.
+- ✅ `COMPLETED` work is not replayed because a downstream member, synthesis, writer or health node fails.
+- ✅ Recovery targets the smallest failed/orphaned node with bounded attempt policy.
+- ✅ Execution ownership leases and execution IDs fence stale attempts and late results.
+- ✅ Durable `RUNNING` executions are reconciled after ownership loss/restart; orphaned work returns to node-level recovery.
+- ✅ The graph/job snapshot is authoritative correctness state; the ordered event journal is diagnostic history only.
+- ✅ Workflow phase/lifecycle, node state, execution state and provider activity are distinct projections.
+- ✅ Provider completion separates hard deadlines from semantic no-progress stall leases.
+- ✅ A static thinking indicator or unrelated DOM churn cannot refresh provider progress indefinitely.
+- ✅ Provider progress is persisted only against the current execution ID.
+- ✅ `PROVIDER_STALLED`, hard timeout, browser failure, auth failure and deterministic automation defects have distinct classifications/recovery policy.
+- ✅ `InvalidSelectorError`/selector parsing defects become `AUTOMATION` + `CODE_FIX`; unchanged code is not retried as a provider failure.
+- ✅ CI `PENDING` is dependency polling/backoff and does not consume the normal provider retry budget.
+- ✅ Scheduler/runtime failures transition durably through `WorkflowEngine`; `WorkflowDriver` only schedules, reconciles ownership and manages cancellation.
+- ✅ Research/review handoffs, Writer controls, exact-head review/remediation/health and merge authorization remain bound to graph inputs.
+- ✅ Operator status/watch is derived from graph state rather than stale parallel team/lane state.
+- ✅ Obsolete team observer/trace stores and coarse procedural workflow retry/replay APIs were removed instead of preserved behind compatibility wrappers.
+- ✅ Generated `dist` is rebuilt from the authoritative source tree.
 
-### Observed cases this work must solve
+## Recovery acceptance coverage
 
-```text
-1. Team B fails at a later member/round
-   -> current retry may replay more of Team B than necessary
-   -> desired: recover only that member node
+Automated coverage includes the invariants that motivated this hardening:
 
-2. Team B synthesis is durable STARTED but no valid execution remains
-   -> desired: mark execution orphaned/fenced and recover synthesis only
-
-3. Writer legitimately runs longer than 300000ms
-   -> current runtime reports a generic provider timeout
-   -> desired: distinguish meaningful progress from an actual stall
-
-4. Writer presents a GitHub confirmation
-   -> recognized scope-valid eligible implementation actions should continue through existing auto-approval
-   -> ambiguous/out-of-scope/user-owned interactions should become explicit action-required state rather than generic timeout
-
-5. Browser confirmation detection throws InvalidSelectorError
-   -> retrying the Writer unchanged cannot repair deterministic selector syntax
-   -> desired: AUTOMATION_BUG/INVALID_SELECTOR surfaced directly, without repeated provider retries
-
-6. FAILED_RETRYABLE status can still render Writer as "waiting for research"
-   even though both research lanes are complete
-   -> desired: graph-derived state with no stale child projection
-
-7. A timed-out provider/Writer execution may have completed or caused an external side effect after Local lost the result
-   -> desired: reconcile provider conversation and deterministic branch/PR receipts before resubmitting
-```
+- ✅ later member failure retries only that logical node while completed siblings remain complete;
+- ✅ exact persisted node results reconcile without a provider rerun;
+- ✅ orphaned running execution recovers at the same node boundary;
+- ✅ deterministic selector defects block for a code fix rather than entering automatic provider retry;
+- ✅ scheduler failure is persisted through the engine event boundary;
+- ✅ semantic provider stalls are distinct from hard provider deadlines;
+- ✅ Writer requests receive workflow hard/stall deadlines and scoped confirmation authority;
+- ✅ graph reducers/scheduler/input receipts/node-result storage/recovery classification have dedicated unit coverage;
+- ✅ full repository formatter/typecheck/test/build/package verification remains the merge gate.
 
 ## Current operator surface
 
@@ -134,22 +92,17 @@ The concrete failure cases observed in real workflows justify implementing [`WOR
 ```text
 /workflow <task>
 -> resolve fresh upstream main HEAD
--> create durable job + enqueue driver
--> Research Team A/B concurrently
-     each lane: Member 1 <-> Member 2 -> strongest synthesis
--> exact research handoffs to writer
--> START_IMPLEMENTATION
--> writer creates/reuses one PR targeting main
--> Review Team A/B concurrently against the exact PR head
-     each lane: Member 1 <-> Member 2 -> exact-head synthesis
--> exact review handoffs
--> APPLY_REVIEWS + same-PR remediation when needed
--> PASS/PASS on exact head
--> CHECK_PR_HEALTH
--> explicit exact-head user merge authorization
--> immediate head + health revalidation
--> MERGE_AUTHORIZED
--> writer squash merge
+-> create durable job + initial dependency graph
+-> scheduler executes READY Research A/B member nodes
+-> lane synthesis nodes become READY from exact member outputs
+-> exact research handoff gate
+-> Writer implementation node creates/reconciles one PR targeting main
+-> exact-head Review A/B graphs become READY
+-> review handoff gate
+-> Writer remediation node when changes are required
+-> exact-head PR health node
+-> explicit exact-head user merge authorization gate
+-> merge node revalidates and squash-merges
 -> DONE
 ```
 
@@ -163,7 +116,7 @@ Writer   -> chatgpt-writer
 
 ## Deferred — no implementation without a concrete request
 
-- dynamic member/provider health scoring or automatic member substitution/failover beyond the accepted same-node recovery policy;
+- dynamic member/provider health scoring or automatic member substitution/failover beyond the current same-node recovery policy;
 - automatic task detection instead of explicit `/workflow`;
 - Website cross-conversation/project memory as workflow correctness state;
 - generic user-defined arbitrary DAG workflow language beyond the internal workflow dependency graph;
