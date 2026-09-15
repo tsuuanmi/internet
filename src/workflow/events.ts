@@ -61,14 +61,16 @@ export function parseWorkflowGraphEvent(value: unknown): WorkflowGraphEvent {
 	const event = value as Record<string, unknown>;
 	if (event.schema !== "@tsuuanmi/internet-workflow-event" || event.version !== 1)
 		throw new Error("unsupported workflow event schema");
-	if (typeof event.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(event.jobId)) throw new Error("invalid workflow event job id");
+	if (typeof event.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(event.jobId))
+		throw new Error("invalid workflow event job id");
 	if (typeof event.eventSeq !== "number" || !Number.isSafeInteger(event.eventSeq) || event.eventSeq < 1)
 		throw new Error("invalid workflow event sequence");
 	if (typeof event.graphRevision !== "number" || !Number.isSafeInteger(event.graphRevision) || event.graphRevision < 0)
 		throw new Error("invalid workflow event graph revision");
 	if (typeof event.type !== "string" || typeof event.at !== "string" || !Number.isFinite(Date.parse(event.at)))
 		throw new Error("invalid workflow event fields");
-	if (!["INTERNAL", "PROGRESS", "ACTION_REQUIRED"].includes(String(event.class))) throw new Error("invalid workflow event class");
+	if (!["INTERNAL", "PROGRESS", "ACTION_REQUIRED"].includes(String(event.class)))
+		throw new Error("invalid workflow event class");
 	return value as WorkflowGraphEvent;
 }
 
