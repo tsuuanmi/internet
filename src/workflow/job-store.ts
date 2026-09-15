@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { accountHasCapability, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 import { assertWorkflowGraph, type WorkflowGraphSnapshot } from "#internet/workflow/graph";
-import { WORKFLOW_CI_STATUSES, WORKFLOW_PENDING_ACTION_KINDS, type WorkflowJob } from "#internet/workflow/types";
+import { WORKFLOW_PENDING_ACTION_KINDS, type WorkflowJob } from "#internet/workflow/types";
 
 const JOB_SCHEMA = "@tsuuanmi/internet-workflow-job" as const;
 
@@ -50,15 +50,13 @@ export class WorkflowJobStore {
 
 	list(): readonly WorkflowJob[] {
 		if (!existsSync(this.jobsDir)) return [];
-		if (!lstatSync(this.jobsDir).isDirectory())
-			throw new WorkflowJobStoreError("workflow jobs path is not a directory");
+		if (!lstatSync(this.jobsDir).isDirectory()) throw new WorkflowJobStoreError("workflow jobs path is not a directory");
 		return readdirSync(this.jobsDir)
 			.filter((name) => /^[0-9a-f]{32}\.json$/u.test(name))
 			.sort()
 			.map((name) => {
 				const job = this.get(name.slice(0, -5));
-				if (job === undefined)
-					throw new WorkflowJobStoreError(`workflow job ${name} disappeared during enumeration`);
+				if (job === undefined) throw new WorkflowJobStoreError(`workflow job ${name} disappeared during enumeration`);
 				return job;
 			});
 	}
@@ -73,8 +71,7 @@ export class WorkflowJobStore {
 		}
 		const next = mutate(current);
 		if (next.jobId !== current.jobId) throw new WorkflowJobStoreError("workflow job id cannot change");
-		if (next.revision !== current.revision + 1)
-			throw new WorkflowJobStoreError("workflow job revision must increment by one");
+		if (next.revision !== current.revision + 1) throw new WorkflowJobStoreError("workflow job revision must increment by one");
 		parseWorkflowJob(next);
 		writePrivateJson(this.pathFor(jobId), next);
 		return next;
@@ -82,17 +79,14 @@ export class WorkflowJobStore {
 }
 
 export function parseWorkflowJob(value: unknown): WorkflowJob {
-	if (!isRecord(value) || value.schema !== JOB_SCHEMA || value.version !== 2) {
-		throw new Error("unsupported workflow job schema; only graph job version 2 is accepted");
+	if (!isRecord(value) || value.schema !== JOB_SCHEMA || value.version !== 3) {
+		throw new Error("unsupported workflow job schema; only review-handoff job version 3 is accepted");
 	}
 	assertJobIdValue(value.jobId);
 	if (!isPositiveInteger(value.revision)) throw new Error("invalid workflow job revision");
-	if (typeof value.ownerSessionId !== "string" || value.ownerSessionId.trim() === "")
-		throw new Error("invalid workflow owner");
-	if (typeof value.objective !== "string" || value.objective.trim() === "")
-		throw new Error("invalid workflow objective");
-	if (typeof value.repository !== "string" || value.repository.trim() === "")
-		throw new Error("invalid workflow repository");
+	if (typeof value.ownerSessionId !== "string" || value.ownerSessionId.trim() === "") throw new Error("invalid workflow owner");
+	if (typeof value.objective !== "string" || value.objective.trim() === "") throw new Error("invalid workflow objective");
+	if (typeof value.repository !== "string" || value.repository.trim() === "") throw new Error("invalid workflow repository");
 	if (!isFullSha(value.baseRevision)) throw new Error("invalid workflow base revision");
 	if (!isRecord(value.graph)) throw new Error("invalid workflow graph");
 	assertWorkflowGraph(value.graph as unknown as WorkflowGraphSnapshot);
@@ -100,9 +94,6 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 	assertWriterConversation(value.writerConversation, value.ownerSessionId, value.jobId);
 	assertHandoffReceipts(value.handoffReceipts);
 	assertPullRequest(value.pullRequest);
-	assertCiReceipt(value.ciReceipt);
-	assertMergeAuthorization(value.mergeAuthorization);
-	assertMergeReceipt(value.mergeReceipt);
 	if (typeof value.reviewCycle !== "number" || !Number.isSafeInteger(value.reviewCycle) || value.reviewCycle < 0)
 		throw new Error("invalid review cycle");
 	assertPendingAction(value.pendingAction);
@@ -112,8 +103,7 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 }
 
 function assertJobId(jobId: string): void {
-	if (!/^[0-9a-f]{32}$/u.test(jobId))
-		throw new WorkflowJobStoreError("workflow job id must be 32 lowercase hex characters");
+	if (!/^[0-9a-f]{32}$/u.test(jobId)) throw new WorkflowJobStoreError("workflow job id must be 32 lowercase hex characters");
 }
 
 function assertJobIdValue(value: unknown): asserts value is string {
@@ -147,8 +137,7 @@ function assertAccountRouting(value: unknown): void {
 	if (!isRecord(value) || !Array.isArray(value.thinkerAccounts) || value.thinkerAccounts.length !== 2)
 		throw new Error("invalid workflow account routing");
 	const [first, second] = value.thinkerAccounts;
-	if (!isAccountId(first) || !isAccountId(second) || first === second)
-		throw new Error("invalid workflow thinker routing");
+	if (!isAccountId(first) || !isAccountId(second) || first === second) throw new Error("invalid workflow thinker routing");
 	for (const accountId of [first, second]) {
 		if (!accountHasCapability(accountId, "team.reason") || !accountHasCapability(accountId, "team.review"))
 			throw new Error(`workflow thinker account ${accountId} lacks required capabilities`);
@@ -160,8 +149,10 @@ function assertAccountRouting(value: unknown): void {
 
 function assertWriterConversation(value: unknown, ownerSessionId: string, jobId: string): void {
 	if (!isRecord(value) || value.accountId !== "chatgpt-writer") throw new Error("invalid writer conversation");
-	if (value.sessionId !== `${ownerSessionId}:workflow:${jobId}:writer`)
-		throw new Error("writer conversation identity mismatch");
+	if (value.sessionId !== `${ownerSessionId}:workflow:${jobId}:writer`) throw new Error("writer conversation identity mismatch");
+	if (value.url !== undefined && (typeof value.url !== "string" || !/^https:\/\/chatgpt\.com\/c\//u.test(value.url))) {
+		throw new Error("invalid writer conversation URL");
+	}
 }
 
 function assertHandoffReceipts(value: unknown): void {
@@ -174,11 +165,7 @@ function assertHandoffReceipts(value: unknown): void {
 		ids.add(item.handoffId);
 		if (typeof item.source !== "string" || item.source.trim() === "" || !isAccountId(item.recipient))
 			throw new Error("invalid handoff identity");
-		if (
-			!isPositiveInteger(item.sequence) ||
-			typeof item.payloadHash !== "string" ||
-			!/^[0-9a-f]{64}$/u.test(item.payloadHash)
-		)
+		if (!isPositiveInteger(item.sequence) || typeof item.payloadHash !== "string" || !/^[0-9a-f]{64}$/u.test(item.payloadHash))
 			throw new Error("invalid handoff receipt fields");
 		if (item.status !== "pending" && item.status !== "delivered") throw new Error("invalid handoff status");
 	}
@@ -188,74 +175,23 @@ function assertPullRequest(value: unknown): void {
 	if (value === undefined) return;
 	if (!isRecord(value) || typeof value.repository !== "string" || !isPositiveInteger(value.number))
 		throw new Error("invalid pull request receipt");
-	if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url))
-		throw new Error("invalid pull request URL");
+	if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url)) throw new Error("invalid pull request URL");
 	if (typeof value.base !== "string" || typeof value.head !== "string" || !isFullSha(value.headSha))
 		throw new Error("invalid pull request identity");
 }
 
-function assertCiReceipt(value: unknown): void {
-	if (value === undefined) return;
-	if (!isRecord(value) || typeof value.repository !== "string" || !isPositiveInteger(value.number))
-		throw new Error("invalid CI receipt");
-	if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url) || !isFullSha(value.headSha))
-		throw new Error("invalid CI identity");
-	if (typeof value.status !== "string" || !(WORKFLOW_CI_STATUSES as readonly string[]).includes(value.status))
-		throw new Error("invalid CI status");
-	if (!isTimestamp(value.checkedAt)) throw new Error("invalid CI timestamp");
-}
-
-function assertMergeAuthorization(value: unknown): void {
-	if (value === undefined) return;
-	if (!isRecord(value) || typeof value.repository !== "string" || !isPositiveInteger(value.number))
-		throw new Error("invalid merge authorization");
-	if (typeof value.url !== "string" || typeof value.head !== "string" || !isFullSha(value.headSha))
-		throw new Error("invalid merge authorization identity");
-	if (
-		!isPositiveInteger(value.reviewCycle) ||
-		!isTimestamp(value.authorizedAt) ||
-		typeof value.authorizedByOwnerSessionId !== "string"
-	)
-		throw new Error("invalid merge authorization fields");
-}
-
-function assertMergeReceipt(value: unknown): void {
-	if (value === undefined) return;
-	if (!isRecord(value) || typeof value.repository !== "string" || !isPositiveInteger(value.number))
-		throw new Error("invalid merge receipt");
-	if (
-		typeof value.url !== "string" ||
-		!isFullSha(value.headSha) ||
-		!isFullSha(value.mergedSha) ||
-		value.executorAccountId !== "chatgpt-writer" ||
-		!isTimestamp(value.mergedAt)
-	)
-		throw new Error("invalid merge receipt fields");
-}
-
 function assertPendingAction(value: unknown): void {
 	if (value === undefined) return;
-	if (
-		!isRecord(value) ||
-		typeof value.kind !== "string" ||
-		!(WORKFLOW_PENDING_ACTION_KINDS as readonly string[]).includes(value.kind)
-	)
+	if (!isRecord(value) || typeof value.kind !== "string" || !(WORKFLOW_PENDING_ACTION_KINDS as readonly string[]).includes(value.kind))
 		throw new Error("invalid pending action");
-	if (typeof value.message !== "string" || value.message.trim() === "")
-		throw new Error("invalid pending action message");
+	if (typeof value.message !== "string" || value.message.trim() === "") throw new Error("invalid pending action message");
 	if (value.nodeId !== undefined && (typeof value.nodeId !== "string" || value.nodeId.trim() === ""))
 		throw new Error("invalid pending action node");
-	if (value.expectedHeadSha !== undefined && !isFullSha(value.expectedHeadSha))
-		throw new Error("invalid pending action head SHA");
+	if (value.expectedHeadSha !== undefined && !isFullSha(value.expectedHeadSha)) throw new Error("invalid pending action head SHA");
 }
 
 function assertEvent(value: unknown): void {
 	if (value === undefined) return;
-	if (
-		!isRecord(value) ||
-		typeof value.type !== "string" ||
-		!["INTERNAL", "PROGRESS", "ACTION_REQUIRED"].includes(String(value.class)) ||
-		!isTimestamp(value.at)
-	)
+	if (!isRecord(value) || typeof value.type !== "string" || !["INTERNAL", "PROGRESS", "ACTION_REQUIRED"].includes(String(value.class)) || !isTimestamp(value.at))
 		throw new Error("invalid workflow event");
 }
