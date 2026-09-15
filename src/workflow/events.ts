@@ -99,8 +99,12 @@ export function formatWorkflowEvent(job: WorkflowJob, event: WorkflowEventRecord
 	if (event.nodeId !== undefined) lines.push(`node=${event.nodeId}`);
 	if (event.executionId !== undefined) lines.push(`execution=${event.executionId}`);
 	if (job.pullRequest !== undefined) lines.push(`pr=${job.pullRequest.url}`, `head_sha=${job.pullRequest.headSha}`);
+	if (job.writerConversation.url !== undefined) lines.push(`writer_chat=${job.writerConversation.url}`);
 	if (job.pendingAction !== undefined) lines.push(`pending_action=${job.pendingAction.kind}`);
 	if (event.message !== undefined && event.message.trim() !== "") lines.push(`message=${event.message}`);
+	if (job.graph.lifecycle === "COMPLETED" && job.pullRequest !== undefined) {
+		lines.push("handoff=Open the Writer chat for optional changes or merge. Review coverage ends at head_sha.");
+	}
 	lines.push("This compact control-plane event intentionally excludes research and review payloads.");
 	return lines.join("\n");
 }

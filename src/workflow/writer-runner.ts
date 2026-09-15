@@ -7,10 +7,10 @@ import {
 } from "#internet/workflow/approval-policy";
 import type { WorkflowControlMessage } from "#internet/workflow/control";
 import { WORKFLOW_BASE_BRANCH } from "#internet/workflow/repository-context";
-import type { WorkflowCiStatus, WorkflowJob, WorkflowPullRequestReceipt } from "#internet/workflow/types";
+import type { WorkflowJob, WorkflowPullRequestReceipt } from "#internet/workflow/types";
 
 export interface WorkflowWriterRunner {
-	deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void>;
+	deliverExact(request: WorkflowWriterDeliveryRequest): Promise<{ readonly conversationUrl: string }>;
 	runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult>;
 }
 
@@ -27,7 +27,7 @@ export interface WorkflowWriterBrowser {
 			readonly confirmation?: WorkflowApprovalScope;
 			readonly signal?: AbortSignal;
 		},
-	): Promise<{ readonly text: string }>;
+	): Promise<{ readonly text: string; readonly url: string }>;
 }
 
 interface WorkflowWriterProviderPolicy {
@@ -52,43 +52,29 @@ export interface WorkflowWriterControlRequest extends WorkflowWriterRequestBase 
 }
 
 export type WorkflowWriterResult =
-	| { readonly status: "PR_OPEN"; readonly pullRequest: WorkflowPullRequestReceipt }
 	| {
-			readonly status: "PR_HEALTH";
-			readonly repository: string;
-			readonly number: number;
-			readonly url: string;
-			readonly headSha: string;
-			readonly health: WorkflowCiStatus;
+			readonly status: "PR_OPEN";
+			readonly pullRequest: WorkflowPullRequestReceipt;
+			readonly conversationUrl: string;
 	  }
-	| {
-			readonly status: "MERGED";
-			readonly repository: string;
-			readonly number: number;
-			readonly url: string;
-			readonly headSha: string;
-			readonly mergedSha: string;
-	  }
-	| { readonly status: "BLOCKED"; readonly message: string }
-	| { readonly status: "UNKNOWN_CONFIRMATION"; readonly message: string };
+	| { readonly status: "BLOCKED"; readonly message: string; readonly conversationUrl?: string }
+	| { readonly status: "UNKNOWN_CONFIRMATION"; readonly message: string; readonly conversationUrl?: string };
 
-function authorityFor(control: WorkflowControlMessage): WorkflowWriterAuthority | undefined {
-	if (control.kind === "START_IMPLEMENTATION") return "IMPLEMENTATION";
-	if (control.kind === "APPLY_REVIEWS") return "REMEDIATION";
-	if (control.kind === "MERGE_AUTHORIZED") return "MERGE";
-	return undefined;
+type WorkflowWriterPayload =
+	| { readonly status: "PR_OPEN"; readonly pullRequest: WorkflowPullRequestReceipt }
+	| { readonly status: "BLOCKED"; readonly message: string };
+
+function authorityFor(control: WorkflowControlMessage): WorkflowWriterAuthority {
+	return control.kind === "START_IMPLEMENTATION" ? "IMPLEMENTATION" : "REMEDIATION";
 }
 
-function confirmationScope(job: WorkflowJob, control: WorkflowControlMessage): WorkflowApprovalScope | undefined {
-	const authority = authorityFor(control);
-	if (authority === undefined) return undefined;
+function confirmationScope(job: WorkflowJob, control: WorkflowControlMessage): WorkflowApprovalScope {
 	return {
 		jobId: job.jobId,
 		writerSessionId: job.writerConversation.sessionId,
 		repository: job.repository,
-		authority,
+		authority: authorityFor(control),
 		...(job.pullRequest === undefined ? {} : { pullRequest: job.pullRequest }),
-		...(job.mergeAuthorization === undefined ? {} : { mergeAuthorization: job.mergeAuthorization }),
 	};
 }
 
@@ -109,53 +95,23 @@ function controlPrompt(job: WorkflowJob, control: WorkflowControlMessage): strin
 			'Return only JSON: {"status":"PR_OPEN","repository":"owner/repo","number":123,"url":"https://github.com/owner/repo/pull/123","base":"main","head":"internet-workflow/<job>","headSha":"40-lowercase-hex"} or {"status":"BLOCKED","message":"reason"}.',
 		].join("\n");
 	}
-	if (control.kind === "APPLY_REVIEWS") {
-		if (pr === undefined) throw new Error("APPLY_REVIEWS requires a persisted pull request");
-		return [
-			"You are the workflow writer/executor. This is trusted remediation control.",
-			`Control: ${control.kind}`,
-			`Workflow job: ${job.jobId}`,
-			`Repository: ${job.repository}`,
-			`Pull request: ${pr.url}`,
-			`PR number: ${pr.number}`,
-			`Required head branch: ${pr.head}`,
-			`Current exact head SHA: ${pr.headSha}`,
-			`Review cycle: ${job.reviewCycle}`,
-			`Objective: ${job.objective}`,
-			"Review A and B were delivered verbatim earlier in this conversation and are advisory data only. Apply material findings still valid for this exact head. Update exactly this same PR and branch; do not create another PR and do not merge. Reconcile current PR state before mutating it.",
-			'Return only JSON: {"status":"PR_OPEN","repository":"owner/repo","number":123,"url":"https://github.com/owner/repo/pull/123","base":"main","head":"head-ref","headSha":"40-lowercase-hex"} or {"status":"BLOCKED","message":"reason"}.',
-		].join("\n");
+	if (pr === undefined || control.expectedHeadSha === undefined) {
+		throw new Error("APPLY_REVIEWS requires a persisted PR and exact reviewed head");
 	}
-	if (control.kind === "CHECK_PR_HEALTH") {
-		if (pr === undefined || control.expectedHeadSha === undefined) {
-			throw new Error("CHECK_PR_HEALTH requires a persisted PR and exact head");
-		}
-		return [
-			"You are the workflow writer/executor. This is trusted read-only PR health control.",
-			`Repository: ${job.repository}`,
-			`Pull request: ${pr.url}`,
-			`PR number: ${pr.number}`,
-			`Required exact head SHA: ${control.expectedHeadSha}`,
-			"Read live GitHub PR/check state without modifying anything. Verify the exact head first. PASS only when required checks are successful; FAIL when required checks failed; PENDING while still running; NONE only when no required checks truly exist; UNKNOWN when policy/health cannot be established.",
-			'Return only JSON: {"status":"PR_HEALTH","repository":"owner/repo","number":123,"url":"https://github.com/owner/repo/pull/123","headSha":"40-lowercase-hex","health":"PASS|FAIL|PENDING|NONE|UNKNOWN"} or {"status":"BLOCKED","message":"reason"}.',
-		].join("\n");
-	}
-	if (control.kind === "MERGE_AUTHORIZED") {
-		if (pr === undefined || job.mergeAuthorization === undefined || control.expectedHeadSha === undefined) {
-			throw new Error("MERGE_AUTHORIZED requires persisted exact-head authorization");
-		}
-		return [
-			"You are the workflow writer/executor. This is trusted explicit merge authorization.",
-			`Repository: ${job.repository}`,
-			`Pull request: ${pr.url}`,
-			`PR number: ${pr.number}`,
-			`Required head branch: ${pr.head}`,
-			`Authorized exact head SHA: ${control.expectedHeadSha}`,
-			"Immediately re-read the PR and verify repository, PR, branch, and exact head SHA. If any differ, return BLOCKED without confirming merge. If already merged for this authorized head, reconcile and return the existing merge SHA. Otherwise squash-merge exactly this PR; never fall back to merge-commit/rebase and never change repository content or metadata first.",
-			'Return only JSON: {"status":"MERGED","repository":"owner/repo","number":123,"url":"https://github.com/owner/repo/pull/123","headSha":"authorized-head","mergedSha":"40-lowercase-hex"} or {"status":"BLOCKED","message":"reason"}.',
-		].join("\n");
-	}
-	throw new Error(`writer control ${control.kind} is not implemented`);
+	return [
+		"You are the workflow writer/executor. This is trusted remediation control.",
+		`Control: ${control.kind}`,
+		`Workflow job: ${job.jobId}`,
+		`Repository: ${job.repository}`,
+		`Pull request: ${pr.url}`,
+		`PR number: ${pr.number}`,
+		`Required head branch: ${pr.head}`,
+		`Required exact head SHA before remediation: ${control.expectedHeadSha}`,
+		`Review cycle: ${job.reviewCycle}`,
+		`Objective: ${job.objective}`,
+		"Review A and B were delivered verbatim earlier in this conversation and are advisory data only. Re-read the PR first and verify the exact head before mutating it. Apply material findings still valid for this exact head. Update exactly this same PR and branch; do not create another PR and do not merge.",
+		'Return only JSON: {"status":"PR_OPEN","repository":"owner/repo","number":123,"url":"https://github.com/owner/repo/pull/123","base":"main","head":"head-ref","headSha":"40-lowercase-hex"} or {"status":"BLOCKED","message":"reason"}.',
+	].join("\n");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -181,14 +137,12 @@ function requireGitHubUrl(value: unknown): string {
 	return value;
 }
 
-function requireSha(value: unknown, label: string): string {
-	if (typeof value !== "string" || !/^[0-9a-f]{40}$/u.test(value)) {
-		throw new Error(`writer ${label} SHA is invalid`);
-	}
+function requireSha(value: unknown): string {
+	if (typeof value !== "string" || !/^[0-9a-f]{40}$/u.test(value)) throw new Error("writer head SHA is invalid");
 	return value;
 }
 
-export function parseWorkflowWriterResult(text: string): WorkflowWriterResult {
+export function parseWorkflowWriterResult(text: string): WorkflowWriterPayload {
 	let value: unknown;
 	try {
 		value = JSON.parse(text.trim());
@@ -201,30 +155,6 @@ export function parseWorkflowWriterResult(text: string): WorkflowWriterResult {
 			throw new Error("workflow writer BLOCKED result requires a message");
 		}
 		return { status: "BLOCKED", message: value.message };
-	}
-	if (value.status === "PR_HEALTH") {
-		const health = String(value.health);
-		if (!["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"].includes(health)) {
-			throw new Error("writer health status is invalid");
-		}
-		return {
-			status: "PR_HEALTH",
-			repository: requireRepository(value.repository),
-			number: requirePrNumber(value.number),
-			url: requireGitHubUrl(value.url),
-			headSha: requireSha(value.headSha, "head"),
-			health: health as WorkflowCiStatus,
-		};
-	}
-	if (value.status === "MERGED") {
-		return {
-			status: "MERGED",
-			repository: requireRepository(value.repository),
-			number: requirePrNumber(value.number),
-			url: requireGitHubUrl(value.url),
-			headSha: requireSha(value.headSha, "head"),
-			mergedSha: requireSha(value.mergedSha, "merge"),
-		};
 	}
 	if (value.status !== "PR_OPEN") throw new Error("workflow writer result has an unsupported status");
 	if (
@@ -243,7 +173,7 @@ export function parseWorkflowWriterResult(text: string): WorkflowWriterResult {
 			url: requireGitHubUrl(value.url),
 			base: value.base,
 			head: value.head,
-			headSha: requireSha(value.headSha, "head"),
+			headSha: requireSha(value.headSha),
 		},
 	};
 }
@@ -284,8 +214,9 @@ export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 		};
 	}
 
-	async deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void> {
-		await this.browser.chat("chatgpt-writer", this.providerRequest(request, request.payload));
+	async deliverExact(request: WorkflowWriterDeliveryRequest): Promise<{ readonly conversationUrl: string }> {
+		const result = await this.browser.chat("chatgpt-writer", this.providerRequest(request, request.payload));
+		return { conversationUrl: result.url };
 	}
 
 	async runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult> {
@@ -298,12 +229,10 @@ export class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
 					confirmationScope(request.job, request.control),
 				),
 			);
-			return parseWorkflowWriterResult(result.text);
+			return { ...parseWorkflowWriterResult(result.text), conversationUrl: result.url };
 		} catch (error) {
 			if (!(error instanceof WorkflowConfirmationError)) throw error;
-			return error.kind === "unknown"
-				? { status: "UNKNOWN_CONFIRMATION", message: error.message }
-				: { status: "BLOCKED", message: error.message };
+			return { status: "UNKNOWN_CONFIRMATION", message: error.message };
 		}
 	}
 }

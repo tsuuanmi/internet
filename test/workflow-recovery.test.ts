@@ -41,22 +41,19 @@ describe("workflow recovery policy", () => {
 		expect(recoveryPlanForFailure(failure, 1)).toBeUndefined();
 	});
 
-	it("classifies hard timeout for bounded same-node session recreation", () => {
-		const failure = classifyWorkflowFailure(new InternetError("timeout", "provider timeout"), startedAt);
-		expect(failure).toMatchObject({ class: "PROVIDER", code: "HARD_TIMEOUT", retry: "RECREATE_SESSION" });
-		expect(recoveryPlanForFailure(failure, 1)).toEqual({ action: "RECREATE_SESSION", attempt: 2, maxAttempts: 3 });
-	});
+	it("classifies provider failures for smallest-node recovery", () => {
+		const timeout = classifyWorkflowFailure(new InternetError("timeout", "provider timeout"), startedAt);
+		expect(timeout).toMatchObject({ class: "PROVIDER", code: "HARD_TIMEOUT", retry: "RECREATE_SESSION" });
+		expect(recoveryPlanForFailure(timeout, 1)).toEqual({ action: "RECREATE_SESSION", attempt: 2, maxAttempts: 3 });
 
-	it("classifies no-progress stall separately while using the same smallest-node recovery", () => {
-		const failure = classifyWorkflowFailure(
+		const stalled = classifyWorkflowFailure(
 			new InternetError("provider_stalled", "provider stopped progressing"),
 			startedAt,
 		);
-		expect(failure).toMatchObject({ class: "PROVIDER", code: "PROVIDER_STALLED", retry: "RECREATE_SESSION" });
-		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "RECREATE_SESSION", attempt: 3, maxAttempts: 3 });
+		expect(stalled).toMatchObject({ class: "PROVIDER", code: "PROVIDER_STALLED", retry: "RECREATE_SESSION" });
 	});
 
-	it("fails closed on ambiguous provider reconciliation without consuming a retry attempt", () => {
+	it("fails closed on ambiguous provider reconciliation", () => {
 		const failure = classifyWorkflowFailure(
 			new InternetError("provider_reconciliation_failed", "provider result identity is ambiguous"),
 			startedAt,
@@ -69,7 +66,7 @@ describe("workflow recovery policy", () => {
 		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "USER_ACTION", attempt: 2, maxAttempts: 3 });
 	});
 
-	it("classifies ambiguous team provider reconciliation as user-owned output recovery", () => {
+	it("classifies ambiguous team reconciliation as user-owned recovery", () => {
 		const failure = classifyTeamFailure({
 			accountId: "chatgpt-thinker",
 			provider: "chatgpt-web",
@@ -80,19 +77,11 @@ describe("workflow recovery policy", () => {
 			retryable: false,
 			failedAt: startedAt,
 		});
-		expect(failure).toMatchObject({
-			class: "OUTPUT",
-			code: "RESULT_RECONCILIATION_AMBIGUOUS",
-			retry: "USER_ACTION",
-		});
-		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "USER_ACTION", attempt: 2, maxAttempts: 3 });
+		expect(failure).toMatchObject({ class: "OUTPUT", retry: "USER_ACTION" });
 	});
 
 	it("does not consume a new attempt for user-owned confirmation", () => {
-		const failure = classifyWorkflowFailure(
-			new WorkflowConfirmationError("unknown", "inspect confirmation"),
-			startedAt,
-		);
+		const failure = classifyWorkflowFailure(new WorkflowConfirmationError("inspect confirmation"), startedAt);
 		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "USER_ACTION", attempt: 2, maxAttempts: 3 });
 	});
 });

@@ -150,21 +150,6 @@ export function buildRemediationNode(cycle: number): WorkflowGraphNode {
 	return waitingNode(nodeId, "WRITER_REMEDIATION", "WRITER", [workflowNodeId.reviewHandoffGate(cycle)]);
 }
 
-export function buildHealthNode(cycle: number): WorkflowGraphNode {
-	const nodeId = workflowNodeId.prHealth(cycle);
-	return waitingNode(nodeId, "PR_HEALTH", "HEALTH", [workflowNodeId.reviewHandoffGate(cycle)]);
-}
-
-export function buildMergeAuthorizationNode(cycle: number): WorkflowGraphNode {
-	const nodeId = workflowNodeId.mergeAuthorization(cycle);
-	return waitingNode(nodeId, "MERGE_AUTHORIZATION", "MERGE", [workflowNodeId.prHealth(cycle)]);
-}
-
-export function buildMergeNode(cycle: number): WorkflowGraphNode {
-	const nodeId = workflowNodeId.merge(cycle);
-	return waitingNode(nodeId, "MERGE", "MERGE", [workflowNodeId.mergeAuthorization(cycle)]);
-}
-
 function buildTeamNodes(input: {
 	readonly plan: TeamPlan;
 	readonly lane: WorkflowLane;
