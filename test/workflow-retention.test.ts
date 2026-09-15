@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { ProviderTurnReceiptStore } from "#internet/browser/turn-receipts";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowRetentionError, WorkflowRetentionManager } from "#internet/workflow/retention";
 import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
@@ -56,6 +57,13 @@ describe("WorkflowRetentionManager", () => {
 			sequence: 1,
 			payload: "exact handoff payload",
 		});
+		const turnReceipts = new ProviderTurnReceiptStore(root, started.jobId, "chatgpt-thinker");
+		const turnReceipt = turnReceipts.submit({
+			sessionId: `owner:workflow:${started.jobId}:research:A`,
+			requestKey: `${started.jobId}:${rootNode.nodeId}:${rootNode.input.inputHash}`,
+			prompt: "exact workflow prompt",
+			previousResponse: "",
+		});
 		const cancelled = engine.cancel(started.jobId);
 		const old = jobs.update(cancelled.jobId, cancelled.revision, (current) => ({
 			...current,
@@ -76,12 +84,15 @@ describe("WorkflowRetentionManager", () => {
 			expectedUpdatedAt: old.updatedAt,
 			operatorSessionId: "operator",
 		});
-		expect(audit).toMatchObject({ status: "COMPLETED", jobId: old.jobId, deletedFiles: 4 });
+		expect(audit).toMatchObject({ status: "COMPLETED", jobId: old.jobId, deletedFiles: 5 });
 		expect(jobs.get(old.jobId)).toBeUndefined();
 		expect(handoffs.get(old.jobId, handoff.handoffId)).toBeUndefined();
 		expect(results.get(old.jobId, result.resultId)).toBeUndefined();
+		expect(turnReceipts.read(`owner:workflow:${old.jobId}:research:A`, `${old.jobId}:${rootNode.nodeId}:${rootNode.input.inputHash}`)).toBeUndefined();
+		expect(existsSync(join(root, "workflows", "provider-turns", old.jobId))).toBe(false);
 		expect(existsSync(join(root, "workflows", "events", old.jobId))).toBe(false);
 		expect(existsSync(join(root, "workflows", "cleanup-audit", `${audit.auditId}.json`))).toBe(true);
+		expect(turnReceipt.workflowJobId).toBe(old.jobId);
 		expect(
 			retention.cleanup({ jobId: old.jobId, expectedUpdatedAt: old.updatedAt, operatorSessionId: "operator" }),
 		).toEqual(audit);
