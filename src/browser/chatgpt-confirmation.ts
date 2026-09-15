@@ -17,6 +17,8 @@ const CHATGPT_CONFIRMATION_ROOT_SELECTORS = [
 
 const ALLOW_BUTTON_NAME = /^Allow$/u;
 const DENY_BUTTON_NAME = /^(?:Cancel|Deny|Reject|Don't allow|Don’t allow)$/u;
+const ACTIONABLE_CONTROL_TIMEOUT_MS = 40_000;
+const ACTIONABLE_CONTROL_POLL_MS = 200;
 
 function uniqueAction(text: string): WorkflowConfirmationAction | undefined {
 	const lower = text.toLowerCase();
@@ -25,7 +27,7 @@ function uniqueAction(text: string): WorkflowConfirmationAction | undefined {
 	if (/\b(?:create|open)(?: a)? pull request\b/u.test(lower)) matches.push("create_pull_request");
 	if (/\bupdate pull request\b|\bedit pull request\b/u.test(lower)) matches.push("update_pull_request");
 	if (/\bcreate branch\b/u.test(lower)) matches.push("create_branch");
-	if (/\b(?:create|update|edit) file\b/u.test(lower)) matches.push("write_file");
+	if (/\b(?:create|update|edit) file\b|\bupdates?\s+(?:the\s+)?\S+\s+file\b/u.test(lower)) matches.push("write_file");
 	if (/\bcreate commit\b|\bcommit changes\b/u.test(lower)) matches.push("create_commit");
 	if (/\bpush(?: changes| branch)?\b/u.test(lower)) matches.push("push_branch");
 	return matches.length === 1 ? matches[0] : undefined;
@@ -36,11 +38,15 @@ function repositoryFromText(text: string): string | undefined {
 	if (url) return `${url[1]}/${url[2].replace(/\.git$/u, "")}`;
 	const label = text.match(/(?:repository|repo)\s*[:=]\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/iu);
 	if (label) return label[1];
+	const naturalLanguage = text.match(/\bin\s+the\s+(?:github\s+)?repository\s+([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/iu);
+	if (naturalLanguage) return naturalLanguage[1];
 	return text.match(/\bin\s+the\s+([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\s+repository\b/iu)?.[1];
 }
 
 function branchFromText(text: string): string | undefined {
-	return text.match(/(?:branch|head)\s*[:=]\s*([A-Za-z0-9._/-]+)/iu)?.[1];
+	const label = text.match(/(?:branch|head)\s*[:=]\s*([A-Za-z0-9._/-]+)/iu);
+	if (label) return label[1];
+	return text.match(/\bon\s+branch\s+([A-Za-z0-9._/-]+)/iu)?.[1];
 }
 
 function prNumberFromText(text: string): number | undefined {
@@ -83,17 +89,23 @@ async function visibleGitHubRoots(page: Page): Promise<Locator[]> {
 }
 
 async function exactAllowButton(root: Locator): Promise<Locator> {
-	const [allow, deny] = await Promise.all([
-		visibleMatches(root.getByRole("button", { name: ALLOW_BUTTON_NAME })),
-		visibleMatches(root.getByRole("button", { name: DENY_BUTTON_NAME })),
-	]);
-	if (allow.length !== 1 || deny.length < 1) {
-		throw new WorkflowConfirmationError(
-			"unknown",
-			"GitHub confirmation does not expose one exact Allow action and an explicit deny action",
-		);
+	const deadline = Date.now() + ACTIONABLE_CONTROL_TIMEOUT_MS;
+	while (true) {
+		const [allow, deny] = await Promise.all([
+			visibleMatches(root.getByRole("button", { name: ALLOW_BUTTON_NAME })),
+			visibleMatches(root.getByRole("button", { name: DENY_BUTTON_NAME })),
+		]);
+		if (allow.length === 1 && deny.length >= 1 && (await allow[0]!.isEnabled().catch(() => false))) {
+			return allow[0]!;
+		}
+		if (Date.now() >= deadline) {
+			throw new WorkflowConfirmationError(
+				"unknown",
+				"GitHub confirmation did not expose one enabled exact Allow action and an explicit deny action",
+			);
+		}
+		await new Promise<void>((resolve) => setTimeout(resolve, ACTIONABLE_CONTROL_POLL_MS));
 	}
-	return allow[0]!;
 }
 
 /**
