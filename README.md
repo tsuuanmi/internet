@@ -322,6 +322,14 @@ These files contain authenticated browser state and must be protected as secrets
 
 Do not treat machine-local login profiles or durable conversation files as the portable account boundary.
 
+## Development
+
+Run the test suite with:
+
+```bash
+npm test
+```
+
 ## Documentation
 
 Start with [`docs/README.md`](./docs/README.md). Current-state contracts:
