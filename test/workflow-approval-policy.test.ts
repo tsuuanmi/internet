@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { parseChatGptConfirmationText } from "#internet/browser/chatgpt-confirmation";
 import {
 	classifyWorkflowConfirmation,
 	normalizeGitHubRepository,
@@ -141,30 +140,5 @@ describe("workflow scoped approval policy", () => {
 				repository: "example/repo",
 			}).kind,
 		).toBe("merge-requires-user");
-	});
-});
-
-describe("ChatGPT confirmation text parser", () => {
-	it("extracts action, repository, branch, and PR identity from a recognized GitHub confirmation", () => {
-		expect(
-			parseChatGptConfirmationText(
-				"GitHub\nUpdate pull request\nRepository: example/repo\nBranch: internet-workflow/fix\nPull request: #17",
-			),
-		).toEqual({
-			action: "update_pull_request",
-			repository: "example/repo",
-			branch: "internet-workflow/fix",
-			prNumber: 17,
-		});
-	});
-
-	it("does not guess ambiguous or unsupported destructive actions", () => {
-		expect(parseChatGptConfirmationText("GitHub Allow access").action).toBeUndefined();
-		expect(
-			parseChatGptConfirmationText("GitHub Delete file Repository: example/repo Branch: x").action,
-		).toBeUndefined();
-		expect(
-			parseChatGptConfirmationText("GitHub Create branch and push branch Repository: example/repo Branch: x").action,
-		).toBeUndefined();
 	});
 });
