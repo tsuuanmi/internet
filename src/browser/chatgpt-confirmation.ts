@@ -129,7 +129,8 @@ async function primaryApprovalButton(root: Locator): Promise<Locator> {
 			if (splitGroups.length === 1) {
 				const splitButtons = await visibleMatches(splitGroups[0]!.locator(":scope > button"));
 				lastTopology = `actionBars=1 buttons=${buttons.length} directButtons=${directButtons.length} splitGroups=1 splitButtons=${splitButtons.length}`;
-				if (splitButtons.length > 2) throw new WorkflowConfirmationError("Website approval split control is ambiguous");
+				if (splitButtons.length > 2)
+					throw new WorkflowConfirmationError("Website approval split control is ambiguous");
 				if (buttons.length === 3 && directButtons.length === 1 && splitButtons.length === 2) {
 					const primary = splitButtons[0]!;
 					const menu = splitButtons[1]!;
