@@ -69,7 +69,9 @@ describe("workflow graph model", () => {
 		const first = completedNode("first");
 		const second = completedNode("second", [first.nodeId]);
 		expect(() =>
-			assertWorkflowGraph(snapshot([first, { ...second, input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} } }])),
+			assertWorkflowGraph(
+				snapshot([first, { ...second, input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} } }]),
+			),
 		).toThrow("keys do not match dependencies");
 		const a: WorkflowGraphNode = {
 			nodeId: "a",
