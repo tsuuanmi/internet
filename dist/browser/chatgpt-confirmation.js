@@ -1,11 +1,6 @@
 import { classifyWorkflowConfirmation, WorkflowConfirmationError, } from "#internet/workflow/approval-policy";
-const CHATGPT_CONFIRMATION_ROOT_SELECTORS = [
-    '[data-testid*="confirmation"]',
-    '[data-testid*="approval"]',
-    '[role="dialog"]',
-];
-const ALLOW_BUTTON_NAME = /^Allow$/u;
-const DENY_BUTTON_NAME = /^(?:Cancel|Deny|Reject|Don't allow|Don’t allow)$/u;
+const CHATGPT_APPROVAL_CARD_SELECTOR = '[data-testid="tool-approval-card"]';
+const CHATGPT_ACTION_BUTTONS_SELECTOR = '[data-testid="tool-action-buttons"]';
 const ACTIONABLE_CONTROL_TIMEOUT_MS = 40_000;
 const ACTIONABLE_CONTROL_POLL_MS = 200;
 function uniqueAction(text) {
@@ -19,7 +14,7 @@ function uniqueAction(text) {
         matches.push("update_pull_request");
     if (/\bcreate branch\b/u.test(lower))
         matches.push("create_branch");
-    if (/\b(?:create|update|edit) file\b|\bupdates?\s+(?:the\s+)?\S+\s+file\b/u.test(lower))
+    if (/\b(?:create|update|edit) file\b|\bupdates?\s+(?:the\s+)?\S+\s+file\b|\bupdates?\s+(?:the\s+)?(?:public\s+)?[A-Za-z0-9._/-]+\s+in\s+the\b/u.test(lower))
         matches.push("write_file");
     if (/\bcreate commit\b|\bcommit changes\b/u.test(lower))
         matches.push("create_commit");
@@ -71,31 +66,61 @@ async function visibleMatches(locator) {
     return matches;
 }
 async function visibleGitHubRoots(page) {
-    for (const selector of CHATGPT_CONFIRMATION_ROOT_SELECTORS) {
-        const roots = await visibleMatches(page.locator(selector));
-        const matches = [];
-        for (const root of roots) {
-            const text = await root.innerText().catch(() => "");
-            if (/\bgithub\b/iu.test(text))
-                matches.push(root);
-        }
-        if (matches.length > 0)
-            return matches;
+    const roots = await visibleMatches(page.locator(CHATGPT_APPROVAL_CARD_SELECTOR));
+    const matches = [];
+    for (const root of roots) {
+        const text = await root.innerText().catch(() => "");
+        if (/\bgithub\b/iu.test(text))
+            matches.push(root);
     }
-    return [];
+    return matches;
 }
-async function exactAllowButton(root) {
+async function primaryApprovalButton(root) {
     const deadline = Date.now() + ACTIONABLE_CONTROL_TIMEOUT_MS;
+    let lastTopology = "actionBars=0 buttons=0 directButtons=0 splitGroups=0 splitButtons=0";
     while (true) {
-        const [allow, deny] = await Promise.all([
-            visibleMatches(root.getByRole("button", { name: ALLOW_BUTTON_NAME })),
-            visibleMatches(root.getByRole("button", { name: DENY_BUTTON_NAME })),
-        ]);
-        if (allow.length === 1 && deny.length >= 1 && (await allow[0].isEnabled().catch(() => false))) {
-            return allow[0];
+        const actionBars = await visibleMatches(root.locator(CHATGPT_ACTION_BUTTONS_SELECTOR));
+        if (actionBars.length > 1) {
+            throw new WorkflowConfirmationError("unknown", "multiple Website tool action bars are visible");
+        }
+        if (actionBars.length === 1) {
+            const actionBar = actionBars[0];
+            const [buttons, directButtons, splitGroups] = await Promise.all([
+                visibleMatches(actionBar.locator("button")),
+                visibleMatches(actionBar.locator(":scope > button")),
+                visibleMatches(actionBar.locator(":scope > div")),
+            ]);
+            if (splitGroups.length > 1 || buttons.length > 3 || directButtons.length > 1) {
+                throw new WorkflowConfirmationError("unknown", "Website approval action topology is ambiguous");
+            }
+            if (splitGroups.length === 1) {
+                const splitButtons = await visibleMatches(splitGroups[0].locator(":scope > button"));
+                lastTopology = `actionBars=1 buttons=${buttons.length} directButtons=${directButtons.length} splitGroups=1 splitButtons=${splitButtons.length}`;
+                if (splitButtons.length > 2) {
+                    throw new WorkflowConfirmationError("unknown", "Website approval split control is ambiguous");
+                }
+                if (buttons.length === 3 && directButtons.length === 1 && splitButtons.length === 2) {
+                    const primary = splitButtons[0];
+                    const menu = splitButtons[1];
+                    const [primaryPopup, menuPopup] = await Promise.all([
+                        primary.getAttribute("aria-haspopup"),
+                        menu.getAttribute("aria-haspopup"),
+                    ]);
+                    if (primaryPopup !== null || menuPopup !== "menu") {
+                        throw new WorkflowConfirmationError("unknown", "Website approval split control semantics are invalid");
+                    }
+                    return primary;
+                }
+            }
+            else {
+                lastTopology = `actionBars=1 buttons=${buttons.length} directButtons=${directButtons.length} splitGroups=0 splitButtons=0`;
+            }
+        }
+        else {
+            lastTopology = "actionBars=0 buttons=0 directButtons=0 splitGroups=0 splitButtons=0";
         }
         if (Date.now() >= deadline) {
-            throw new WorkflowConfirmationError("unknown", "GitHub confirmation did not expose one enabled exact Allow action and an explicit deny action");
+            throw new WorkflowConfirmationError("unknown", `GitHub confirmation action topology did not match the expected split approval control (${lastTopology})`);
         }
         await new Promise((resolve) => setTimeout(resolve, ACTIONABLE_CONTROL_POLL_MS));
     }
@@ -113,7 +138,7 @@ export async function chatgptHandleWorkflowConfirmation(page, scope, accountId, 
         throw new WorkflowConfirmationError("unknown", "multiple GitHub Website confirmations are visible");
     }
     const root = roots[0];
-    const allow = await exactAllowButton(root);
+    const primary = await primaryApprovalButton(root);
     const context = { ...scope, accountId, sessionId };
     const decision = classifyWorkflowConfirmation(context, parseChatGptConfirmationText(await root.innerText()));
     if (decision.kind === "merge-requires-user") {
@@ -121,7 +146,9 @@ export async function chatgptHandleWorkflowConfirmation(page, scope, accountId, 
     }
     if (decision.kind === "unknown")
         throw new WorkflowConfirmationError("unknown", decision.reason);
-    await allow.press("Enter");
+    await primary.click({ timeout: ACTIONABLE_CONTROL_TIMEOUT_MS }).catch((error) => {
+        throw new WorkflowConfirmationError("unknown", `Website primary approval action was not actionable: ${error instanceof Error ? error.message : String(error)}`);
+    });
     await root.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {
         throw new WorkflowConfirmationError("unknown", "Website confirmation remained visible after scoped approval");
     });
