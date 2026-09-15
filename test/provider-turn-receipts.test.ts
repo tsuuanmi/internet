@@ -7,14 +7,17 @@ import {
 	hashProviderTurnText,
 	ProviderTurnReceiptStore,
 	reconcileProviderTurn,
+	workflowJobIdFromRequestKey,
 } from "#internet/browser/turn-receipts";
 
 const roots: string[] = [];
+const workflowJobId = "0123456789abcdef0123456789abcdef";
+const requestKey = `${workflowJobId}:research:A:round:1:member:1:input`;
 
 function store(): ProviderTurnReceiptStore {
 	const root = mkdtempSync(join(tmpdir(), "internet-turn-receipt-"));
 	roots.push(root);
-	return new ProviderTurnReceiptStore(root, "chatgpt-thinker");
+	return new ProviderTurnReceiptStore(root, workflowJobId, "chatgpt-thinker");
 }
 
 afterEach(async () => {
@@ -22,21 +25,27 @@ afterEach(async () => {
 });
 
 describe("ProviderTurnReceiptStore", () => {
+	it("derives and enforces the workflow scope encoded by request identity", () => {
+		expect(workflowJobIdFromRequestKey(requestKey)).toBe(workflowJobId);
+		expect(() => workflowJobIdFromRequestKey("unscoped-request")).toThrow("workflow job id");
+	});
+
 	it("persists one submitted logical request and rejects request-key drift", () => {
 		const receipts = store();
 		const submitted = receipts.submit({
 			sessionId: "workflow-session",
-			requestKey: "job:node:input",
+			requestKey,
 			prompt: "first prompt",
 			previousResponse: "old response",
 			conversationUrl: "https://chatgpt.com/c/example",
 		});
 
-		expect(receipts.read("workflow-session", "job:node:input")).toEqual(submitted);
+		expect(receipts.read("workflow-session", requestKey)).toEqual(submitted);
+		expect(submitted.workflowJobId).toBe(workflowJobId);
 		expect(() =>
 			receipts.submit({
 				sessionId: "workflow-session",
-				requestKey: "job:node:input",
+				requestKey,
 				prompt: "different prompt",
 				previousResponse: "old response",
 			}),
@@ -47,7 +56,7 @@ describe("ProviderTurnReceiptStore", () => {
 		const receipts = store();
 		const submitted = receipts.submit({
 			sessionId: "workflow-session",
-			requestKey: "job:node:input",
+			requestKey,
 			prompt: "prompt",
 			previousResponse: "old response",
 		});
@@ -59,7 +68,7 @@ describe("ProviderTurnReceiptStore", () => {
 		const receipts = store();
 		const submitted = receipts.submit({
 			sessionId: "workflow-session",
-			requestKey: "job:node:input",
+			requestKey,
 			prompt: "prompt",
 			previousResponse: "old response",
 		});
@@ -67,7 +76,7 @@ describe("ProviderTurnReceiptStore", () => {
 
 		const completed = receipts.complete(
 			"workflow-session",
-			"job:node:input",
+			requestKey,
 			"late completed response",
 			"https://chatgpt.com/c/example",
 		);
@@ -82,7 +91,7 @@ describe("ProviderTurnReceiptStore", () => {
 		const receipts = store();
 		const submitted = receipts.submit({
 			sessionId: "workflow-session",
-			requestKey: "job:node:input",
+			requestKey,
 			prompt: "prompt",
 			previousResponse: "old response",
 		});
@@ -94,13 +103,13 @@ describe("ProviderTurnReceiptStore", () => {
 		const receipts = store();
 		receipts.submit({
 			sessionId: "workflow-session",
-			requestKey: "job:node:input",
+			requestKey,
 			prompt: "prompt",
 			previousResponse: "old response",
 		});
 		const completed = receipts.complete(
 			"workflow-session",
-			"job:node:input",
+			requestKey,
 			"expected response",
 			"https://chatgpt.com/c/example",
 		);
@@ -109,7 +118,7 @@ describe("ProviderTurnReceiptStore", () => {
 		expect(() =>
 			receipts.complete(
 				"workflow-session",
-				"job:node:input",
+				requestKey,
 				"conflicting response",
 				"https://chatgpt.com/c/example",
 			),
