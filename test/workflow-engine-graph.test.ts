@@ -56,7 +56,11 @@ describe("WorkflowEngine graph recovery", () => {
 			async runStep(request) {
 				const key = `${request.sessionId}:${request.step.stepId}`;
 				calls.set(key, (calls.get(key) ?? 0) + 1);
-				if (request.sessionId.endsWith(":research:A") && request.step.stepId === "round:1:member:2" && !failedOnce) {
+				if (
+					request.sessionId.endsWith(":research:A") &&
+					request.step.stepId === "round:1:member:2" &&
+					!failedOnce
+				) {
 					failedOnce = true;
 					return {
 						ok: false,
@@ -82,10 +86,7 @@ describe("WorkflowEngine graph recovery", () => {
 		const b1 = workflowNodeId.researchMember("B", 1, 1);
 		const b2 = workflowNodeId.researchMember("B", 1, 2);
 
-		await Promise.all([
-			engine.executeNode(job.jobId, a1, "driver"),
-			engine.executeNode(job.jobId, b1, "driver"),
-		]);
+		await Promise.all([engine.executeNode(job.jobId, a1, "driver"), engine.executeNode(job.jobId, b1, "driver")]);
 		engine.advance(job.jobId);
 		await engine.executeNode(job.jobId, a2, "driver");
 
@@ -98,10 +99,7 @@ describe("WorkflowEngine graph recovery", () => {
 		});
 		expect(current.graph.nodes[b2]?.state).toBe("READY");
 
-		await Promise.all([
-			engine.executeNode(job.jobId, a2, "driver"),
-			engine.executeNode(job.jobId, b2, "driver"),
-		]);
+		await Promise.all([engine.executeNode(job.jobId, a2, "driver"), engine.executeNode(job.jobId, b2, "driver")]);
 		current = engine.status(job.jobId);
 		expect(current.graph.nodes[a1]?.state).toBe("COMPLETED");
 		expect(current.graph.nodes[a2]?.state).toBe("COMPLETED");
@@ -164,7 +162,9 @@ describe("WorkflowEngine graph recovery", () => {
 			rounds: 1,
 			async runStep(request) {
 				return await new Promise((_, reject) => {
-					request.signal?.addEventListener("abort", () => reject(new Error("aborted test provider")), { once: true });
+					request.signal?.addEventListener("abort", () => reject(new Error("aborted test provider")), {
+						once: true,
+					});
 				});
 			},
 		};
