@@ -44,7 +44,9 @@ function defaultTeams(): WorkflowTeamRunner {
 
 function defaultWriter(): WorkflowWriterRunner {
 	return {
-		async deliverExact() {},
+		async deliverExact() {
+			return { conversationUrl: "https://chatgpt.com/c/workflow-test-writer" };
+		},
 		async runControl() {
 			return { status: "BLOCKED", message: "writer result was not configured for this test" };
 		},
