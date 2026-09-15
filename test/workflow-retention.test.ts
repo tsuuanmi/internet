@@ -15,7 +15,12 @@ function fixture() {
 	roots.push(root);
 	const runtime = createWorkflowTestRuntime(root);
 	const handoffs = new WorkflowHandoffStore(root);
-	const retention = new WorkflowRetentionManager(root, runtime.jobs, undefined, () => new Date("2026-09-09T00:00:00.000Z"));
+	const retention = new WorkflowRetentionManager(
+		root,
+		runtime.jobs,
+		undefined,
+		() => new Date("2026-09-09T00:00:00.000Z"),
+	);
 	return { root, ...runtime, handoffs, retention };
 }
 
