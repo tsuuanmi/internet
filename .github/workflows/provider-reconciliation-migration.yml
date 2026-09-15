@@ -19,6 +19,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: python3 scripts/temp-provider-reconciliation.py
+      - run: python3 scripts/temp-provider-reconciliation-fix.py
       - run: npx biome check --write src test scripts
       - run: npm run check
       - run: npm test
