@@ -109,7 +109,9 @@ export class WorkflowDriver {
 
 			const runnable = this.engine.runnableNodeIds(jobId);
 			if (runnable.length > 0) {
-				await Promise.all(runnable.map((nodeId) => this.engine.executeNode(jobId, nodeId, ownerInstanceId, signal)));
+				await Promise.all(
+					runnable.map((nodeId) => this.engine.executeNode(jobId, nodeId, ownerInstanceId, signal)),
+				);
 				continue;
 			}
 
