@@ -1,17 +1,26 @@
 import type { Locator, Page } from "patchright-core";
 import { describe, expect, it, vi } from "vitest";
-import {
-	chatgptHandleWorkflowConfirmation,
-	parseChatGptConfirmationText,
-} from "#internet/browser/chatgpt-confirmation";
+import { chatgptHandleWorkflowConfirmation } from "#internet/browser/chatgpt-confirmation";
 import type { WorkflowApprovalScope } from "#internet/workflow/approval-policy";
+
+type StructuredApprovalFixture = {
+	actionName: string;
+	isWrite: boolean;
+	repositoryFullName?: string;
+	branch?: string;
+	branchName?: string;
+	head?: string;
+	headBranch?: string;
+	prNumber?: number;
+	path?: string;
+};
 
 type FakeLocator = {
 	visible?: boolean;
 	locator?: (selector: string) => Locator;
 	getAttribute?: ReturnType<typeof vi.fn>;
 	click?: ReturnType<typeof vi.fn>;
-	innerText?: () => Promise<string>;
+	evaluate?: ReturnType<typeof vi.fn>;
 	waitFor?: ReturnType<typeof vi.fn>;
 };
 
@@ -26,7 +35,7 @@ function listLocator<T extends FakeLocator>(items: T[]): Locator {
 }
 
 function approvalPage(
-	text: string,
+	approval: StructuredApprovalFixture | undefined,
 	options?: { extraSplitButton?: boolean },
 ): {
 	page: Page;
@@ -59,7 +68,7 @@ function approvalPage(
 	};
 	const waitFor = vi.fn(async () => {});
 	const root: FakeLocator = {
-		innerText: async () => text,
+		evaluate: vi.fn(async () => approval),
 		waitFor,
 		locator: (selector: string) => listLocator(selector === '[data-testid="tool-action-buttons"]' ? [actionBar] : []),
 	};
@@ -76,14 +85,17 @@ const scope: WorkflowApprovalScope = {
 	authority: "IMPLEMENTATION",
 };
 
-const LIVE_FILE_UPDATE_TEXT =
-	"GitHub\nAllow ChatGPT to use GitHub?\n" +
-	"Updates the public README.md in the tsuuanmi/internet repository on branch " +
-	"internet-workflow/0123456789abcdef0123456789abcdef with extensive project documentation, including operational details.";
+const LIVE_UPDATE_FILE_APPROVAL: StructuredApprovalFixture = {
+	actionName: "update_file",
+	isWrite: true,
+	repositoryFullName: "tsuuanmi/internet",
+	path: "README.md",
+	branch: "internet-workflow/0123456789abcdef0123456789abcdef",
+};
 
 describe("ChatGPT GitHub approval card", () => {
-	it("selects the primary side of the live split approval control structurally", async () => {
-		const page = approvalPage(LIVE_FILE_UPDATE_TEXT);
+	it("authorizes the live update_file action from structured tool metadata", async () => {
+		const page = approvalPage(LIVE_UPDATE_FILE_APPROVAL);
 
 		await expect(
 			chatgptHandleWorkflowConfirmation(page.page, scope, "chatgpt-writer", "writer-session"),
@@ -94,36 +106,47 @@ describe("ChatGPT GitHub approval card", () => {
 		expect(page.waitFor).toHaveBeenCalledWith({ state: "hidden", timeout: 10_000 });
 	});
 
-	it("fails closed when the split approval topology is ambiguous", async () => {
-		const page = approvalPage(LIVE_FILE_UPDATE_TEXT, { extraSplitButton: true });
+	it("validates structured workflow scope before resolving the primary control", async () => {
+		const page = approvalPage({
+			...LIVE_UPDATE_FILE_APPROVAL,
+			branch: "internet-workflow/ffffffffffffffffffffffffffffffff",
+		});
 
 		await expect(
 			chatgptHandleWorkflowConfirmation(page.page, scope, "chatgpt-writer", "writer-session"),
-		).rejects.toThrow("approval action topology is ambiguous");
+		).rejects.toThrow("confirmation branch does not match the workflow branch");
 		expect(page.primary.click).not.toHaveBeenCalled();
 		expect(page.menu.click).not.toHaveBeenCalled();
 		expect(page.reject.click).not.toHaveBeenCalled();
 	});
 
-	it("parses the live public README update confirmation grammar", () => {
-		expect(parseChatGptConfirmationText(LIVE_FILE_UPDATE_TEXT)).toEqual({
-			action: "write_file",
-			repository: "tsuuanmi/internet",
-			branch: "internet-workflow/0123456789abcdef0123456789abcdef",
-			prNumber: undefined,
-		});
-	});
+	it("fails closed when structured tool metadata is unavailable", async () => {
+		const page = approvalPage(undefined);
 
-	it("validates workflow scope before clicking the structurally resolved primary action", async () => {
-		const page = approvalPage(
-			LIVE_FILE_UPDATE_TEXT.replace(
-				"internet-workflow/0123456789abcdef0123456789abcdef",
-				"internet-workflow/ffffffffffffffffffffffffffffffff",
-			),
-		);
 		await expect(
 			chatgptHandleWorkflowConfirmation(page.page, scope, "chatgpt-writer", "writer-session"),
-		).rejects.toThrow("confirmation branch does not match the workflow branch");
+		).rejects.toThrow("structured tool metadata is unavailable");
+		expect(page.primary.click).not.toHaveBeenCalled();
+	});
+
+	it("fails closed for an unsupported structured tool action", async () => {
+		const page = approvalPage({
+			...LIVE_UPDATE_FILE_APPROVAL,
+			actionName: "delete_repository",
+		});
+
+		await expect(
+			chatgptHandleWorkflowConfirmation(page.page, scope, "chatgpt-writer", "writer-session"),
+		).rejects.toThrow("Website confirmation tool action is unsupported: delete_repository");
+		expect(page.primary.click).not.toHaveBeenCalled();
+	});
+
+	it("fails closed when the split approval topology is ambiguous", async () => {
+		const page = approvalPage(LIVE_UPDATE_FILE_APPROVAL, { extraSplitButton: true });
+
+		await expect(
+			chatgptHandleWorkflowConfirmation(page.page, scope, "chatgpt-writer", "writer-session"),
+		).rejects.toThrow("approval action topology is ambiguous");
 		expect(page.primary.click).not.toHaveBeenCalled();
 		expect(page.menu.click).not.toHaveBeenCalled();
 		expect(page.reject.click).not.toHaveBeenCalled();

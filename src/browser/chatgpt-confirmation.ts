@@ -4,7 +4,6 @@ import {
 	classifyWorkflowConfirmation,
 	type WorkflowApprovalContext,
 	type WorkflowApprovalScope,
-	type WorkflowConfirmationAction,
 	WorkflowConfirmationError,
 	type WorkflowConfirmationObservation,
 } from "#internet/workflow/approval-policy";
@@ -14,54 +13,16 @@ const CHATGPT_ACTION_BUTTONS_SELECTOR = '[data-testid="tool-action-buttons"]';
 const ACTIONABLE_CONTROL_TIMEOUT_MS = 40_000;
 const ACTIONABLE_CONTROL_POLL_MS = 200;
 
-function uniqueAction(text: string): WorkflowConfirmationAction | undefined {
-	const lower = text.toLowerCase();
-	const matches: WorkflowConfirmationAction[] = [];
-	if (/\bmerge(?: this)? pull request\b|\bmerge pull request\b/u.test(lower)) matches.push("merge_pull_request");
-	if (/\b(?:create|open)(?: a)? pull request\b/u.test(lower)) matches.push("create_pull_request");
-	if (/\bupdate pull request\b|\bedit pull request\b/u.test(lower)) matches.push("update_pull_request");
-	if (/\bcreate branch\b/u.test(lower)) matches.push("create_branch");
-	if (
-		/\b(?:create|update|edit) file\b|\bupdates?\s+(?:the\s+)?\S+\s+file\b|\bupdates?\s+(?:the\s+)?(?:public\s+)?[A-Za-z0-9._/-]+\s+in\s+the\b/u.test(
-			lower,
-		)
-	)
-		matches.push("write_file");
-	if (/\bcreate commit\b|\bcommit changes\b/u.test(lower)) matches.push("create_commit");
-	if (/\bpush(?: changes| branch)?\b/u.test(lower)) matches.push("push_branch");
-	return matches.length === 1 ? matches[0] : undefined;
-}
-
-function repositoryFromText(text: string): string | undefined {
-	const url = text.match(/https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/u);
-	if (url) return `${url[1]}/${url[2].replace(/\.git$/u, "")}`;
-	const label = text.match(/(?:repository|repo)\s*[:=]\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/iu);
-	if (label) return label[1];
-	const naturalLanguage = text.match(/\bin\s+the\s+(?:github\s+)?repository\s+([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/iu);
-	if (naturalLanguage) return naturalLanguage[1];
-	return text.match(/\bin\s+the\s+([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\s+repository\b/iu)?.[1];
-}
-
-function branchFromText(text: string): string | undefined {
-	const label = text.match(/(?:branch|head)\s*[:=]\s*([A-Za-z0-9._/-]+)/iu);
-	if (label) return label[1];
-	return text.match(/\bon\s+branch\s+([A-Za-z0-9._/-]+)/iu)?.[1];
-}
-
-function prNumberFromText(text: string): number | undefined {
-	const match = text.match(/(?:pull request|pr)\s*[:#=]?\s*#?(\d+)/iu);
-	if (!match) return undefined;
-	const value = Number(match[1]);
-	return Number.isSafeInteger(value) && value > 0 ? value : undefined;
-}
-
-export function parseChatGptConfirmationText(text: string): WorkflowConfirmationObservation {
-	return {
-		action: uniqueAction(text),
-		repository: repositoryFromText(text),
-		branch: branchFromText(text),
-		prNumber: prNumberFromText(text),
-	};
+interface StructuredToolApproval {
+	readonly actionName: string;
+	readonly isWrite: boolean;
+	readonly repositoryFullName?: string;
+	readonly branch?: string;
+	readonly branchName?: string;
+	readonly head?: string;
+	readonly headBranch?: string;
+	readonly prNumber?: number;
+	readonly path?: string;
 }
 
 async function visibleMatches(locator: Locator): Promise<Locator[]> {
@@ -74,14 +35,89 @@ async function visibleMatches(locator: Locator): Promise<Locator[]> {
 	return matches;
 }
 
-async function visibleGitHubRoots(page: Page): Promise<Locator[]> {
-	const roots = await visibleMatches(page.locator(CHATGPT_APPROVAL_CARD_SELECTOR));
-	const matches: Locator[] = [];
-	for (const root of roots) {
-		const text = await root.innerText().catch(() => "");
-		if (/\bgithub\b/iu.test(text)) matches.push(root);
+async function structuredToolApproval(root: Locator): Promise<StructuredToolApproval | undefined> {
+	return root.evaluate((element) => {
+		type Fiber = {
+			readonly memoizedProps?: unknown;
+			readonly return?: Fiber | null;
+		};
+
+		const isRecord = (value: unknown): value is Record<string, unknown> =>
+			typeof value === "object" && value !== null && !Array.isArray(value);
+		const stringField = (value: Record<string, unknown>, key: string): string | undefined => {
+			const field = value[key];
+			return typeof field === "string" && field.length > 0 ? field : undefined;
+		};
+		const positiveIntegerField = (value: Record<string, unknown>, key: string): number | undefined => {
+			const field = value[key];
+			return typeof field === "number" && Number.isSafeInteger(field) && field > 0 ? field : undefined;
+		};
+
+		const fiberKey = Reflect.ownKeys(element).find(
+			(key) => typeof key === "string" && key.startsWith("__reactFiber$"),
+		);
+		if (typeof fiberKey !== "string") return undefined;
+
+		let fiber = (element as unknown as Record<string, unknown>)[fiberKey] as Fiber | null | undefined;
+		for (let depth = 0; fiber !== undefined && fiber !== null && depth < 64; depth += 1) {
+			const props = fiber.memoizedProps;
+			if (
+				isRecord(props) &&
+				isRecord(props.connector) &&
+				typeof props.actionName === "string" &&
+				typeof props.isWrite === "boolean" &&
+				isRecord(props.params)
+			) {
+				const params = props.params;
+				return {
+					actionName: props.actionName,
+					isWrite: props.isWrite,
+					repositoryFullName: stringField(params, "repository_full_name"),
+					branch: stringField(params, "branch"),
+					branchName: stringField(params, "branch_name"),
+					head: stringField(params, "head"),
+					headBranch: stringField(params, "head_branch"),
+					prNumber: positiveIntegerField(params, "pr_number"),
+					path: stringField(params, "path"),
+				};
+			}
+			fiber = fiber.return;
+		}
+		return undefined;
+	});
+}
+
+function observationFromStructuredApproval(approval: StructuredToolApproval): WorkflowConfirmationObservation {
+	const repository = approval.repositoryFullName;
+	switch (approval.actionName) {
+		case "create_branch":
+			return { action: "create_branch", repository, branch: approval.branchName };
+		case "create_file":
+		case "update_file":
+			return { action: "write_file", repository, branch: approval.branch };
+		case "create_pull_request":
+			return {
+				action: "create_pull_request",
+				repository,
+				branch: approval.head ?? approval.headBranch,
+			};
+		case "update_pull_request":
+			return {
+				action: "update_pull_request",
+				repository,
+				branch: approval.branch ?? approval.head ?? approval.headBranch,
+				prNumber: approval.prNumber,
+			};
+		case "merge_pull_request":
+			return {
+				action: "merge_pull_request",
+				repository,
+				branch: approval.branch ?? approval.head ?? approval.headBranch,
+				prNumber: approval.prNumber,
+			};
+		default:
+			return {};
 	}
-	return matches;
 }
 
 async function primaryApprovalButton(root: Locator): Promise<Locator> {
@@ -150,19 +186,33 @@ export async function chatgptHandleWorkflowConfirmation(
 	accountId: AccountId,
 	sessionId: string,
 ): Promise<boolean> {
-	const roots = await visibleGitHubRoots(page);
+	const roots = await visibleMatches(page.locator(CHATGPT_APPROVAL_CARD_SELECTOR));
 	if (roots.length === 0) return false;
 	if (roots.length !== 1) {
-		throw new WorkflowConfirmationError("unknown", "multiple GitHub Website confirmations are visible");
+		throw new WorkflowConfirmationError("unknown", "multiple Website tool confirmations are visible");
 	}
 	const root = roots[0]!;
-	const primary = await primaryApprovalButton(root);
+	const approval = await structuredToolApproval(root);
+	if (approval === undefined) {
+		throw new WorkflowConfirmationError("unknown", "Website confirmation structured tool metadata is unavailable");
+	}
+	if (!approval.isWrite) {
+		throw new WorkflowConfirmationError("unknown", "Website confirmation is not a write action");
+	}
+	const observation = observationFromStructuredApproval(approval);
+	if (observation.action === undefined) {
+		throw new WorkflowConfirmationError(
+			"unknown",
+			`Website confirmation tool action is unsupported: ${approval.actionName}`,
+		);
+	}
 	const context: WorkflowApprovalContext = { ...scope, accountId, sessionId };
-	const decision = classifyWorkflowConfirmation(context, parseChatGptConfirmationText(await root.innerText()));
+	const decision = classifyWorkflowConfirmation(context, observation);
 	if (decision.kind === "merge-requires-user") {
 		throw new WorkflowConfirmationError("merge-requires-user", decision.reason);
 	}
 	if (decision.kind === "unknown") throw new WorkflowConfirmationError("unknown", decision.reason);
+	const primary = await primaryApprovalButton(root);
 	await primary.click({ timeout: ACTIONABLE_CONTROL_TIMEOUT_MS }).catch((error: unknown) => {
 		throw new WorkflowConfirmationError(
 			"unknown",
