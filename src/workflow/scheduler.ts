@@ -32,6 +32,6 @@ export function schedulableWorkflowNodes(graph: WorkflowGraphSnapshot): readonly
 
 export function activeWorkflowNodes(graph: WorkflowGraphSnapshot): readonly WorkflowGraphNode[] {
 	return Object.values(graph.nodes)
-		.filter((node) => node.state === "RUNNING" || node.state === "WAITING_USER" || node.state === "RECOVERING")
+		.filter((node) => node.state === "RUNNING" || node.state === "RECOVERING")
 		.sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 }
