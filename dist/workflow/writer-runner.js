@@ -197,6 +197,7 @@ export class BrowserWorkflowWriterRunner {
             requestKey: request.requestKey,
             timeoutMs: this.policy.hardTimeoutMs,
             stallTimeoutMs: this.policy.stallTimeoutMs,
+            responseRepresentation: "text",
             onProgress: request.onProviderProgress,
             confirmation,
             signal: request.signal,

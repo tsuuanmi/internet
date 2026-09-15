@@ -1,5 +1,4 @@
 import { InternetError } from "#internet/core/errors";
-import { htmlToMarkdown } from "#internet/core/markdown";
 function delay(ms, signal) {
     return new Promise((resolve, reject) => {
         if (signal?.aborted) {
@@ -67,7 +66,7 @@ export async function waitForStableCompletion(read, options) {
             if (!snapshot.running && unchanged) {
                 stableSince ??= at;
                 if (at - stableSince >= options.stableMs) {
-                    return candidate?.html ? htmlToMarkdown(snapshot.html) : text;
+                    return { text, html: snapshot.html };
                 }
             }
             else {
