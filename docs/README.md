@@ -1,28 +1,30 @@
 # Internet Runtime Documentation
 
-- **Status:** current as-built documentation plus proposed graph-orchestration contract
-- **Last synchronized:** 2026-09-10
-- **Baseline:** workflow-team observability/control hardening plus provider-agnostic member routing
+- **Status:** current as-built documentation
+- **Last synchronized:** 2026-09-15
+- **Baseline:** durable workflow graph orchestration, node-level recovery, provider progress leases, and provider-agnostic team routing
 
-This directory documents the current `@tsuuanmi/internet` runtime. The durable coding workflow, automatic driver, exact handoffs, separate writer, exact-head review/health/merge gates, provider-agnostic agent-team execution, concurrent workflow lanes, structured team traces, and user-facing workflow operator controls are implemented. New workflows pin a fresh upstream `main` HEAD rather than Local worktree HEAD, successful workflow merges are squash-only so they add one commit to `main`, and one exact workflow can be removed with `/workflow delete <jobId>`.
+This directory documents the current `@tsuuanmi/internet` runtime. The coding workflow is an authoritative durable dependency graph: explicit nodes and dependency edges determine readiness, exact-input-bound results preserve completed work, execution IDs fence stale attempts, and recovery targets the smallest failed or orphaned node. The graph snapshot is correctness state; the ordered event journal is diagnostic/observability history rather than a second replay engine.
 
-The current default agent team uses two independent ChatGPT-backed thinker accounts as `Member 1` and `Member 2`. That is a routing choice, not a team semantic. Gemini remains supported for explicit direct chat/research/team use but is temporarily outside the default team/workflow route.
+The automatic driver owns scheduling and execution ownership only. `WorkflowEngine` owns workflow-domain transitions, including scheduler failure blocking. Research A/B and Review A/B become ready independently, while the account scheduler remains the only same-account capacity gate. The separate `chatgpt-writer` account remains the sole workflow mutation authority.
 
-A new proposed runtime-hardening contract is documented in [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md). It is **not yet as-built behavior**. It defines the intended move from coarse lane/team retry to durable dependency-graph scheduling, node-level recovery, execution fencing, progress leases, explicit `WAITING_USER` states, deterministic automation-error classification, and graph-derived operator status.
+Provider completion now separates execution ownership leases from semantic provider progress. Workflow turns use a hard deadline plus a shorter no-meaningful-progress stall lease; response/generation transitions renew provider progress, while a static thinking control or unrelated DOM churn does not. Provider stalls, hard timeouts, browser failures, authentication failures, deterministic automation defects, and user-owned actions are classified before recovery policy is chosen.
+
+The current default agent team uses two independent ChatGPT-backed thinker accounts as `Member 1` and `Member 2`. That is a routing choice, not a team semantic. Gemini remains supported for explicit direct chat/research/team use but is outside the default workflow route.
 
 ## Start here
 
 - [`internet-team-architecture.md`](./internet-team-architecture.md) — concise architecture and authority/data/control boundaries.
 - [`how-it-works.md`](./how-it-works.md) — current server-side implementation and runtime behavior.
 - [`WORKFLOW.md`](./WORKFLOW.md) — user-visible workflow behavior and control surface.
-- [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — current deterministic state machine, driver, durable receipts, traces, retries, health and merge gates.
-- [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md) — implemented workflow-team observability/control/prompt/concurrency hardening and current routing adjustment.
-- [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md) — proposed durable graph scheduler, node-level retry/reconciliation, event journal, provider progress, human-action states, and explainable status contract.
+- [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic workflow engine, driver, durable receipts, health and merge gates.
+- [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md) — current durable graph scheduler, node-level recovery/reconciliation, event journal, provider progress, human-action boundaries, and status projection contract.
+- [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md) — workflow-team observability/control/prompt/concurrency hardening history.
 - [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md) — provider-agnostic team quality contract, current two-ChatGPT routing, and lane concurrency contract.
 - [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md) — start/list/status/watch/stop/continue/delete operator semantics.
 - [`SRS.md`](./SRS.md) — normative workflow requirements.
 - [`ROADMAP.md`](./ROADMAP.md) — completed P0-P13 roadmap and explicitly deferred directions.
-- [`TODO.md`](./TODO.md) — implementation closure boundary and currently accepted next hardening work.
+- [`TODO.md`](./TODO.md) — current closure boundary and deliberately deferred work.
 - [`UPDATE.md`](./UPDATE.md) — historical implementation delta through P13.
 
 ## Architecture decisions
@@ -54,21 +56,19 @@ These documents describe observed Website surfaces used by browser automation. T
 | `how-it-works.md` | current implementation | as-built source of truth |
 | `SRS.md` | required invariants | normative requirements |
 | `WORKFLOW.md` | end-to-end user flow | operational contract |
-| `WORKFLOW-ENGINE.md` | current deterministic runtime/state | as-built runtime design contract |
-| `WORKFLOW-GRAPH-ORCHESTRATION.md` | next graph/recovery/observability architecture | proposed implementation contract |
+| `WORKFLOW-ENGINE.md` | deterministic workflow runtime | as-built runtime design contract |
+| `WORKFLOW-GRAPH-ORCHESTRATION.md` | graph/recovery/observability architecture | as-built execution contract |
 | `internet-team-architecture.md` | concise architecture | architecture overview |
 | `AGENT-TEAM-DESIGN.md` | provider-agnostic team quality + current routing + parallel lane requirements | current team contract |
 | `WORKFLOW-OPERATOR-CONTRACT.md` | user-facing workflow control/inspection semantics | current operator contract |
-| `WORKFLOW-HARDENING.md` | implemented post-roadmap hardening rationale and acceptance criteria | current hardening record |
+| `WORKFLOW-HARDENING.md` | post-roadmap hardening rationale and acceptance criteria | hardening history |
 | ADRs | why accepted choices exist | historical design authority |
 | `ROADMAP.md` | completed phases / deferred directions | planning history |
-| `TODO.md` | implementation closure / accepted next work / deferred items | working backlog boundary |
+| `TODO.md` | implementation closure / deferred items | working backlog boundary |
 | `UPDATE.md` | historical changes through P13 | implementation history |
 
 ## Current completion boundary
 
-The explicit P0-P13 coding-workflow roadmap remains complete. The workflow-team hardening and current provider-agnostic member routing are implemented without inventing a new numbered phase.
+The P0-P13 coding-workflow roadmap, provider-agnostic team hardening, and durable graph-orchestration hardening are implemented. The runtime has one authoritative graph/scheduler/reducer/recovery path; obsolete coarse team trace/replay state and compatibility execution paths are not retained.
 
-Real workflow runs have now established a concrete next hardening requirement: durable graph scheduling and node-level recovery/observability. That work is accepted in [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md) but is not yet implemented and must not be described as current runtime behavior.
-
-Other work remains deliberately deferred until a concrete need exists, including dynamic provider/account health routing, automatic task detection, Website-level cross-conversation/project memory as a correctness dependency, generic user-defined arbitrary DAG workflows, multi-writer pooling, sophisticated artifact storage, autonomous production deployment, and broad non-coding generalization.
+Other work remains deliberately deferred until a concrete need exists, including dynamic member/provider health substitution beyond same-node recovery, automatic task detection, Website-level cross-conversation/project memory as a correctness dependency, generic user-defined arbitrary DAG workflows beyond the internal workflow graph, degraded one-team quorum modes, multi-writer pooling, sophisticated artifact storage, autonomous production deployment, and broad non-coding generalization.
