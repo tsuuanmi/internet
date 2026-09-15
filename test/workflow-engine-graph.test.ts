@@ -219,6 +219,91 @@ describe("WorkflowEngine graph recovery", () => {
 		expect(engine.runnableNodeIds(job.jobId)).not.toContain(workflowNodeId.writerImplementation());
 	});
 
+	it("retries only an orphaned synthesis while preserving completed member receipts", async () => {
+		let synthesisCalls = 0;
+		const teams: WorkflowTeamRunner = {
+			rounds: 1,
+			async runStep(request) {
+				if (request.sessionId.endsWith(":research:A") && request.step.kind === "synthesis") {
+					synthesisCalls += 1;
+					if (synthesisCalls === 1) {
+						return await new Promise((_, reject) => {
+							request.signal?.addEventListener("abort", () => reject(new Error("aborted synthesis")), {
+								once: true,
+							});
+						});
+					}
+				}
+				return successfulStep(request);
+			},
+		};
+		const { engine } = createWorkflowTestRuntime(root(), { teams, engine: { executionLeaseMs: 20 } });
+		const job = start(engine);
+		const a1 = workflowNodeId.researchMember("A", 1, 1);
+		const a2 = workflowNodeId.researchMember("A", 1, 2);
+		const synthesis = workflowNodeId.researchSynthesis("A");
+
+		await engine.executeNode(job.jobId, a1, "driver-a");
+		engine.advance(job.jobId);
+		await engine.executeNode(job.jobId, a2, "driver-a");
+		engine.advance(job.jobId);
+		const before = engine.status(job.jobId);
+		const memberOutputs = [before.graph.nodes[a1]?.output, before.graph.nodes[a2]?.output];
+		const controller = new AbortController();
+		const firstAttempt = engine.executeNode(job.jobId, synthesis, "driver-a", controller.signal);
+		const running = engine.status(job.jobId).graph.nodes[synthesis];
+		if (running?.execution === undefined) throw new Error("synthesis execution must be active");
+
+		const reconciled = engine.reconcile(job.jobId, "driver-b", Date.parse(running.execution.leaseUntil) + 1);
+		expect(reconciled.graph.nodes[synthesis]).toMatchObject({
+			state: "RECOVERING",
+			recovery: { action: "RECONCILE", attempt: 2 },
+		});
+		expect([reconciled.graph.nodes[a1]?.output, reconciled.graph.nodes[a2]?.output]).toEqual(memberOutputs);
+		controller.abort();
+		await expect(firstAttempt).rejects.toThrow("aborted synthesis");
+
+		const completed = await engine.executeNode(job.jobId, synthesis, "driver-b");
+		expect(completed.graph.nodes[synthesis]?.state).toBe("COMPLETED");
+		expect([completed.graph.nodes[a1]?.output, completed.graph.nodes[a2]?.output]).toEqual(memberOutputs);
+		expect(synthesisCalls).toBe(2);
+	});
+
+	it("recovers an orphaned execution after a new engine instance loads the durable graph", async () => {
+		const dataDir = root();
+		const teams: WorkflowTeamRunner = {
+			rounds: 1,
+			async runStep(request) {
+				return await new Promise((_, reject) => {
+					request.signal?.addEventListener("abort", () => reject(new Error("aborted old driver")), { once: true });
+				});
+			},
+		};
+		const firstRuntime = createWorkflowTestRuntime(dataDir, { teams, engine: { executionLeaseMs: 20 } });
+		const job = start(firstRuntime.engine);
+		const nodeId = workflowNodeId.researchMember("A", 1, 1);
+		const controller = new AbortController();
+		const oldExecution = firstRuntime.engine.executeNode(job.jobId, nodeId, "driver-old", controller.signal);
+		const running = firstRuntime.engine.status(job.jobId).graph.nodes[nodeId];
+		if (running?.execution === undefined) throw new Error("execution must be active");
+
+		const restarted = createWorkflowTestRuntime(dataDir, { teams, engine: { executionLeaseMs: 20 } });
+		expect(restarted.engine.status(job.jobId).graph.nodes[nodeId]?.execution?.executionId).toBe(
+			running.execution.executionId,
+		);
+		const reconciled = restarted.engine.reconcile(
+			job.jobId,
+			"driver-new",
+			Date.parse(running.execution.leaseUntil) + 1,
+		);
+		expect(reconciled.graph.nodes[nodeId]).toMatchObject({
+			state: "RECOVERING",
+			recovery: { action: "RECONCILE", attempt: 2 },
+		});
+		controller.abort();
+		await expect(oldExecution).rejects.toThrow("aborted old driver");
+	});
+
 	it("reconciles an orphaned running execution at the exact node boundary", async () => {
 		const teams: WorkflowTeamRunner = {
 			rounds: 1,
