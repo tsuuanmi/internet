@@ -1,227 +1,250 @@
 # Workflow Operator Contract
 
-- **Status:** current as-built contract
-- **Last synchronized:** 2026-09-10
-- **Scope:** starting, discovering, tracking, stopping, explicitly recovering, and deleting durable workflow jobs
+- **Status:** current as-built operator contract
+- **Last synchronized:** 2026-09-15
 
-## Goal
+The operator surface controls and inspects one authoritative durable workflow graph. It does not expose or maintain a second procedural team/lane state machine.
 
-The normal workflow is operable from the user-facing `/workflow` command family without reading `~/.dsh/internet/workflows/jobs/*.json` manually.
-
-The durable workflow job and trace stores remain authoritative. Operator commands are views/actions over that state, not a second orchestration system.
-
-The operator view should answer immediately:
+## Commands
 
 ```text
-Which workflow phase is active?
-Which Team A/B is running or failed?
-Which round/member/stage is each team on?
-What failed, is it retryable, and which backing provider/account produced the failure?
-What is waiting on that result?
+/workflow <objective>
+/workflow list
+/workflow status [jobId]
+/workflow watch [jobId]
+/workflow stop [jobId]
+/workflow continue [jobId]
+/workflow delete <jobId>
 ```
 
-## Command surface
-
-```text
-/workflow <objective>                 start a new workflow from fresh upstream main HEAD
-/workflow list                        list workflows owned by this Local session
-/workflow status [jobId]              inspect one workflow
-/workflow watch [jobId]               show the current snapshot and rely on live PROGRESS events
-/workflow stop [jobId]                abort active work and persist CANCELLED
-/workflow continue [jobId]            resume an explicit retry/recovery boundary
-/workflow delete <jobId>              remove one exact workflow's local durable state
-```
-
-Starting a workflow prints its durable job ID immediately.
+`internet_workflow` remains the lower-level deterministic tool surface.
 
 ## Job selection
 
-Commands never guess across ambiguous jobs.
+For commands where `jobId` is optional:
 
-For `status`, `watch`, `stop`, and `continue`:
-
-1. candidates are scoped to the current owner/Local session;
-2. an explicit `jobId` must belong to that session;
-3. when omitted, exactly one active job is selected automatically;
-4. if multiple active jobs exist, the command lists their IDs in the error and requires an explicit target;
-5. for non-mutating inspection, one unambiguous historical job may be selected when no active job exists;
+1. an explicit ID always wins;
+2. the job must belong to the current Local owner session;
+3. when omitted, exactly one active job may be selected automatically;
+4. multiple active jobs require an explicit target;
+5. non-mutating inspection may select one unambiguous historical job when no active job exists;
 6. terminal jobs cannot be stopped or continued.
 
-`delete` is stricter: it always requires exactly one explicit `jobId`; omitted-ID inference is never allowed.
+`delete` is stricter: it always requires exactly one explicit `jobId`.
 
 ## `/workflow list`
 
-`list` is a discovery surface. Jobs are ordered by newest `updatedAt` first and include durable job ID, state, update time, and compact objective text.
+`list` is discovery only. Jobs are ordered by newest `updatedAt` and expose compact durable identity, lifecycle/phase, update time, repository, and objective information.
 
 ## `/workflow status [jobId]`
 
-`status` is a one-shot control-plane view with two levels:
-
-1. a compact end-to-end `Pipeline` summary;
-2. detailed per-team execution state.
-
-Normal team presentation is provider-agnostic. `Member 1`, `Member 2`, ... are derived from the job's ordered thinker routing. Backing account/provider identity is included only under `Diagnostic` when a failure requires source attribution.
-
-Example retry-required state:
+`status` projects the authoritative graph. It reports the information needed to explain current execution without reading private JSON:
 
 ```text
-Workflow a3bbaeabf4b8495b0956b754a35c3263
-State: FAILED_RETRYABLE
-Current: Research · retry required
-Objective: Fix the login UI alignment
+Workflow <jobId>
+Phase: <RESEARCH|WRITER|REVIEW|HEALTH|MERGE|DONE>
+Status: <RUNNING|WAITING_USER|RECOVERING|BLOCKED|COMPLETED|CANCELLED>
 
-Pipeline
-  Research  Team A=failed · Team B=completed
-  Writer    waiting for research
-  Review    Team A=pending · Team B=pending
-  PR        not created
+Active/recovery
+  Node          <logical node ID / readable label>
+  Execution     <execution ID when active>
+  Attempt       <current / max when applicable>
+  Activity      <provider state when applicable>
+  Last progress <timestamp when applicable>
+  Failure       <structured code when applicable>
+  Recovery      <next recovery action when applicable>
 
-Research teams
-  Team A — FAILED (attempt 1)
-    Step: round 1 · Member 2 · provider turn · FAILED · provider_error
-    Members: Member 1=completed round 1 · Member 2=failed round 1
-    Error: provider_error · retryable
-      Provider failed to execute the newest response; retry the provider turn
-    Diagnostic: chatgpt-thinker-2 · chatgpt-web
+Graph
+  <node>  <state> [blocked by dependencies]
+  ...
 
-  Team B — COMPLETED (attempt 1)
-    Step: synthesis · COMPLETED
-    Members: Member 1=completed round 2 · Member 2=completed round 2
-    Result: ready for handoff
+External state
+  PR/head/health/authorization when available
 
-Writer
-  Account: chatgpt-writer
-  Status: waiting for research
+Action
+  <pending user/code action when present>
 
-Review teams
-  Team A — PENDING (attempt 0)
-  Team B — PENDING (attempt 0)
-
-PR
-  not created
-
-ACTION REQUIRED: RETRY_REQUIRED
-  One or more research lanes failed; retry runs only incomplete lanes.
+Recent events
+  <meaningful ordered journal entries>
 ```
 
-This layout deliberately distinguishes workflow state (`FAILED_RETRYABLE`) from the exact team execution failure (`Research Team A`, `Member 2`, `round 1`, `provider turn`, `provider_error`).
+Normal research/review presentation uses `Member 1..N`. Raw account/provider identity is diagnostic metadata, not reasoning identity.
 
-Full research/review payloads are not dumped into routine status.
-
-## `/workflow watch [jobId]`
-
-The workflow emits compact `PROGRESS` events to its owning Local session while it runs. `watch` returns the same authoritative status snapshot and confirms the live dimensions being followed:
-
-```text
-phase · Team A/B · attempt · round · Member 1..N · stage · status
-```
-
-Example live events:
-
-```text
-Research · Team A · attempt 1 · round 1 · Member 1 · provider turn · STARTED
-Research · Team B · attempt 1 · round 1 · Member 1 · provider turn · STARTED
-Research · Team A · attempt 1 · round 1 · Member 1 · provider turn · COMPLETED
-Research · Team A · attempt 1 · round 1 · Member 2 · provider turn · STARTED
-Research · Team A · attempt 1 · round 1 · Member 2 · provider turn · FAILED · provider_error · source=chatgpt-thinker-2/chatgpt-web · <message>
-```
-
-The backing account/provider is added only on failed progress events for diagnostics. Ordinary progress stays member-oriented.
-
-`watch` does not create another polling/state machine or duplicate workflow truth. Durable job/trace state remains authoritative.
-
-## `/workflow stop [jobId]`
-
-`stop` is immediate terminal cancellation:
-
-```text
-resolve exact job
--> WorkflowDriver.cancel(jobId)
--> abort active AbortController
--> propagate AbortSignal into team/writer/browser work
--> await active run settlement
--> persist CANCELLED
--> never resume this job automatically after restart
-```
-
-The response includes the most recent structured team/member context when available.
-
-`stop` is not pause. `CANCELLED` remains terminal.
-
-## `/workflow continue [jobId]`
-
-`continue` resumes only an explicit durable retry/recovery path. It delegates validation to the workflow engine, restores the persisted resume state, and re-enqueues the driver.
-
-It does not reset a workflow to `CREATED`, re-run completed lanes blindly, or make terminal jobs resumable.
-
-## `/workflow delete <jobId>`
-
-`delete` always requires an exact workflow ID. If the selected workflow is non-terminal, the operator first cancels and settles it through `WorkflowDriver.cancel(jobId)`. It then removes that exact workflow's local durable job record, handoffs, and bounded team trace.
-
-Deletion is scoped to the owning Local session and fails rather than guessing. It does **not** silently delete the GitHub PR, workflow branch, or provider Website conversations; those are external artifacts outside the local durable-state deletion contract.
-
-## Parallel team visibility
-
-Research Team A/B and Review Team A/B are independent concurrent workflow lanes. Status/progress may therefore show both active at once:
-
-```text
-Pipeline
-  Research  Team A=running · Team B=running
-
-Research teams
-  Team A — RUNNING (attempt 1)
-    Step: round 2 · Member 1 · provider turn · STARTED
-  Team B — RUNNING (attempt 1)
-    Step: round 1 · Member 2 · provider turn · STARTED
-```
-
-The engine launches both incomplete lane promises before awaiting either. The default account scheduler capacity is `2`, so different workflow session IDs may also run concurrently on the same authenticated account while each individual session remains strictly ordered. This scheduler policy is independent of workflow-lane concurrency.
-
-## Action-required visibility
-
-When user authority is required, status exposes the concrete pending action and exact head where applicable.
+A recoverable provider failure appears as the exact node in `RECOVERING`, not as a coarse workflow-wide `FAILED_RETRYABLE` state. Completed siblings remain completed.
 
 Example:
 
 ```text
-ACTION REQUIRED: MERGE_AUTHORIZATION_REQUIRED
-expected_head=<exact SHA>
+Workflow a3bbaeabf4b8495b0956b754a35c3263
+Phase: RESEARCH
+Status: RECOVERING
+
+Active/recovery
+  Node      research:A:round:1:member:2
+  Attempt   2/3
+  Failure   HARD_TIMEOUT
+  Recovery  RECREATE_SESSION
+
+Graph
+  research:A:round:1:member:1  COMPLETED
+  research:A:round:1:member:2  RECOVERING
+  research:B:round:1:member:1  COMPLETED
+  research:B:round:1:member:2  READY
 ```
 
-Approval itself remains governed by the existing exact repository + PR + head authorization policy.
+Full research/review payloads are never dumped into routine status.
 
-## Failure detail
+## `/workflow watch [jobId]`
 
-The private bounded workflow team trace retains authoritative diagnostic fields:
+`watch` returns the same authoritative status snapshot. Live compact `PROGRESS`/`ACTION_REQUIRED` notifications use the existing workflow event stream; watch does not create a second polling or correctness state machine.
+
+Useful live dimensions include:
 
 ```text
 phase
-lane
+nodeId
+executionId
 attempt
-round
-accountId
-provider
-stage
-status
-timestamps
-structured failure kind/message/retryability
-bounded completed-turn text
+provider activity
+meaningful progress
+failure/recovery action
 ```
 
-The operator projection converts normal account identity to `Member N`; raw account/provider data remains available for explicit failure diagnostics. Provider/browser errors are visible as execution failures, not mistaken for intellectual disagreement or valid member output.
+The ordered event journal is diagnostic history. The graph snapshot remains authoritative.
+
+## `/workflow stop [jobId]`
+
+`stop` is terminal cancellation:
+
+```text
+resolve exact job
+-> WorkflowDriver.cancel(jobId)
+-> abort active executions
+-> await run settlement
+-> persist graph lifecycle CANCELLED
+-> never auto-resume this job
+```
+
+`CANCELLED` is not pause.
+
+## `/workflow continue [jobId]`
+
+`continue` operates on the existing durable graph and only on a valid engine-approved recovery boundary.
+
+It must not:
+
+```text
+create a new job
+reset research or review
+replay completed exact-input nodes
+change persisted account routing
+duplicate a live execution
+blindly repeat Writer external actions
+```
+
+Normal recoverable provider failures are already scheduled by the driver. `continue` is an operator escape hatch for explicitly resumable durable state, not the primary retry loop.
+
+## `/workflow delete <jobId>`
+
+`delete` always requires an exact workflow ID. If the selected workflow is non-terminal, the operator first cancels and settles it through `WorkflowDriver.cancel(jobId)`.
+
+Deletion then removes only that workflow's local durable artifacts:
+
+```text
+job record
+handoff files
+node-result files
+event-journal files
+```
+
+It does not delete the GitHub PR/branch or provider Website conversations.
+
+## Parallel graph visibility
+
+Research A/B and Review A/B are independent graph branches. Status may therefore show multiple READY/RUNNING nodes concurrently. The workflow graph controls semantic dependencies; account scheduling alone controls same-account capacity and same-session ordering.
+
+Example:
+
+```text
+Phase: RESEARCH
+Status: RUNNING
+
+Graph
+  research:A:round:1:member:1  RUNNING
+  research:B:round:1:member:1  RUNNING
+  research:A:round:1:member:2  WAITING · blocked by A/M1
+  research:B:round:1:member:2  WAITING · blocked by B/M1
+```
+
+## Action-required visibility
+
+Pending action is explicit and structured.
+
+Merge authority example:
+
+```text
+Phase: MERGE
+Status: WAITING_USER
+Action: MERGE_AUTHORIZATION_REQUIRED
+expected_head=<exact SHA>
+```
+
+Deterministic automation failure example:
+
+```text
+Phase: WRITER
+Status: BLOCKED
+Action: CODE_FIX_REQUIRED
+Failure: INVALID_SELECTOR
+```
+
+Unknown or user-owned confirmation decisions fail closed rather than being interpreted as successful model output.
+
+## Failure and recovery detail
+
+Diagnostics come from the graph execution record, structured failure receipt, node result store, and recent ordered events. Relevant fields include:
+
+```text
+nodeId
+executionId
+attempt
+providerState
+lastProviderEventAt
+lastMeaningfulProgressAt
+failure class/code/message/retry disposition
+recovery action/notBefore/maxAttempts
+blocking dependencies
+```
+
+Provider/browser failures are execution failures, never member answers or intellectual disagreement.
+
+## Scheduler health
+
+A running driver is not by itself proof that work is healthy. Status derives health from the graph and execution ownership evidence.
+
+A durable RUNNING node without a valid execution owner lease is reconciled to node-level recovery rather than remaining indefinitely “driver active”. Scheduler invariant failure is persisted by `WorkflowEngine` as `BLOCKED` + `CODE_FIX_REQUIRED`.
+
+## Retention
+
+Aged cleanup is explicit operator maintenance:
+
+```text
+COMPLETED  -> eligible after 30 days
+CANCELLED  -> eligible after 14 days
+```
+
+Cleanup requires exact `jobId + updatedAt`, validates scoped private artifacts, removes the selected job/handoffs/node-results/events, and retains a private cleanup audit receipt.
 
 ## Invariants
 
-- routine workflow operation does not require filesystem inspection;
-- omitted job IDs are used only when unambiguous, except delete which always requires an explicit ID;
-- status/watch read authoritative durable state;
-- status clearly separates pipeline state from Team A/B execution detail;
-- ordinary team presentation is provider-agnostic;
-- backing provider/account identity appears only when diagnostic attribution is useful;
-- live progress uses the existing event stream rather than a duplicate watcher state machine;
-- stop settles active work before terminal cancellation is persisted;
-- cancelled jobs do not restart automatically;
-- continue requires an explicit durable recovery path;
-- delete cancels active work before removing the exact selected workflow's local durable state;
-- A/B lane concurrency remains visible and preserved;
-- full model payloads are not injected into Local progress events.
+- routine operation never requires filesystem inspection;
+- status/watch read the authoritative graph snapshot;
+- the event journal explains history but does not compete with graph correctness state;
+- completed exact-input nodes remain completed across downstream recovery;
+- normal recovery targets the smallest failed/orphaned node;
+- stale execution progress/results cannot commit after execution fencing;
+- normal team presentation is provider-agnostic;
+- provider/account identity appears only where diagnostic attribution is useful;
+- exact-ID deletion never guesses a target;
+- stop is terminal cancellation;
+- merge always requires exact-head user authority.
