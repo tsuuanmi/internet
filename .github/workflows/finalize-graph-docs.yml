@@ -1,0 +1,58 @@
+name: Finalize graph docs
+
+on:
+  push:
+    branches:
+      - docs/workflow-graph-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mark graph contract as built
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("docs/WORKFLOW-GRAPH-ORCHESTRATION.md")
+          text = path.read_text()
+          text = text.replace("- **Status:** proposed implementation contract", "- **Status:** current as-built execution contract", 1)
+          text = text.replace("- **Last synchronized:** 2026-09-10", "- **Last synchronized:** 2026-09-15", 1)
+          text = text.replace(
+              "This document specifies the next workflow-runtime hardening step after real long-running browser-provider failures. It is intentionally separate from the current as-built documents until the implementation lands.",
+              "This document specifies the current workflow execution, recovery, and observability contract implemented after real long-running browser-provider failures exposed coarse retry and timeout boundaries.",
+              1,
+          )
+          text = text.replace(
+              "The current engine already has durable workflow jobs, lane-level retry/recovery, team traces, an automatic driver, exact handoffs, one-PR idempotency, exact-head review/health gates, and scoped Website approval policy. The remaining problem is that execution is still too coarse at failure boundaries: a later member/round or synthesis failure can force a larger rerun than necessary, `RUNNING` does not prove that a live provider execution exists, provider waits are flattened into generic timeouts, and operator status does not always explain what is active, blocked, stalled, recovering, or waiting for a user.",
+              "The current engine implements durable graph nodes, exact input/output receipts, node-level recovery, execution ownership leases and fencing, an ordered diagnostic event journal, semantic provider progress leases, exact handoffs, one-PR idempotency, exact-head review/health gates, and scoped Website approval policy. Coarse lane/team replay state and the obsolete team trace store are no longer part of the authoritative runtime.",
+              1,
+          )
+          text = text.replace(
+              "The authoritative direction is to make workflow execution a **durable dependency graph** whose scheduler drives only ready nodes, whose completed work is reusable only against the exact inputs that produced it, and whose status is an explainable projection of durable graph and live execution state.",
+              "Workflow execution is a **durable dependency graph** whose scheduler drives only ready nodes, whose completed work is reusable only against the exact inputs that produced it, and whose status is an explainable projection of durable graph and live execution state.",
+              1,
+          )
+          text = text.replace("This proposal refines execution and recovery.", "This contract defines execution and recovery.", 1)
+          text = text.replace("This proposal does **not** introduce degraded research/review quorum.", "This contract does **not** introduce degraded research/review quorum.", 1)
+          path.write_text(text)
+          PY
+      - name: Audit stale workflow architecture terms
+        run: |
+          echo "--- stale source/test symbols ---"
+          grep -RInE 'teamRuns|WorkflowState|FAILED_RETRYABLE|team-observer|team-trace-store|runResearch\(|runReview\(' src test || true
+          echo "--- stale current-doc wording ---"
+          grep -RInE 'not yet as-built|not yet implemented|proposed implementation contract|team trace|team traces|FAILED_RETRYABLE' docs || true
+      - name: Commit documentation
+        run: |
+          if git diff --quiet -- docs; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs
+          git commit -m "docs: mark graph orchestration as built"
+          git push origin HEAD:docs/workflow-graph-recovery
