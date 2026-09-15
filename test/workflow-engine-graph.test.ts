@@ -160,6 +160,39 @@ describe("WorkflowEngine graph recovery", () => {
 		expect(engine.runnableNodeIds(job.jobId)).not.toContain(nodeId);
 	});
 
+	it("fails closed on ambiguous provider reconciliation without blind resubmission", async () => {
+		const teams: WorkflowTeamRunner = {
+			rounds: 1,
+			async runStep(request) {
+				return {
+					ok: false,
+					error: {
+						accountId: request.step.accountId,
+						provider: getAccountDefinition(request.step.accountId).provider,
+						stage: "provider_turn",
+						...(request.step.kind === "member" ? { round: request.step.round } : {}),
+						kind: "provider_reconciliation_failed",
+						message: "provider completion is ambiguous",
+						retryable: false,
+						failedAt: new Date().toISOString(),
+					},
+				};
+			},
+		};
+		const { engine } = createWorkflowTestRuntime(root(), { teams });
+		const job = start(engine);
+		const nodeId = workflowNodeId.researchMember("A", 1, 1);
+		const current = await engine.executeNode(job.jobId, nodeId, "driver");
+
+		expect(current.graph.lifecycle).toBe("BLOCKED");
+		expect(current.graph.nodes[nodeId]).toMatchObject({
+			state: "FAILED",
+			failure: { class: "OUTPUT", code: "RESULT_RECONCILIATION_AMBIGUOUS", retry: "USER_ACTION" },
+		});
+		expect(current.pendingAction).toMatchObject({ kind: "USER_ACTION_REQUIRED", nodeId });
+		expect(engine.runnableNodeIds(job.jobId)).not.toContain(nodeId);
+	});
+
 	it("requires both research lanes and never degrades to a one-lane quorum", async () => {
 		const teams: WorkflowTeamRunner = {
 			rounds: 1,

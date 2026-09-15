@@ -3,6 +3,7 @@ import { InternetError } from "#internet/core/errors";
 import { WorkflowConfirmationError } from "#internet/workflow/approval-policy";
 import type { WorkflowExecutionRecord } from "#internet/workflow/graph";
 import {
+	classifyTeamFailure,
 	classifyWorkflowFailure,
 	executionLeaseExpired,
 	providerProgressStalled,
@@ -60,6 +61,25 @@ describe("workflow recovery policy", () => {
 			new InternetError("provider_reconciliation_failed", "provider result identity is ambiguous"),
 			startedAt,
 		);
+		expect(failure).toMatchObject({
+			class: "OUTPUT",
+			code: "RESULT_RECONCILIATION_AMBIGUOUS",
+			retry: "USER_ACTION",
+		});
+		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "USER_ACTION", attempt: 2, maxAttempts: 3 });
+	});
+
+	it("classifies ambiguous team provider reconciliation as user-owned output recovery", () => {
+		const failure = classifyTeamFailure({
+			accountId: "chatgpt-thinker",
+			provider: "chatgpt-web",
+			stage: "provider_turn",
+			round: 1,
+			kind: "provider_reconciliation_failed",
+			message: "provider response identity is ambiguous",
+			retryable: false,
+			failedAt: startedAt,
+		});
 		expect(failure).toMatchObject({
 			class: "OUTPUT",
 			code: "RESULT_RECONCILIATION_AMBIGUOUS",

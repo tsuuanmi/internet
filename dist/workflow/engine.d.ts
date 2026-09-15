@@ -65,7 +65,6 @@ export declare class WorkflowEngine {
     private nodePayload;
     private outputReceipt;
     private handoffReceipt;
-    private failureFromTeam;
     private assertImplementationPr;
     private assertRemediationPr;
     private assertHealth;

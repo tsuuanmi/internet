@@ -11,8 +11,10 @@ import {
 	promoteWorkflowNode,
 	readyWorkflowNodeIds,
 	recoverWorkflowNode,
+	resumeWorkflowNodeFromUserWait,
 	retryWorkflowNode,
 	startWorkflowNode,
+	waitWorkflowNodeForUser,
 } from "#internet/workflow/graph-reducer";
 
 const now = "2026-09-10T10:00:00.000Z";
@@ -97,6 +99,35 @@ describe("workflow graph reducer", () => {
 		expect(recovering.nodes[node.nodeId]?.state).toBe("RECOVERING");
 		const retried = retryWorkflowNode(recovering, node.nodeId, execution("exec-2", 2));
 		expect(retried.nodes[node.nodeId]?.execution?.executionId).toBe("exec-2");
+	});
+
+	it("preserves one live execution while a node waits for user action", () => {
+		const node: WorkflowGraphNode = {
+			nodeId: "writer:implementation",
+			kind: "WRITER_IMPLEMENTATION",
+			phase: "WRITER",
+			dependencies: [],
+			state: "READY",
+			input: input(),
+		};
+		const started = startWorkflowNode(graph([node]), node.nodeId, execution("exec-live"));
+		const waiting = waitWorkflowNodeForUser(started, node.nodeId, "exec-live", {
+			class: "USER",
+			code: "UNKNOWN_CONFIRMATION",
+			message: "inspect confirmation",
+			retry: "USER_ACTION",
+			at: now,
+		});
+		expect(waiting.nodes[node.nodeId]).toMatchObject({
+			state: "WAITING_USER",
+			execution: { executionId: "exec-live", attempt: 1, providerState: "WAITING_USER" },
+			waitReason: "UNKNOWN_CONFIRMATION",
+		});
+		const resumed = resumeWorkflowNodeFromUserWait(waiting, node.nodeId, "exec-live");
+		expect(resumed.nodes[node.nodeId]).toMatchObject({
+			state: "RUNNING",
+			execution: { executionId: "exec-live", attempt: 1 },
+		});
 	});
 
 	it("rejects late completion from a fenced execution", () => {

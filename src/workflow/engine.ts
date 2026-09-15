@@ -42,6 +42,7 @@ import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/h
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowNodeResult, WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import {
+	classifyTeamFailure,
 	classifyWorkflowFailure,
 	DEFAULT_WORKFLOW_RECOVERY_POLICY,
 	executionLeaseExpired,
@@ -821,7 +822,7 @@ export class WorkflowEngine {
 		const node = job.graph.nodes[nodeId];
 		if (node?.execution?.executionId !== executionId) return job;
 		const failure =
-			error instanceof TeamStepError ? this.failureFromTeam(error.detail) : classifyWorkflowFailure(error);
+			error instanceof TeamStepError ? classifyTeamFailure(error.detail) : classifyWorkflowFailure(error);
 		const recovery = recoveryPlanForFailure(failure, node.execution.attempt, this.recoveryPolicy);
 		if (recovery !== undefined && recovery.action !== "USER_ACTION" && recovery.action !== "CODE_FIX") {
 			return this.commit(
@@ -1218,6 +1219,10 @@ export class WorkflowEngine {
 		if (pendingAction !== undefined || Object.values(graph.nodes).some((node) => node.state === "FAILED")) {
 			return { ...graph, lifecycle: "BLOCKED" };
 		}
+		const waitingForUser = Object.values(graph.nodes).find((node) => node.state === "WAITING_USER");
+		if (waitingForUser !== undefined) {
+			return { ...graph, phase: waitingForUser.phase, lifecycle: "WAITING_USER" };
+		}
 		const recovering = Object.values(graph.nodes).find((node) => node.state === "RECOVERING");
 		if (recovering !== undefined) return { ...graph, phase: recovering.phase, lifecycle: "RECOVERING" };
 		const phaseOrder = ["RESEARCH", "WRITER", "REVIEW", "HEALTH", "MERGE"] as const;
@@ -1268,23 +1273,6 @@ export class WorkflowEngine {
 			sequence: handoff.sequence,
 			payloadHash: handoff.payloadHash,
 			status: handoff.status,
-		};
-	}
-
-	private failureFromTeam(detail: TeamFailureDetail): WorkflowFailure {
-		const providerFailure =
-			detail.kind === "timeout" || detail.kind === "provider_error" || detail.kind === "provider_stalled";
-		const className = detail.kind === "browser_unavailable" ? "BROWSER" : providerFailure ? "PROVIDER" : "AUTOMATION";
-		return {
-			class: className,
-			code: detail.kind.toUpperCase(),
-			message: detail.message,
-			retry: detail.retryable
-				? detail.kind === "browser_unavailable" || detail.kind === "provider_stalled" || detail.kind === "timeout"
-					? "RECREATE_SESSION"
-					: "IMMEDIATE"
-				: "NONE",
-			at: detail.failedAt,
 		};
 	}
 
