@@ -33,7 +33,10 @@ describe("workflow recovery policy", () => {
 	});
 
 	it("classifies deterministic selector defects as code-fix failures", () => {
-		const failure = classifyWorkflowFailure(new Error("InvalidSelectorError: Error while parsing selector"), startedAt);
+		const failure = classifyWorkflowFailure(
+			new Error("InvalidSelectorError: Error while parsing selector"),
+			startedAt,
+		);
 		expect(failure).toMatchObject({ class: "AUTOMATION", code: "INVALID_SELECTOR", retry: "CODE_FIX" });
 		expect(recoveryPlanForFailure(failure, 1)).toBeUndefined();
 	});
