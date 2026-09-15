@@ -1,337 +1,351 @@
-# Workflow Engine — Current Runtime Design
+# Workflow Engine
 
-- **Status:** implemented
-- **Last synchronized:** 2026-09-10
+- **Status:** current as-built runtime design
+- **Last synchronized:** 2026-09-15
+- **Authority:** `WorkflowEngine` owns workflow-domain transitions; `WorkflowDriver` owns background scheduling and execution ownership only
 
-This document describes the deterministic runtime behind `/workflow <task>`. User-visible operation lives in [`WORKFLOW.md`](./WORKFLOW.md).
+The coding workflow is one authoritative durable dependency graph. There is no parallel lane/team state machine, coarse retry engine, or compatibility replay path.
 
-## Core components
+## Core model
+
+The durable hierarchy is:
 
 ```text
-/workflow command
-  -> WorkflowEngine
-  -> WorkflowJobStore
-  -> WorkflowHandoffStore
-  -> WorkflowDriver
-  -> WorkflowTeamPromptBuilder
-  -> BrowserWorkflowTeamRunner
-  -> WorkflowTeamTraceStore / DurableWorkflowTeamObserver
-  -> WorkflowOperator
-  -> BrowserWorkflowWriterRunner
-  -> approval/confirmation policy
-  -> WorkflowEventSink / DshWorkflowEventSink
-  -> WorkflowRetentionManager
+workflow job
+  -> graph snapshot
+     -> executable node
+        -> execution attempt
+           -> provider/browser activity
 ```
 
-`WorkflowEngine` owns authoritative transitions, state guards, durable per-job account routing, handoff gates, reviewer/head validation, health/merge authority, and retry/idempotency semantics.
+The graph snapshot is correctness state. The ordered event journal is diagnostic history and is never a competing replay-only source of truth.
 
-`WorkflowDriver` automatically advances safe code-owned states, deduplicates active execution by `jobId`, resumes safe jobs after restart, and stops at human/action-required boundaries.
+A logical node has a stable node ID, explicit dependency IDs, an exact input receipt, a logical state, and at most one current execution. A concrete execution has its own `executionId`, attempt number, ownership lease, provider activity, and progress timestamps.
 
-`WorkflowJobStore` persists private atomic per-job JSON and strictly validates nested state. Corrupted routing/session/PR/authorization state fails closed.
+Core invariant:
 
-`WorkflowHandoffStore` persists exact model payloads, deterministic identity, SHA-256 and delivery metadata.
+> A `COMPLETED` node is never rerun while its exact correctness-bearing input receipt still matches.
 
-`BrowserWorkflowTeamRunner` adapts the shared provider-agnostic team runtime to deterministic workflow tasks. It does not maintain a second debate loop.
+## Durable files
 
-`WorkflowTeamTraceStore` and `DurableWorkflowTeamObserver` persist bounded per-turn execution evidence and publish compact best-effort progress events.
-
-`WorkflowOperator` projects authoritative job + trace state through `/workflow list|status|watch|stop|continue|delete`.
-
-`BrowserWorkflowWriterRunner` routes implementation/remediation/health/merge controls through `chatgpt-writer` only.
-
-## Account and member routing
-
-Semantic account identity remains authoritative for authentication and scheduling. Team intellectual roles are separate and ordinal.
-
-Current catalog:
+Workflow-local durable artifacts live under the workflow data directory:
 
 ```text
-chatgpt-thinker
-chatgpt-writer
-gemini-thinker
-chatgpt-thinker-2
+workflows/jobs/<jobId>.json
+workflows/handoffs/<jobId>/<handoffId>.json
+workflows/node-results/<jobId>/<resultId>.json
+workflows/events/<jobId>/<eventSeq>.json
+workflows/cleanup-audit/<auditId>.json
 ```
 
-Current default route for **new** workflow jobs:
+The obsolete team-trace store is not part of the runtime.
+
+## Graph phases and lifecycle
+
+Workflow phase and lifecycle are separate:
 
 ```text
-Member 1 -> chatgpt-thinker
-Member 2 -> chatgpt-thinker-2
-Writer   -> chatgpt-writer
-Synthesizer -> chatgpt-thinker
+phase      RESEARCH | WRITER | REVIEW | HEALTH | MERGE | DONE
+lifecycle  RUNNING | WAITING_USER | RECOVERING | BLOCKED | COMPLETED | CANCELLED
 ```
 
-`gemini-thinker` remains a valid thinker account but is temporarily outside the default workflow route.
-
-`WorkflowJob.accountRouting` persists the exact two thinker accounts, writer account, and synthesizer account. The parser validates capabilities rather than hard-coding one provider pair. Therefore old durable jobs keep their recorded route while new jobs use the current default. Retry never silently changes team membership.
-
-## Shared team runtime
-
-Research/review lanes call the shared `runTeam(...)` core directly with the job's ordered thinker routing. Prompt strategies render only `Member 1..N`, never provider/account identity.
-
-Purpose-specific strategies:
+Logical node states are:
 
 ```text
-generic-debate
-workflow-research
-workflow-review
-```
-
-Workflow uses the latter two. Peer model output is untrusted evidence, and review's exact PR/head/output contract remains authoritative.
-
-Structured team stages:
-
-```text
-prepare_prompt
-provider_turn
-synthesis
-complete
-```
-
-Internal progress/failure events retain backing account/provider for routing and diagnostics. Provider/browser failures are not valid member contributions.
-
-## Stable workflow sessions
-
-```text
-<owner>:workflow:<job>:research:A
-<owner>:workflow:<job>:research:B
-<owner>:workflow:<job>:review:A
-<owner>:workflow:<job>:review:B
-<owner>:workflow:<job>:writer
-```
-
-Review cycle, exact PR head, and account routing are durable facts rather than session-ID components.
-
-## Top-level states
-
-The engine uses explicit states including:
-
-```text
-CREATED
-RESEARCH_RUNNING
-RESEARCH_HANDOFFS_DELIVERING
-WRITER_RUNNING
-PR_OPEN
-REVIEW_RUNNING
-REVIEW_HANDOFFS_DELIVERING
-WRITER_REMEDIATING
-READY_FOR_MERGE_AUTHORIZATION
-AWAITING_MERGE_AUTHORIZATION
-MERGING
-DONE
-
-BLOCKED
-UNKNOWN_CONFIRMATION
-FAILED_RETRYABLE
-REVIEW_LIMIT_REACHED
+WAITING
+READY
+RUNNING
+WAITING_USER
+RECOVERING
+COMPLETED
+FAILED
 CANCELLED
 ```
 
-Parallel Team A/B status lives inside lane state rather than multiplying top-level states.
+Recoverable execution failure moves the logical node to `RECOVERING`; `FAILED` is terminal for the node under current policy.
 
-## Research and review concurrency
+Execution states are separate from logical state and are fenced by execution identity. A late result or progress event from an obsolete execution cannot commit against a newer execution.
 
-Research Team A/B are launched before either sibling is awaited. Review Team A/B follow the same rule.
+## Deterministic node identity
+
+Examples:
 
 ```text
-Research Team A  ─────────────────►
-Research Team B  ─────────────────►
-
-Review Team A    ─────────────────►
-Review Team B    ─────────────────►
+research:A:round:1:member:1
+research:A:synthesis
+research:handoff
+writer:implementation
+review:cycle:1:A:round:1:member:1
+review:cycle:1:A:synthesis
+review:cycle:1:handoff
+writer:remediation:cycle:1
+pr-health:cycle:1
+merge-authorization:cycle:1
+merge:cycle:1
 ```
 
-Each lane receives the same persisted ordered thinker route but an independent workflow focus/session. A completed or failed sibling is preserved and not rerun unnecessarily.
+Review/remediation/health/merge nodes are cycle/head-bound so evidence from an older PR head cannot become current evidence accidentally.
 
-The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so Team A and Team B may execute different session IDs concurrently on the same authenticated account. Each session remains strictly ordered; work above the configured capacity queues. This does not change workflow-level lane independence.
+## Exact input and output receipts
 
-## Durable team trace
-
-Trace evidence is stored separately from compact job JSON:
+Every executable node receives an immutable input receipt covering all correctness-bearing inputs for that node. Depending on node kind this includes:
 
 ```text
-<workflow data>/workflows/team-traces/<jobId>.json
+node ID
+dependency output hashes
+repository and base revision
+prompt/task/control identity
+Website session identity
+account/member binding
+PR number and exact head SHA
+review cycle
 ```
 
-Events include:
+Every completed node persists its exact payload separately in `WorkflowNodeResultStore` and stores only the result identity/hash receipt in the graph.
+
+Before executing a READY/RECOVERING node, the engine checks for an exact persisted result for the current input hash. If one exists, the result is reconciled into graph completion without another provider turn.
+
+## Shared team execution
+
+`internet_team` and workflow research/review share the same deterministic team primitives:
 
 ```text
-phase
-lane
+buildTeamPlan(...)
+prepareTeamStep(...)
+runTeamStep(...)
+```
+
+Workflow persists each plan step as its own graph node; it does not copy a second round/debate loop.
+
+With the current two-member route and configured rounds, plan dependencies determine speaking order. Research A/B and Review A/B remain independent graph branches and may execute concurrently whenever dependencies permit.
+
+The account scheduler remains the sole owner of same-account capacity and same-session ordering.
+
+## Scheduler and driver boundary
+
+`WorkflowDriver` repeatedly performs only orchestration mechanics:
+
+```text
+reconcile ownership
+-> ask engine to promote dependencies to READY
+-> execute READY/recoverable node IDs
+-> wait for scheduled recovery when needed
+-> stop at terminal/action boundaries
+```
+
+Semantic readiness, node transition, failure classification, recovery state, scheduler-failure blocking, graph expansion, handoff gates, PR/head binding, and merge authority are all owned by `WorkflowEngine`.
+
+Unexpected scheduler failure is persisted through `WorkflowEngine.blockSchedulerFailure()` as `BLOCKED` with `CODE_FIX_REQUIRED`; the driver never mutates job JSON directly.
+
+## Execution ownership and restart recovery
+
+Each active execution persists:
+
+```text
+executionId
 attempt
-round
-accountId
-provider
-stage
-status
-failure kind/message/retryability
-bounded completed-turn text
+ownerInstanceId
+startedAt
+heartbeatAt
+leaseUntil
+providerState
+lastProviderEventAt
+lastMeaningfulProgressAt
 ```
 
-The operator maps account IDs to `Member N` by the job's persisted thinker tuple. Normal display stays provider-agnostic; raw account/provider appears only for explicit failure diagnostics.
+The driver refreshes only the execution ownership lease. Provider progress is a separate signal.
 
-Full research/review payloads are not injected into Local progress context.
-
-## Handoff phase
-
-Each final research/review result is persisted exactly:
+On restart or ownership change:
 
 ```text
-handoff_id
-job_id
-source
-recipient
-sequence
-payload
-payload_hash
-delivery status/timestamps
+valid current owner lease
+  -> leave execution alone
+
+expired/mismatched owner lease
+  -> classify execution as orphaned
+  -> fence/supersede that execution
+  -> recover the same logical node only
 ```
 
-The SHA is over exact UTF-8 payload bytes. Re-preparing identical logical handoffs is idempotent; changed content for an existing logical handoff is rejected.
+Completed siblings and dependencies are not replayed.
 
-Website transport is modeled as at-least-once with durable idempotent acknowledgement.
+## Failure classification and recovery
 
-## Trusted controls
+Failure classification precedes retry policy.
 
-Controls are typed separately from model data:
+Representative classes:
+
+```text
+PROVIDER_STALLED      -> recreate provider session, bounded same-node retry
+HARD_TIMEOUT          -> recreate provider session, bounded same-node retry
+BROWSER_UNAVAILABLE   -> recreate provider session, bounded same-node retry
+PROVIDER_ERROR        -> bounded same-node retry
+AUTH_EXPIRED          -> user reauthentication boundary
+INVALID_SELECTOR      -> AUTOMATION / CODE_FIX, no provider retry loop
+CONFIG_ERROR          -> AUTOMATION / CODE_FIX
+EXECUTION_ORPHANED    -> reconcile the same node
+CI_PENDING            -> dependency polling/backoff on the same logical attempt
+```
+
+Retry budget belongs to provider execution failure. Waiting for CI to finish does not consume that budget.
+
+## Provider progress leases
+
+Browser completion uses two independent deadlines:
+
+```text
+workflowHardTimeoutMs  = 900000
+workflowStallTimeoutMs = 180000
+```
+
+The stall timeout must be lower than the hard timeout.
+
+Meaningful provider progress is emitted only for provider-relevant response/generation transitions such as:
+
+```text
+response_started
+response_changed
+generation_started
+generation_stopped
+```
+
+A static thinking indicator, spinner, animation, or unrelated DOM churn does not renew the progress lease indefinitely.
+
+Provider progress is persisted only when its `executionId` still matches the current execution for the node.
+
+## Exact handoffs
+
+Research and review synthesis outputs are copied verbatim into SHA-256-bound handoffs. Handoffs contain source, recipient, sequence, exact payload, payload hash, and delivery state.
+
+Website delivery is at-least-once with durable idempotent acknowledgement. Model payload and trusted control messages remain separate.
+
+## Writer authority and PR idempotency
+
+`chatgpt-writer` is the only workflow mutation account and is never used as a reasoning member.
+
+Writer controls include:
 
 ```text
 START_IMPLEMENTATION
 APPLY_REVIEWS
-RETRY
 CHECK_PR_HEALTH
 MERGE_AUTHORIZED
 ```
 
-This preserves the invariant that a handoff payload equals the exact source final output.
+Implementation/retry uses the deterministic workflow branch and reconciles GitHub before creating or mutating a PR. A retry must not interpret a missing model response as proof that no external side effect occurred.
 
-## Workflow base authority
+The writer PR must target `main` and remain bound to the exact persisted repository/base/branch authority.
 
-New workflows resolve one public upstream repository, select the authoritative remote, query `refs/heads/main` with `git ls-remote`, and persist that exact SHA as `baseRevision`. Local worktree `HEAD` is not accepted as workflow base authority.
+## Website confirmation boundary
 
-The writer must create or reuse the deterministic workflow branch from that exact base revision and target PR base branch `main`. A writer result whose PR base is not `main` is blocked.
+Recognized scope-valid Writer confirmations eligible under the approval policy may be auto-approved. Unknown, malformed, ambiguous, out-of-scope, or user-owned decisions fail closed into an explicit action boundary rather than being treated as valid provider output.
 
-## Writer implementation and PR idempotency
+Merge authorization is always explicit user authority and is represented as workflow `WAITING_USER`, not routine implementation authority.
 
-`START_IMPLEMENTATION` is sent only after required research handoffs are acknowledged. The writer verifies repository, required `main` base branch, and exact base revision; uses the deterministic branch; and reconciles exact matching PR identity before creating anything new.
+## Exact-head review and remediation
 
-Successful writer output persists:
-
-```text
-repository
-PR number
-PR URL
-base branch
-head branch
-head SHA
-```
-
-`chatgpt-writer` is never reused as a reasoning member.
-
-## Website approval boundary
-
-Auto-Allow requires exact match on runtime account/session, repository, workflow state, recognized action, and branch/PR identity. Unknown/ambiguous UI becomes `UNKNOWN_CONFIRMATION`.
-
-Premature merge is excluded from implementation authority.
-
-## Exact-head review loop
-
-Review Team A/B inspect the actual PR and requested current head. Each final review result must assert:
+Each review synthesis must return a verdict bound to the exact requested PR head:
 
 ```text
 PASS | CHANGES_REQUIRED
-reviewedHeadSha == exact requested head
+reviewedHeadSha == expected head SHA
 ```
 
-Malformed or stale-head output fails the lane. If changes are required, exact review handoffs are delivered before `APPLY_REVIEWS`; remediation preserves PR identity and advances head before both teams review again.
+A changed head creates a new review generation/cycle. Old completed review evidence remains historical and cannot satisfy new-head dependencies.
 
 Default maximum review cycles: `3`.
 
-## Operator projection
+## PR health
 
-`/workflow status` combines job and trace state:
-
-```text
-State: FAILED_RETRYABLE
-Current: Research · retry required
-
-Pipeline
-  Research  Team A=failed · Team B=completed
-  Writer    waiting for research
-  Review    Team A=pending · Team B=pending
-  PR        not created
-
-Research teams
-  Team A — FAILED (attempt 1)
-    Step: round 1 · Member 2 · provider turn · FAILED · provider_error
-    Members: Member 1=completed round 1 · Member 2=failed round 1
-    Error: provider_error · retryable
-    Diagnostic: <account> · <provider>
-```
-
-`watch` returns the same authoritative snapshot. Live `TEAM_PROGRESS` events use phase/team/attempt/round/member/stage/status and include backing source only on failure.
-
-`delete` is an exact-ID mutation. Active jobs are cancelled and settled first, then the selected workflow's local job record, handoffs, and team trace are removed. It does not infer a missing ID or silently remove external GitHub/provider artifacts.
-
-## Event publication
-
-```text
-INTERNAL         -> engine/store only
-PROGRESS         -> eligible for Local injection
-ACTION_REQUIRED  -> eligible for Local injection
-```
-
-Durable trace/state is committed before best-effort notification. Missing/disposed Local agents cannot roll back correctness.
-
-## Automatic driver and recovery
-
-The driver advances runnable states until an explicit stop boundary. Safe restart discovery preserves completed work and does not wake jobs waiting on user authority or known exceptions.
-
-Unexpected driver errors become `FAILED_RETRYABLE` with an explicit `resumeState`. `/workflow continue` resumes only that durable recovery path.
-
-`/workflow stop` aborts active driver work, waits for settlement, then persists terminal `CANCELLED`. Cancelled jobs do not resume on restart.
-
-## PR health and merge authority
-
-Health is exact-head-bound:
+`CHECK_PR_HEALTH` is read-only and exact-head-bound:
 
 ```text
 PASS | FAIL | PENDING | NONE | UNKNOWN
 ```
 
-`CHECK_PR_HEALTH` is read-only. Only `PASS`, or verified `NONE` with no required checks/statuses, may advance. New head invalidates prior health.
+`PASS`, or verified `NONE` when no required checks exist, may advance. `FAIL`/`UNKNOWN` block. `PENDING` schedules another health observation without spending the normal provider failure retry budget.
 
-Merge authorization is explicit and bound to repository + PR + exact head. Immediately before merge the writer re-reads head and health. Only still-valid authority may execute `MERGE_AUTHORIZED`.
+## Merge authority
 
-Authorized workflow merges are squash-only. One workflow PR therefore contributes exactly one commit to `main`; if squash merge is unavailable, the writer must return `BLOCKED` rather than fall back to merge-commit or rebase-merge modes.
+Successful exact-head review and health do not authorize merge automatically.
 
-## Maintenance / retention
+The workflow records `MERGE_AUTHORIZATION_REQUIRED` and enters `WAITING_USER`. Authorization binds repository, PR, exact head SHA, review cycle, authorizing owner session, and timestamp.
 
-Terminal cleanup remains explicit operator maintenance:
+`MERGE_AUTHORIZED` immediately revalidates the exact PR/head and uses squash merge only. If authority is stale or squash merge is unavailable, the operation blocks rather than falling back to another merge mode.
+
+## Event journal
+
+Meaningful engine transitions append ordered events with monotonic `eventSeq` and graph revision metadata. Events are classified:
 
 ```text
-DONE      30 days
-CANCELLED 14 days
+INTERNAL
+PROGRESS
+ACTION_REQUIRED
 ```
 
-Aged cleanup requires exact `jobId + updatedAt`, validates private artifacts, removes the selected job + handoffs + team trace, and retains a private audit receipt.
+The snapshot transition is authoritative. A diagnostic journal append failure cannot roll correctness backward.
 
-Immediate `/workflow delete <jobId>` is a separate exact-ID operator action. It can cancel an active workflow first and then remove only that workflow's local durable artifacts without waiting for retention eligibility.
+Local injection is best-effort and contains compact control-plane information rather than research/review payloads.
+
+## Operator projection
+
+`/workflow status` and `/workflow watch` project the graph directly. They expose:
+
+```text
+phase + lifecycle
+active/recovering node
+execution ID / attempt
+provider activity
+last meaningful progress
+dependency blockers
+failure code and recovery action
+pending user/code action
+PR/head/health state
+recent meaningful events
+next transition
+```
+
+Status does not reconstruct a parallel per-team state object and cannot show stale procedural text such as “Writer waiting for research” after the Writer node has already started or failed.
+
+## Stop and continue
+
+`/workflow stop` aborts active work, waits for settlement, and persists terminal `CANCELLED`. Cancelled workflows do not auto-resume.
+
+`/workflow continue` operates on the existing durable graph. It never creates a new job, resets research, changes account routing, or replays completed exact-input nodes. Normal recoverable provider failures are scheduled automatically; manual continue is an operator recovery boundary for explicitly blocked/recoverable durable state.
+
+## Retention and exact deletion
+
+Retention remains explicit operator maintenance:
+
+```text
+COMPLETED  -> eligible after 30 days
+CANCELLED  -> eligible after 14 days
+```
+
+Cleanup validates exact `jobId + updatedAt` and deletes only that workflow's:
+
+```text
+job record
+handoff files
+node-result files
+event-journal files
+```
+
+Aged cleanup retains a private audit receipt. Immediate `/workflow delete <jobId>` uses the same scoped artifact deletion after cancelling/settling active work; it does not delete GitHub PR/branch state or provider Website conversations.
 
 ## Runtime invariants
 
-1. Job state, not model memory, determines the next phase.
-2. Provider identity never substitutes for account identity or team member role.
-3. Team prompts are provider-agnostic; routing is durable execution metadata.
-4. Existing jobs keep persisted routing; retry never silently changes members.
-5. Full team/reviewer payloads are not correctness-bearing Local context.
-6. Handoff payloads are immutable exact data; controls are separate.
-7. Research A/B and Review A/B are workflow-level concurrent.
-8. New workflows pin fresh upstream `main` HEAD; Local `HEAD` is not base authority.
-9. Writer PRs target `main`; PR, review, health and merge authorization are bound to exact head state.
-10. Retry prefers resume/reconcile over duplicate external action.
-11. Website confirmation policy fails closed.
-12. Merge requires explicit user authority and uses squash-only history.
-13. Restart recovery resumes only safe code-owned work.
-14. Exact-ID delete removes only the selected workflow's local durable artifacts.
-15. Retention deletion is explicit operator maintenance only.
+1. The graph/job snapshot, not model memory or diagnostic events, determines the next transition.
+2. A `COMPLETED` exact-input node is never rerun because a downstream node fails.
+3. Recovery targets the smallest recoverable logical node.
+4. Every current execution is fenced by `executionId`; stale progress/results cannot commit.
+5. Provider progress timing is separate from execution ownership liveness.
+6. Provider/account identity never substitutes for team-member reasoning identity.
+7. Team prompts and step planning are shared by direct teams and workflow.
+8. Research A/B and Review A/B remain graph-level concurrent; the account scheduler owns account capacity.
+9. Handoff payloads are exact immutable data; trusted controls are separate.
+10. `chatgpt-writer` is isolated as the sole mutation authority.
+11. Review, health, authorization, and merge evidence are exact-head-bound.
+12. Deterministic automation defects are surfaced directly and are not hidden behind repeated provider retry.
+13. Stop is terminal cancellation.
+14. Exact deletion removes only the selected workflow's local durable artifacts.

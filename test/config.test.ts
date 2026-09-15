@@ -10,12 +10,15 @@ describe("resolveBrowserConfig", () => {
 		expect(config).toEqual(DEFAULT_CONFIG);
 	});
 
-	it("defaults manual login to 30 minutes, account turns to five minutes, browser idling to 30 minutes, and two concurrent sessions per account", () => {
-		expect(resolveBrowserConfig({}).loginTimeoutMs).toBe(1_800_000);
-		expect(resolveBrowserConfig({}).turnTimeoutMs).toBe(300_000);
-		expect(resolveBrowserConfig({}).researchTimeoutMs).toBe(1_800_000);
-		expect(resolveBrowserConfig({}).closeAfterMs).toBe(1_800_000);
-		expect(resolveBrowserConfig({}).maxConcurrentTurnsPerAccount).toBe(2);
+	it("uses separate workflow stall and hard deadlines", () => {
+		const config = resolveBrowserConfig({});
+		expect(config.loginTimeoutMs).toBe(1_800_000);
+		expect(config.turnTimeoutMs).toBe(300_000);
+		expect(config.researchTimeoutMs).toBe(1_800_000);
+		expect(config.workflowStallTimeoutMs).toBe(180_000);
+		expect(config.workflowHardTimeoutMs).toBe(900_000);
+		expect(config.closeAfterMs).toBe(1_800_000);
+		expect(config.maxConcurrentTurnsPerAccount).toBe(2);
 	});
 
 	it("honors explicit overrides", () => {
@@ -26,6 +29,8 @@ describe("resolveBrowserConfig", () => {
 			enableGemini: true,
 			loginTimeoutMs: 60_000,
 			remoteLoginPort: 40_000,
+			workflowStallTimeoutMs: 30_000,
+			workflowHardTimeoutMs: 120_000,
 			closeAfterMs: 5_000,
 			maxConcurrentTurnsPerAccount: 3,
 		});
@@ -35,6 +40,8 @@ describe("resolveBrowserConfig", () => {
 		expect(config.enableGemini).toBe(true);
 		expect(config.loginTimeoutMs).toBe(60_000);
 		expect(config.remoteLoginPort).toBe(40_000);
+		expect(config.workflowStallTimeoutMs).toBe(30_000);
+		expect(config.workflowHardTimeoutMs).toBe(120_000);
 		expect(config.closeAfterMs).toBe(5_000);
 		expect(config.maxConcurrentTurnsPerAccount).toBe(3);
 	});
@@ -54,9 +61,20 @@ describe("resolveBrowserConfig", () => {
 	it("rejects invalid positive-integer config", () => {
 		expect(() => resolveBrowserConfig({ turnTimeoutMs: -5 })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ researchTimeoutMs: 0 })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ workflowStallTimeoutMs: 0 })).toThrow(InternetError);
+		expect(() => resolveBrowserConfig({ workflowHardTimeoutMs: 0 })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerAccount: 0 })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ maxConcurrentTurnsPerAccount: Number.NaN })).toThrow(InternetError);
 		expect(() => resolveBrowserConfig({ remoteLoginPort: 65_535 })).toThrow(/must not exceed 65532/);
+	});
+
+	it("requires the workflow stall deadline to be below the hard deadline", () => {
+		expect(() => resolveBrowserConfig({ workflowStallTimeoutMs: 120_000, workflowHardTimeoutMs: 120_000 })).toThrow(
+			/must be less than workflowHardTimeoutMs/,
+		);
+		expect(() => resolveBrowserConfig({ workflowStallTimeoutMs: 180_000, workflowHardTimeoutMs: 120_000 })).toThrow(
+			/must be less than workflowHardTimeoutMs/,
+		);
 	});
 
 	it("honors team config overrides", () => {

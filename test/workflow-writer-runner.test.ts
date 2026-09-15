@@ -6,31 +6,30 @@ import { BrowserWorkflowWriterRunner, type WorkflowWriterBrowser } from "#intern
 
 const jobId = "0123456789abcdef0123456789abcdef";
 const writerSessionId = `agent:workflow:${jobId}:writer`;
+const policy = { hardTimeoutMs: 900_000, stallTimeoutMs: 180_000 } as const;
 
 function job(): WorkflowJob {
 	const timestamp = "2026-09-08T00:00:00.000Z";
-	const run = (lane: "A" | "B", phase: "research" | "review") => ({
-		lane,
-		status: "pending" as const,
-		attempts: 0,
-		sessionId: `agent:workflow:${jobId}:${phase}:${lane}`,
-	});
 	return {
 		schema: "@tsuuanmi/internet-workflow-job",
-		version: 1,
+		version: 2,
 		revision: 1,
 		jobId,
 		ownerSessionId: "agent",
 		objective: "Fix the race.",
 		repository: "https://github.com/example/repo",
 		baseRevision: "0123456789abcdef0123456789abcdef01234567",
-		state: "WRITER_RUNNING",
-		teamRuns: {
-			research: [run("A", "research"), run("B", "research")],
-			review: [run("A", "review"), run("B", "review")],
+		graph: {
+			schema: "@tsuuanmi/internet-workflow-graph",
+			version: 1,
+			graphRevision: 0,
+			eventSeq: 0,
+			phase: "WRITER",
+			lifecycle: "RUNNING",
+			nodes: {},
 		},
 		accountRouting: {
-			thinkerAccounts: ["chatgpt-thinker", "gemini-thinker"],
+			thinkerAccounts: ["chatgpt-thinker", "chatgpt-thinker-2"],
 			writerAccount: "chatgpt-writer",
 			synthesizerAccount: "chatgpt-thinker",
 		},
@@ -43,34 +42,40 @@ function job(): WorkflowJob {
 }
 
 describe("BrowserWorkflowWriterRunner", () => {
-	it("passes expected approval scope without self-asserting runtime account/session", async () => {
+	it("passes exact approval scope and provider deadlines without asserting runtime identity", async () => {
 		let observedAccount: string | undefined;
-		let observedConfirmation: unknown;
+		let observedRequest: Parameters<WorkflowWriterBrowser["chat"]>[1] | undefined;
 		const browser: WorkflowWriterBrowser = {
 			async chat(accountId, request) {
 				observedAccount = accountId;
-				observedConfirmation = request.confirmation;
+				observedRequest = request;
 				return {
 					text: '{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}',
 				};
 			},
 		};
-		const runner = new BrowserWorkflowWriterRunner(browser);
+		const runner = new BrowserWorkflowWriterRunner(browser, policy);
 		const current = job();
 		await runner.runControl({
 			sessionId: writerSessionId,
+			requestKey: "writer-request",
 			job: current,
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
 		expect(observedAccount).toBe("chatgpt-writer");
-		expect(observedConfirmation).toEqual({
-			jobId,
-			writerSessionId,
-			repository: current.repository,
-			state: "WRITER_RUNNING",
+		expect(observedRequest).toMatchObject({
+			requestKey: "writer-request",
+			timeoutMs: policy.hardTimeoutMs,
+			stallTimeoutMs: policy.stallTimeoutMs,
+			confirmation: {
+				jobId,
+				writerSessionId,
+				repository: current.repository,
+				authority: "IMPLEMENTATION",
+			},
 		});
-		expect(observedConfirmation).not.toHaveProperty("accountId");
-		expect(observedConfirmation).not.toHaveProperty("sessionId");
+		expect(observedRequest?.confirmation).not.toHaveProperty("accountId");
+		expect(observedRequest?.confirmation).not.toHaveProperty("sessionId");
 	});
 
 	it("maps domain confirmation interruptions without depending on ChatGPT adapter errors", async () => {
@@ -84,8 +89,9 @@ describe("BrowserWorkflowWriterRunner", () => {
 					throw new WorkflowConfirmationError(kind, `confirmation: ${kind}`);
 				},
 			};
-			const result = await new BrowserWorkflowWriterRunner(browser).runControl({
+			const result = await new BrowserWorkflowWriterRunner(browser, policy).runControl({
 				sessionId: writerSessionId,
+				requestKey: `writer-${kind}`,
 				job: current,
 				control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 			});
@@ -103,15 +109,16 @@ describe("BrowserWorkflowWriterRunner", () => {
 				};
 			},
 		};
-		await new BrowserWorkflowWriterRunner(browser).runControl({
+		await new BrowserWorkflowWriterRunner(browser, policy).runControl({
 			sessionId: writerSessionId,
+			requestKey: "writer-request",
 			job: job(),
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
 		expect(prompt).toContain("Required base branch: main");
-		expect(prompt).toContain("exact required base revision");
-		expect(prompt).toContain("PR idempotency key");
-		expect(prompt).toContain("If exactly one open PR exists, reuse/update that PR");
-		expect(prompt).toContain("Never create a second PR for the same workflow job/branch");
+		expect(prompt).toContain("Required base revision");
+		expect(prompt).toContain("reconcile GitHub by the exact workflow branch");
+		expect(prompt).toContain("Reuse exactly one matching open PR");
+		expect(prompt).toContain("Never create a second workflow PR");
 	});
 });

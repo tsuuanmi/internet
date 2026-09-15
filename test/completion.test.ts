@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { CompletionSnapshot } from "#internet/browser/completion";
+import type { CompletionSnapshot, ProviderProgressEvent } from "#internet/browser/completion";
 import { waitForStableCompletion } from "#internet/browser/completion";
+import { InternetError } from "#internet/core/errors";
 
 function snapshot(text: string, running: boolean, html = `<p>${text}</p>`): CompletionSnapshot {
 	return { responsePresent: true, text, html, running };
@@ -20,23 +21,68 @@ describe("waitForStableCompletion", () => {
 		expect(text).toContain("Final answer");
 	});
 
-	it("throws a timeout error when the response never stabilizes", async () => {
+	it("throws a hard timeout when the response keeps changing but never stabilizes", async () => {
 		let calls = 0;
 		await expect(
 			waitForStableCompletion(
 				async () => {
 					calls += 1;
-					return calls % 2 === 0 ? snapshot("A", false) : snapshot("B", false);
+					return snapshot(String(calls), false);
 				},
-				{ timeoutMs: 80, pollMs: 5, stableMs: 2000 },
+				{ timeoutMs: 80, stallTimeoutMs: 60, pollMs: 5, stableMs: 2000 },
 			),
-		).rejects.toThrow(/did not complete/);
+		).rejects.toMatchObject({ kind: "timeout" });
 	});
 
-	it("never completes while generation is running even if text is unchanged", async () => {
+	it("classifies an unchanged running response as a semantic stall before the hard deadline", async () => {
 		await expect(
-			waitForStableCompletion(async () => snapshot("same", true), { timeoutMs: 60, pollMs: 5, stableMs: 20 }),
-		).rejects.toThrow(/did not complete/);
+			waitForStableCompletion(async () => snapshot("same", true), {
+				timeoutMs: 500,
+				stallTimeoutMs: 40,
+				pollMs: 5,
+				stableMs: 20,
+			}),
+		).rejects.toMatchObject({ kind: "provider_stalled" });
+	});
+
+	it("emits progress only for meaningful response and generation transitions", async () => {
+		const sequence = [
+			{ responsePresent: false, text: "", html: "", running: false },
+			snapshot("Thinking", true),
+			snapshot("Thinking", true),
+			snapshot("Partial", true),
+			snapshot("Final", false),
+			snapshot("Final", false),
+			snapshot("Final", false),
+		];
+		const events: ProviderProgressEvent[] = [];
+		let index = 0;
+		await waitForStableCompletion(async () => sequence[Math.min(index++, sequence.length - 1)]!, {
+			timeoutMs: 1000,
+			stallTimeoutMs: 300,
+			pollMs: 5,
+			stableMs: 8,
+			onProgress: (event) => events.push(event),
+		});
+		expect(events.map((event) => event.kind)).toEqual([
+			"generation_stopped",
+			"response_started",
+			"generation_started",
+			"response_changed",
+			"generation_stopped",
+			"response_changed",
+		]);
+	});
+
+	it("rejects invalid stall policy before polling", async () => {
+		await expect(
+			waitForStableCompletion(async () => snapshot("x", false), {
+				timeoutMs: 100,
+				stallTimeoutMs: 100,
+				pollMs: 5,
+				stableMs: 20,
+			}),
+		).rejects.toBeInstanceOf(InternetError);
 	});
 
 	it("rejects when aborted", async () => {

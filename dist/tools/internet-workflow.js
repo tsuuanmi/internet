@@ -1,46 +1,33 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { ACCOUNT_IDS } from "#internet/core/accounts";
 import { sleep } from "#internet/core/sleep";
-import { WorkflowEngineError } from "#internet/workflow/engine";
-import { resolveWorkflowRepository, WorkflowRepositoryError, } from "#internet/workflow/repository-context";
-import { TERMINAL_WORKFLOW_STATES } from "#internet/workflow/types";
-export const WORKFLOW_OPERATIONS = [
-    "start",
-    "test",
-    "status",
-    "request_merge",
-    "approve",
-    "merge",
-    "reject",
-    "cancel",
-    "continue",
-];
+import { resolveWorkflowRepository, WorkflowRepositoryError } from "#internet/workflow/repository-context";
+export const WORKFLOW_OPERATIONS = ["start", "test", "status", "authorize_merge", "cancel", "continue"];
 const DEFAULT_TEST_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_TEST_POLL_MS = 1_000;
-function runsSummary(runs) {
-    return runs
-        .map((run) => `${run.lane}:${run.status}:attempts=${run.attempts}${run.error === undefined ? "" : `:error=${run.error}`}`)
+function graphSummary(job) {
+    const counts = new Map();
+    for (const node of Object.values(job.graph.nodes))
+        counts.set(node.state, (counts.get(node.state) ?? 0) + 1);
+    return [...counts.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([state, count]) => `${state}:${count}`)
         .join(", ");
 }
 function handoffSummary(job) {
     return job.handoffReceipts
-        .map((item) => `${item.sequence}:${item.source}->${item.recipient}:${item.status}:${item.payloadHash}`)
+        .map((item) => `${item.source}->${item.recipient}:${item.status}:${item.payloadHash}`)
         .join(", ");
-}
-function lastError(job) {
-    const failed = [...job.teamRuns.research, ...job.teamRuns.review].find((run) => run.status === "failed" && run.error !== undefined);
-    return failed?.error ?? job.pendingAction?.message;
 }
 function project(job) {
     return {
         jobId: job.jobId,
-        state: job.state,
+        phase: job.graph.phase,
+        lifecycle: job.graph.lifecycle,
         repository: job.repository,
         baseRevision: job.baseRevision,
-        researchRuns: runsSummary(job.teamRuns.research),
-        reviewRuns: runsSummary(job.teamRuns.review),
+        graph: graphSummary(job),
         handoffs: handoffSummary(job),
-        writerState: `account=${job.writerConversation.accountId} session=${job.writerConversation.sessionId}`,
         reviewCycle: job.reviewCycle,
         ...(job.lastEvent === undefined
             ? {}
@@ -49,7 +36,6 @@ function project(job) {
                 lastEventType: job.lastEvent.type,
                 lastEventMessage: job.lastEvent.message,
             }),
-        ...(lastError(job) === undefined ? {} : { lastError: lastError(job) }),
         ...(job.pullRequest === undefined
             ? {}
             : {
@@ -65,7 +51,11 @@ function project(job) {
             }),
         ...(job.ciReceipt === undefined
             ? {}
-            : { ciStatus: job.ciReceipt.status, ciHeadSha: job.ciReceipt.headSha, ciCheckedAt: job.ciReceipt.checkedAt }),
+            : {
+                ciStatus: job.ciReceipt.status,
+                ciHeadSha: job.ciReceipt.headSha,
+                ciCheckedAt: job.ciReceipt.checkedAt,
+            }),
         ...(job.mergeAuthorization === undefined ? {} : { authorizedHeadSha: job.mergeAuthorization.headSha }),
         ...(job.mergeReceipt === undefined
             ? {}
@@ -86,6 +76,15 @@ function workflowTestObjective(marker) {
 function testFailure(job, message) {
     return { ok: false, operation: "test", result: "FAIL", ...project(job), message };
 }
+function mergeEvidenceIsExact(job) {
+    return (job.graph.lifecycle === "WAITING_USER" &&
+        job.pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED" &&
+        job.pullRequest !== undefined &&
+        job.pendingAction.expectedHeadSha === job.pullRequest.headSha &&
+        job.ciReceipt !== undefined &&
+        job.ciReceipt.headSha === job.pullRequest.headSha &&
+        (job.ciReceipt.status === "PASS" || job.ciReceipt.status === "NONE"));
+}
 async function runAcceptanceTest(engine, driver, dependencies, exec) {
     if (dependencies.browser === undefined) {
         return {
@@ -97,22 +96,15 @@ async function runAcceptanceTest(engine, driver, dependencies, exec) {
     }
     const agent = exec.agent;
     const cwd = agent?.session?.header?.cwd;
-    if (typeof cwd !== "string" || cwd.trim() === "") {
+    const ownerSessionId = String(agent?.id ?? "");
+    if (typeof cwd !== "string" || cwd.trim() === "" || ownerSessionId === "") {
         return {
             ok: false,
             operation: "test",
             result: "FAIL",
-            message: "workflow test requires a session working directory",
+            message: "workflow test requires a session working directory and owner session",
         };
     }
-    const ownerSessionId = String(agent?.id ?? "");
-    if (ownerSessionId === "")
-        return {
-            ok: false,
-            operation: "test",
-            result: "FAIL",
-            message: "workflow test requires an owner session",
-        };
     const statuses = await Promise.all(ACCOUNT_IDS.map((accountId) => dependencies.browser.status(accountId)));
     const accountPreflight = statuses.map((status) => `${status.accountId}=${status.state}`).join(", ");
     const unavailable = statuses.filter((status) => status.state !== "ready");
@@ -141,46 +133,25 @@ async function runAcceptanceTest(engine, driver, dependencies, exec) {
         if (exec.signal.aborted)
             throw exec.signal.reason ?? new Error("workflow test aborted");
         let current = engine.status(job.jobId);
-        if (current.state === "DONE") {
+        if (current.graph.lifecycle === "COMPLETED") {
             return {
                 ok: true,
                 operation: "test",
                 result: "PASS",
                 accountPreflight,
                 ...project(current),
-                message: "full workflow acceptance test completed through real merge and DONE",
+                message: "full workflow acceptance test completed through real exact-head merge",
             };
         }
-        if (current.state === "AWAITING_MERGE_AUTHORIZATION") {
-            const expectedHeadSha = current.pendingAction?.expectedHeadSha;
-            if (current.pendingAction?.kind !== "MERGE_AUTHORIZATION_REQUIRED" ||
-                current.pullRequest === undefined ||
-                expectedHeadSha === undefined ||
-                expectedHeadSha !== current.pullRequest.headSha ||
-                current.ciReceipt === undefined ||
-                current.ciReceipt.headSha !== expectedHeadSha ||
-                !["PASS", "NONE"].includes(current.ciReceipt.status) ||
-                !current.teamRuns.review.every((run) => run.result?.reviewVerdict === "PASS" && run.result.reviewedHeadSha === expectedHeadSha)) {
-                return testFailure(current, "acceptance controller refused merge authorization because exact-head evidence was incomplete");
-            }
-            current = engine.approve({ jobId: current.jobId, expectedHeadSha });
+        if (mergeEvidenceIsExact(current)) {
+            current = engine.authorizeMerge(current.jobId, ownerSessionId, current.pullRequest.headSha);
             driver.enqueue(current.jobId);
         }
-        else if (current.state === "FAILED_RETRYABLE") {
-            if (current.pendingAction?.kind !== "RETRY_REQUIRED" || current.pendingAction.resumeState === undefined) {
-                return testFailure(current, "workflow entered FAILED_RETRYABLE without an explicit retry path");
-            }
-            current = engine.continue(current.jobId);
-            driver.enqueue(current.jobId);
+        else if (current.graph.lifecycle === "BLOCKED") {
+            return testFailure(current, current.pendingAction?.message ?? "workflow acceptance test blocked");
         }
-        else if (current.state === "BLOCKED" ||
-            current.state === "UNKNOWN_CONFIRMATION" ||
-            current.state === "FAILED_TERMINAL" ||
-            current.state === "CANCELLED") {
-            return testFailure(current, current.pendingAction?.message ?? `workflow acceptance test stopped in ${current.state}`);
-        }
-        else if (TERMINAL_WORKFLOW_STATES.has(current.state)) {
-            return testFailure(current, `workflow acceptance test ended in ${current.state}`);
+        else if (current.graph.lifecycle === "CANCELLED") {
+            return testFailure(current, "workflow acceptance test was cancelled");
         }
         await sleep(pollMs, exec.signal);
     }
@@ -194,11 +165,10 @@ async function runAcceptanceTest(engine, driver, dependencies, exec) {
         message: `workflow acceptance test timed out after ${timeoutMs} ms; durable job and PR were left intact for inspection`,
     };
 }
-/** Define the deterministic workflow control-plane tool. */
 export function defineInternetWorkflowTool(engine, driver, testDependencies = {}) {
     return defineTool({
         name: "internet_workflow",
-        description: "Create and control automatically driven durable coding workflow jobs. test performs a full real acceptance workflow against the current Git repository after account preflight, auto-authorizing only the exact reviewed healthy head.",
+        description: "Create and control graph-driven durable coding workflows. test performs a full real acceptance workflow and authorizes only the exact reviewed healthy PR head.",
         parameters: {
             operation: {
                 type: "string",
@@ -208,9 +178,9 @@ export function defineInternetWorkflowTool(engine, driver, testDependencies = {}
             },
             jobId: { type: "string", description: "32-character workflow job ID for non-start/test operations." },
             objective: { type: "string", description: "Coding objective for start." },
-            repository: { type: "string", description: "Authoritative public repository URL for start." },
+            repository: { type: "string", description: "Authoritative repository URL for start." },
             baseRevision: { type: "string", description: "Full 40-character Git SHA for start." },
-            expectedHeadSha: { type: "string", description: "Exact PR head SHA when authorizing a head-bound action." },
+            expectedHeadSha: { type: "string", description: "Exact PR head SHA for merge authorization." },
         },
         output: {
             schema: {
@@ -222,18 +192,16 @@ export function defineInternetWorkflowTool(engine, driver, testDependencies = {}
                     result: { type: "string", enum: ["PASS", "FAIL", "TIMEOUT"] },
                     accountPreflight: { type: "string" },
                     jobId: { type: "string" },
-                    state: { type: "string" },
+                    phase: { type: "string" },
+                    lifecycle: { type: "string" },
                     repository: { type: "string" },
                     baseRevision: { type: "string" },
-                    researchRuns: { type: "string" },
-                    reviewRuns: { type: "string" },
+                    graph: { type: "string" },
                     handoffs: { type: "string" },
-                    writerState: { type: "string" },
                     reviewCycle: { type: "number" },
                     lastEventClass: { type: "string" },
                     lastEventType: { type: "string" },
                     lastEventMessage: { type: "string" },
-                    lastError: { type: "string" },
                     prNumber: { type: "number" },
                     prUrl: { type: "string" },
                     prHeadSha: { type: "string" },
@@ -256,8 +224,10 @@ export function defineInternetWorkflowTool(engine, driver, testDependencies = {}
                     summary.push(`result=${String(result.result)}`);
                 if (result.jobId !== undefined)
                     summary.push(`job=${String(result.jobId)}`);
-                if (result.state !== undefined)
-                    summary.push(`state=${String(result.state)}`);
+                if (result.phase !== undefined)
+                    summary.push(`phase=${String(result.phase)}`);
+                if (result.lifecycle !== undefined)
+                    summary.push(`status=${String(result.lifecycle)}`);
                 if (result.message !== undefined)
                     summary.push(String(result.message));
                 return [{ type: "text", text: summary.join(" · ") }];
@@ -287,43 +257,31 @@ export function defineInternetWorkflowTool(engine, driver, testDependencies = {}
                 }
                 if (typeof args.jobId !== "string")
                     return { ok: false, operation, message: `${operation} requires jobId` };
-                const expectedHeadSha = typeof args.expectedHeadSha === "string" ? args.expectedHeadSha : undefined;
                 let job;
                 if (operation === "status")
                     job = engine.status(args.jobId);
-                else if (operation === "request_merge") {
-                    job = await engine.runPrHealthCheck(args.jobId, exec.signal);
-                    if (job.state === "READY_FOR_MERGE_AUTHORIZATION")
-                        job = engine.requestMergeAuthorization(args.jobId);
-                }
-                else if (operation === "merge")
-                    job = await engine.runWriterMerge(args.jobId, exec.signal);
                 else if (operation === "cancel")
                     job = await driver.cancel(args.jobId);
                 else if (operation === "continue") {
                     job = engine.continue(args.jobId);
                     driver.enqueue(job.jobId);
                 }
-                else if (operation === "approve") {
-                    job = engine.approve({ jobId: args.jobId, expectedHeadSha });
+                else {
+                    if (typeof args.expectedHeadSha !== "string") {
+                        return { ok: false, operation, message: "authorize_merge requires expectedHeadSha" };
+                    }
+                    job = engine.authorizeMerge(args.jobId, String(exec.agent?.id ?? ""), args.expectedHeadSha);
                     driver.enqueue(job.jobId);
                 }
-                else
-                    job = engine.reject({ jobId: args.jobId, expectedHeadSha });
                 return { ok: true, operation, ...project(job) };
             }
             catch (error) {
-                if (error instanceof WorkflowEngineError || error instanceof WorkflowRepositoryError) {
+                if (error instanceof WorkflowRepositoryError)
                     return { ok: false, operation, message: error.message };
-                }
                 return { ok: false, operation, message: error instanceof Error ? error.message : String(error) };
             }
         },
-        presentCall: (args) => ({
-            card: "generic",
-            title: `internet_workflow ${String(args.operation)}`,
-            kind: "other",
-        }),
+        presentCall: (args) => ({ card: "generic", title: `internet_workflow ${String(args.operation)}`, kind: "other" }),
     });
 }
 //# sourceMappingURL=internet-workflow.js.map

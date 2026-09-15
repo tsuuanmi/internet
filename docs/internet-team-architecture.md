@@ -1,100 +1,76 @@
 # Internet Team Architecture
 
 > **Status:** current as-built architecture  
-> **Last synchronized:** 2026-09-10  
+> **Last synchronized:** 2026-09-15  
 > **Implementation:** [`how-it-works.md`](./how-it-works.md)  
 > **Operational flow:** [`WORKFLOW.md`](./WORKFLOW.md)  
 > **Runtime state machine:** [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md)
 
 ## Goal
 
-`@tsuuanmi/internet` is a browser-backed multi-account Website runtime. Agent-team reasoning is provider-agnostic; deterministic code preserves workflow state and user authority; a separate writer account performs scoped GitHub work.
+`@tsuuanmi/internet` is a browser-backed multi-account Website runtime. Agent-team reasoning is provider-agnostic; deterministic code preserves workflow correctness and user authority; a separate writer account performs scoped GitHub work.
 
-The defining principle is:
+> **User owns authority, Local brokers authority, WorkflowEngine owns domain transitions, WorkflowDriver schedules durable graph work, provider-agnostic teams reason, and exact PR/head/health evidence gates merge.**
 
-> **User owns authority, Local brokers authority, WorkflowEngine/Driver own deterministic orchestration, provider-agnostic agent teams reason, the writer performs scoped GitHub actions, and exact PR/head/health state gates merge.**
-
-## Planes
+## Runtime planes
 
 ### Authority plane
 
 ```text
-User
-  -> approve/reject exact merge and explicit exceptions
-Local
-  -> present compact action-required state and carry user decision
+User  -> exact merge/exception authority
+Local -> compact action presentation + decision transport
 ```
-
-Technical capability never equals workflow authority.
 
 ### Deterministic control plane
 
 ```text
 WorkflowEngine
 WorkflowDriver
-Job/Handoff/TeamTrace stores
-Approval policy
-Event sink
-Retention manager
+WorkflowJobStore + graph snapshot
+WorkflowNodeResultStore
+WorkflowHandoffStore
+WorkflowEventJournal
+approval policy
+retention manager
 ```
 
-This plane decides what runs next, worker cardinality, handoff ordering, retries, state validity, account routing, and authority gates.
+The graph/job snapshot is the sole correctness authority. The event journal is ordered diagnostic history, not event-sourced state.
 
 ### Cognition/data plane
 
 ```text
-Research Team A/B -> exact finals -> Writer
-PR -> Review Team A/B -> exact finals -> Writer
+Research Team A/B -> exact synthesis payloads -> Writer
+PR -> Review Team A/B -> exact synthesis payloads -> Writer
 ```
-
-Full model payloads do not need to pass through Local.
 
 ### Action plane
 
 ```text
 chatgpt-writer
-  -> repo read
-  -> branch/file/commit/PR mutation
-  -> read-only PR health inspection
-  -> exact authorized merge
+  -> repository read/mutation
+  -> deterministic branch + one PR reconciliation
+  -> read-only PR health
+  -> exact authorized squash merge
 ```
 
-## Shared team execution boundary
+## Shared team boundary
 
-The public `internet_team` tool and workflow research/review are adapters over one lower-level team runtime:
+The public tool and workflow share deterministic team semantics:
 
 ```text
-                         shared team runtime
-                              runTeam(...)
-                             /            \
-                            /              \
-                 internet_team        workflow team runner
-                 public adapter       deterministic adapter
+                           TeamPlan / TeamStep
+                         /                    \
+internet_team in-memory                       workflow durable graph
+execution                                     node execution
 ```
 
-The shared runtime owns ordered member turns, peer contribution passing, purpose-specific prompt strategy, strongest-answer synthesis, provider `chat(...)` calls, transcript accumulation, structured progress/failures, and AbortSignal handling.
+The shared team layer owns speaking order, peer-context dependencies, prompt strategies, strongest-answer synthesis, and structured step failures. The workflow adapter owns graph persistence/recovery; the public adapter owns public arguments/session presentation.
 
-Adapters intentionally remain separate:
-
-```text
-internet_team
-  - model/user-facing arguments and rendering
-  - <agent>:team:<name> namespace
-  - optional rounds/accounts/visibility/transcript projection
-
-workflow team runner
-  - authoritative workflow-generated task
-  - <owner>:workflow:<job>:<phase>:<lane> namespace
-  - durable per-job account routing
-  - workflow prompt strategy and trace observation
-  - workflow AbortSignal and engine result
-```
-
-Workflow never invokes the public `internet_team` tool as an internal RPC.
+Workflow never invokes `internet_team` as an internal RPC and does not duplicate the debate/synthesis loop.
 
 ## Provider-agnostic member model
 
-Team reasoning roles are ordinal:
+Normal team roles are ordinal:
 
 ```text
 Member 1
@@ -102,9 +78,7 @@ Member 2
 ...
 ```
 
-The underlying account/provider is execution metadata, not reasoning identity. Member prompts do not say ChatGPT, Gemini, or account names. Peer contributions are delimited as untrusted evidence. The synthesizer is instructed to choose the strongest supported result rather than average, concatenate, or preserve symmetry.
-
-Current default backing route for new team/workflow executions:
+Underlying account/provider identity is routing/diagnostic metadata. Peer contributions are untrusted evidence. Current default route for new workflows:
 
 ```text
 Member 1 -> chatgpt-thinker
@@ -112,60 +86,30 @@ Member 2 -> chatgpt-thinker-2
 Writer   -> chatgpt-writer
 ```
 
-`chatgpt-thinker` and `chatgpt-thinker-2` should be authenticated with separate ChatGPT accounts for genuine independent account state/quota. `chatgpt-writer` is not reused as a member.
+`gemini-thinker` remains available for explicit direct/research/team use. Existing workflows retain persisted routing.
 
-`gemini-thinker` remains a supported thinker for direct chat/research and explicit team composition, but is temporarily outside the default team/workflow route. Changing the backing route must not require rewriting team prompt semantics or the shared execution loop.
+## Durable workflow graph
 
-## Account identities
-
-```text
-chatgpt-thinker
-  provider: ChatGPT Web
-  role: reasoning/review/synthesis
-
-chatgpt-thinker-2
-  provider: ChatGPT Web
-  role: reasoning/review/synthesis
-
-chatgpt-writer
-  provider: ChatGPT Web
-  role: terminal GitHub executor
-
-gemini-thinker
-  provider: Gemini Web
-  role: optional reasoning/review
-```
-
-Authentication state, login profiles, browser pools, schedulers, remote login and durable conversations are account-scoped. Provider-to-account fallback is not part of correctness.
-
-## Standard workflow
+The standard workflow is a dependency graph, not a lane replay state machine:
 
 ```text
-/workflow <task>
-  -> resolve repo + exact base revision
-  -> durable job + automatic driver
-  -> Research Team A/B concurrently
-       each: Member 1 + Member 2 -> strongest synthesis
-  -> exact handoffs A then B
-  -> START_IMPLEMENTATION
-  -> persistent chatgpt-writer
-  -> deterministic branch + one PR
-  -> Review Team A/B concurrently against exact PR head
-       each: Member 1 + Member 2 -> exact-head synthesis
-  -> exact review handoffs
-  -> APPLY_REVIEWS if needed
-  -> same PR, new head, re-review
-  -> PASS/PASS
-  -> CHECK_PR_HEALTH
-  -> exact-head merge authorization request
-  -> explicit user approval
-  -> immediate head + health revalidation
-  -> MERGE_AUTHORIZED
-  -> writer merge
-  -> DONE
+Research A member graph -> synthesis A --\
+                                      research handoff gate -> Writer implementation
+Research B member graph -> synthesis B --/
+
+Writer -> exact PR head H1
+       -> Review A cycle 1 graph --\
+       -> Review B cycle 1 graph --- review decision
+
+CHANGES_REQUIRED -> Writer remediation -> H2 -> fresh review cycle
+PASS/PASS        -> PR health -> merge authority -> merge
 ```
 
-Research A/B and Review A/B are launched concurrently at the workflow-lane level. Same-account turns may serialize through their account scheduler; workflow adds no A-then-B lane mutex.
+Each executable node has a stable logical `nodeId`, exact input receipt, optional current execution, and exact output/result receipt. Provider attempts have separate `executionId` values and ownership leases. Completed nodes are reusable only while their exact correctness-bearing input matches.
+
+## Concurrency boundary
+
+Research A/B and Review A/B are independent graph branches. READY work can be dispatched concurrently. The account scheduler remains the sole same-account capacity/session-ordering authority.
 
 ## Stable Website conversations
 
@@ -177,72 +121,44 @@ Research A/B and Review A/B are launched concurrently at the workflow-lane level
 <local>:workflow:<job>:writer
 ```
 
-Review cycle, exact PR head, and account routing are durable job facts rather than new session identities. Existing durable jobs retain the route they were created with; new jobs use the current default route.
+Review cycle and exact head are durable prompt/input facts rather than new conversation identities.
+
+## Recovery boundary
+
+Recovery is reconcile-before-resubmit:
+
+```text
+fence/supersede stale execution when required
+-> inspect node/provider/external receipts
+-> recover safely identifiable result
+-> otherwise bounded same-node retry
+```
+
+A later member failure does not replay earlier members. An orphaned synthesis does not replay member turns. Writer retry reconciles deterministic branch/PR identity before another external mutation attempt.
+
+There is no hidden member/provider substitution and no degraded research/review quorum.
 
 ## Observability
 
-The shared team core emits structured stages:
+`/workflow status` and `/workflow watch` project the authoritative graph and recent diagnostic events. Routine display uses Team A/B and `Member 1..N`; account/provider identity is diagnostic detail. Full reasoning/review payloads remain outside Local progress injection.
+
+Top-level lifecycle is independent from phase:
 
 ```text
-prepare_prompt
-provider_turn
-synthesis
-complete
+phase      RESEARCH | WRITER | REVIEW | HEALTH | MERGE | DONE
+lifecycle  RUNNING | WAITING_USER | RECOVERING | BLOCKED | COMPLETED | CANCELLED
 ```
 
-Workflow persists bounded private trace evidence with phase/lane/attempt/round/account/provider/stage/status/failure metadata. Normal operator output projects accounts as `Member 1..N`; raw account/provider identity appears only when diagnostic attribution is useful.
+Current `WAITING_USER` runtime use is a durable authority gate such as merge authorization. Unknown Website confirmations fail closed into an action-required blocked boundary; the current headless workflow does not claim to preserve a reachable live browser session for manual inspection.
 
-`/workflow status` starts with a pipeline summary and then expands Team A/B. `/workflow watch` uses the same authoritative durable state plus compact live `PROGRESS` events; it does not create another state machine.
+## Handoffs and exact-head authority
 
-## Handoff invariant
+Research/review synthesis payloads are handed to the writer verbatim with SHA-256 identity and idempotent delivery receipts. Review, health, authorization, and merge are bound to the exact PR head. Remediation creates a new head and fresh review cycle; older evidence cannot satisfy it.
 
-For every research/review handoff:
+## Retention
 
-```text
-handoff.payload == source final output
-```
-
-Metadata such as source, sequence, hash and delivery state stays outside the payload. Website delivery uses durable at-least-once semantics plus idempotent acknowledgement.
-
-## PR-centric verification
-
-The PR is canonical after writer execution. Reviewer teams inspect the actual PR and exact current head. Remediation preserves the same PR and advances the head before a new review cycle.
-
-## PR health and merge authority
-
-After review PASS/PASS, live PR health is classified against exact current head:
-
-```text
-PASS | FAIL | PENDING | NONE | UNKNOWN
-```
-
-Only `PASS`, or verified `NONE` where no required checks/statuses exist, may advance. Merge still requires explicit user authority bound to repository + PR + exact head and immediate pre-merge head/health revalidation.
-
-## Local integration and recovery
-
-Local sees compact control-plane events:
-
-```text
-INTERNAL
-PROGRESS
-ACTION_REQUIRED
-```
-
-Full model payloads remain in dedicated durable stores. `agent.inject()` failure cannot roll back committed workflow state.
-
-Durable state enables restart recovery. Completed lanes/handoffs are reused. Provider/browser failures are execution failures, never member answers. Unexpected driver failures persist explicit retry state instead of resetting the job.
-
-## Operations / retention
-
-Retention remains explicit operator maintenance:
-
-```text
-DONE      -> eligible after 30 days
-CANCELLED -> eligible after 14 days
-```
-
-Cleanup validates exact job identity and removes the selected job, exact handoffs and team trace while retaining a private audit receipt.
+Retention remains explicit operator maintenance. Exact cleanup validates job identity and removes only the selected job, handoffs, node results, and event journal while retaining cleanup audit evidence. Immediate exact-ID deletion is separate from aged cleanup.
 
 ## Deferred boundary
 
-Automatic provider-turn retry/failover, dynamic provider health routing, generic DAG workflows, multi-writer pooling, Website memory as correctness state, autonomous deployment, and broad non-coding generalization remain deferred until concrete requirements justify them.
+Dynamic member substitution, degraded quorum, arbitrary user-defined DAGs, live resumable headless-browser user interaction, multi-writer pooling, Website memory as correctness state, autonomous deployment, and broad non-coding generalization remain deferred until concrete requirements justify them.

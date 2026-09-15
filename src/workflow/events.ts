@@ -1,7 +1,77 @@
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 import type { WorkflowEventRecord, WorkflowJob } from "#internet/workflow/types";
 
 export interface WorkflowEventSink {
 	publish(job: WorkflowJob, event: WorkflowEventRecord): void;
+}
+
+export interface WorkflowGraphEvent extends WorkflowEventRecord {
+	readonly schema: "@tsuuanmi/internet-workflow-event";
+	readonly version: 1;
+	readonly jobId: string;
+	readonly eventSeq: number;
+	readonly graphRevision: number;
+}
+
+export class WorkflowEventJournal {
+	private readonly root: string;
+
+	constructor(dataDir: string) {
+		this.root = join(dataDir, "workflows", "events");
+	}
+
+	append(job: WorkflowJob, event: WorkflowEventRecord): WorkflowGraphEvent {
+		const entry: WorkflowGraphEvent = {
+			schema: "@tsuuanmi/internet-workflow-event",
+			version: 1,
+			jobId: job.jobId,
+			eventSeq: job.graph.eventSeq,
+			graphRevision: job.graph.graphRevision,
+			...event,
+		};
+		const directory = join(this.root, job.jobId);
+		const path = join(directory, `${String(entry.eventSeq).padStart(12, "0")}.json`);
+		if (existsSync(path)) {
+			const current = parseWorkflowGraphEvent(JSON.parse(readFileSync(path, "utf8")));
+			if (JSON.stringify(current) !== JSON.stringify(entry))
+				throw new Error(`workflow event sequence ${entry.eventSeq} already exists with different content`);
+			return current;
+		}
+		ensurePrivateDirectory(directory);
+		writePrivateJson(path, entry);
+		return entry;
+	}
+
+	list(jobId: string, limit = 20): readonly WorkflowGraphEvent[] {
+		const directory = join(this.root, jobId);
+		if (!existsSync(directory)) return [];
+		if (!lstatSync(directory).isDirectory()) throw new Error(`workflow event path for ${jobId} is not a directory`);
+		const names = readdirSync(directory)
+			.filter((name) => /^\d{12}\.json$/u.test(name))
+			.sort()
+			.slice(-Math.max(0, limit));
+		return names.map((name) => parseWorkflowGraphEvent(JSON.parse(readFileSync(join(directory, name), "utf8"))));
+	}
+}
+
+export function parseWorkflowGraphEvent(value: unknown): WorkflowGraphEvent {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("invalid workflow event");
+	const event = value as Record<string, unknown>;
+	if (event.schema !== "@tsuuanmi/internet-workflow-event" || event.version !== 1)
+		throw new Error("unsupported workflow event schema");
+	if (typeof event.jobId !== "string" || !/^[0-9a-f]{32}$/u.test(event.jobId))
+		throw new Error("invalid workflow event job id");
+	if (typeof event.eventSeq !== "number" || !Number.isSafeInteger(event.eventSeq) || event.eventSeq < 1)
+		throw new Error("invalid workflow event sequence");
+	if (typeof event.graphRevision !== "number" || !Number.isSafeInteger(event.graphRevision) || event.graphRevision < 0)
+		throw new Error("invalid workflow event graph revision");
+	if (typeof event.type !== "string" || typeof event.at !== "string" || !Number.isFinite(Date.parse(event.at)))
+		throw new Error("invalid workflow event fields");
+	if (!["INTERNAL", "PROGRESS", "ACTION_REQUIRED"].includes(String(event.class)))
+		throw new Error("invalid workflow event class");
+	return value as WorkflowGraphEvent;
 }
 
 export interface WorkflowLocalAgent {
@@ -21,22 +91,20 @@ export function formatWorkflowEvent(job: WorkflowJob, event: WorkflowEventRecord
 		`job=${job.jobId}`,
 		`class=${event.class}`,
 		`event=${event.type}`,
-		`state=${job.state}`,
+		`phase=${job.graph.phase}`,
+		`lifecycle=${job.graph.lifecycle}`,
 		`repository=${job.repository}`,
 		`review_cycle=${job.reviewCycle}`,
 	];
-	if (job.pullRequest !== undefined) {
-		lines.push(`pr=${job.pullRequest.url}`, `head_sha=${job.pullRequest.headSha}`);
-	}
+	if (event.nodeId !== undefined) lines.push(`node=${event.nodeId}`);
+	if (event.executionId !== undefined) lines.push(`execution=${event.executionId}`);
+	if (job.pullRequest !== undefined) lines.push(`pr=${job.pullRequest.url}`, `head_sha=${job.pullRequest.headSha}`);
 	if (job.pendingAction !== undefined) lines.push(`pending_action=${job.pendingAction.kind}`);
 	if (event.message !== undefined && event.message.trim() !== "") lines.push(`message=${event.message}`);
-	lines.push(
-		"This is compact workflow control-plane context. It intentionally excludes research and review payloads.",
-	);
+	lines.push("This compact control-plane event intentionally excludes research and review payloads.");
 	return lines.join("\n");
 }
 
-/** Best-effort host-native Local notification. INTERNAL events remain engine-only. */
 export class DshWorkflowEventSink implements WorkflowEventSink {
 	private readonly agents: WorkflowAgentRegistry;
 
@@ -54,7 +122,7 @@ export class DshWorkflowEventSink implements WorkflowEventSink {
 				source: { kind: "plugin", plugin: "internet" },
 			});
 		} catch {
-			// Parent agent disposal must never change workflow correctness or state.
+			// Local disposal never changes workflow correctness.
 		}
 	}
 }

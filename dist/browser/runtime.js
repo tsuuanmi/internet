@@ -16,6 +16,7 @@ import { loginProfileArgs, loginProfileIgnoredDefaultArgs, loginProfileReopenEnv
 import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
+import { hashProviderTurnText, ProviderTurnReceiptStore, reconcileProviderTurn, workflowJobIdFromRequestKey, } from "#internet/browser/turn-receipts";
 import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -51,7 +52,6 @@ export async function waitForBoundCompletion(options) {
         check();
         const text = await options.observe(signal, () => Math.max(0, deadline - Date.now()));
         check();
-        // A finished response may precede the SPA's canonical route update.
         bindingDeadline = Math.min(deadline, Date.now() + 5_000);
         return text;
     })();
@@ -111,6 +111,7 @@ export class BrowserManager {
         this.schedulers = new Map();
         this.remoteLogins = new Map();
         this.conversations = new Map();
+        this.turnReceipts = new Map();
         this.pendingCloses = new Map();
         this.activeContexts = new Map();
         this.accountCommitQueues = new Map();
@@ -139,6 +140,16 @@ export class BrowserManager {
         if (store === undefined) {
             store = new ConversationStore(this.config.dataDir, accountId);
             this.conversations.set(accountId, store);
+        }
+        return store;
+    }
+    turnReceiptStore(accountId, requestKey) {
+        const workflowJobId = workflowJobIdFromRequestKey(requestKey);
+        const key = `${workflowJobId}:${accountId}`;
+        let store = this.turnReceipts.get(key);
+        if (store === undefined) {
+            store = new ProviderTurnReceiptStore(this.config.dataDir, workflowJobId, accountId);
+            this.turnReceipts.set(key, store);
         }
         return store;
     }
@@ -343,7 +354,6 @@ export class BrowserManager {
         }
         throw new InternetError("login_failed", `${provider} portable account capture failed.`);
     }
-    /** Verify the IndexedDB-free fallback before it replaces a portable account. */
     async verifyFallbackStorageState(provider, browser, storageState, viewport) {
         const context = await browser.newContext({ storageState, viewport });
         try {
@@ -370,7 +380,6 @@ export class BrowserManager {
             .map(([accountId]) => accountId);
         await Promise.all(accountIds.map((accountId) => this.runAccountExclusive(accountId, () => this.closeBrowser(accountId)).catch(() => { })));
     }
-    /** Cancel any pending delayed-close timer for an account (the browser is needed now). */
     cancelPendingClose(accountId) {
         const timer = this.pendingCloses.get(accountId);
         if (timer === undefined)
@@ -378,7 +387,6 @@ export class BrowserManager {
         clearTimeout(timer);
         this.pendingCloses.delete(accountId);
     }
-    /** Schedule closing an account browser after its scheduler becomes idle. */
     scheduleCloseWhenIdle(accountId) {
         const scheduler = this.scheduler(accountId);
         void scheduler.waitForIdle().then(() => {
@@ -513,7 +521,6 @@ export class BrowserManager {
                 this.accountCommitQueues.delete(accountId);
         }
     }
-    /** Preserve a provider-rotated session after a recoverable failed turn. */
     async recoverAuthenticatedSnapshot(accountId, provider, page, context, lease, accountRevision, previousStorageState) {
         try {
             if (!this.scheduler(accountId).isCurrent(lease))
@@ -532,10 +539,6 @@ export class BrowserManager {
             // Keep the original turn error; recovery is an opportunistic state refresh.
         }
     }
-    /**
-     * Persist reauth-required only when the canonical account is still the
-     * bootstrapped revision and the lease is current, then invalidate turns.
-     */
     async handleSignedOut(accountId, lease, accountRevision, evidence) {
         if (!this.scheduler(accountId).isCurrent(lease))
             return;
@@ -550,7 +553,6 @@ export class BrowserManager {
             .runExclusive(() => this.closeBrowser(accountId))
             .catch(() => { });
     }
-    /** Open the account's loopback noVNC login desktop for sign-in. */
     async login(accountId) {
         return this.runAccountExclusive(accountId, () => this.loginAccount(accountId));
     }
@@ -604,7 +606,6 @@ export class BrowserManager {
         const storageState = await this.verifyStorageState(provider, bootstrapState);
         this.accounts.writeReady(accountId, storageState);
     }
-    /** Report persisted account and active remote-login state. */
     async status(accountId) {
         return this.accountStatus(accountId);
     }
@@ -631,11 +632,9 @@ export class BrowserManager {
             ...(remoteLogin === undefined ? {} : { remoteLogin }),
         };
     }
-    /** Run one long provider Deep Research request in an isolated durable conversation. */
     async research(accountId, request) {
         return this.chat(accountId, { ...request, research: true, timeoutMs: this.config.researchTimeoutMs });
     }
-    /** Run one browser chat turn against an authenticated account and return rendered markdown. */
     async chat(accountId, request) {
         if (this.disposed)
             throw new InternetError("browser_unavailable", "Browser manager has been disposed.");
@@ -672,8 +671,6 @@ export class BrowserManager {
                 throw new InternetError("provider_error", error instanceof Error ? error.message : `Failed to read the ${provider} conversation binding.`);
             }
             const targetUrl = binding?.conversationUrl ?? this.homeUrl(provider);
-            // ChatGPT leaves transient post-response controls that can swallow the
-            // next submission; reload its bound conversation before follow-ups.
             if ((provider === "chatgpt-web" && binding !== undefined) || page.url() !== targetUrl) {
                 await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
             }
@@ -702,18 +699,25 @@ export class BrowserManager {
             }
             const waitOptions = {
                 timeoutMs: request.timeoutMs ?? this.config.turnTimeoutMs,
+                stallTimeoutMs: request.stallTimeoutMs,
                 pollMs: this.config.pollMs,
                 stableMs: this.config.stableMs,
                 signal: lease.signal,
+                onProgress: request.onProgress,
             };
             const observeBoundTurn = (observe) => waitForBoundCompletion({
                 provider,
                 page: page,
-                ...waitOptions,
+                timeoutMs: waitOptions.timeoutMs,
+                signal: waitOptions.signal,
                 observe,
                 persist: (url) => {
                     try {
-                        return this.conversationStore(accountId).bind(request.sessionId, url);
+                        const persisted = this.conversationStore(accountId).bind(request.sessionId, url);
+                        if (request.requestKey !== undefined) {
+                            this.turnReceiptStore(accountId, request.requestKey).bindConversation(request.sessionId, request.requestKey, persisted.conversationUrl);
+                        }
+                        return persisted;
                     }
                     catch (error) {
                         throw new InternetError("provider_error", error instanceof Error
@@ -723,16 +727,79 @@ export class BrowserManager {
                 },
             });
             let result;
-            if (provider === "chatgpt-web") {
-                const previousTurnText = await chatgptLastAssistantTurnText(page);
-                const previousResearchText = request.research === true ? (await chatgptDeepResearchSnapshot(page)).text : undefined;
+            const currentSnapshot = () => (provider === "chatgpt-web" ? chatgptSnapshot(page) : geminiSnapshot(page));
+            let resumeSubmittedTurn = false;
+            let previousResponseText;
+            if (request.requestKey !== undefined) {
                 if (request.research === true) {
-                    await chatgptEnableDeepResearch(page);
-                    await chatgptSendDeepResearch(page, request.prompt);
+                    throw new InternetError("config_error", "provider turn reconciliation is only supported for ordinary workflow turns");
+                }
+                const receipts = this.turnReceiptStore(accountId, request.requestKey);
+                const snapshot = await currentSnapshot();
+                previousResponseText = snapshot.text;
+                const existing = receipts.read(request.sessionId, request.requestKey);
+                if (existing !== undefined) {
+                    if (existing.promptHash !== hashProviderTurnText(request.prompt)) {
+                        throw new InternetError("config_error", "workflow request key was reused with different provider input");
+                    }
+                    const reconciliation = reconcileProviderTurn(existing, snapshot);
+                    if (reconciliation === "AMBIGUOUS") {
+                        throw new InternetError("provider_reconciliation_failed", "provider conversation no longer matches the durable workflow turn receipt; inspect before retrying");
+                    }
+                    if (reconciliation === "RECOVER") {
+                        let recoveredBinding = binding ?? this.conversationStore(accountId).read(request.sessionId);
+                        if (recoveredBinding === undefined) {
+                            try {
+                                recoveredBinding = this.conversationStore(accountId).bind(request.sessionId, page.url());
+                            }
+                            catch {
+                                throw new InternetError("provider_reconciliation_failed", "provider response completed but its canonical conversation identity could not be reconciled");
+                            }
+                        }
+                        receipts.complete(request.sessionId, request.requestKey, snapshot.text, recoveredBinding.conversationUrl);
+                        const storageState = await this.captureAccountSnapshot(context, previousStorageState);
+                        await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
+                        return {
+                            text: snapshot.text.slice(0, this.config.maxOutputChars),
+                            url: recoveredBinding.conversationUrl,
+                            conversationId: recoveredBinding.conversationId,
+                        };
+                    }
+                    if (reconciliation === "WAIT") {
+                        resumeSubmittedTurn = true;
+                    }
+                    else {
+                        receipts.submit({
+                            sessionId: request.sessionId,
+                            requestKey: request.requestKey,
+                            prompt: request.prompt,
+                            previousResponse: snapshot.text,
+                            conversationUrl: binding?.conversationUrl,
+                        });
+                    }
                 }
                 else {
-                    await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
-                    await chatgptSend(page, request.prompt);
+                    receipts.submit({
+                        sessionId: request.sessionId,
+                        requestKey: request.requestKey,
+                        prompt: request.prompt,
+                        previousResponse: snapshot.text,
+                        conversationUrl: binding?.conversationUrl,
+                    });
+                }
+            }
+            if (provider === "chatgpt-web") {
+                const previousTurnText = previousResponseText ?? (await chatgptLastAssistantTurnText(page));
+                const previousResearchText = request.research === true ? (await chatgptDeepResearchSnapshot(page)).text : undefined;
+                if (!resumeSubmittedTurn) {
+                    if (request.research === true) {
+                        await chatgptEnableDeepResearch(page);
+                        await chatgptSendDeepResearch(page, request.prompt);
+                    }
+                    else {
+                        await chatgptSelectThinkingLevel(page, this.config.chatgptThinkingLevel);
+                        await chatgptSend(page, request.prompt);
+                    }
                 }
                 result = await observeBoundTurn((signal, remainingMs) => waitForStableCompletion(() => request.research === true
                     ? chatgptDeepResearchSnapshot(page, previousResearchText)
@@ -740,25 +807,34 @@ export class BrowserManager {
                         if (request.confirmation !== undefined) {
                             await chatgptHandleWorkflowConfirmation(page, request.confirmation, accountId, request.sessionId);
                         }
-                        return chatgptSnapshot(page, previousTurnText);
+                        return resumeSubmittedTurn
+                            ? chatgptSnapshot(page)
+                            : chatgptSnapshot(page, previousTurnText);
                     })(), { ...waitOptions, signal, timeoutMs: remainingMs() }));
             }
             else {
-                const previousTurnText = await geminiLastResponseText(page);
+                const previousTurnText = previousResponseText ?? (await geminiLastResponseText(page));
                 const previousResearchText = request.research === true ? await geminiLastDeepResearchReportText(page) : undefined;
-                if (request.research === true)
-                    await geminiEnableDeepResearch(page);
-                else
-                    await geminiSelectDefaultMode(page);
-                await geminiSend(page, request.prompt);
+                if (!resumeSubmittedTurn) {
+                    if (request.research === true)
+                        await geminiEnableDeepResearch(page);
+                    else
+                        await geminiSelectDefaultMode(page);
+                    await geminiSend(page, request.prompt);
+                }
                 result = await observeBoundTurn(async (signal, remainingMs) => {
-                    if (request.research === true) {
+                    if (request.research === true && !resumeSubmittedTurn) {
                         await geminiStartResearchPlan(page, { signal, timeoutMs: remainingMs() });
                     }
                     return waitForStableCompletion(() => request.research === true
                         ? geminiDeepResearchSnapshot(page, previousResearchText)
-                        : geminiSnapshot(page, previousTurnText), { ...waitOptions, signal, timeoutMs: remainingMs() });
+                        : resumeSubmittedTurn
+                            ? geminiSnapshot(page)
+                            : geminiSnapshot(page, previousTurnText), { ...waitOptions, signal, timeoutMs: remainingMs() });
                 });
+            }
+            if (request.requestKey !== undefined) {
+                this.turnReceiptStore(accountId, request.requestKey).complete(request.sessionId, request.requestKey, result.text, result.binding.conversationUrl);
             }
             const storageState = await this.captureAccountSnapshot(context, previousStorageState);
             await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
@@ -779,7 +855,6 @@ export class BrowserManager {
             await context.close().catch(() => { });
         }
     }
-    /** Close the account's managed inference browser, if one is open. */
     async stop(accountId) {
         await this.runAccountExclusive(accountId, () => this.closeAccountResources(accountId));
     }
@@ -794,7 +869,6 @@ export class BrowserManager {
         }
         await this.closeBrowser(accountId);
     }
-    /** Close every managed inference browser (no leaked Chrome processes). */
     async dispose() {
         if (this.disposed)
             return;

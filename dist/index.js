@@ -11,15 +11,14 @@ import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { defineInternetWorkflowMaintenanceTool } from "#internet/tools/internet-workflow-maintenance";
 import { WorkflowDriver } from "#internet/workflow/driver";
 import { WorkflowEngine } from "#internet/workflow/engine";
-import { DshWorkflowEventSink } from "#internet/workflow/events";
+import { DshWorkflowEventSink, WorkflowEventJournal } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
+import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import { WorkflowOperator } from "#internet/workflow/operator";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
-import { DurableWorkflowTeamObserver } from "#internet/workflow/team-observer";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
-import { WorkflowTeamTraceStore } from "#internet/workflow/team-trace-store";
 import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
 export const name = "internet";
 export const inject = ["tools", "systemPrompt", "commands", "agents"];
@@ -44,12 +43,11 @@ const INTERNET_TEAM_GUIDANCE = [
 ].join(" ");
 const INTERNET_WORKFLOW_GUIDANCE = [
     "Use /workflow <task> as the normal entry point for a durable coding workflow. Use /workflow list, /workflow status [jobId], /workflow watch [jobId], /workflow stop [jobId], /workflow continue [jobId], and /workflow delete <jobId> for operator control without reading private JSON files manually. New jobs always pin a freshly queried upstream main HEAD; deletion requires an explicit workflow ID.",
-    "Research A/B and Review A/B are independent provider-agnostic agent-team lanes and are launched concurrently at the workflow level. Each lane currently uses two independent ChatGPT thinker accounts as Member 1 and Member 2; Gemini is not on the default route. The default account scheduler has capacity 2, so Team A and Team B may run different session IDs concurrently on the same account while each session remains strictly ordered.",
-    "Status/watch show the current pipeline stage, Team A/B, attempt, round, Member 1..N, execution stage, and structured failure detail. Underlying account/provider identity appears only in diagnostics when a failure needs source attribution.",
-    "The shared team core emits bounded durable per-turn traces with phase/lane/attempt/round/account/stage/failure evidence. Compact PROGRESS events go to Local without injecting full model payloads.",
-    "WorkflowDriver advances runnable engine states automatically through research, exact handoffs, writer implementation, PR review/remediation, and the explicit merge-authorization boundary. Safe in-flight states are rediscovered after plugin restart; action-required and rejected-merge states remain stopped until explicit user/operator action.",
+    "The workflow is a durable dependency graph. Research A/B and Review A/B become READY independently and may execute concurrently while the account scheduler remains the only same-account capacity gate. Completed exact-input nodes are never replayed merely because a later node fails.",
+    "Status/watch project the authoritative graph: phase/lifecycle, exact active or recovering node, execution attempt, provider activity, dependency blockers, recent meaningful events, required user action, and the next transition.",
+    "WorkflowDriver reconciles orphaned execution leases after restart, schedules only READY/recoverable nodes, and retries the smallest failed logical node. Exact node outputs are stored separately from diagnostics so restart recovery can reconstruct prompts without replaying completed work.",
     "Research and review finals are materialized as exact SHA-256-bound durable handoffs. The separate chatgpt-writer account receives exact payloads and trusted controls in one persistent per-job conversation.",
-    "Scoped Website confirmation classification is fail-closed. Exact-head review, PR health, merge authorization, and immediate pre-merge revalidation remain authoritative merge gates.",
+    "Scoped Website confirmation classification is fail-closed. Recognized scope-valid writer confirmations remain auto-approved; ambiguous confirmations stop explicitly. Exact-head review, PR health, merge authorization, and immediate pre-merge revalidation remain authoritative merge gates.",
     "internet_workflow remains the deterministic lower-level control-plane tool, including the real end-to-end acceptance test. Workflow retention remains explicit operator maintenance only.",
 ].join(" ");
 function enabledAccounts(config) {
@@ -81,27 +79,32 @@ export function apply(ctx, rawConfig) {
     }
     const workflowTeamReady = DEFAULT_TEAM_ACCOUNTS.every((accountId) => thinkers.has(accountId));
     if (workflowTeamReady && accounts.has("chatgpt-writer")) {
-        const workflowJobs = new WorkflowJobStore(config.dataDir);
-        const workflowTraces = new WorkflowTeamTraceStore(config.dataDir);
-        const workflowEvents = new DshWorkflowEventSink(ctx.agents);
-        const workflowObserver = new DurableWorkflowTeamObserver(workflowTraces, workflowJobs, workflowEvents);
-        const workflowHandoffs = new WorkflowHandoffStore(config.dataDir);
-        const workflowRetention = new WorkflowRetentionManager(config.dataDir, workflowJobs);
-        const workflowEngine = new WorkflowEngine(workflowJobs, new BrowserWorkflowTeamRunner(manager, config, workflowObserver), new WorkflowTeamPromptBuilder(), workflowHandoffs, new BrowserWorkflowWriterRunner(manager), 3, workflowEvents);
-        const workflowDriver = new WorkflowDriver(workflowEngine, workflowJobs);
-        const workflowOperator = new WorkflowOperator(workflowEngine, workflowDriver, workflowJobs, workflowTraces, workflowRetention);
-        ctx.effect(() => () => workflowDriver.dispose());
-        workflowDriver.resumeActive();
-        ctx.commands.register(defineWorkflowCommand({ engine: workflowEngine, driver: workflowDriver, operator: workflowOperator }));
-        ctx.tools.register(defineInternetWorkflowTool(workflowEngine, workflowDriver, { browser: manager }));
-        ctx.tools.register(defineInternetWorkflowMaintenanceTool(workflowRetention));
+        const jobs = new WorkflowJobStore(config.dataDir);
+        const handoffs = new WorkflowHandoffStore(config.dataDir);
+        const results = new WorkflowNodeResultStore(config.dataDir);
+        const journal = new WorkflowEventJournal(config.dataDir);
+        const eventSink = new DshWorkflowEventSink(ctx.agents);
+        const retention = new WorkflowRetentionManager(config.dataDir, jobs);
+        const engine = new WorkflowEngine(jobs, new BrowserWorkflowTeamRunner(manager, config), new WorkflowTeamPromptBuilder(), handoffs, new BrowserWorkflowWriterRunner(manager, {
+            hardTimeoutMs: config.workflowHardTimeoutMs,
+            stallTimeoutMs: config.workflowStallTimeoutMs,
+        }), results, eventSink, journal);
+        const driver = new WorkflowDriver(engine, jobs);
+        const operator = new WorkflowOperator(engine, driver, jobs, journal, retention);
+        ctx.effect(() => () => driver.dispose());
+        driver.resumeActive();
+        ctx.commands.register(defineWorkflowCommand({ engine, driver, operator }));
+        ctx.tools.register(defineInternetWorkflowTool(engine, driver, { browser: manager }));
+        ctx.tools.register(defineInternetWorkflowMaintenanceTool(retention));
         ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
     }
 }
 export { BrowserManager } from "#internet/browser/runtime";
+export { hashProviderTurnText, ProviderTurnReceiptStore, parseProviderTurnReceipt, providerTurnReceiptId, reconcileProviderTurn, } from "#internet/browser/turn-receipts";
 export { ACCOUNT_CAPABILITIES, ACCOUNT_IDS, ACCOUNT_ROLES, ACCOUNTS, accountHasCapability, accountsForProvider, accountsWithCapabilities, DEFAULT_TEAM_ACCOUNTS, DEFAULT_TEAM_SYNTHESIZER, getAccountDefinition, isAccountId, } from "#internet/core/accounts";
 export { CHATGPT_THINKING_LEVELS, Config, resolveBrowserConfig, WEB_PROVIDERS } from "#internet/core/config";
 export { InternetError, isInternetError } from "#internet/core/errors";
+export { runTeamStep } from "#internet/team/executor";
 export { composeSynthesisPrompt, composeTurnPrompt, joinNames, runTeam } from "#internet/team/orchestrator";
 export { getTeamPromptStrategy, TEAM_PROMPT_STRATEGIES } from "#internet/team/prompt-strategy";
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
@@ -109,17 +112,17 @@ export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
 export { defineInternetWorkflowMaintenanceTool, WORKFLOW_MAINTENANCE_OPERATIONS, } from "#internet/tools/internet-workflow-maintenance";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export { WorkflowDriver } from "#internet/workflow/driver";
-export { WorkflowEngine, WorkflowEngineError } from "#internet/workflow/engine";
-export { DshWorkflowEventSink, formatWorkflowEvent } from "#internet/workflow/events";
+export { WorkflowEngine } from "#internet/workflow/engine";
+export { DshWorkflowEventSink, formatWorkflowEvent, parseWorkflowGraphEvent, WorkflowEventJournal, } from "#internet/workflow/events";
+export { assertWorkflowGraph, workflowNodeId } from "#internet/workflow/graph";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export { parseWorkflowNodeResult, WorkflowNodeResultStore, workflowNodeResultId, } from "#internet/workflow/node-result-store";
 export { formatWorkflowList, formatWorkflowStatus, WorkflowOperator, WorkflowOperatorError, } from "#internet/workflow/operator";
 export { DEFAULT_WORKFLOW_RETENTION_POLICY, WORKFLOW_RETENTION_AUDIT_SCHEMA, WorkflowRetentionError, WorkflowRetentionManager, } from "#internet/workflow/retention";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
-export { DurableWorkflowTeamObserver, parseWorkflowTeamSessionId } from "#internet/workflow/team-observer";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
-export { MAX_WORKFLOW_TEAM_TRACE_EVENTS, MAX_WORKFLOW_TEAM_TRACE_TEXT_CHARS, WORKFLOW_TEAM_TRACE_SCHEMA, WorkflowTeamTraceStore, WorkflowTeamTraceStoreError, } from "#internet/workflow/team-trace-store";
-export { TERMINAL_WORKFLOW_STATES, WORKFLOW_CI_STATUSES, WORKFLOW_STATES, WORKFLOW_TEAM_STATUSES, } from "#internet/workflow/types";
+export { WORKFLOW_CI_STATUSES, workflowJobIsTerminal } from "#internet/workflow/types";
 export { BrowserWorkflowWriterRunner, parseWorkflowWriterResult } from "#internet/workflow/writer-runner";
 //# sourceMappingURL=index.js.map

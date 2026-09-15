@@ -1,14 +1,12 @@
 export const WORKFLOW_CONTROL_KINDS = [
 	"START_IMPLEMENTATION",
 	"APPLY_REVIEWS",
-	"RETRY",
 	"CHECK_PR_HEALTH",
 	"MERGE_AUTHORIZED",
 ] as const;
 
 export type WorkflowControlKind = (typeof WORKFLOW_CONTROL_KINDS)[number];
 
-/** Trusted control-plane message. Never embed model handoff payloads here. */
 export interface WorkflowControlMessage {
 	readonly kind: WorkflowControlKind;
 	readonly jobId: string;

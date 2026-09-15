@@ -7,7 +7,6 @@ export const WORKFLOW_CONFIRMATION_ACTIONS = [
     "update_pull_request",
     "merge_pull_request",
 ];
-/** Domain-level interruption raised when Website confirmation cannot proceed automatically. */
 export class WorkflowConfirmationError extends Error {
     constructor(kind, message) {
         super(message);
@@ -52,10 +51,10 @@ export function normalizeGitHubRepository(value) {
 function expectedBranch(context) {
     return context.pullRequest?.head ?? workflowWriterBranch(context.jobId);
 }
-function allowedActions(state) {
-    if (state === "WRITER_RUNNING")
+function allowedActions(authority) {
+    if (authority === "IMPLEMENTATION")
         return IMPLEMENTATION_ACTIONS;
-    if (state === "WRITER_REMEDIATING")
+    if (authority === "REMEDIATION")
         return REMEDIATION_ACTIONS;
     return undefined;
 }
@@ -76,15 +75,13 @@ export function classifyWorkflowConfirmation(context, observation) {
     if (authoritativeRepository !== observedRepository) {
         return { kind: "unknown", reason: "confirmation repository does not match the workflow repository" };
     }
-    if (context.pullRequest !== undefined) {
-        const pullRequestRepository = normalizeGitHubRepository(context.pullRequest.repository);
-        if (pullRequestRepository !== authoritativeRepository) {
-            return { kind: "unknown", reason: "persisted pull-request repository does not match workflow authority" };
-        }
+    if (context.pullRequest !== undefined &&
+        normalizeGitHubRepository(context.pullRequest.repository) !== authoritativeRepository) {
+        return { kind: "unknown", reason: "persisted pull-request repository does not match workflow authority" };
     }
     if (observation.action === "merge_pull_request") {
         if (context.pullRequest === undefined) {
-            return context.state === "MERGING"
+            return context.authority === "MERGE"
                 ? { kind: "unknown", reason: "merge confirmation requires the persisted workflow PR" }
                 : { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
         }
@@ -94,7 +91,7 @@ export function classifyWorkflowConfirmation(context, observation) {
         if (observation.branch !== undefined && observation.branch !== context.pullRequest.head) {
             return { kind: "unknown", reason: "merge confirmation branch does not match the workflow PR head" };
         }
-        if (context.state !== "MERGING" || context.mergeAuthorization === undefined) {
+        if (context.authority !== "MERGE" || context.mergeAuthorization === undefined) {
             return { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
         }
         const authorization = context.mergeAuthorization;
@@ -109,14 +106,16 @@ export function classifyWorkflowConfirmation(context, observation) {
         }
         return { kind: "auto-approve", action: "merge_pull_request" };
     }
-    const allowed = allowedActions(context.state);
+    const allowed = allowedActions(context.authority);
     if (allowed === undefined || !allowed.has(observation.action)) {
-        return { kind: "unknown", reason: `confirmation action is not permitted from ${context.state}` };
+        return {
+            kind: "unknown",
+            reason: `confirmation action is not permitted for ${context.authority.toLowerCase()} authority`,
+        };
     }
     if (BRANCH_BOUND_ACTIONS.has(observation.action)) {
-        if (observation.branch === undefined) {
+        if (observation.branch === undefined)
             return { kind: "unknown", reason: "confirmation branch identity is missing" };
-        }
         if (observation.branch !== expectedBranch(context)) {
             return { kind: "unknown", reason: "confirmation branch does not match the workflow branch" };
         }

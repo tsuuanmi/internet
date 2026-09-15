@@ -13,16 +13,29 @@ function delay(ms, signal) {
         }, { once: true });
     });
 }
+function emitProgress(observer, kind, at) {
+    if (observer === undefined)
+        return;
+    try {
+        observer({ kind, at: new Date(at).toISOString() });
+    }
+    catch {
+        // Progress projection must never change provider-turn correctness.
+    }
+}
 /**
- * Poll the provider response surface until it is present and its text stays
- * unchanged for `stableMs` while generation is not running, or until the
- * deadline. Returns the stable rendered text as canonical markdown. This
- * mirrors the completion policy of pi-internet's Gemini driver and is
- * intentionally conservative: an unchanged-but-still-running response is never
- * treated as complete.
+ * Wait for a stable completed response while distinguishing a hard deadline
+ * from a semantic no-progress stall. Only response/running transitions renew
+ * the progress lease; unrelated DOM churn and a static thinking control do not.
  */
 export async function waitForStableCompletion(read, options) {
-    const deadline = Date.now() + options.timeoutMs;
+    if (options.stallTimeoutMs !== undefined && options.stallTimeoutMs >= options.timeoutMs) {
+        throw new InternetError("config_error", "completion stallTimeoutMs must be lower than timeoutMs");
+    }
+    const startedAt = Date.now();
+    const deadline = startedAt + options.timeoutMs;
+    let lastMeaningfulProgressAt = startedAt;
+    let previous;
     let candidate;
     let stableSince;
     while (Date.now() < deadline) {
@@ -32,14 +45,29 @@ export async function waitForStableCompletion(read, options) {
                 : new InternetError("aborted", "browser turn aborted");
         }
         const snapshot = await read();
+        const at = Date.now();
         const text = snapshot.text.trim();
+        const responseTransition = previous === undefined || snapshot.responsePresent !== previous.responsePresent;
+        if (responseTransition) {
+            if (snapshot.responsePresent)
+                emitProgress(options.onProgress, "response_started", at);
+            lastMeaningfulProgressAt = at;
+        }
+        if (previous === undefined || snapshot.running !== previous.running) {
+            emitProgress(options.onProgress, snapshot.running ? "generation_started" : "generation_stopped", at);
+            lastMeaningfulProgressAt = at;
+        }
+        if (previous !== undefined && !responseTransition && text !== previous.text.trim()) {
+            emitProgress(options.onProgress, "response_changed", at);
+            lastMeaningfulProgressAt = at;
+        }
+        previous = snapshot;
         if (snapshot.responsePresent && text.length > 0) {
             const unchanged = candidate !== undefined && candidate.text === text;
             if (!snapshot.running && unchanged) {
-                stableSince ??= Date.now();
-                if (Date.now() - stableSince >= options.stableMs) {
-                    const markdown = candidate?.html ? htmlToMarkdown(snapshot.html) : text;
-                    return markdown;
+                stableSince ??= at;
+                if (at - stableSince >= options.stableMs) {
+                    return candidate?.html ? htmlToMarkdown(snapshot.html) : text;
                 }
             }
             else {
@@ -50,6 +78,9 @@ export async function waitForStableCompletion(read, options) {
         else {
             candidate = undefined;
             stableSince = undefined;
+        }
+        if (options.stallTimeoutMs !== undefined && at - lastMeaningfulProgressAt >= options.stallTimeoutMs) {
+            throw new InternetError("provider_stalled", `browser provider made no meaningful progress for ${options.stallTimeoutMs}ms`);
         }
         await delay(options.pollMs, options.signal);
     }

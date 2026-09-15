@@ -4,16 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineInternetWorkflowTool, type WorkflowTestDependencies } from "#internet/tools/internet-workflow";
-import { WorkflowEngine } from "#internet/workflow/engine";
-import { WorkflowJobStore } from "#internet/workflow/job-store";
+import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
 
 const roots: string[] = [];
 
 function tool(testDependencies: WorkflowTestDependencies = {}) {
 	const root = mkdtempSync(join(tmpdir(), "internet-workflow-tool-"));
 	roots.push(root);
-	const jobs = new WorkflowJobStore(root);
-	const engine = new WorkflowEngine(jobs);
+	const { engine } = createWorkflowTestRuntime(root);
 	const driver = {
 		enqueue() {},
 		async cancel(jobId: string) {
@@ -30,7 +28,7 @@ afterEach(async () => {
 });
 
 describe("internet_workflow", () => {
-	it("starts and reports a durable workflow job", async () => {
+	it("starts and reports a durable graph workflow job", async () => {
 		const workflow = tool();
 		const started = await workflow.execute(
 			{
@@ -44,7 +42,8 @@ describe("internet_workflow", () => {
 		expect(started).toMatchObject({
 			ok: true,
 			operation: "start",
-			state: "CREATED",
+			phase: "RESEARCH",
+			lifecycle: "RUNNING",
 			repository: "https://github.com/example/repo",
 		});
 		const jobId = (started as { jobId: string }).jobId;
@@ -52,7 +51,8 @@ describe("internet_workflow", () => {
 			ok: true,
 			operation: "status",
 			jobId,
-			state: "CREATED",
+			phase: "RESEARCH",
+			lifecycle: "RUNNING",
 		});
 	});
 
@@ -72,7 +72,7 @@ describe("internet_workflow", () => {
 			ok: true,
 			operation: "cancel",
 			jobId,
-			state: "CANCELLED",
+			lifecycle: "CANCELLED",
 		});
 	});
 
@@ -87,7 +87,7 @@ describe("internet_workflow", () => {
 
 	it("preflights every semantic account before starting an acceptance workflow", async () => {
 		const browser = {
-			async status(accountId: "chatgpt-thinker" | "chatgpt-writer" | "gemini-thinker") {
+			async status(accountId: string) {
 				return {
 					accountId,
 					provider: accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),

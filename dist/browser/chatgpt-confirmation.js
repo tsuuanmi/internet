@@ -50,13 +50,21 @@ export function parseChatGptConfirmationText(text) {
         prNumber: prNumberFromText(text),
     };
 }
+async function visibleMatches(locator) {
+    const count = await locator.count();
+    const matches = [];
+    for (let index = 0; index < count; index += 1) {
+        const candidate = locator.nth(index);
+        if (await candidate.isVisible().catch(() => false))
+            matches.push(candidate);
+    }
+    return matches;
+}
 async function visibleGitHubRoots(page) {
     for (const selector of CHATGPT_CONFIRMATION_ROOT_SELECTORS) {
-        const roots = page.locator(selector).filter({ visible: true });
-        const count = await roots.count();
+        const roots = await visibleMatches(page.locator(selector));
         const matches = [];
-        for (let index = 0; index < count; index += 1) {
-            const root = roots.nth(index);
+        for (const root of roots) {
             const text = await root.innerText().catch(() => "");
             if (/\bgithub\b/iu.test(text))
                 matches.push(root);
@@ -67,13 +75,14 @@ async function visibleGitHubRoots(page) {
     return [];
 }
 async function exactAllowButton(root) {
-    const allow = root.getByRole("button", { name: ALLOW_BUTTON_NAME }).filter({ visible: true });
-    const deny = root.getByRole("button", { name: DENY_BUTTON_NAME }).filter({ visible: true });
-    const [allowCount, denyCount] = await Promise.all([allow.count(), deny.count()]);
-    if (allowCount !== 1 || denyCount < 1) {
+    const [allow, deny] = await Promise.all([
+        visibleMatches(root.getByRole("button", { name: ALLOW_BUTTON_NAME })),
+        visibleMatches(root.getByRole("button", { name: DENY_BUTTON_NAME })),
+    ]);
+    if (allow.length !== 1 || deny.length < 1) {
         throw new WorkflowConfirmationError("unknown", "GitHub confirmation does not expose one exact Allow action and an explicit deny action");
     }
-    return allow.first();
+    return allow[0];
 }
 /**
  * Inspect one visible ChatGPT Website GitHub confirmation and either approve

@@ -30,7 +30,7 @@ export interface TeamFailureDetail {
     readonly retryable: boolean;
     readonly failedAt: string;
 }
-/** Durable-friendly progress emitted around prompt preparation, provider turns, and synthesis. */
+/** Structured progress emitted around prompt preparation, provider turns, and synthesis. */
 export interface TeamProgressEvent {
     readonly at: string;
     readonly stage: TeamStage;
@@ -41,7 +41,7 @@ export interface TeamProgressEvent {
     readonly kind?: TeamFailureKind;
     readonly message?: string;
     readonly retryable?: boolean;
-    /** Completed model text; observers may persist a bounded copy outside compact workflow state. */
+    /** Completed model text for the current shared team step. */
     readonly text?: string;
 }
 //# sourceMappingURL=types.d.ts.map

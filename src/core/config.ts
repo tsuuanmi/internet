@@ -4,67 +4,39 @@ import S from "@deepseek-ai/schemastery";
 import { ACCOUNT_IDS, type AccountId, accountHasCapability, DEFAULT_TEAM_SYNTHESIZER } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 
-/** Browser-backed web providers this plugin can drive. */
 export type WebProvider = "chatgpt-web" | "gemini-web";
-
-/** Known provider ids, used for provider implementation dispatch. */
 export const WEB_PROVIDERS: readonly WebProvider[] = ["chatgpt-web", "gemini-web"];
 
-/**
- * ChatGPT Web reasoning-effort levels, ordered by the UI index the model
- * switcher exposes (Instant=0, Medium=1, High=2). "High" is the default
- * unless the profile explicitly overrides it.
- */
 export type ChatGptThinkingLevel = "instant" | "medium" | "high";
-
-/** Known ChatGPT thinking levels, used to validate plugin configuration. */
 export const CHATGPT_THINKING_LEVELS: readonly ChatGptThinkingLevel[] = ["instant", "medium", "high"];
 
-/** Per-plugin resolved configuration. */
 export interface BrowserConfig {
-	/** Explicit Chrome binary path; otherwise the system Chrome is discovered. */
 	chromePath?: string;
-	/** DSH data directory containing portable accounts, local profiles, and conversations. */
 	dataDir: string;
-	/** Native headless when true; otherwise headed (managed Xvfb first on Linux). */
 	headless: boolean;
-	/** Max time to keep one manual noVNC login session open before it expires (ms). */
 	loginTimeoutMs: number;
-	/** Stable loopback base port; each semantic account receives a deterministic offset. */
 	remoteLoginPort: number;
-	/** Max time for one browser chat turn to reach completion (ms). */
 	turnTimeoutMs: number;
-	/** Max time for one provider Deep Research run to reach completion (ms). */
 	researchTimeoutMs: number;
-	/** Completion-poll interval (ms). */
+	/** Workflow provider turn hard deadline. */
+	workflowHardTimeoutMs: number;
+	/** Maximum time a workflow provider may show no meaningful response progress. */
+	workflowStallTimeoutMs: number;
 	pollMs: number;
-	/** How long the rendered response must stay unchanged before it is "done" (ms). */
 	stableMs: number;
-	/** Idle delay before an inference browser is closed after a turn (ms). */
 	closeAfterMs: number;
-	/** Maximum simultaneous hidden turns for one authenticated account. */
 	maxConcurrentTurnsPerAccount: number;
-	/** Upper bound on returned chat output characters. */
 	maxOutputChars: number;
-	/** Default debate rounds for the `internet_team` tool (each account speaks once per round). */
 	teamRounds: number;
-	/** Maximum per-call debate rounds accepted by `internet_team`. */
 	teamMaxRounds: number;
-	/** Maximum aggregate Unicode code points returned by an opt-in team transcript. */
 	teamTranscriptMaxChars: number;
-	/** Whether the `internet_team` tool appends a final synthesis turn. */
 	teamSynthesis: boolean;
-	/** Semantic account that performs final team synthesis, independent of speaking order. */
 	teamSynthesizer: AccountId;
-	/** Register accounts backed by the ChatGPT Web provider. */
 	enableChatgpt: boolean;
-	/** Register accounts backed by the Gemini Web provider. */
 	enableGemini: boolean;
-	/** Default ChatGPT Web reasoning-effort level selected before each turn. */
 	chatgptThinkingLevel: ChatGptThinkingLevel;
 }
 
-/** Resolve the DeepSeek Harness home (mirrors `resolveDshHome`: `$DSH_HOME` or `~/.dsh`). */
 function dshHome(): string {
 	return process.env.DSH_HOME ?? join(homedir(), ".dsh");
 }
@@ -76,6 +48,8 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	remoteLoginPort: 39_000,
 	turnTimeoutMs: 300_000,
 	researchTimeoutMs: 1_800_000,
+	workflowHardTimeoutMs: 900_000,
+	workflowStallTimeoutMs: 180_000,
 	pollMs: 200,
 	stableMs: 1_500,
 	closeAfterMs: 1_800_000,
@@ -91,11 +65,6 @@ export const DEFAULT_CONFIG: Required<Omit<BrowserConfig, "chromePath">> = {
 	chatgptThinkingLevel: "high",
 };
 
-/**
- * Plugin `Config` export: a Schemastery object schema. DSH validates the
- * profile config through it (`Config["~standard"].validate`) before calling
- * `apply`, and uses it to render the settings UI.
- */
 export const Config = S.object({
 	dataDir: S.string().default(DEFAULT_CONFIG.dataDir),
 	headless: S.boolean().default(DEFAULT_CONFIG.headless),
@@ -103,6 +72,8 @@ export const Config = S.object({
 	remoteLoginPort: S.number().default(DEFAULT_CONFIG.remoteLoginPort),
 	turnTimeoutMs: S.number().default(DEFAULT_CONFIG.turnTimeoutMs),
 	researchTimeoutMs: S.number().default(DEFAULT_CONFIG.researchTimeoutMs),
+	workflowHardTimeoutMs: S.number().default(DEFAULT_CONFIG.workflowHardTimeoutMs),
+	workflowStallTimeoutMs: S.number().default(DEFAULT_CONFIG.workflowStallTimeoutMs),
 	pollMs: S.number().default(DEFAULT_CONFIG.pollMs),
 	stableMs: S.number().default(DEFAULT_CONFIG.stableMs),
 	closeAfterMs: S.number().default(DEFAULT_CONFIG.closeAfterMs),
@@ -123,7 +94,6 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
 	return typeof value === "boolean" ? value : fallback;
 }
 
-/** Expand a leading `~` to the user's home directory (keeps absolute paths intact). */
 function expandHome(path: string): string {
 	if (path === "~") return homedir();
 	if (path.startsWith("~/")) return join(homedir(), path.slice(2));
@@ -166,16 +136,21 @@ function asChatGptThinkingLevel(value: unknown): ChatGptThinkingLevel {
 	);
 }
 
-/**
- * Resolve raw plugin config (from the DSH profile) into a validated
- * {@link BrowserConfig}. Unknown fields are ignored; missing fields fall back
- * to defaults. Invalid explicit values fail loudly rather than silently.
- */
 export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 	const input = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 	const teamRounds = asPositiveInteger(input.teamRounds, DEFAULT_CONFIG.teamRounds, "teamRounds");
 	const teamMaxRounds = asPositiveInteger(input.teamMaxRounds, DEFAULT_CONFIG.teamMaxRounds, "teamMaxRounds");
 	const remoteLoginPort = asPositiveInteger(input.remoteLoginPort, DEFAULT_CONFIG.remoteLoginPort, "remoteLoginPort");
+	const workflowHardTimeoutMs = asPositiveInteger(
+		input.workflowHardTimeoutMs,
+		DEFAULT_CONFIG.workflowHardTimeoutMs,
+		"workflowHardTimeoutMs",
+	);
+	const workflowStallTimeoutMs = asPositiveInteger(
+		input.workflowStallTimeoutMs,
+		DEFAULT_CONFIG.workflowStallTimeoutMs,
+		"workflowStallTimeoutMs",
+	);
 	const maxRemoteLoginBasePort = 65_535 - (ACCOUNT_IDS.length - 1);
 	if (remoteLoginPort > maxRemoteLoginBasePort) {
 		throw new InternetError(
@@ -186,11 +161,12 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 	if (teamRounds > teamMaxRounds) {
 		throw new InternetError("config_error", "browser config teamRounds must not exceed teamMaxRounds");
 	}
-	const researchTimeoutMs = asPositiveInteger(
-		input.researchTimeoutMs,
-		DEFAULT_CONFIG.researchTimeoutMs,
-		"researchTimeoutMs",
-	);
+	if (workflowStallTimeoutMs >= workflowHardTimeoutMs) {
+		throw new InternetError(
+			"config_error",
+			"browser config workflowStallTimeoutMs must be less than workflowHardTimeoutMs",
+		);
+	}
 	return {
 		chromePath:
 			typeof input.chromePath === "string" && input.chromePath.length > 0 ? expandHome(input.chromePath) : undefined,
@@ -203,7 +179,13 @@ export function resolveBrowserConfig(raw: unknown): BrowserConfig {
 		loginTimeoutMs: asPositiveInteger(input.loginTimeoutMs, DEFAULT_CONFIG.loginTimeoutMs, "loginTimeoutMs"),
 		remoteLoginPort,
 		turnTimeoutMs: asPositiveInteger(input.turnTimeoutMs, DEFAULT_CONFIG.turnTimeoutMs, "turnTimeoutMs"),
-		researchTimeoutMs,
+		researchTimeoutMs: asPositiveInteger(
+			input.researchTimeoutMs,
+			DEFAULT_CONFIG.researchTimeoutMs,
+			"researchTimeoutMs",
+		),
+		workflowHardTimeoutMs,
+		workflowStallTimeoutMs,
 		pollMs: asPositiveInteger(input.pollMs, DEFAULT_CONFIG.pollMs, "pollMs"),
 		stableMs: asPositiveInteger(input.stableMs, DEFAULT_CONFIG.stableMs, "stableMs"),
 		closeAfterMs: asPositiveInteger(input.closeAfterMs, DEFAULT_CONFIG.closeAfterMs, "closeAfterMs"),

@@ -38,11 +38,12 @@ describe("account-aware plugin registration", () => {
 		expect(chat?.text).toContain("chatgpt-thinker-2");
 		expect(chat?.text).toContain("Every semantic account has separate login state");
 		expect(workflow?.text).toContain("/workflow status [jobId]");
-		expect(workflow?.text).toContain("Research A/B and Review A/B");
-		expect(workflow?.text).toContain("launched concurrently at the workflow level");
-		expect(workflow?.text).toContain("Team A/B");
-		expect(workflow?.text).toContain("Member 1..N");
-		expect(workflow?.text).toContain("durable per-turn traces");
+		expect(workflow?.text).toContain("durable dependency graph");
+		expect(workflow?.text).toContain("Research A/B and Review A/B become READY independently");
+		expect(workflow?.text).toContain("account scheduler remains the only same-account capacity gate");
+		expect(workflow?.text).toContain("Completed exact-input nodes are never replayed");
+		expect(workflow?.text).toContain("exact active or recovering node");
+		expect(workflow?.text).toContain("Exact node outputs are stored separately from diagnostics");
 		expect(tools).toEqual([
 			"internet_browser",
 			"internet_chat",
