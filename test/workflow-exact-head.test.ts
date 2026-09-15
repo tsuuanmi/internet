@@ -14,6 +14,7 @@ const roots: string[] = [];
 const baseRevision = "0123456789abcdef0123456789abcdef01234567";
 const firstHead = "1".repeat(40);
 const remediatedHead = "2".repeat(40);
+const conversationUrl = "https://chatgpt.com/c/workflow-exact-head";
 
 function root(): string {
 	const path = mkdtempSync(join(tmpdir(), "internet-workflow-head-"));
@@ -54,7 +55,9 @@ function teams(): WorkflowTeamRunner {
 
 function writer(): WorkflowWriterRunner {
 	return {
-		async deliverExact() {},
+		async deliverExact() {
+			return { conversationUrl };
+		},
 		async runControl(request) {
 			const pullRequest = {
 				repository: "example/repo",
@@ -64,10 +67,7 @@ function writer(): WorkflowWriterRunner {
 				head: workflowWriterBranch(request.job.jobId),
 				headSha: request.control.kind === "START_IMPLEMENTATION" ? firstHead : remediatedHead,
 			};
-			if (request.control.kind === "START_IMPLEMENTATION" || request.control.kind === "APPLY_REVIEWS") {
-				return { status: "PR_OPEN", pullRequest };
-			}
-			return { status: "BLOCKED", message: `unexpected control ${request.control.kind}` };
+			return { status: "PR_OPEN", pullRequest, conversationUrl };
 		},
 	};
 }
@@ -104,6 +104,7 @@ describe("WorkflowEngine exact-head review cycles", () => {
 		const remediation = workflowNodeId.writerRemediation(1);
 
 		expect(current.pullRequest?.headSha).toBe(remediatedHead);
+		expect(current.writerConversation.url).toBe(conversationUrl);
 		expect(current.reviewCycle).toBe(2);
 		expect(firstReview).toMatchObject({
 			state: "COMPLETED",
