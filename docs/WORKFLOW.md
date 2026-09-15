@@ -156,39 +156,23 @@ Review cycle and exact PR head are durable facts, not new conversation identitie
 
 ## Tracking progress
 
-The workflow team observer persists bounded private per-job trace evidence containing phase, lane, attempt, round, backing account/provider, stage, status, and structured failure detail.
+Workflow progress is projected directly from durable graph nodes, execution attempts, exact result receipts, and the ordered event journal. There is no separate trace correctness store.
 
-Stages include:
+`/workflow status [jobId]` exposes phase/lifecycle, exact active or recovering node, execution attempt, provider activity, dependency blockers, structured failure/recovery action, PR/head/health state, pending action, and recent meaningful events. Normal research/review display remains `Member 1..N`; raw account/provider identity is diagnostic metadata.
 
-```text
-prepare_prompt
-provider_turn
-synthesis
-complete
-```
-
-`/workflow status [jobId]` first shows a compact pipeline summary, then explicit Team A/B detail. Normal progress is rendered as `Member 1..N`; account/provider identity is reserved for failure diagnostics.
-
-A retry-required example is intentionally readable at two levels:
+A recoverable later-member failure is represented at the exact node boundary:
 
 ```text
-Pipeline
-  Research  Team A=failed · Team B=completed
-  Writer    waiting for research
-  Review    Team A=pending · Team B=pending
-  PR        not created
-
-Research teams
-  Team A — FAILED (attempt 1)
-    Step: round 1 · Member 2 · provider turn · FAILED · provider_error
-    Members: Member 1=completed round 1 · Member 2=failed round 1
-    Error: provider_error · retryable
-    Diagnostic: chatgpt-thinker-2 · chatgpt-web
+Phase: RESEARCH
+Status: RECOVERING
+Node: research:A:round:1:member:2
+Failure: HARD_TIMEOUT
+Recovery: RECREATE_SESSION · attempt 2/3
 ```
 
-`/workflow watch [jobId]` returns the current authoritative snapshot. Live compact `PROGRESS` events continue through the existing Local event stream and identify phase, Team A/B, attempt, round, member, stage, and structured failure. Watch does not create a second polling/correctness state machine.
+Completed sibling nodes remain `COMPLETED` and are not replayed.
 
-Full model payloads remain outside Local progress injection.
+`/workflow watch [jobId]` returns the same authoritative snapshot. Live compact `PROGRESS` events continue through the Local event stream without creating a second polling/correctness state machine. Full model payloads remain outside Local progress injection.
 
 ## Stopping, recovering, and deleting
 
@@ -206,7 +190,7 @@ abort active driver work
 
 `/workflow continue [jobId]` resumes only an explicit durable retry/recovery path approved by the engine. It does not reset to `CREATED` or blindly rerun completed work.
 
-`/workflow delete <jobId>` always requires one exact workflow ID. If the job is still active, the operator cancels and settles it first. It then removes that job's local durable job record, handoffs, and bounded team trace. The command does not infer an omitted ID and does not silently delete the GitHub PR/branch.
+`/workflow delete <jobId>` always requires one exact workflow ID. If the job is still active, the operator cancels and settles it first. It then removes that job's local durable job record, handoffs, exact node results, and event journal. The command does not infer an omitted ID and does not silently delete the GitHub PR/branch.
 
 ## Exact handoffs
 
@@ -275,19 +259,16 @@ Immediately before merge, live PR head and health are re-read. Stale authority i
 
 ## Driver stop boundaries
 
-The automatic driver stops at durable human/error boundaries including:
+The driver stops dispatching at durable action/terminal boundaries:
 
 ```text
-AWAITING_MERGE_AUTHORIZATION
+WAITING_USER
 BLOCKED
-UNKNOWN_CONFIRMATION
-FAILED_RETRYABLE
-REVIEW_LIMIT_REACHED
 CANCELLED
-DONE
+COMPLETED
 ```
 
-Unexpected orchestration failures become explicit retry-required state with a persisted resume target; they never reset the workflow to the beginning.
+Recoverable node failures remain `RECOVERING` and are scheduled automatically when policy allows. Unexpected scheduler/runtime invariant failures are persisted through `WorkflowEngine` as `BLOCKED` with `CODE_FIX_REQUIRED`; they do not reset the workflow or become a coarse retryable top-level state.
 
 ## Retention
 
@@ -298,7 +279,7 @@ DONE      -> eligible after 30 days
 CANCELLED -> eligible after 14 days
 ```
 
-Cleanup requires exact `jobId + updatedAt`, validates private workflow artifacts, removes the selected job + handoffs + team trace, and retains a private cleanup audit.
+Cleanup requires exact `jobId + updatedAt`, validates private workflow artifacts, removes the selected job + handoffs + node results + event journal, and retains a private cleanup audit.
 
 Immediate `/workflow delete <jobId>` is a separate exact-ID operator action for removing one known workflow without waiting for retention eligibility. Active work is cancelled first.
 

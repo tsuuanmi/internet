@@ -153,78 +153,17 @@ Stable Website session IDs:
 
 Reviewer sessions persist across cycles; exact cycle/head facts remain durable state and prompt inputs.
 
-## Concurrent research and review fan-out
+## Durable graph execution and concurrent branches
 
-`WorkflowEngine.runResearch()` and `runReview()` launch both incomplete A/B lane promises before awaiting either sibling.
+Workflow research/review use the same deterministic `TeamPlan`/`TeamStep` primitives as `internet_team`, but each member/synthesis step is persisted as an executable graph node. Dependencies, not a procedural lane replay loop, determine readiness.
 
-```text
-Research Team A  ─────────────────►
-Research Team B  ─────────────────►
+Research A/B and Review A/B are independent graph branches. When dependencies permit, READY nodes from both branches may execute concurrently. The account scheduler remains the only same-account capacity/session-ordering gate.
 
-Review Team A    ─────────────────►
-Review Team B    ─────────────────►
-```
+Completed exact-input nodes are stored separately in `WorkflowNodeResultStore` and remain reusable while their input/dependency hashes match. A later member or synthesis failure therefore recovers only that logical node.
 
-Each lane is a full agent-team invocation over the same ordered backing member accounts. One lane failing or completing does not restart its sibling.
+Execution attempts carry unique `executionId` values, ownership leases, provider state, and progress timestamps. Expired ownership is reconciled as an orphaned execution; stale late progress/results cannot commit after fencing.
 
-The default account scheduler capacity is `maxConcurrentTurnsPerAccount = 2`, so different workflow session IDs may run concurrently on the same authenticated account while each individual session remains strictly ordered. Work above configured capacity queues. This is separate from workflow-lane concurrency; workflow adds no A-then-B mutex.
-
-## Structured team traces
-
-`BrowserWorkflowTeamRunner` wraps shared team execution with `DurableWorkflowTeamObserver`.
-
-The observer persists bounded trace evidence under:
-
-```text
-<workflow data>/workflows/team-traces/<jobId>.json
-```
-
-Trace events identify:
-
-```text
-phase
-lane
-attempt
-round
-accountId
-provider
-stage
-status
-failure kind/message/retryability
-bounded completed-turn text
-```
-
-Stages include `prepare_prompt`, `provider_turn`, `synthesis`, and `complete`; the trace also records team-level attempt markers.
-
-The trace is deliberately separate from compact job JSON. It is private and bounded. Operator projection maps backing accounts to `Member 1..N` for normal status/watch output while preserving raw account/provider only for explicit diagnostic attribution.
-
-## Status/watch projection
-
-`WorkflowOperator.status()` combines compact durable job state with team trace evidence in two layers.
-
-Pipeline summary:
-
-```text
-Pipeline
-  Research  Team A=running · Team B=completed
-  Writer    waiting for research
-  Review    Team A=pending · Team B=pending
-  PR        not created
-```
-
-Team detail:
-
-```text
-Team A — FAILED (attempt 1)
-  Step: round 2 · Member 2 · provider turn · FAILED · provider_error
-  Members: Member 1=completed round 2 · Member 2=failed round 2
-  Error: provider_error · retryable
-  Diagnostic: chatgpt-thinker-2 · chatgpt-web
-```
-
-Normal progress never needs provider identity. `Diagnostic` exists so a provider/account-specific incident remains identifiable when a failure occurs.
-
-Live `TEAM_PROGRESS` event messages use the same conceptual shape: phase, Team A/B, attempt, round, Member N, stage, status. Failed events additionally include backing source account/provider and the bounded failure message.
+`WorkflowOperator.status()` projects the graph directly: phase/lifecycle, active or recovering nodes, attempts, provider activity, blockers, failure/recovery action, PR/head/health state, and recent meaningful events. The ordered event journal explains history without becoming a second correctness state machine.
 
 ## Exact handoffs
 
@@ -257,33 +196,17 @@ Malformed/wrong-head results fail the lane. If changes are required, exact revie
 
 Default maximum review cycles: `3`.
 
-## Workflow events
+## Workflow events, recovery, and operator control
 
-Events are classified:
+Events are classified as `INTERNAL`, `PROGRESS`, or `ACTION_REQUIRED` and appended to an ordered per-job journal after/with authoritative graph transitions. Notification failure cannot roll back workflow correctness.
 
-```text
-INTERNAL
-PROGRESS
-ACTION_REQUIRED
-```
+`WorkflowDriver` maintains at most one active run per job and owns scheduling, ownership reconciliation, and cancellation. Workflow-domain transitions remain in `WorkflowEngine`. Scheduler invariant failure is persisted through the engine as `BLOCKED` + `CODE_FIX_REQUIRED`.
 
-Team progress is persisted to trace first and then published as compact phase/team/attempt/round/member/stage metadata. Full model payloads are not injected into Local progress context.
+Provider completion separates a hard deadline from a semantic no-progress stall lease. Response/generation transitions renew provider progress; static thinking controls and unrelated DOM churn do not. Provider stall, hard timeout, browser failure, auth failure, and deterministic automation defects are classified before recovery policy is selected.
 
-Notification failure cannot roll back durable workflow correctness.
+`WorkflowOperator.stop()` aborts active work, waits for settlement, and persists terminal `CANCELLED`. `continue()` operates only on the existing graph and never resets completed exact-input work or persisted routing.
 
-## Status, stop, explicit recovery, and deletion
-
-`WorkflowOperator.stop()` delegates to `WorkflowDriver.cancel()`, which aborts active work, waits for settlement, then persists terminal `CANCELLED`. Cancelled jobs are not rediscovered as runnable after restart.
-
-`WorkflowOperator.continue()` delegates to the engine's explicit retry/recovery transition and re-enqueues only a valid resumable job. It does not reset a job to the beginning.
-
-`WorkflowOperator.delete()` requires an exact job ID. If the job is active, it first cancels and settles it; then `WorkflowRetentionManager.deleteNow()` removes that job's local durable job record, handoffs, and team trace. It does not remove the GitHub PR/branch or provider Website conversations.
-
-## Automatic driver and restart recovery
-
-`WorkflowDriver` maintains at most one active run per job ID and repeatedly invokes engine primitives until a stop boundary is reached.
-
-Safe restart discovery resumes runnable durable states but does not wake terminal/action-required jobs. Unexpected driver errors become explicit retry-required state with a persisted resume target.
+`WorkflowOperator.delete()` requires an exact job ID. Active work is cancelled/settled first; local deletion then removes the job record, handoffs, node results, and event journal. GitHub PR/branch state and provider Website conversations are external and remain untouched.
 
 ## PR health, merge authorization, and execution
 
@@ -308,7 +231,7 @@ DONE      -> eligible after 30 days
 CANCELLED -> eligible after 14 days
 ```
 
-Aged cleanup requires exact `jobId + updatedAt`, validates private workflow artifacts, removes only the selected job/handoffs/team trace, and retains a private durable audit receipt.
+Aged cleanup requires exact `jobId + updatedAt`, validates private workflow artifacts, removes only the selected job/handoffs/node-results/event journal, and retains a private durable audit receipt.
 
 Immediate `/workflow delete <jobId>` bypasses the age threshold only for an explicitly selected workflow and does not create an aged-cleanup audit receipt.
 
@@ -316,4 +239,4 @@ Immediate `/workflow delete <jobId>` bypasses the age threshold only for an expl
 
 Website conversation continuity is useful tactical context, but Website cross-conversation/project memory is not workflow correctness state.
 
-Correctness-bearing facts are explicitly persisted in job, handoff, team trace, PR, review, health, authorization, and merge receipts.
+Correctness-bearing facts are explicitly persisted in the graph/job snapshot, exact node results, handoffs, PR/head/health/authorization/merge receipts, and execution ownership records. The event journal is diagnostic history.

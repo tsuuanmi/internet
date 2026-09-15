@@ -307,7 +307,7 @@ Cleanup shall require exact `jobId` plus unchanged `updatedAt` from preview. Cha
 
 ### FR-056 — Scoped cleanup
 
-Cleanup shall validate the selected job's expected private artifacts and remove only that exact job record, exact handoffs, and team trace.
+Cleanup shall validate the selected job's expected private artifacts and remove only that exact job record, exact handoffs, exact node results, and event journal.
 
 ### FR-057 — Cleanup audit
 
@@ -334,7 +334,7 @@ The runtime shall not silently replace a failed member/provider inside an existi
 
 ### FR-061 — Explicit exact-ID workflow deletion
 
-`/workflow delete <jobId>` shall require exactly one explicit workflow ID owned by the current Local session. If the workflow is non-terminal, the operator shall cancel and settle it first. Deletion shall remove only that workflow's local durable job record, handoffs, and bounded team trace. It shall not implicitly delete the GitHub PR/branch or provider Website conversations.
+`/workflow delete <jobId>` shall require exactly one explicit workflow ID owned by the current Local session. If the workflow is non-terminal, the operator shall cancel and settle it first. Deletion shall remove only that workflow's local durable job record, handoffs, exact node results, and event journal. It shall not implicitly delete the GitHub PR/branch or provider Website conversations.
 
 ### FR-062 — Squash-only workflow merge history
 

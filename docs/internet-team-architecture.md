@@ -230,7 +230,7 @@ ACTION_REQUIRED
 
 Full model payloads remain in dedicated durable stores. `agent.inject()` failure cannot roll back committed workflow state.
 
-Durable state enables restart recovery. Completed lanes/handoffs are reused. Provider/browser failures are execution failures, never member answers. Unexpected driver failures persist explicit retry state instead of resetting the job.
+Durable graph state enables restart recovery. Completed exact-input nodes/handoffs are reused. Provider/browser failures are execution failures, never member answers. Orphaned executions recover at the same logical node; scheduler invariant failures block durably through `WorkflowEngine` instead of resetting the job.
 
 ## Operations / retention
 
@@ -241,8 +241,8 @@ DONE      -> eligible after 30 days
 CANCELLED -> eligible after 14 days
 ```
 
-Cleanup validates exact job identity and removes the selected job, exact handoffs and team trace while retaining a private audit receipt.
+Cleanup validates exact job identity and removes the selected job, exact handoffs, node results, and event journal while retaining a private audit receipt.
 
 ## Deferred boundary
 
-Automatic provider-turn retry/failover, dynamic provider health routing, generic DAG workflows, multi-writer pooling, Website memory as correctness state, autonomous deployment, and broad non-coding generalization remain deferred until concrete requirements justify them.
+Dynamic member/provider substitution beyond bounded same-node recovery, user-defined arbitrary DAG workflows beyond the internal graph, multi-writer pooling, Website memory as correctness state, autonomous deployment, and broad non-coding generalization remain deferred until concrete requirements justify them.
