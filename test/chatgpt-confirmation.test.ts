@@ -6,14 +6,16 @@ import {
 } from "#internet/browser/chatgpt-confirmation";
 import type { WorkflowApprovalScope } from "#internet/workflow/approval-policy";
 
-type Button = {
-	name: string;
+type FakeLocator = {
 	visible?: boolean;
-	isEnabled: ReturnType<typeof vi.fn>;
-	press: ReturnType<typeof vi.fn>;
+	locator?: (selector: string) => Locator;
+	getAttribute?: ReturnType<typeof vi.fn>;
+	click?: ReturnType<typeof vi.fn>;
+	innerText?: () => Promise<string>;
+	waitFor?: ReturnType<typeof vi.fn>;
 };
 
-function listLocator<T extends { visible?: boolean }>(items: T[]): Locator {
+function listLocator<T extends FakeLocator>(items: T[]): Locator {
 	return {
 		count: async () => items.length,
 		nth: (index: number) => ({
@@ -23,38 +25,47 @@ function listLocator<T extends { visible?: boolean }>(items: T[]): Locator {
 	} as unknown as Locator;
 }
 
-function confirmationPage(text: string): {
+function approvalPage(text: string, options?: { extraSplitButton?: boolean }): {
 	page: Page;
-	allowPrimary: Button;
-	allowMenu: Button;
-	deny: Button;
+	primary: FakeLocator;
+	menu: FakeLocator;
+	reject: FakeLocator;
 	waitFor: ReturnType<typeof vi.fn>;
 } {
-	const allowPrimary: Button = {
-		name: "Allow",
-		isEnabled: vi.fn(async () => true),
-		press: vi.fn(async () => {}),
+	const primary: FakeLocator = {
+		getAttribute: vi.fn(async () => null),
+		click: vi.fn(async () => {}),
 	};
-	const allowMenu: Button = {
-		name: "Allow GitHub for this conversation",
-		isEnabled: vi.fn(async () => true),
-		press: vi.fn(async () => {}),
+	const menu: FakeLocator = {
+		getAttribute: vi.fn(async (name: string) => (name === "aria-haspopup" ? "menu" : null)),
+		click: vi.fn(async () => {}),
 	};
-	const deny: Button = { name: "Deny", isEnabled: vi.fn(async () => true), press: vi.fn(async () => {}) };
-	const buttons = [deny, allowPrimary, allowMenu];
+	const reject: FakeLocator = { click: vi.fn(async () => {}) };
+	const extra: FakeLocator = { getAttribute: vi.fn(async () => null), click: vi.fn(async () => {}) };
+	const splitButtons = options?.extraSplitButton ? [primary, menu, extra] : [primary, menu];
+	const splitGroup: FakeLocator = {
+		locator: (selector: string) => listLocator(selector === ":scope > button" ? splitButtons : []),
+	};
+	const actionBar: FakeLocator = {
+		locator: (selector: string) => {
+			if (selector === "button") return listLocator([reject, ...splitButtons]);
+			if (selector === ":scope > button") return listLocator([reject]);
+			if (selector === ":scope > div") return listLocator([splitGroup]);
+			return listLocator([]);
+		},
+	};
 	const waitFor = vi.fn(async () => {});
-	const root = {
-		visible: true,
+	const root: FakeLocator = {
 		innerText: async () => text,
-		isVisible: async () => true,
 		waitFor,
-		getByRole: (_role: string, options: { name: RegExp }) =>
-			listLocator(buttons.filter((button) => options.name.test(button.name))),
+		locator: (selector: string) =>
+			listLocator(selector === '[data-testid="tool-action-buttons"]' ? [actionBar] : []),
 	};
 	const page = {
-		locator: (selector: string) => listLocator(selector === '[data-testid*="approval"]' ? [root] : []),
+		locator: (selector: string) =>
+			listLocator(selector === '[data-testid="tool-approval-card"]' ? [root] : []),
 	} as unknown as Page;
-	return { page, allowPrimary, allowMenu, deny, waitFor };
+	return { page, primary, menu, reject, waitFor };
 }
 
 const scope: WorkflowApprovalScope = {
@@ -64,44 +75,36 @@ const scope: WorkflowApprovalScope = {
 	authority: "IMPLEMENTATION",
 };
 
-const LIVE_CARD_TEXT =
-	"GitHub\nAllow ChatGPT to use GitHub?\n" +
-	"Open a pull request in the tsuuanmi/internet repository with a documentation title and body, targeting main; " +
-	"this creates content visible to repository collaborators.\nDeny\nAllow";
-
 const LIVE_FILE_UPDATE_TEXT =
 	"GitHub\nAllow ChatGPT to use GitHub?\n" +
-	"Updates the README.md file in the GitHub repository tsuuanmi/internet on branch " +
-	"internet-workflow/0123456789abcdef0123456789abcdef with extensive project documentation; " +
-	"no sensitive data or suspicious instructions are present.\nSee details\nDeny\nAllow";
+	"Updates the public README.md in the tsuuanmi/internet repository on branch " +
+	"internet-workflow/0123456789abcdef0123456789abcdef with extensive project documentation, including operational details.";
 
 describe("ChatGPT GitHub approval card", () => {
-	it("selects only the primary side of the live split Allow control", async () => {
-		const page = confirmationPage(`${LIVE_CARD_TEXT}\nBranch: internet-workflow/0123456789abcdef0123456789abcdef`);
+	it("selects the primary side of the live split approval control structurally", async () => {
+		const page = approvalPage(LIVE_FILE_UPDATE_TEXT);
 
 		await expect(
 			chatgptHandleWorkflowConfirmation(page.page, scope, "chatgpt-writer", "writer-session"),
 		).resolves.toBe(true);
-		expect(page.allowPrimary.press).toHaveBeenCalledWith("Enter");
-		expect(page.allowMenu.press).not.toHaveBeenCalled();
-		expect(page.deny.press).not.toHaveBeenCalled();
+		expect(page.primary.click).toHaveBeenCalledWith({ timeout: 40_000 });
+		expect(page.menu.click).not.toHaveBeenCalled();
+		expect(page.reject.click).not.toHaveBeenCalled();
 		expect(page.waitFor).toHaveBeenCalledWith({ state: "hidden", timeout: 10_000 });
 	});
 
-	it("waits until the visible primary Allow control is enabled", async () => {
-		const page = confirmationPage(
-			`${LIVE_FILE_UPDATE_TEXT}\nBranch: internet-workflow/0123456789abcdef0123456789abcdef`,
-		);
-		page.allowPrimary.isEnabled.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+	it("fails closed when the split approval topology is ambiguous", async () => {
+		const page = approvalPage(LIVE_FILE_UPDATE_TEXT, { extraSplitButton: true });
 
 		await expect(
 			chatgptHandleWorkflowConfirmation(page.page, scope, "chatgpt-writer", "writer-session"),
-		).resolves.toBe(true);
-		expect(page.allowPrimary.isEnabled).toHaveBeenCalledTimes(2);
-		expect(page.allowPrimary.press).toHaveBeenCalledWith("Enter");
+		).rejects.toThrow("approval action topology is ambiguous");
+		expect(page.primary.click).not.toHaveBeenCalled();
+		expect(page.menu.click).not.toHaveBeenCalled();
+		expect(page.reject.click).not.toHaveBeenCalled();
 	});
 
-	it("parses the live file-update confirmation grammar", () => {
+	it("parses the live public README update confirmation grammar", () => {
 		expect(parseChatGptConfirmationText(LIVE_FILE_UPDATE_TEXT)).toEqual({
 			action: "write_file",
 			repository: "tsuuanmi/internet",
@@ -110,20 +113,18 @@ describe("ChatGPT GitHub approval card", () => {
 		});
 	});
 
-	it("recognizes the live natural-language repository but fails closed without its source branch", async () => {
-		expect(parseChatGptConfirmationText(LIVE_CARD_TEXT)).toEqual({
-			action: "create_pull_request",
-			repository: "tsuuanmi/internet",
-			branch: undefined,
-			prNumber: undefined,
-		});
-
-		const page = confirmationPage(LIVE_CARD_TEXT);
+	it("validates workflow scope before clicking the structurally resolved primary action", async () => {
+		const page = approvalPage(
+			LIVE_FILE_UPDATE_TEXT.replace(
+				"internet-workflow/0123456789abcdef0123456789abcdef",
+				"internet-workflow/ffffffffffffffffffffffffffffffff",
+			),
+		);
 		await expect(
 			chatgptHandleWorkflowConfirmation(page.page, scope, "chatgpt-writer", "writer-session"),
-		).rejects.toThrow("confirmation branch identity is missing");
-		expect(page.allowPrimary.press).not.toHaveBeenCalled();
-		expect(page.allowMenu.press).not.toHaveBeenCalled();
-		expect(page.deny.press).not.toHaveBeenCalled();
+		).rejects.toThrow("confirmation branch does not match the workflow branch");
+		expect(page.primary.click).not.toHaveBeenCalled();
+		expect(page.menu.click).not.toHaveBeenCalled();
+		expect(page.reject.click).not.toHaveBeenCalled();
 	});
 });
