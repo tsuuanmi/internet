@@ -13,6 +13,7 @@ export function buildTeamPlan(options) {
         throw new Error("team synthesizer must be one of the selected accounts");
     }
     const steps = [];
+    const latestStepIdByAccount = new Map();
     let previousStepId;
     for (let round = 1; round <= options.rounds; round++) {
         for (let index = 0; index < options.accounts.length; index++) {
@@ -20,14 +21,28 @@ export function buildTeamPlan(options) {
             if (accountId === undefined)
                 throw new Error("team plan member disappeared during construction");
             const stepId = `round:${round}:member:${index + 1}`;
+            const consumedStepIds = new Set();
+            for (const otherAccountId of options.accounts) {
+                if (otherAccountId === accountId)
+                    continue;
+                const latestStepId = latestStepIdByAccount.get(otherAccountId);
+                if (latestStepId !== undefined)
+                    consumedStepIds.add(latestStepId);
+            }
+            if (previousStepId !== undefined)
+                consumedStepIds.add(previousStepId);
+            const dependsOnStepIds = steps
+                .filter((step) => step.kind === "member" && consumedStepIds.has(step.stepId))
+                .map((step) => step.stepId);
             steps.push({
                 kind: "member",
                 stepId,
                 round,
                 member: index + 1,
                 accountId,
-                dependsOnStepIds: previousStepId === undefined ? [] : [previousStepId],
+                dependsOnStepIds,
             });
+            latestStepIdByAccount.set(accountId, stepId);
             previousStepId = stepId;
         }
     }
