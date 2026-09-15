@@ -102,7 +102,12 @@ describe("defineWorkflowCommand", () => {
 	it("routes operator commands without inspecting Git", async () => {
 		const runGit = vi.fn(createRunner());
 		const op = operator();
-		const command = defineWorkflowCommand({ engine: { start: vi.fn() }, driver: { enqueue: vi.fn() }, operator: op, runGit });
+		const command = defineWorkflowCommand({
+			engine: { start: vi.fn() },
+			driver: { enqueue: vi.fn() },
+			operator: op,
+			runGit,
+		});
 		for (const [raw, expected] of [
 			["list", "LIST"],
 			[`status ${JOB_ID}`, "STATUS"],
