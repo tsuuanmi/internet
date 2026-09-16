@@ -191,14 +191,6 @@ export class WorkflowOperator {
         const job = selectJob(this.jobs, ownerSessionId, jobId, false);
         return formatWorkflowStatus(job, this.events.list(job.jobId), this.driver.isActive(job.jobId));
     }
-    watch(ownerSessionId, jobId) {
-        const job = selectJob(this.jobs, ownerSessionId, jobId, false);
-        return [
-            formatWorkflowStatus(job, this.events.list(job.jobId), this.driver.isActive(job.jobId)),
-            "",
-            "Watching: durable graph events will report node readiness, execution, recovery, action boundaries, and completion.",
-        ].join("\n");
-    }
     async stop(ownerSessionId, jobId) {
         const selected = selectJob(this.jobs, ownerSessionId, jobId, true);
         const cancelled = await this.driver.cancel(selected.jobId);

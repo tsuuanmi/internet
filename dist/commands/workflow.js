@@ -1,7 +1,7 @@
 import { WorkflowOperatorError } from "#internet/workflow/operator";
 import { resolveWorkflowRepository, runGitCommand, WorkflowRepositoryError, } from "#internet/workflow/repository-context";
-const USAGE = "Usage: /workflow <objective> | list | status [jobId] | watch [jobId] | stop [jobId] | continue [jobId] | delete <jobId>";
-const OPERATIONS = new Set(["list", "status", "watch", "stop", "continue", "delete"]);
+const USAGE = "Usage: /workflow <objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>";
+const OPERATIONS = new Set(["list", "status", "stop", "continue", "delete"]);
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
 function operationInput(rawInput) {
     const parts = rawInput.trim().split(/\s+/u);
@@ -27,9 +27,9 @@ export function defineWorkflowCommand(dependencies) {
     const runGit = dependencies.runGit ?? runGitCommand;
     return {
         name: "workflow",
-        description: "start, inspect, follow, stop, or resume a durable reviewed implementation workflow",
+        description: "start, inspect, stop, or resume a durable reviewed implementation workflow",
         input: {
-            hint: "<objective> | list | status [jobId] | watch [jobId] | stop [jobId] | continue [jobId] | delete <jobId>",
+            hint: "<objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>",
         },
         async handler(invocation) {
             const rawInput = invocation.rawInput.trim();
@@ -43,8 +43,6 @@ export function defineWorkflowCommand(dependencies) {
                         return { kind: "success", text: dependencies.operator.list(ownerSessionId) };
                     if (parsed.operation === "status")
                         return { kind: "success", text: dependencies.operator.status(ownerSessionId, parsed.jobId) };
-                    if (parsed.operation === "watch")
-                        return { kind: "success", text: dependencies.operator.watch(ownerSessionId, parsed.jobId) };
                     if (parsed.operation === "stop")
                         return { kind: "success", text: await dependencies.operator.stop(ownerSessionId, parsed.jobId) };
                     if (parsed.operation === "delete")
