@@ -2,13 +2,13 @@
 
 - **Status:** evolving design proposal; not yet the as-built runtime contract
 - **Started:** 2026-09-16
-- **Scope:** logical agent roles, typed artifacts, shared workflow state, dynamic graph routing, feedback loops, and convergence
+- **Scope:** logical roles, typed artifacts, shared state, WorkItems, exact InputBundles, capability routing, dynamic graph motifs, feedback loops, and convergence
 
-This document captures the target direction for the next workflow architecture. Existing as-built contracts remain authoritative until the corresponding runtime changes land.
+This document describes the target vNext architecture. Existing as-built contracts remain authoritative until corresponding runtime changes are implemented, tested, and promoted.
 
 ## 1. Design goal
 
-The workflow should evolve from a mostly sequential multi-agent pipeline into a dynamic graph coordinated through durable typed artifacts.
+The workflow evolves from a mostly sequential multi-agent pipeline into a deterministic control system coordinating nondeterministic specialist work through durable typed artifacts.
 
 Current shape, simplified:
 
@@ -16,53 +16,121 @@ Current shape, simplified:
 Research -> Writer -> Review -> Writer remediation -> Review
 ```
 
-Target shape:
+Target semantic loop:
 
 ```text
-                         +---------+
-                         | Planner |
-                         +----+----+
-                              |
-                              v
-Research / Explorer ----> shared durable state <---- Review
-        ^                     |   ^                    |
-        |                     v   |                    |
-        +---- routed need --- Worker <---- routed need+
-                              |
-                              v
-                           artifact
+observe durable state
+-> unresolved Finding / decision
+-> Need
+-> deterministic validation + routing
+-> WorkItem
+-> exact InputBundle
+-> capability execution
+-> Artifact
+-> return to causal owner
+-> resolve / emit next Need
+-> convergence or bounded stop
 ```
 
-The graph is allowed to revisit prior capabilities when new needs are discovered. A review may request more research; research may expose a planning gap; a plan revision may create new worker tasks; a worker change may require fresh exact-head review.
+Dynamic behavior means the graph may revisit capabilities as new evidence appears. It does **not** mean agents are allowed to create arbitrary execution topology.
 
-## 2. Logical roles
+## 2. Authority model
 
-The target logical vocabulary is:
+### User
+
+Owns final human authority and explicit exception decisions.
+
+### Local / Orchestrator
+
+Acts as semantic and user-facing coordinator. It may interpret user intent, inspect workflow-visible artifacts, and participate in semantic decisions.
+
+It is not the durable scheduler or graph mutation authority.
+
+### WorkflowEngine
+
+Is the deterministic control plane. It owns:
+
+```text
+schema validation
+artifact persistence
+WorkItem creation
+capability resolution
+InputBundle projection
+graph motif materialization
+exact-input binding
+side-effect authority
+retry/fencing/idempotency
+invalidation
+convergence and resource policy
+```
+
+### Agents
+
+Planner, Research, Worker, and Reviewer reason over bounded inputs and emit typed domain artifacts. They do not directly invoke each other or authoritatively mutate workflow topology.
+
+## 3. Logical roles
 
 | Role | Responsibility |
 | --- | --- |
-| **Orchestrator** | semantic coordination, user-facing authority brokerage, interpreting typed needs, and selecting the next workflow action |
-| **Planner** | task decomposition, acceptance criteria, dependency planning, and replanning when assumptions change |
-| **Research / Explorer** | gather external/repository evidence and answer bounded questions |
-| **Worker** | execute implementation work and produce final/generated artifacts; temporarily combines the earlier Worker and Generator concepts |
-| **Reviewer** | evaluate current artifacts against requirements and emit findings, approvals, or typed needs |
+| **Orchestrator** | semantic/user coordination and interpretation of workflow-visible state |
+| **Planner** | decomposition, acceptance criteria, dependency planning, explicit replanning |
+| **Research / Explorer** | bounded repository/external evidence gathering |
+| **Worker** | implementation plus generated artifact production; initially combines Worker + Generator |
+| **Reviewer** | evaluate exact current state, create Findings, approvals, and typed Needs |
 
-The existing Website route/account named `chatgpt-writer` may remain an implementation detail during migration. The logical workflow role is **Worker**.
+The current account identifier `chatgpt-writer` may remain during migration. The target logical role is **Worker**.
 
-The Orchestrator role and the deterministic runtime are related but distinct:
+A future Verifier is not required as a permanent role. Verification is initially modeled as one or more capabilities.
 
-- the Local agent may act as the semantic/user-facing Orchestrator;
-- `WorkflowEngine` remains the deterministic control plane that validates schemas, owns durable state, applies routing policy, schedules graph nodes, and enforces authority/invariants.
+## 4. Core object separation
 
-Agents do not directly spawn or invoke one another. They emit artifacts; the Orchestrator/runtime decides what to schedule.
+Production vNext distinguishes four semantic/control layers:
 
-## 3. Artifact-based communication
+```text
+Finding
+  -> Need
+  -> WorkItem
+  -> Graph node(s) / execution(s)
+  -> Artifact(s)
+```
 
-Markdown remains useful as a human-readable explanation layer, but it is not the workflow control protocol.
+and every executable WorkItem is bound to:
 
-Every correctness-bearing inter-agent exchange should become a typed durable artifact with a deterministic schema.
+```text
+InputBundle
+```
 
-Conceptual envelope:
+### Finding
+
+An unresolved correctness concern, uncertainty, contradiction, or unmet criterion.
+
+### Need
+
+A semantic request describing what capability or information is required.
+
+### WorkItem
+
+A deterministic runtime-owned bounded authorization to perform work.
+
+### Graph node / execution
+
+The mechanical realization of that WorkItem. One WorkItem may map to one node or to a runtime-approved subgraph.
+
+### Artifact
+
+An immutable or explicitly superseded durable domain result.
+
+### InputBundle
+
+The exact persisted manifest of correctness-bearing artifacts and runtime facts consumed by the WorkItem.
+
+This separation is fundamental. Model-produced semantic state never doubles as runtime execution authority.
+
+## 5. Typed artifact communication
+
+Markdown remains useful as explanation, but is not the control protocol.
+
+Conceptual artifact envelope:
 
 ```yaml
 schemaVersion: "1"
@@ -74,266 +142,482 @@ producer:
 context:
   planVersion: 4
   headSha: def456
-type: action_request
+type: finding
 payload:
-  need: external_evidence
-  subject:
-    findingId: REV-A-009
-    claimId: C-014
-  question: Does package X guarantee behavior Y in the current version?
-  priority: high
-  blocking: true
+  severity: major
+  category: unsupported_claim
+  need:
+    type: external_evidence
 markdown: |
-  Current implementation relies on behavior Y, but existing evidence
-  only establishes behavior Z.
+  Human/model-readable explanation.
 ```
 
-The structured portion is authoritative for orchestration. `markdown` is optional explanatory content for humans or models.
+Structured fields are authoritative for workflow state. Explanatory prose is untrusted data unless a schema explicitly gives it correctness-bearing meaning.
 
-Core properties:
+Artifacts are:
 
 - schema-versioned;
-- immutable once committed;
-- content-addressable/hashable where practical;
-- producer and workflow provenance;
-- exact repository/plan/head bindings where applicable;
-- machine-validated before routing;
-- persisted independently of transient chat context.
+- durable outside transient chat context;
+- immutable after commit or explicitly superseded;
+- attributable to a producer;
+- bound to exact relevant context;
+- machine-validated before routing/state transition.
 
-## 4. Shared state / blackboard
+## 6. Shared artifact state is not a transcript
 
-Agents should not need the complete transcript from every previous agent. The runtime should maintain durable workflow artifacts that together form shared state.
+The artifact store forms a workflow blackboard, but agents do not consume the full blackboard automatically.
 
-Conceptually:
+Conceptual shared state:
 
 ```text
-Workflow State
-|
-+-- objective / constraints / acceptance criteria
-+-- plan
-|   +-- tasks
-|   +-- dependencies
-|   +-- plan version
-+-- research
-|   +-- claims
-|   +-- evidence
-|   +-- contradictions
-|   +-- open questions
-+-- implementation
-|   +-- PR / branch / exact head
-|   +-- changed artifacts
-|   +-- validation evidence
-+-- review
-|   +-- findings
-|   +-- finding lifecycle
-|   +-- approvals bound to exact inputs
-+-- routing
-    +-- outstanding needs
-    +-- decisions
-    +-- loop/convergence state
+objective / constraints / acceptance criteria
+plan versions
+claims / evidence / contradictions
+implementation / PR / exact head
+findings / resolutions / approvals
+needs / WorkItems
+artifact lineage
+routing / termination / budget state
 ```
 
-Each agent receives the smallest exact subset required for its task rather than an ever-growing concatenated Markdown handoff.
+Visibility in shared state is not equivalent to delivery into another agent's context.
 
-## 5. Findings and needs are first-class artifacts
+## 7. Exact InputBundle projection
 
-A Reviewer should emit persistent findings rather than only a coarse `PASS` or `FAIL`.
+Every executable WorkItem receives one deterministic InputBundle before execution.
+
+Example:
+
+```yaml
+inputBundleId: IB-31
+workItemId: W-31
+objectiveRef: O-1
+artifactRefs:
+  - PLAN:P4
+  - FINDING:F17
+  - EVIDENCE:E12
+runtimeBindings:
+  repository: tsuuanmi/internet
+  headSha: abc123
+  capabilityVersion: 1
+projectionPolicyVersion: 2
+inputHash: sha256(...)
+```
+
+Excluded by default:
+
+```text
+unrelated research branches
+unrelated reviewer conclusions
+superseded artifacts
+stale exact-head artifacts
+full workflow transcript
+provider/account detail not required by the WorkItem
+```
+
+The InputBundle is immutable for one execution attempt. New correctness-bearing input means new execution identity and, when semantics materially change, a new/replaced WorkItem.
+
+Every produced Artifact references its producing WorkItem and InputBundle/input hash.
+
+## 8. Finding and Need lifecycle
+
+Reviewer output should prefer persistent Findings over only a coarse PASS/FAIL.
 
 Example:
 
 ```yaml
 type: finding
-id: REV-A-003
+id: F17
 severity: major
-category: unsupported_claim
 status: open
-introducedAt:
-  headSha: abc123
 target:
-  claimId: C-042
-description: Implementation assumes behavior not established by current evidence.
+  claimId: C42
 need:
   type: external_evidence
-  blocking: true
+  question: Does package X guarantee behavior Y?
 ```
 
-A finding can later reference one or more resolution artifacts and become `resolved`, `superseded`, or remain `open`.
+A Need describes semantic demand only. It does not specify runtime mechanics.
 
-The Reviewer should express **what is needed**, not hard-code a destination agent:
+Models may request:
 
 ```text
-external_evidence       -> Research / Explorer
-implementation_change   -> Worker
-plan_change             -> Planner
-evidence_verification   -> Reviewer / future Verifier
-artifact_generation     -> Worker
+external_evidence
+repository_evidence
+implementation_change
+plan_change
+evidence_verification
+review_current_state
+artifact_generation
 ```
 
-This keeps semantic requests independent of the current graph topology or provider/account layout.
+Models may not authoritatively specify:
 
-## 6. Request ownership and return routing
+```text
+provider/account/session
+retry/backoff
+node IDs/edges
+budget override
+side-effect permission
+human authorization
+```
 
-A routed request retains its causal owner.
+## 9. WorkItem and capability routing
+
+A validated Need requiring execution becomes a WorkItem.
+
+Conceptually:
+
+```text
+Need N22
+-> capability resolution
+-> WorkItem W31
+-> InputBundle IB31
+-> approved graph motif
+-> execution
+-> Artifact E44
+```
+
+Capability descriptors are code/configuration-owned and versioned.
+
+Example:
+
+```yaml
+capabilityId: external_research
+version: 1
+accepts: [external_evidence]
+produces: [evidence_packet]
+sideEffectClass: read_only
+allowedExecutors: [research]
+supportsParallel: true
+```
+
+This separates semantic capability from provider/account topology.
+
+A new provider account does not imply a new capability. A new capability requires an explicit contract change.
+
+## 10. Request ownership and return routing
+
+Every routed Need retains a causal owner.
 
 Default rule:
 
-> The result of a requested capability returns first to the role/node that raised the need, unless the routing contract explicitly names a different consumer.
+> A WorkItem result returns first to the owner of the Need that caused it, unless a validated routing contract says otherwise.
 
-Example review-driven research loop:
-
-```text
-Reviewer
-  -> finding + need(external_evidence)
-  -> Orchestrator validates/deduplicates/routes
-  -> Research
-  -> evidence artifact
-  -> Orchestrator persists result
-  -> Reviewer that owns the finding
-  -> Reviewer resolves finding OR emits a new need
-```
-
-The evidence is also available in shared state, but the Orchestrator should not blindly broadcast it to Worker or Planner.
-
-If the evidence proves that implementation must change:
+Example:
 
 ```text
-Reviewer -> need(implementation_change) -> Worker
+Reviewer/Finding F17
+-> Need N22(external_evidence)
+-> WorkItem W31(external_research)
+-> Evidence E44
+-> Reviewer/F17
 ```
 
-If it proves the plan or acceptance criteria are incomplete:
+The Reviewer then decides whether E44:
+
+- resolves F17;
+- requires more bounded evidence;
+- causes `implementation_change`;
+- causes `plan_change`;
+- leaves the workflow blocked.
+
+Research answers the question. It does not silently own downstream policy.
+
+## 11. Dynamic graph through safe motifs
+
+Agents do not directly create graph edges. The runtime instantiates approved graph motifs from validated WorkItems.
+
+Initial motif family:
 
 ```text
-Reviewer -> need(plan_change) -> Planner
+research-return
+  Owner -> Research -> Owner
+
+parallel-research-join
+  Owner -> Research[1..N] -> EvidenceJoin -> Owner
+
+repair-review
+  Reviewer -> Worker -> fresh exact-head Review
+
+replan-execute-review
+  Reviewer -> Planner -> Worker -> fresh Review
+
+verify-return
+  Owner -> Verification capability -> Owner
 ```
 
-This preserves clear ownership: Research answers a question; the requester decides what that answer means for its unresolved finding or decision.
+This yields dynamic/irregular topology while preserving deterministic graph authority.
 
-## 7. Dynamic graph and feedback loops
+Independent WorkItems may fan out concurrently when exact dependencies and resource policy allow it.
 
-The graph should be expanded from typed needs rather than advanced through one fixed phase sequence.
+## 12. Artifact lineage and invalidation
+
+Dynamic workflows require explicit provenance relations such as:
+
+```text
+derived_from
+supports
+contradicts
+resolves
+supersedes
+invalidates
+```
+
+Example:
+
+```text
+AcceptanceCriterion AC4
+-> Plan P3
+-> WorkerResult I7
+-> Review R9
+```
+
+If `AC4` is superseded by `AC4-v2`, runtime can identify dependent results requiring re-evaluation without globally replaying unrelated research.
+
+Existing exact-head rules remain mandatory:
+
+- H1 approval cannot approve H2;
+- a plan-dependent result becomes stale when its relevant plan input changes;
+- evidence is reusable only while question/context/freshness policy remains compatible.
+
+Dynamic never means mutable-by-guessing.
+
+## 13. Reviewer feedback loops
 
 Representative paths:
 
 ```text
-Research -> Worker -> Review -> PASS
+Research -> Worker -> Review -> converged
 ```
 
 ```text
-Research -> Worker -> Review
-                      |
-                      +-> need(external_evidence)
-                              |
-                              v
-                           Research
-                              |
-                              v
-                            Review
-                              |
-                              +-> need(implementation_change)
-                                      |
-                                      v
-                                    Worker
-                                      |
-                                      v
-                                    Review
+Review/Finding
+-> Need(external_evidence)
+-> Research WorkItem
+-> Evidence Artifact
+-> Review/Finding
+-> Need(implementation_change)
+-> Worker WorkItem
+-> fresh Review
 ```
 
 ```text
-Review -> need(plan_change) -> Planner -> Worker -> Review
+Review/Finding
+-> Need(plan_change)
+-> Planner WorkItem
+-> PlanRevision
+-> Worker WorkItem
+-> fresh Review
 ```
 
-Independent needs may fan out concurrently when they do not share a correctness dependency.
+The same architecture can support verification or specialist capabilities without changing upstream request semantics.
 
-## 8. Exact-input invalidation still applies
+## 14. Verification capability
 
-Dynamic routing must preserve the current strong exact-input model.
+Verification should be decomposed into the smallest useful checks rather than creating a permanent extra team by default.
 
-Examples:
+Potential capabilities:
 
-- a review approval of head `H1` cannot approve `H2`;
-- a finding resolved using plan version `P3` may need reconsideration if `P4` changes the relevant acceptance criterion;
-- a research artifact is reusable only while its bounded question, source/freshness policy, and relevant context remain valid;
-- a Worker change that advances the PR head invalidates exact-head review and health evidence.
+```text
+schema_validation
+source_reachability
+citation_entailment
+source_freshness
+claim_coverage
+contradiction_check
+```
 
-Dynamic does not mean mutable-by-guessing. Graph changes remain deterministic consequences of validated artifacts and policy.
+Deterministic checks should be preferred where possible. Model-assisted verification is reserved for judgments that cannot be expressed reliably as code/rules.
 
-## 9. Convergence and stop conditions
+## 15. Convergence, limits, and budget
 
-The normal workflow should stop because required conditions converge, not because a fixed number of rounds elapsed.
+Successful completion is defined by semantic convergence, not round count.
 
-Conceptual successful convergence:
+Conceptually:
 
 ```text
 all blocking findings resolved
-AND required reviewers approve current exact inputs/head
+AND required approvals apply to current exact inputs/head
 AND required tests/checks pass
-AND no unresolved critical evidence contradiction
-AND acceptance criteria are satisfied
+AND unresolved critical contradictions = 0
+AND acceptance criteria satisfied
 ```
 
-The runtime also needs non-convergence guards:
+Safety/resource limits are separate:
 
 ```yaml
-maxTotalRepairs: 8
-maxSameFindingReopens: 2
-maxResearchRequestsPerFinding: 3
-detectNoNewEvidence: true
-detectRepeatedEquivalentPatch: true
+limits:
+  maxTotalWorkItems: 30
+  maxResearchPerFinding: 3
+  maxRepairPerFinding: 2
+  maxFindingReopens: 2
+
+stagnation:
+  rejectEquivalentNeedWithoutNewInput: true
+  rejectEquivalentPatchWithoutStateChange: true
 ```
 
-When bounded progress is exhausted, fail closed to a durable human/action-required boundary rather than looping indefinitely.
+Resource budgets may additionally constrain:
 
-## 10. Team size and rounds
+```text
+concurrent WorkItems
+specialist fan-out
+model turns/tool calls
+tokens/cost
+wall-clock time
+```
 
-The target system should not improve reliability primarily by mechanically adding more generic members or fixed rounds.
+Hitting a limit is not success. Exhaustion fails closed into durable blocked/action-required state.
 
-Preferred order of improvement:
+Agents cannot silently expand budgets.
 
-1. typed artifacts and deterministic state;
-2. persistent findings and causal routing;
-3. adaptive feedback loops;
-4. evidence verification and targeted retries;
-5. specialist roles only when they provide orthogonal capability.
+## 16. Deterministic versus nondeterministic boundary
 
-Role diversity and targeted work are expected to provide better marginal value than repeatedly increasing identical team size or round count.
+The runtime must remain replayable/recoverable without replaying model reasoning as control logic.
 
-## 11. Migration direction
+Deterministic control plane:
 
-A practical migration can be incremental:
+```text
+validation
+routing
+WorkItem creation
+InputBundle construction
+graph motif selection
+state transition
+invalidation
+authority gates
+retry/fencing policy
+termination/budget policy
+```
 
-### Stage A — vocabulary and schema
+Nondeterministic activities:
 
-- adopt logical `Worker` terminology for the target design;
-- define common artifact envelope;
-- define finding, need/action-request, evidence, plan, implementation, and review-result schemas.
+```text
+model/browser execution
+web/repository exploration
+implementation generation
+review reasoning
+model-assisted verification
+```
 
-### Stage B — persistent artifacts
+Committed artifacts and receipts bridge the two sides.
 
-- persist structured findings/evidence/needs;
-- keep current sequential path as a compatibility execution policy while the artifact model becomes authoritative.
+## 17. Event/trace versus correctness state
 
-### Stage C — adaptive routing
+Artifact/job state remains correctness authority.
 
-- add deterministic need-to-capability routing;
-- allow Reviewer -> Research -> Reviewer and Reviewer -> Planner -> Worker loops;
-- deduplicate equivalent outstanding requests.
+Event/trace history explains what happened but is not required to reconstruct correctness by replaying model output.
 
-### Stage D — convergence policy
+Desired semantic trace:
 
-- replace fixed review-round assumptions with explicit convergence and bounded stagnation rules where safe;
-- preserve exact-head and authority gates.
+```text
+Finding F17
+-> caused Need N22
+-> materialized WorkItem W31
+-> consumed InputBundle IB31
+-> execution X5
+-> produced Evidence E44
+-> returned_to Reviewer/F17
+-> resolved_by Resolution R8
+```
 
-## 12. Open design questions
+## 18. Evaluation model
 
-The following should remain explicit until specified:
+Dynamic workflow evaluation should judge:
 
-- exact JSON Schema definitions and version-evolution policy;
-- which artifact classes are immutable versus replaceable through supersession;
-- canonical claim/evidence identity and freshness policy;
-- whether Planner is always present or instantiated only when needed;
-- whether a future dedicated Verifier is a separate role or a Reviewer capability;
-- how to calculate request equivalence for deduplication;
-- exact loop budget and escalation policy by workflow risk/size;
-- how much prior artifact context each agent receives by default.
+```text
+final repository/PR state
+acceptance criteria
+critical finding resolution
+evidence/citation relationships
+exact-head correctness
+side-effect/authority invariants
+absence of stale approvals
+resource efficiency
+```
 
-These are design questions, not reasons to preserve the current sequential pipeline.
+It should not require one canonical trajectory when several valid paths reach the same correct end state.
+
+## 19. Migration direction
+
+### Stage A — vocabulary and artifact schema
+
+- logical `Worker` terminology;
+- common artifact envelope;
+- Finding and Need schemas.
+
+### Stage B — control-plane objects
+
+- first-class WorkItem;
+- capability registry;
+- side-effect classification;
+- exact InputBundle projection.
+
+### Stage C — provenance and ownership
+
+- request ownership/result return;
+- Artifact lineage;
+- exact invalidation.
+
+### Stage D — adaptive routing
+
+- Reviewer -> Research -> Reviewer;
+- Reviewer -> Planner -> Worker -> Reviewer;
+- runtime-approved graph motifs;
+- deterministic deduplication.
+
+### Stage E — convergence and assurance
+
+- explicit termination/resource policy;
+- verification capabilities;
+- semantic coordination tracing;
+- outcome-oriented eval harness.
+
+## 20. Production boundary
+
+The vNext design is intentionally strict about what remains code-owned.
+
+### Model-owned semantic output
+
+```text
+reasoning
+Findings
+Needs
+bounded evidence/plan/review/implementation artifacts
+uncertainty/explanations
+```
+
+### Runtime-owned authority
+
+```text
+schema acceptance
+capability registry
+WorkItem creation
+InputBundle projection
+graph topology/motifs
+provider/account scheduling
+side-effect permissions
+retry/fencing/idempotency
+resource budgets
+authorization gates
+invalidation
+termination
+```
+
+No model statement overrides an incompatible runtime invariant.
+
+## 21. Open design questions
+
+Still intentionally open:
+
+- exact JSON Schema definitions and migration policy;
+- exact WorkItem lifecycle representation relative to graph-node state;
+- equivalence-key algorithm for deterministic deduplication;
+- canonical lineage storage model;
+- default complexity/risk classification and budget values;
+- exact verification capability set;
+- whether Planner is always instantiated or only demand-driven;
+- which vNext requirements should be implemented before adaptive routing is enabled in production.
+
+These are implementation/design questions, not reasons to weaken the boundaries above.
