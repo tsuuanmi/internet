@@ -245,6 +245,8 @@ export {
 	WorkflowRetentionError,
 	WorkflowRetentionManager,
 } from "#internet/workflow/retention";
+export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
+export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
 export type {
 	StartAuthorizedWorkflowInput,
 	WorkflowAuthorizationContext,
@@ -258,8 +260,6 @@ export {
 	WorkflowServiceError,
 	workflowSessionAuthorizationContext,
 } from "#internet/workflow/service";
-export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
-export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
 export type {
 	WorkflowPromptContext,
 	WorkflowReviewPromptContext,
