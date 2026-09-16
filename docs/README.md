@@ -35,10 +35,13 @@ Precedence inside the proposed vNext design:
 
 ```text
 narrow Proposed ADR
-  > SRS-VNEXT requirement summary
+  > specialized SRS-VNEXT module
+  > SRS-VNEXT core requirement summary
   > WORKFLOW-VNEXT architecture narrative
   > WORKFLOW-VNEXT-RESEARCH candidate notes
 ```
+
+A specialized vNext SRS module applies only to its named subsystem and extends the core `SRS-VNEXT.md`; it does not change unrelated requirements.
 
 A vNext requirement becomes production authority only after implementation, tests, and explicit promotion into the as-built documents. Proposed docs must never be cited as proof that runtime behavior already exists.
 
@@ -72,11 +75,13 @@ The current default agent team uses two independent ChatGPT-backed thinker accou
 These documents are production-oriented design contracts but are **not implemented behavior**:
 
 - [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md) — target adaptive artifact-based architecture, authority model, WorkItems, InputBundles, capability routing, feedback loops, and convergence.
-- [`SRS-VNEXT.md`](./SRS-VNEXT.md) — proposed testable requirements and explicit production boundaries.
+- [`SRS-VNEXT.md`](./SRS-VNEXT.md) — proposed core testable requirements and explicit production boundaries.
+- [`SRS-VNEXT-PR-WORKSPACE.md`](./SRS-VNEXT-PR-WORKSPACE.md) — proposed requirements for projecting selected safe workflow artifacts into the implementation PR as a temporary shared agent workspace.
 - [`ADR/0009-typed-artifact-agent-protocol.md`](./ADR/0009-typed-artifact-agent-protocol.md) — typed durable artifacts as the correctness-bearing inter-agent protocol.
 - [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — Orchestrator-mediated semantic Needs, causal ownership, and feedback routing.
 - [`ADR/0011-workitems-and-capability-routing.md`](./ADR/0011-workitems-and-capability-routing.md) — separation of Need, runtime WorkItem, graph realization, and capability routing.
 - [`ADR/0012-input-bundles-and-context-projection.md`](./ADR/0012-input-bundles-and-context-projection.md) — exact sparse InputBundles and non-broadcast context projection.
+- [`ADR/0013-pr-workspace-projection.md`](./ADR/0013-pr-workspace-projection.md) — PR branch as a temporary shared projection of authoritative artifacts, with cleanup before final exact-head review.
 
 Target terminology uses **Worker** for the logical implementation/generation role. The existing `chatgpt-writer` identifier remains a current implementation detail until separately migrated.
 
@@ -100,6 +105,7 @@ The ADRs below are accepted historical decisions unless explicitly marked Propos
 - [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — **Proposed:** agents emit typed Needs; Orchestrator/runtime routes capabilities and returns results to the causal request owner.
 - [`ADR/0011-workitems-and-capability-routing.md`](./ADR/0011-workitems-and-capability-routing.md) — **Proposed:** semantic Needs are separated from code-owned WorkItems and graph execution; routing is capability-based.
 - [`ADR/0012-input-bundles-and-context-projection.md`](./ADR/0012-input-bundles-and-context-projection.md) — **Proposed:** each executable WorkItem is bound to one exact sparse InputBundle.
+- [`ADR/0013-pr-workspace-projection.md`](./ADR/0013-pr-workspace-projection.md) — **Proposed:** selected safe artifacts may be projected into the PR branch as a temporary shared workspace; runtime state remains authoritative and final review occurs only after cleanup.
 
 ## Provider UI inspection notes
 
@@ -124,8 +130,9 @@ These documents describe observed Website surfaces used by browser automation. T
 | `WORKFLOW-OPERATOR-CONTRACT.md` | current workflow control/inspection semantics | current operator contract |
 | `WORKFLOW-HARDENING.md` | hardening rationale/acceptance history | hardening history |
 | `WORKFLOW-VNEXT.md` | target adaptive artifact-based architecture | proposed design contract |
-| `SRS-VNEXT.md` | target testable workflow requirements | proposed requirements |
-| `ADR/0009..0012` | narrow vNext architectural decisions | proposed decisions |
+| `SRS-VNEXT.md` | target core workflow requirements | proposed requirements |
+| `SRS-VNEXT-PR-WORKSPACE.md` | target PR-workspace projection/cleanup/CI requirements | proposed specialized requirements |
+| `ADR/0009..0013` | narrow vNext architectural decisions | proposed decisions |
 | `WORKFLOW-VNEXT-RESEARCH.md` | external research/candidate patterns | non-normative research |
 | accepted ADRs | historical accepted architectural decisions | accepted design authority |
 | `ROADMAP.md` | completed phases / deferred directions | planning history |
@@ -149,6 +156,7 @@ Planner re-entry
 runtime-approved dynamic graph motifs
 convergence/resource-budget policy
 verification capabilities
+PR workspace projection / checkpoint commits / cleanup-before-final-review
 semantic coordination tracing / outcome evals
 ```
 
