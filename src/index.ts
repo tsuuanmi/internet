@@ -19,6 +19,7 @@ import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import { WorkflowOperator } from "#internet/workflow/operator";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
+import { WorkflowService } from "#internet/workflow/service";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
@@ -123,11 +124,12 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 			journal,
 		);
 		const driver = new WorkflowDriver(engine, jobs);
-		const operator = new WorkflowOperator(engine, driver, jobs, journal, retention);
+		const service = new WorkflowService(engine, driver, jobs, retention);
+		const operator = new WorkflowOperator(service, journal);
 		ctx.effect(() => () => driver.dispose());
 		driver.resumeActive();
-		ctx.commands.register(defineWorkflowCommand({ engine, driver, operator }));
-		ctx.tools.register(defineInternetWorkflowTool(engine, driver, { browser: manager }));
+		ctx.commands.register(defineWorkflowCommand({ service, operator }));
+		ctx.tools.register(defineInternetWorkflowTool(service, { browser: manager }));
 		ctx.tools.register(defineInternetWorkflowMaintenanceTool(retention));
 		ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
 	}
@@ -243,6 +245,19 @@ export {
 	WorkflowRetentionError,
 	WorkflowRetentionManager,
 } from "#internet/workflow/retention";
+export type {
+	StartAuthorizedWorkflowInput,
+	WorkflowAuthorizationContext,
+	WorkflowPrincipal,
+	WorkflowPrincipalKind,
+	WorkflowServiceDriver,
+	WorkflowServiceEngine,
+} from "#internet/workflow/service";
+export {
+	WorkflowService,
+	WorkflowServiceError,
+	workflowSessionAuthorizationContext,
+} from "#internet/workflow/service";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
 export type {
