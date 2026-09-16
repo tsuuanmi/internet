@@ -2,11 +2,11 @@
 
 - **Status:** Proposed
 - **Date:** 2026-09-16
-- **Related:** ADR-0010, ADR-0011, ADR-0012, ADR-0015
+- **Related:** ADR-0010, ADR-0011, ADR-0012, ADR-0015, ADR-0018, ADR-0021
 
 ## Context
 
-With Local/Orchestrator explicitly deterministic and non-reasoning, semantic planning must have a precise contract.
+With the **Orchestrator Runtime** explicitly deterministic and non-reasoning, while the **Local Agent** is a reasoning-capable workflow client, semantic planning needs a precise contract.
 
 A common failure mode in agent workflows is collapsing these concepts into one planner response:
 
@@ -20,31 +20,31 @@ user request
 + completion judgment
 ```
 
-That makes replanning dangerous because changing the plan may also silently change the definition of success, and it forces Local to interpret planner prose in order to schedule work.
+That makes replanning dangerous because changing the plan may also silently change the definition of success, and it forces the control plane to interpret planner prose in order to schedule work.
 
-Classical planning separates desired goal state from executable actions with preconditions/effects. Hierarchical Task Network planning similarly treats planning as decomposition into tasks rather than equating the semantic task hierarchy with runtime execution mechanics.
-
-The workflow should preserve that separation.
+The workflow should preserve semantic intent, planning, execution demand, runtime authorization, and acceptance judgment as separate objects.
 
 ## Decision
 
 The target semantic/control chain is:
 
 ```text
-UserObjectiveInput
+WorkflowAdmissionSpec / UserObjectiveInput
+  -> Planner WorkItem
   -> ObjectiveArtifact
   -> AcceptanceCriteriaArtifact
   -> PlanArtifact
        -> PlanTask(s)
-       -> NeedArtifact(s) for executable semantic demand
-  -> Local materializes WorkItem(s)
+       -> Need(s) for executable semantic demand
+  -> Orchestrator Runtime validates/routes
+       -> WorkItem(s) or PendingAction(s)
 ```
 
 These concepts are distinct and versioned independently.
 
-## UserObjectiveInput
+## Source user intent
 
-The original user request and explicit user constraints are persisted as user-owned input.
+The exact User source and explicit User constraints are preserved through the admission protocol. Planner consumes the accepted admission/source representation; it does not depend on Local Agent hidden reasoning.
 
 Conceptually:
 
@@ -59,15 +59,13 @@ explicitAuthority:
   merge: user_only
 ```
 
-Local records this input but does not semantically interpret it.
+The Local Agent may compile natural language into admission fields with provenance under ADR-0018. The deterministic Orchestrator persists/validates the accepted machine-readable source but does not semantically reinterpret it.
 
 ## ObjectiveArtifact
 
 Planner produces a structured interpretation of what outcome the workflow is trying to achieve.
 
-It references the original `UserObjectiveInput` and must preserve user-owned constraints.
-
-Example:
+It references the original accepted source/admission and preserves explicit User-owned constraints by identity/provenance.
 
 ```yaml
 objectiveId: O-1
@@ -81,7 +79,7 @@ The Objective is semantic meaning, not execution order.
 
 ## AcceptanceCriteriaArtifact
 
-Acceptance criteria define **what must be true for the work to be considered acceptable**.
+Acceptance criteria define what must be true for the work to be considered acceptable.
 
 They are separate from the Plan.
 
@@ -114,7 +112,7 @@ planner_derived
 
 Planner may add/refine planner-derived criteria when permitted, but shall not weaken, remove, or reinterpret user/policy-owned criteria without an explicit higher-authority revision path.
 
-If later evidence indicates that user-owned requirements are ambiguous or inconsistent, Planner emits a typed clarification/requirements-change Need rather than silently rewriting them.
+If later evidence indicates that user-owned requirements are ambiguous or inconsistent, Planner emits a typed `clarification` or `requirements_change` Need rather than silently rewriting them.
 
 ## PlanArtifact
 
@@ -139,8 +137,6 @@ A Plan does not contain runtime execution attempts, provider accounts, browser s
 
 A PlanTask is a semantic unit of intended work.
 
-Example:
-
 ```yaml
 taskId: T-12
 title: Verify the repository test command
@@ -148,39 +144,32 @@ dependsOn: [T-3]
 completionCriteriaRefs: [AC-1.3]
 ```
 
-PlanTask is **not** WorkItem.
+PlanTask is not WorkItem.
 
-PlanTask lifecycle describes semantic planning state, while WorkItem lifecycle describes authorized execution.
+PlanTask lifecycle describes semantic planning state, while WorkItem lifecycle describes authorized runtime execution.
 
 ## Hierarchy and partial order
 
-Planner may decompose work hierarchically:
+Planner may decompose work hierarchically and declare only necessary semantic ordering.
 
 ```text
 T1 Implement feature
   T1.1 Research current behavior
   T1.2 Modify implementation
   T1.3 Validate behavior
+
+T1.1 -> T1.2 -> T1.3
 ```
 
-Only necessary ordering constraints should be declared.
+Independent tasks remain unordered so the Orchestrator can expose concurrency when their typed Needs become executable.
 
-```text
-T1.1 -> T1.2
-T1.2 -> T1.3
-```
-
-Independent tasks remain unordered so Local can deterministically expose concurrency when execution Needs are ready.
-
-Local does not invent dependencies from task prose.
+The Orchestrator does not invent dependencies by interpreting task prose.
 
 ## Executable semantic demand
 
-Local shall not inspect a PlanTask description and infer which agent/capability should run.
+The Orchestrator shall not inspect a PlanTask description and infer which agent/capability should run.
 
 When a task requires execution, Planner or another authorized reasoning role emits a typed Need linked to that task.
-
-Example:
 
 ```yaml
 needId: N-22
@@ -189,7 +178,7 @@ needType: repository_evidence
 question: What command does this repository currently use to run tests?
 ```
 
-Local then resolves the Need through the capability registry and materializes the WorkItem.
+The deterministic Orchestrator validates the Need and resolves it through the capability/policy registry.
 
 ```text
 PlanTask T-12
@@ -198,11 +187,14 @@ PlanTask T-12
   -> WorkItem W-31
 ```
 
+If the typed Need instead requires outside authority/input, the Orchestrator may materialize a `PendingAction` rather than a WorkItem.
+
 This preserves:
 
 ```text
 Planner owns semantic decomposition.
-Local owns deterministic execution materialization.
+Orchestrator Runtime owns deterministic execution materialization.
+Local Agent remains the reasoning client/operator at the workflow API boundary.
 ```
 
 ## PlanTask result ownership
@@ -210,8 +202,6 @@ Local owns deterministic execution materialization.
 A Need emitted for a PlanTask may use the PlanTask as causal request owner.
 
 A result can therefore return to the task record without requiring Planner to be invoked after every execution.
-
-Example:
 
 ```text
 T-12
@@ -223,7 +213,7 @@ T-12
 
 This only records that the requested work produced an output. It does not imply that acceptance criteria are satisfied.
 
-Reviewer and deterministic validations remain responsible for acceptance judgments.
+CriterionAssessment/Reviewer/deterministic validation remains responsible for acceptance evidence under ADR-0021.
 
 ## Task completion versus acceptance
 
@@ -233,12 +223,10 @@ The workflow shall distinguish:
 WorkItem completed
 PlanTask execution completed
 AcceptanceCriterion satisfied
-Workflow converged
+WorkflowRun converged
 ```
 
 These are not synonyms.
-
-For example, Worker can successfully produce a patch, making the implementation WorkItem complete, while Reviewer later determines the relevant criterion is unsatisfied.
 
 ## Replanning
 
@@ -256,72 +244,55 @@ changed assumptions
 explicit affected references
 ```
 
-Example:
-
-```yaml
-planRevisionId: P5
-supersedes: P4
-affected:
-  tasks: [T-12, T-18]
-  assumptions: [A-3]
-```
-
-Local uses these explicit relationships for invalidation. Local does not infer impact from prose.
+The Orchestrator uses these explicit relationships for deterministic invalidation. It does not infer impact from prose.
 
 ## Replanning does not equal requirements change
 
-Two distinct Need classes should be supported:
+Distinct Need classes include:
 
 ```text
 plan_change
-requirements_change / clarification
+requirements_change
+clarification
 ```
 
-`plan_change` means:
+`plan_change` means the desired outcome and active acceptance criteria remain the same while strategy/decomposition changes.
 
-> The desired outcome remains the same, but the strategy/decomposition must change.
+`requirements_change` means Objective or AcceptanceCriteria may need revision.
 
-`requirements_change` means:
-
-> The objective or acceptance criteria themselves may need revision.
+`clarification` requests external/contextual information required before semantic interpretation can safely continue.
 
 These paths have different authority consequences.
 
-A Reviewer that discovers a missing implementation step should request `plan_change`.
-
-A Reviewer that discovers the current success definition is ambiguous/incomplete should request `requirements_change` or clarification.
-
 ## Requirements revision
 
-Planner may propose an Objective/AcceptanceCriteria revision, but Local only activates it when authority policy permits.
+Planner may propose an Objective/AcceptanceCriteria revision, but the **Orchestrator Runtime** activates it only when deterministic authority policy permits.
 
 For planner-derived criteria, policy may allow direct supersession.
 
-For user-owned criteria, revision normally requires explicit user authorization.
+For user-owned criteria, revision normally requires explicit User authorization through the external-interaction protocol.
 
 ```text
 Reviewer
  -> Need(requirements_change)
- -> Planner
+ -> Planner WorkItem
  -> ProposedCriteriaRevision
- -> Local authority check
- -> User approval if required
- -> activate AC-v2
+ -> Orchestrator authority check
+ -> PendingAction(USER_AUTHORITY) if required
+ -> activate AC-v2 only after valid response
 ```
 
-Local performs only the authority/state transition. It does not decide whether the revised wording is semantically better.
+The Orchestrator performs only schema/provenance/authority/state transitions. It does not decide whether revised wording is semantically better.
 
 ## Invalidation semantics
 
 A Plan revision should invalidate only downstream work that explicitly consumed affected plan inputs.
 
-A Criteria revision is broader: any Plan, implementation, review, or approval that consumed changed criteria becomes stale according to lineage policy.
-
-Conceptually:
+A Criteria revision is broader: any Plan, implementation, review, assessment, or approval that consumed changed criteria becomes stale according to lineage policy.
 
 ```text
 AC1 -> AC2
-  => dependent Plan/Implementation/Review may become stale
+  => dependent Plan/Implementation/Review/Assessment may become stale
 
 P4 -> P5 with only T-18 changed
   => unrelated T-2 research may remain reusable
@@ -329,9 +300,7 @@ P4 -> P5 with only T-18 changed
 
 ## Shared `PLAN.md`
 
-The PR workspace `PLAN.md` is rendered from a Planner-produced shared view, not synthesized by Local.
-
-Example:
+The PR workspace `PLAN.md` is rendered from a Planner-produced shared view, not synthesized by Local Agent or Orchestrator.
 
 ```yaml
 type: PlanSharedView
@@ -343,11 +312,11 @@ content: |
   Major tasks: ...
 ```
 
-Local validates that the view belongs to the active Plan, then deterministic publication policy may include it in the desired workspace state.
+The Orchestrator validates active version/provenance and deterministic publication policy before authorizing Worker publication.
 
 ## Planner re-entry
 
-Planner is demand-driven, not necessarily only a startup phase.
+Planner is demand-driven, not only a startup phase.
 
 Planner may be invoked for:
 
@@ -361,14 +330,14 @@ semantic clarification question generation
 roadmap/shared-plan synthesis
 ```
 
-Local does not invoke Planner simply because a fixed phase number was reached. It invokes Planner when deterministic policy sees an explicit Planning/Requirements Need.
+The Orchestrator does not invoke Planner merely because a fixed phase number was reached. It routes Planner when startup profile policy or an explicit typed Planning/Requirements Need requires it.
 
 ## Consequences
 
 ### Positive
 
 - replanning cannot silently redefine success;
-- Local never needs to interpret Plan prose to select execution;
+- deterministic control never needs to interpret Plan prose to select execution;
 - semantic task hierarchy remains independent of provider/runtime topology;
 - partial-order plans allow safe concurrency without over-serializing work;
 - user-owned requirements retain explicit authority;
@@ -378,20 +347,22 @@ Local does not invoke Planner simply because a fixed phase number was reached. I
 ### Costs
 
 - more explicit artifact types/versions are required;
-- executable PlanTasks need linked Needs rather than relying on implicit prose;
-- requirements-change and plan-change paths must be distinguished;
+- executable PlanTasks need linked Needs rather than implicit prose;
+- requirements-change, clarification, and plan-change paths must be distinguished;
 - Planner output schemas become more structured.
 
 ## Invariants
 
-> Objective, acceptance criteria, Plan, PlanTask, Need, and WorkItem are distinct objects with distinct authority/lifecycle semantics.
+> Objective, acceptance criteria, Plan, PlanTask, Need, WorkItem, and PendingAction are distinct objects with distinct authority/lifecycle semantics.
 
 > Acceptance criteria define success and are not silently rewritten by ordinary replanning.
 
-> Local never infers executable capability or dependency structure from Plan prose.
+> The deterministic Orchestrator never infers executable capability or dependency structure from Plan prose.
 
-> A PlanTask becomes executable only through an explicit typed Need or equivalent schema-defined execution intent produced by an authorized reasoning role.
+> A PlanTask becomes executable only through explicit typed semantic demand produced by an authorized reasoning role.
 
 > User/policy-owned criteria cannot be weakened by Planner without the required authority transition.
 
-> Replanning changes strategy; requirements revision changes the definition of success, and the workflow treats those as different operations.
+> Replanning changes strategy; requirements revision changes the definition of success; clarification obtains missing outside information. The workflow treats these as different operations.
+
+> Local Agent is the reasoning workflow client/operator, not the owner of WorkItem materialization, invalidation, scheduling, or criterion state.
