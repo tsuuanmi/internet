@@ -103,10 +103,14 @@ Software engineering, deep research, monitoring, report/document generation, and
 These are production-oriented proposals, not implemented behavior:
 
 - [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md) — target domain-agnostic adaptive artifact-based architecture.
+- [`WORKFLOW-VNEXT-USE-CASES.md`](./WORKFLOW-VNEXT-USE-CASES.md) — concrete end-to-end product journeys: feature-to-PR/user-feedback/merge and research-to-report-to-implementation continuation.
 - [`SRS-VNEXT.md`](./SRS-VNEXT.md) — proposed core testable vNext requirements.
+- [`SRS-VNEXT-ADMISSION.md`](./SRS-VNEXT-ADMISSION.md) — natural-language to machine-readable admission requirements.
+- [`SRS-VNEXT-KERNEL.md`](./SRS-VNEXT-KERNEL.md) — domain-agnostic durable kernel requirements.
 - [`SRS-VNEXT-ORCHESTRATOR.md`](./SRS-VNEXT-ORCHESTRATOR.md) — Local Agent client versus deterministic Orchestrator/WorkflowEngine boundary.
 - [`SRS-VNEXT-PLANNER.md`](./SRS-VNEXT-PLANNER.md) — User Objective / Acceptance Criteria / Plan / PlanTask / Need / WorkItem lifecycle.
 - [`SRS-VNEXT-INTERACTION.md`](./SRS-VNEXT-INTERACTION.md) — autonomous-by-default workflow plus durable User/Local-Agent external interaction.
+- [`SRS-VNEXT-CONTINUATION.md`](./SRS-VNEXT-CONTINUATION.md) — Workstream/WorkflowRun continuity, User feedback, delivery checkpoints, and cross-run artifact lineage.
 - [`SRS-VNEXT-PR-WORKSPACE.md`](./SRS-VNEXT-PR-WORKSPACE.md) — curated temporary PR collaboration memory for the software-engineering profile.
 - [`SRS-VNEXT-GIT-MUTATION.md`](./SRS-VNEXT-GIT-MUTATION.md) — expected-head scoped Git mutation/reconciliation for the software-engineering profile.
 
@@ -123,6 +127,7 @@ Proposed ADRs:
 - [`ADR/0017-autonomous-external-interaction.md`](./ADR/0017-autonomous-external-interaction.md)
 - [`ADR/0018-workflow-admission-protocol.md`](./ADR/0018-workflow-admission-protocol.md)
 - [`ADR/0019-domain-agnostic-durable-workflow-kernel.md`](./ADR/0019-domain-agnostic-durable-workflow-kernel.md)
+- [`ADR/0020-workstream-run-continuation.md`](./ADR/0020-workstream-run-continuation.md)
 
 ### Product interaction model
 
@@ -175,6 +180,37 @@ what Planner later derived
 
 A schema-valid request is not automatically semantically aligned. The Orchestrator validates structure/policy; semantic alignment is handled by Local Agent/User interaction according to confirmation policy.
 
+### Workstream and continuation lifecycle
+
+The product experience may span several bounded WorkflowRuns under one long-lived Workstream.
+
+```text
+Workstream: Feature / Idea X
+
+  ResearchRun R1
+    -> ReportArtifact
+
+  SoftwareRun R2
+    -> PR DeliveryArtifact
+    -> User local test / feedback
+    -> revised DeliveryArtifact
+    -> merge
+```
+
+Key rule:
+
+```text
+feedback to a non-terminal active/waiting run
+  -> resume the same run
+
+follow-up after terminal completion
+  -> create a continuation WorkflowRun with explicit lineage
+```
+
+A reviewed PR, report candidate, dataset, or other usable result may be delivered before the run is terminal. `Artifact delivered != WorkflowRun completed`.
+
+Cross-run continuation explicitly references source WorkflowRuns and selected Artifacts; completed-run history is never reopened or silently rewritten.
+
 ### Latest vNext authority model
 
 ```text
@@ -185,6 +221,7 @@ Local Agent
   = reasoning-capable workflow client/operator
   = compiles natural language into typed admission/input messages
   = queries status and presents workflow state naturally
+  = resolves conversational references to exact typed targets before mutation
   = may reason, but hidden reasoning is not durable workflow authority
 
 Orchestrator Runtime / WorkflowEngine
@@ -204,7 +241,8 @@ Only explicit validated tool/API inputs may move information/authority from User
 The generic kernel should understand control-plane objects such as:
 
 ```text
-Workflow
+Workstream
+WorkflowRun
 WorkflowAdmissionSpec
 Objective
 Constraint
@@ -215,6 +253,7 @@ Need
 WorkItem
 InputBundle
 Artifact
+DeliveryArtifact
 Assessment
 Receipt
 PendingAction
@@ -357,7 +396,7 @@ Long-lived workflows bind relevant schema/profile/policy/capability/agent-defini
 
 ## Architecture decisions
 
-Accepted current ADRs remain historical/as-built authority according to their status. Proposed ADRs 0009–0019 define target vNext intent only.
+Accepted current ADRs remain historical/as-built authority according to their status. Proposed ADRs 0009–0020 define target vNext intent only.
 
 Notable current/vNext relationship:
 
@@ -366,6 +405,7 @@ Notable current/vNext relationship:
 - [`ADR/0017-autonomous-external-interaction.md`](./ADR/0017-autonomous-external-interaction.md) — **Proposed:** autonomous execution continues until an actual external dependency requires durable interaction.
 - [`ADR/0018-workflow-admission-protocol.md`](./ADR/0018-workflow-admission-protocol.md) — **Proposed:** natural-language intent is compiled/preflighted/confirmed as a typed admission protocol before activation.
 - [`ADR/0019-domain-agnostic-durable-workflow-kernel.md`](./ADR/0019-domain-agnostic-durable-workflow-kernel.md) — **Proposed:** coding/research/monitoring are profiles above one artifact-based durable workflow kernel.
+- [`ADR/0020-workstream-run-continuation.md`](./ADR/0020-workstream-run-continuation.md) — **Proposed:** continuous User projects span bounded WorkflowRuns through explicit continuation and artifact lineage.
 
 ## Document authority table
 
@@ -377,13 +417,17 @@ Notable current/vNext relationship:
 | `WORKFLOW-GRAPH-ORCHESTRATION.md` | current graph/recovery model | as-built execution contract |
 | `WORKFLOW-OPERATOR-CONTRACT.md` | current workflow control/inspection | current operator contract |
 | `WORKFLOW-VNEXT.md` | vNext overview | proposed architecture narrative |
+| `WORKFLOW-VNEXT-USE-CASES.md` | concrete target product journeys | explanatory design anchor |
 | `SRS-VNEXT.md` | vNext core requirements | proposed requirements |
+| `SRS-VNEXT-ADMISSION.md` | workflow admission | proposed specialized requirements |
+| `SRS-VNEXT-KERNEL.md` | generic durable kernel | proposed specialized requirements |
 | `SRS-VNEXT-ORCHESTRATOR.md` | client/runtime boundary | proposed specialized requirements |
 | `SRS-VNEXT-PLANNER.md` | semantic planning lifecycle | proposed specialized requirements |
 | `SRS-VNEXT-INTERACTION.md` | durable external interaction | proposed specialized requirements |
+| `SRS-VNEXT-CONTINUATION.md` | Workstream/continuation/user feedback | proposed specialized requirements |
 | `SRS-VNEXT-PR-WORKSPACE.md` | software-profile PR collaboration memory | proposed specialized requirements |
 | `SRS-VNEXT-GIT-MUTATION.md` | software-profile repository mutation protocol | proposed specialized requirements |
-| `ADR/0009..0019` | narrow vNext decisions | proposed decisions |
+| `ADR/0009..0020` | narrow vNext decisions | proposed decisions |
 | `WORKFLOW-VNEXT-RESEARCH.md` | external evidence/candidates | non-normative research |
 
 ## Current completion boundary
@@ -393,6 +437,7 @@ Workflow vNext remains outside the implemented completion boundary. Major propos
 ```text
 natural-language workflow admission protocol
 typed domain artifacts
+Workstream / WorkflowRun / DeliveryArtifact continuation model
 Finding / Need / WorkItem / PendingAction separation
 capability registry and workflow profiles
 exact sparse InputBundles
