@@ -1,16 +1,10 @@
 import type { WorkflowEventJournal } from "#internet/workflow/events";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowRetentionManager } from "#internet/workflow/retention";
+import { WorkflowService, type WorkflowServiceDriver, type WorkflowServiceEngine } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
-export interface WorkflowOperatorEngine {
-    status(jobId: string): WorkflowJob;
-    continue(jobId: string): WorkflowJob;
-}
-export interface WorkflowOperatorDriver {
-    enqueue(jobId: string): void;
-    cancel(jobId: string): Promise<WorkflowJob>;
-    isActive(jobId: string): boolean;
-}
+export type WorkflowOperatorEngine = WorkflowServiceEngine;
+export type WorkflowOperatorDriver = WorkflowServiceDriver;
 export declare class WorkflowOperatorError extends Error {
     constructor(message: string);
 }
@@ -22,11 +16,9 @@ export declare function formatWorkflowStatus(job: WorkflowJob, events: readonly 
     readonly nodeId?: string;
 }[], driverActive: boolean): string;
 export declare class WorkflowOperator {
-    private readonly engine;
-    private readonly driver;
-    private readonly jobs;
+    private readonly service;
     private readonly events;
-    private readonly retention;
+    constructor(service: WorkflowService, events: WorkflowEventJournal);
     constructor(engine: WorkflowOperatorEngine, driver: WorkflowOperatorDriver, jobs: WorkflowJobStore, events: WorkflowEventJournal, retention: WorkflowRetentionManager);
     list(ownerSessionId: string): string;
     status(ownerSessionId: string, jobId?: string): string;

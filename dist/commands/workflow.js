@@ -1,5 +1,6 @@
 import { WorkflowOperatorError } from "#internet/workflow/operator";
 import { resolveWorkflowRepository, runGitCommand, WorkflowRepositoryError, } from "#internet/workflow/repository-context";
+import { WorkflowServiceError, workflowSessionAuthorizationContext, } from "#internet/workflow/service";
 const USAGE = "Usage: /workflow <objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>";
 const OPERATIONS = new Set(["list", "status", "stop", "continue", "delete"]);
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
@@ -53,13 +54,11 @@ export function defineWorkflowCommand(dependencies) {
                 if (cwd === undefined)
                     return { kind: "error", text: "/workflow requires a session working directory." };
                 const repository = await resolveWorkflowRepository(cwd, invocation.signal, runGit, "/workflow");
-                const job = dependencies.engine.start({
+                const job = dependencies.service.start(workflowSessionAuthorizationContext(ownerSessionId), {
                     objective: rawInput,
                     repository: repository.url,
                     baseRevision: repository.revision,
-                    ownerSessionId,
                 });
-                dependencies.driver.enqueue(job.jobId);
                 return {
                     kind: "success",
                     text: `Workflow ${job.jobId} started for ${repository.url} at ${repository.revision.slice(0, 12)}.`,
@@ -68,7 +67,9 @@ export function defineWorkflowCommand(dependencies) {
             catch (error) {
                 if (invocation.signal.aborted)
                     throw error;
-                if (error instanceof WorkflowRepositoryError || error instanceof WorkflowOperatorError) {
+                if (error instanceof WorkflowRepositoryError ||
+                    error instanceof WorkflowOperatorError ||
+                    error instanceof WorkflowServiceError) {
                     return { kind: "error", text: error.message };
                 }
                 if (error instanceof Error)

@@ -17,6 +17,7 @@ import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import { WorkflowOperator } from "#internet/workflow/operator";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
+import { WorkflowService } from "#internet/workflow/service";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 import { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { BrowserWorkflowWriterRunner } from "#internet/workflow/writer-runner";
@@ -91,11 +92,12 @@ export function apply(ctx, rawConfig) {
             stallTimeoutMs: config.workflowStallTimeoutMs,
         }), results, eventSink, journal);
         const driver = new WorkflowDriver(engine, jobs);
-        const operator = new WorkflowOperator(engine, driver, jobs, journal, retention);
+        const service = new WorkflowService(engine, driver, jobs, retention);
+        const operator = new WorkflowOperator(service, journal);
         ctx.effect(() => () => driver.dispose());
         driver.resumeActive();
-        ctx.commands.register(defineWorkflowCommand({ engine, driver, operator }));
-        ctx.tools.register(defineInternetWorkflowTool(engine, driver, { browser: manager }));
+        ctx.commands.register(defineWorkflowCommand({ service, operator }));
+        ctx.tools.register(defineInternetWorkflowTool(service, { browser: manager }));
         ctx.tools.register(defineInternetWorkflowMaintenanceTool(retention));
         ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
     }
@@ -122,6 +124,7 @@ export { parseWorkflowNodeResult, WorkflowNodeResultStore, workflowNodeResultId,
 export { formatWorkflowList, formatWorkflowStatus, WorkflowOperator, WorkflowOperatorError, } from "#internet/workflow/operator";
 export { DEFAULT_WORKFLOW_RETENTION_POLICY, WORKFLOW_RETENTION_AUDIT_SCHEMA, WorkflowRetentionError, WorkflowRetentionManager, } from "#internet/workflow/retention";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
+export { WorkflowService, WorkflowServiceError, workflowSessionAuthorizationContext, } from "#internet/workflow/service";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 export { workflowJobIsTerminal } from "#internet/workflow/types";

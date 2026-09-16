@@ -1,13 +1,15 @@
 import type { CommandDefinition } from "@deepseek-ai/dsh-commands";
 import { type GitRunner } from "#internet/workflow/repository-context";
-import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
+import { type WorkflowAuthorizationContext } from "#internet/workflow/service";
+import type { WorkflowJob } from "#internet/workflow/types";
 export type { GitRunner } from "#internet/workflow/repository-context";
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
-export interface WorkflowStarter {
-    start(input: StartWorkflowInput): WorkflowJob;
-}
-export interface WorkflowEnqueuer {
-    enqueue(jobId: string): void;
+export interface WorkflowCommandService {
+    start(context: WorkflowAuthorizationContext, input: {
+        readonly objective: string;
+        readonly repository: string;
+        readonly baseRevision: string;
+    }): WorkflowJob;
 }
 export interface WorkflowCommandOperator {
     list(ownerSessionId: string): string;
@@ -17,8 +19,7 @@ export interface WorkflowCommandOperator {
     delete(ownerSessionId: string, jobId?: string): Promise<string>;
 }
 export interface WorkflowCommandDependencies {
-    readonly engine: WorkflowStarter;
-    readonly driver: WorkflowEnqueuer;
+    readonly service: WorkflowCommandService;
     readonly operator: WorkflowCommandOperator;
     readonly runGit?: GitRunner;
 }
