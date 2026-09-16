@@ -109,5 +109,11 @@ describe("workflow scoped approval policy", () => {
 				prNumber: 10,
 			}).kind,
 		).toBe("unknown");
+		expect(
+			classifyWorkflowConfirmation(
+				context({ authority: "REMEDIATION", pullRequest: { ...pr, repository: "other/repo" } }),
+				{ action: "update_pull_request", repository: "example/repo", branch: pr.head, prNumber: 9 },
+			).kind,
+		).toBe("unknown");
 	});
 });
