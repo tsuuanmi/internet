@@ -76,14 +76,34 @@ These documents are production-oriented design contracts but are **not implement
 
 - [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md) — target adaptive artifact-based architecture, authority model, WorkItems, InputBundles, capability routing, feedback loops, and convergence.
 - [`SRS-VNEXT.md`](./SRS-VNEXT.md) — proposed core testable requirements and explicit production boundaries.
-- [`SRS-VNEXT-PR-WORKSPACE.md`](./SRS-VNEXT-PR-WORKSPACE.md) — proposed requirements for projecting selected safe workflow artifacts into the implementation PR as a temporary shared agent workspace.
+- [`SRS-VNEXT-ORCHESTRATOR.md`](./SRS-VNEXT-ORCHESTRATOR.md) — proposed requirements that make Local/Orchestrator a deterministic non-reasoning control plane.
+- [`SRS-VNEXT-PR-WORKSPACE.md`](./SRS-VNEXT-PR-WORKSPACE.md) — proposed requirements for a curated temporary PR collaboration workspace.
+- [`SRS-VNEXT-GIT-MUTATION.md`](./SRS-VNEXT-GIT-MUTATION.md) — proposed requirements for expected-head, scoped, reconciled Local-to-Worker Git mutation.
 - [`ADR/0009-typed-artifact-agent-protocol.md`](./ADR/0009-typed-artifact-agent-protocol.md) — typed durable artifacts as the correctness-bearing inter-agent protocol.
-- [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — Orchestrator-mediated semantic Needs, causal ownership, and feedback routing.
+- [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — typed Needs, causal ownership, and deterministic routing through Local/Orchestrator.
 - [`ADR/0011-workitems-and-capability-routing.md`](./ADR/0011-workitems-and-capability-routing.md) — separation of Need, runtime WorkItem, graph realization, and capability routing.
 - [`ADR/0012-input-bundles-and-context-projection.md`](./ADR/0012-input-bundles-and-context-projection.md) — exact sparse InputBundles and non-broadcast context projection.
-- [`ADR/0013-pr-workspace-projection.md`](./ADR/0013-pr-workspace-projection.md) — PR branch as a temporary shared projection of authoritative artifacts, with cleanup before final exact-head review.
+- [`ADR/0013-pr-workspace-projection.md`](./ADR/0013-pr-workspace-projection.md) — PR branch as curated temporary cross-agent collaboration memory.
+- [`ADR/0014-reconciled-git-mutation-protocol.md`](./ADR/0014-reconciled-git-mutation-protocol.md) — desired-state reconciliation between deterministic Local and the single-writer Worker.
+- [`ADR/0015-deterministic-local-orchestrator.md`](./ADR/0015-deterministic-local-orchestrator.md) — Local equals Orchestrator and performs deterministic coordination only; semantic reasoning is delegated.
 
 Target terminology uses **Worker** for the logical implementation/generation role. The existing `chatgpt-writer` identifier remains a current implementation detail until separately migrated.
+
+The latest vNext authority boundary is intentionally strict:
+
+```text
+Local / Orchestrator
+  = deterministic controller
+  = no LLM/model reasoning
+
+Planner / Research / Reviewer / Worker
+  = bounded semantic/reasoning capabilities
+
+WorkflowEngine
+  = deterministic implementation component inside Local/Orchestrator
+```
+
+Where older vNext narrative describes Local as a semantic coordinator or curator, ADR-0015 and `SRS-VNEXT-ORCHESTRATOR.md` supersede that wording.
 
 ### vNext research notes
 
@@ -93,7 +113,7 @@ Target terminology uses **Worker** for the logical implementation/generation rol
 
 The ADRs below are accepted historical decisions unless explicitly marked Proposed in the ADR itself:
 
-- [`ADR/0001-local-control-plane.md`](./ADR/0001-local-control-plane.md) — Local brokers user authority; WorkflowEngine owns deterministic orchestration.
+- [`ADR/0001-local-control-plane.md`](./ADR/0001-local-control-plane.md) — Local brokers user authority; WorkflowEngine owns deterministic orchestration in the current architecture.
 - [`ADR/0002-verbatim-handoffs.md`](./ADR/0002-verbatim-handoffs.md) — team/reviewer finals move verbatim to the writer.
 - [`ADR/0003-multi-account-capability-routing.md`](./ADR/0003-multi-account-capability-routing.md) — semantic account identity and capability-aware routing.
 - [`ADR/0004-pr-centric-review-loop.md`](./ADR/0004-pr-centric-review-loop.md) — the PR is the canonical implementation/review artifact.
@@ -102,10 +122,12 @@ The ADRs below are accepted historical decisions unless explicitly marked Propos
 - [`ADR/0007-approval-policy.md`](./ADR/0007-approval-policy.md) — scoped implementation confirmation policy and explicit merge authority.
 - [`ADR/0008-direct-team-execution.md`](./ADR/0008-direct-team-execution.md) — workflow teams run directly over the lower-level shared team runtime.
 - [`ADR/0009-typed-artifact-agent-protocol.md`](./ADR/0009-typed-artifact-agent-protocol.md) — **Proposed:** typed durable artifacts become the correctness-bearing agent communication protocol.
-- [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — **Proposed:** agents emit typed Needs; Orchestrator/runtime routes capabilities and returns results to the causal request owner.
+- [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — **Proposed:** agents emit typed Needs; Local/Orchestrator routes capabilities and returns results to the causal request owner.
 - [`ADR/0011-workitems-and-capability-routing.md`](./ADR/0011-workitems-and-capability-routing.md) — **Proposed:** semantic Needs are separated from code-owned WorkItems and graph execution; routing is capability-based.
 - [`ADR/0012-input-bundles-and-context-projection.md`](./ADR/0012-input-bundles-and-context-projection.md) — **Proposed:** each executable WorkItem is bound to one exact sparse InputBundle.
-- [`ADR/0013-pr-workspace-projection.md`](./ADR/0013-pr-workspace-projection.md) — **Proposed:** selected safe artifacts may be projected into the PR branch as a temporary shared workspace; runtime state remains authoritative and final review occurs only after cleanup.
+- [`ADR/0013-pr-workspace-projection.md`](./ADR/0013-pr-workspace-projection.md) — **Proposed:** a small set of task-local shared files may be committed by Worker for cross-agent visibility while Local state remains authoritative.
+- [`ADR/0014-reconciled-git-mutation-protocol.md`](./ADR/0014-reconciled-git-mutation-protocol.md) — **Proposed:** repository writes are expected-head, scoped, receipted mutations reconciled by Local; Worker remains the sole Git writer.
+- [`ADR/0015-deterministic-local-orchestrator.md`](./ADR/0015-deterministic-local-orchestrator.md) — **Proposed:** Local is the deterministic non-reasoning Orchestrator; semantic judgment is always delegated to explicit reasoning capabilities.
 
 ## Provider UI inspection notes
 
@@ -131,8 +153,10 @@ These documents describe observed Website surfaces used by browser automation. T
 | `WORKFLOW-HARDENING.md` | hardening rationale/acceptance history | hardening history |
 | `WORKFLOW-VNEXT.md` | target adaptive artifact-based architecture | proposed design contract |
 | `SRS-VNEXT.md` | target core workflow requirements | proposed requirements |
-| `SRS-VNEXT-PR-WORKSPACE.md` | target PR-workspace projection/cleanup/CI requirements | proposed specialized requirements |
-| `ADR/0009..0013` | narrow vNext architectural decisions | proposed decisions |
+| `SRS-VNEXT-ORCHESTRATOR.md` | deterministic Local/Orchestrator boundary | proposed specialized requirements |
+| `SRS-VNEXT-PR-WORKSPACE.md` | curated PR-workspace collaboration requirements | proposed specialized requirements |
+| `SRS-VNEXT-GIT-MUTATION.md` | Local-to-Worker Git mutation/reconciliation requirements | proposed specialized requirements |
+| `ADR/0009..0015` | narrow vNext architectural decisions | proposed decisions |
 | `WORKFLOW-VNEXT-RESEARCH.md` | external research/candidate patterns | non-normative research |
 | accepted ADRs | historical accepted architectural decisions | accepted design authority |
 | `ROADMAP.md` | completed phases / deferred directions | planning history |
@@ -151,12 +175,15 @@ first-class Finding / Need / WorkItem separation
 capability registry
 exact sparse InputBundles
 artifact lineage / causal invalidation
+Local = deterministic non-reasoning Orchestrator
+semantic work delegated to explicit capabilities
 Reviewer -> Research -> Reviewer adaptive routing
 Planner re-entry
 runtime-approved dynamic graph motifs
 convergence/resource-budget policy
 verification capabilities
-PR workspace projection / checkpoint commits / cleanup-before-final-review
+curated PR collaboration workspace
+single-writer reconciled Git mutation protocol
 semantic coordination tracing / outcome evals
 ```
 
