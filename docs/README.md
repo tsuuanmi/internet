@@ -4,13 +4,51 @@
 - **Last synchronized:** 2026-09-16
 - **Baseline:** durable workflow graph orchestration, node-level recovery, provider progress leases, and provider-agnostic team routing
 
-This directory documents the current `@tsuuanmi/internet` runtime. The coding workflow is an authoritative durable dependency graph: explicit nodes and dependency edges determine readiness, exact-input-bound results preserve completed work, execution IDs fence stale attempts, and recovery targets the smallest failed or orphaned node. The graph snapshot is correctness state; the ordered event journal is diagnostic/observability history rather than a second replay engine.
+This directory documents both the current `@tsuuanmi/internet` runtime and explicitly separated vNext design work. The current coding workflow remains an authoritative durable dependency graph: explicit nodes and dependency edges determine readiness, exact-input-bound results preserve completed work, execution IDs fence stale attempts, and recovery targets the smallest failed or orphaned node.
 
-The automatic driver owns scheduling and execution ownership only. `WorkflowEngine` owns workflow-domain transitions, including scheduler failure blocking. Research A/B and Review A/B become ready independently, while the account scheduler remains the only same-account capacity gate. The separate `chatgpt-writer` account remains the sole workflow mutation authority in the current implementation.
+The graph snapshot is current correctness state. The ordered event journal is diagnostic/observability history rather than a second replay engine.
 
-Provider completion now separates execution ownership leases from semantic provider progress. Workflow turns use a hard deadline plus a shorter no-meaningful-progress stall lease; response/generation transitions renew provider progress, while a static thinking control or unrelated DOM churn does not. Provider stalls, hard timeouts, browser failures, authentication failures, deterministic automation defects, and user-owned actions are classified before recovery policy is chosen.
+## Documentation authority and precedence
 
-The current default agent team uses two independent ChatGPT-backed thinker accounts as `Member 1` and `Member 2`. That is a routing choice, not a team semantic. Gemini remains supported for explicit direct chat/research/team use but is outside the default workflow route.
+There are three documentation classes:
+
+```text
+1. As-built contract
+   = describes behavior implemented on main
+
+2. Proposed design contract
+   = production-oriented target requirements/decisions not yet implemented
+
+3. Research notes
+   = external evidence and candidate ideas, non-normative
+```
+
+Precedence for production behavior:
+
+```text
+current code + as-built contract
+  > proposed vNext documents
+  > research notes
+```
+
+Precedence inside the proposed vNext design:
+
+```text
+narrow Proposed ADR
+  > SRS-VNEXT requirement summary
+  > WORKFLOW-VNEXT architecture narrative
+  > WORKFLOW-VNEXT-RESEARCH candidate notes
+```
+
+A vNext requirement becomes production authority only after implementation, tests, and explicit promotion into the as-built documents. Proposed docs must never be cited as proof that runtime behavior already exists.
+
+## Current as-built runtime
+
+The automatic driver owns scheduling and execution ownership only. `WorkflowEngine` owns workflow-domain transitions. Research A/B and Review A/B become ready independently, while the account scheduler remains the only same-account capacity gate. The separate `chatgpt-writer` account remains the sole workflow mutation authority in the current implementation.
+
+Provider completion separates execution ownership leases from semantic provider progress. Workflow turns use a hard deadline plus a shorter no-meaningful-progress stall lease. Provider stalls, hard timeouts, browser failures, authentication failures, deterministic automation defects, and user-owned actions are classified before recovery policy is chosen.
+
+The current default agent team uses two independent ChatGPT-backed thinker accounts as `Member 1` and `Member 2`. That is routing policy, not team semantics. Gemini remains supported for explicit direct/research/team use but is outside the default workflow route.
 
 ## Start here
 
@@ -18,27 +56,33 @@ The current default agent team uses two independent ChatGPT-backed thinker accou
 
 - [`internet-team-architecture.md`](./internet-team-architecture.md) — concise architecture and authority/data/control boundaries.
 - [`how-it-works.md`](./how-it-works.md) — current server-side implementation and runtime behavior.
-- [`WORKFLOW.md`](./WORKFLOW.md) — user-visible workflow behavior and control surface.
-- [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — deterministic workflow engine, driver, durable receipts, health and merge gates.
-- [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md) — current durable graph scheduler, node-level recovery/reconciliation, event journal, provider progress, human-action boundaries, and status projection contract.
+- [`WORKFLOW.md`](./WORKFLOW.md) — current user-visible workflow behavior and control surface.
+- [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) — current deterministic workflow engine, driver, durable receipts, health and merge gates.
+- [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md) — current durable graph scheduler, recovery/reconciliation, observability, and human-action boundaries.
 - [`WORKFLOW-HARDENING.md`](./WORKFLOW-HARDENING.md) — workflow-team observability/control/prompt/concurrency hardening history.
-- [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md) — provider-agnostic team quality contract, current two-ChatGPT routing, and lane concurrency contract.
-- [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md) — start/list/status/watch/stop/continue/delete operator semantics.
+- [`AGENT-TEAM-DESIGN.md`](./AGENT-TEAM-DESIGN.md) — provider-agnostic team quality contract and current routing/concurrency behavior.
+- [`WORKFLOW-OPERATOR-CONTRACT.md`](./WORKFLOW-OPERATOR-CONTRACT.md) — current operator semantics.
 - [`SRS.md`](./SRS.md) — current implemented normative workflow requirements.
-- [`ROADMAP.md`](./ROADMAP.md) — completed P0-P13 roadmap and explicitly deferred directions.
-- [`TODO.md`](./TODO.md) — current closure boundary and deliberately deferred work.
-- [`UPDATE.md`](./UPDATE.md) — historical implementation delta through P13.
+- [`ROADMAP.md`](./ROADMAP.md) — completed roadmap and deferred directions.
+- [`TODO.md`](./TODO.md) — current closure boundary / deferred work.
+- [`UPDATE.md`](./UPDATE.md) — historical implementation delta.
 
-### Workflow vNext design
+### Workflow vNext proposed design
 
-These documents describe an evolving target and **must not be read as implemented behavior** until corresponding runtime changes land:
+These documents are production-oriented design contracts but are **not implemented behavior**:
 
-- [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md) — adaptive artifact-based workflow architecture, role model, feedback loops, request ownership, and convergence direction.
-- [`SRS-VNEXT.md`](./SRS-VNEXT.md) — proposed testable requirements for typed artifacts, shared state, capability routing, dynamic graph expansion, and convergence.
-- [`ADR/0009-typed-artifact-agent-protocol.md`](./ADR/0009-typed-artifact-agent-protocol.md) — proposed decision to replace free-form control handoffs with typed durable artifacts while retaining Markdown as explanation.
-- [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — proposed decision for capability-based needs, Orchestrator-mediated routing, causal request ownership, and adaptive feedback loops.
+- [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md) — target adaptive artifact-based architecture, authority model, WorkItems, InputBundles, capability routing, feedback loops, and convergence.
+- [`SRS-VNEXT.md`](./SRS-VNEXT.md) — proposed testable requirements and explicit production boundaries.
+- [`ADR/0009-typed-artifact-agent-protocol.md`](./ADR/0009-typed-artifact-agent-protocol.md) — typed durable artifacts as the correctness-bearing inter-agent protocol.
+- [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — Orchestrator-mediated semantic Needs, causal ownership, and feedback routing.
+- [`ADR/0011-workitems-and-capability-routing.md`](./ADR/0011-workitems-and-capability-routing.md) — separation of Need, runtime WorkItem, graph realization, and capability routing.
+- [`ADR/0012-input-bundles-and-context-projection.md`](./ADR/0012-input-bundles-and-context-projection.md) — exact sparse InputBundles and non-broadcast context projection.
 
-The target logical role formerly called **Writer** is **Worker**. For the initial vNext design, Worker combines implementation work and the conceptual Generator role. Existing identifiers such as `chatgpt-writer` remain current implementation details until separately migrated.
+Target terminology uses **Worker** for the logical implementation/generation role. The existing `chatgpt-writer` identifier remains a current implementation detail until separately migrated.
+
+### vNext research notes
+
+- [`WORKFLOW-VNEXT-RESEARCH.md`](./WORKFLOW-VNEXT-RESEARCH.md) — external systems/research and candidate patterns. Non-normative; ideas must be promoted into ADR/SRS before becoming vNext design authority.
 
 ## Architecture decisions
 
@@ -53,17 +97,19 @@ The ADRs below are accepted historical decisions unless explicitly marked Propos
 - [`ADR/0007-approval-policy.md`](./ADR/0007-approval-policy.md) — scoped implementation confirmation policy and explicit merge authority.
 - [`ADR/0008-direct-team-execution.md`](./ADR/0008-direct-team-execution.md) — workflow teams run directly over the lower-level shared team runtime.
 - [`ADR/0009-typed-artifact-agent-protocol.md`](./ADR/0009-typed-artifact-agent-protocol.md) — **Proposed:** typed durable artifacts become the correctness-bearing agent communication protocol.
-- [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — **Proposed:** agents emit typed needs; Orchestrator/runtime routes capabilities and returns results to the causal request owner.
+- [`ADR/0010-adaptive-feedback-routing.md`](./ADR/0010-adaptive-feedback-routing.md) — **Proposed:** agents emit typed Needs; Orchestrator/runtime routes capabilities and returns results to the causal request owner.
+- [`ADR/0011-workitems-and-capability-routing.md`](./ADR/0011-workitems-and-capability-routing.md) — **Proposed:** semantic Needs are separated from code-owned WorkItems and graph execution; routing is capability-based.
+- [`ADR/0012-input-bundles-and-context-projection.md`](./ADR/0012-input-bundles-and-context-projection.md) — **Proposed:** each executable WorkItem is bound to one exact sparse InputBundle.
 
 ## Provider UI inspection notes
 
-These documents describe observed Website surfaces used by browser automation. They remain provider-specific because browser automation must understand each provider UI even though team reasoning is provider-agnostic:
+These documents describe observed Website surfaces used by browser automation. They remain provider-specific even though team reasoning is provider-agnostic:
 
 - [`chatgpt-ui-inspection.md`](./chatgpt-ui-inspection.md)
 - [`gemini-ui-inspection.md`](./gemini-ui-inspection.md)
 - [`provider-ui-inspection.md`](./provider-ui-inspection.md)
 
-## Document authority
+## Document authority table
 
 | Document | Purpose | Authority |
 | --- | --- | --- |
@@ -74,20 +120,36 @@ These documents describe observed Website surfaces used by browser automation. T
 | `WORKFLOW-ENGINE.md` | current deterministic workflow runtime | as-built runtime design contract |
 | `WORKFLOW-GRAPH-ORCHESTRATION.md` | current graph/recovery/observability architecture | as-built execution contract |
 | `internet-team-architecture.md` | current concise architecture | architecture overview |
-| `AGENT-TEAM-DESIGN.md` | provider-agnostic team quality + current routing + parallel lane requirements | current team contract |
-| `WORKFLOW-OPERATOR-CONTRACT.md` | current user-facing workflow control/inspection semantics | current operator contract |
-| `WORKFLOW-HARDENING.md` | post-roadmap hardening rationale and acceptance criteria | hardening history |
-| `WORKFLOW-VNEXT.md` | target adaptive artifact-based architecture | evolving proposal |
+| `AGENT-TEAM-DESIGN.md` | current team quality/routing/concurrency semantics | current team contract |
+| `WORKFLOW-OPERATOR-CONTRACT.md` | current workflow control/inspection semantics | current operator contract |
+| `WORKFLOW-HARDENING.md` | hardening rationale/acceptance history | hardening history |
+| `WORKFLOW-VNEXT.md` | target adaptive artifact-based architecture | proposed design contract |
 | `SRS-VNEXT.md` | target testable workflow requirements | proposed requirements |
-| ADRs | why accepted/proposed choices exist | per-ADR status |
+| `ADR/0009..0012` | narrow vNext architectural decisions | proposed decisions |
+| `WORKFLOW-VNEXT-RESEARCH.md` | external research/candidate patterns | non-normative research |
+| accepted ADRs | historical accepted architectural decisions | accepted design authority |
 | `ROADMAP.md` | completed phases / deferred directions | planning history |
 | `TODO.md` | implementation closure / deferred items | working backlog boundary |
-| `UPDATE.md` | historical changes through P13 | implementation history |
+| `UPDATE.md` | historical changes | implementation history |
 
 ## Current completion boundary
 
-The P0-P13 coding-workflow roadmap, provider-agnostic team hardening, and durable graph-orchestration hardening are implemented. The runtime has one authoritative graph/scheduler/reducer/recovery path; obsolete coarse team trace/replay state and compatibility execution paths are not retained.
+The current coding-workflow roadmap, provider-agnostic team hardening, and durable graph-orchestration hardening are implemented. The runtime has one authoritative graph/scheduler/reducer/recovery path; obsolete coarse team trace/replay state and compatibility execution paths are not retained.
 
-Workflow vNext is intentionally documented separately from this completion boundary. Proposed typed artifact communication, persistent finding/request ownership, Planner re-entry, adaptive Reviewer -> Research -> Reviewer loops, and convergence-based semantic completion are design targets until implementation work promotes them into the as-built contracts.
+Workflow vNext is intentionally outside this completion boundary. In particular, the following remain proposals until implementation lands:
 
-Other work remains deliberately deferred until a concrete need exists, including dynamic member/provider health substitution beyond same-node recovery, automatic task detection, Website-level cross-conversation/project memory as a correctness dependency, generic user-defined arbitrary DAG workflows beyond the internal workflow graph, degraded one-team quorum modes, multi-writer pooling, sophisticated artifact storage, autonomous production deployment, and broad non-coding generalization.
+```text
+typed domain artifacts as primary communication protocol
+first-class Finding / Need / WorkItem separation
+capability registry
+exact sparse InputBundles
+artifact lineage / causal invalidation
+Reviewer -> Research -> Reviewer adaptive routing
+Planner re-entry
+runtime-approved dynamic graph motifs
+convergence/resource-budget policy
+verification capabilities
+semantic coordination tracing / outcome evals
+```
+
+Other work remains deliberately deferred until a concrete need exists, including dynamic member/provider health substitution beyond same-node recovery, automatic task detection, Website-level cross-conversation/project memory as a correctness dependency, generic user-defined arbitrary DAG workflows, degraded one-team quorum modes, multi-writer pooling, autonomous production deployment, and broad non-coding generalization.
