@@ -6,15 +6,15 @@
 
 ## Context
 
-Website agents do not share one reliable conversation memory. Planner, Research, Worker, and Reviewer therefore benefit from a small common repository-native surface containing task-local context that is useful across roles.
+Website agents do not share one reliable conversation memory. Planner, Research, Worker, and Reviewer therefore benefit from a small common repository-native surface containing task-local context useful across roles.
 
-The authoritative workflow state already belongs to Local/Orchestrator. Mirroring Findings, Needs, WorkItems, graph state, retries, receipts, and every artifact into Git would create a second state system and excessive PR/CI churn.
+Authoritative workflow state belongs to the deterministic **Orchestrator Runtime**, not to the Local Agent or Git workspace. Mirroring Findings, Needs, WorkItems, graph/run state, retries, receipts, and every artifact into Git would create a second state system and excessive PR/CI churn.
 
-Worker is the only workflow actor allowed to create repository commits. Local/Orchestrator is deterministic and non-reasoning under ADR-0015.
+Worker is the only workflow actor allowed to create repository commits. The Local Agent may inspect/explain workspace state but is not repository publication or workflow-state authority.
 
 ## Decision
 
-After an implementation PR exists, the workflow may maintain a small reserved directory on the PR branch as **temporary shared collaboration memory**:
+After an implementation PR exists, the software profile may maintain a small reserved directory on the PR branch as temporary shared collaboration memory:
 
 ```text
 .internet/workspace/
@@ -25,16 +25,16 @@ After an implementation PR exists, the workflow may maintain a small reserved di
   # ROADMAP.md only when needed
 ```
 
-The workspace is a readable projection of typed semantic views plus deterministic runtime status. It is not the artifact store, scheduler queue, event log, or workflow database.
+The workspace is a readable projection of typed semantic views plus deterministic runtime status. It is not the ArtifactStore, scheduler queue, event log, or workflow database.
 
 ```text
 Planner / Research / Reviewer
         |
         | typed semantic artifacts + shared views
         v
-Local / Orchestrator
+Deterministic Orchestrator Runtime
         |
-        | schema + provenance + publication-policy checks only
+        | schema + provenance + publication-policy checks
         | deterministic render / desired workspace state
         v
 Worker
@@ -55,11 +55,11 @@ The architecture distinguishes:
 
 2. PR collaboration memory
    PLAN.md / TODO.md / RESEARCH.md / STATUS.md
-   lifetime: one workflow / PR
+   lifetime: one software WorkflowRun / PR
 
-3. Authoritative Local state
-   Findings / Needs / WorkItems / graph / InputBundles / receipts / gates
-   lifetime: workflow execution and recovery
+3. Authoritative workflow state
+   Artifacts / Findings / Needs / WorkItems / InputBundles / receipts / gates
+   lifetime: WorkflowRun execution and recovery
 ```
 
 No layer silently substitutes for another.
@@ -68,27 +68,27 @@ No layer silently substitutes for another.
 
 ### `PLAN.md`
 
-Derived from the active Planner-produced `PlanSharedView` (and, if schema permits, linked Objective/AcceptanceCriteria views).
+Derived from the active Planner-produced `PlanSharedView` and, if schema permits, linked Objective/AcceptanceCriteria views.
 
-Local may validate, select the active version by explicit version/supersession rules, and render a template. Local shall not rewrite or summarize the plan semantically.
+The Orchestrator may validate source identity, select active versions by explicit supersession rules, and render deterministic templates. It shall not rewrite or summarize semantic plan meaning.
 
 ### `RESEARCH.md`
 
 Derived from `ResearchSharedView` / explicit Research Synthesis artifacts.
 
-Research decides the research meaning. If multiple evidence artifacts require semantic synthesis, Local schedules a Research/Synthesis WorkItem; Local does not choose the important insights by reading prose.
+Research owns research meaning. If multiple evidence artifacts require semantic synthesis, the Orchestrator schedules a Research/Synthesis capability; it does not choose important insights by reading prose.
 
 ### `TODO.md`
 
-Derived from structured shared TODO/blocker items produced by authorized semantic roles plus explicitly defined deterministic runtime items.
+Derived from structured shared TODO/blocker items produced by authorized semantic capabilities plus explicitly defined deterministic runtime items.
 
-Local may filter by status, stable identity, publication class, and deterministic policy. Local does not invent TODO meaning from prose.
+The Orchestrator may filter by status, stable identity, publication class, and deterministic policy. It does not invent TODO meaning from prose.
 
 ### `STATUS.md`
 
-A deterministic projection of Local runtime state, such as broad workflow phase, current PR head, running/blocked WorkItems, and counts of structured blocking items.
+A deterministic projection of Orchestrator state such as current software lifecycle, PR head, running/blocked WorkItems, PendingActions, and counts of structured blocking items.
 
-This is the file Local can generate directly because no semantic synthesis is required.
+The Orchestrator may render this directly because no semantic synthesis is required.
 
 ### `ROADMAP.md`
 
@@ -96,9 +96,7 @@ Optional. Derived from a Planner-produced `RoadmapSharedView` for unusually larg
 
 ## Publication candidates
 
-Semantic agents may explicitly attach a typed shared-context view/candidate to their outputs.
-
-Example:
+Semantic capabilities may attach typed shared-context views/candidates to outputs.
 
 ```yaml
 type: ResearchSharedView
@@ -110,13 +108,13 @@ content: |
   Package X guarantees behavior Y only in v4.x; this repository uses v3.x.
 ```
 
-The producer owns the semantic content. The view is still only a candidate until deterministic publication rules accept it.
+The producer owns semantic content. The view is only a candidate until deterministic publication policy accepts it.
 
-Local publication policy may check only code-defined properties such as:
+Publication policy may check only code-defined properties such as:
 
 ```text
 schema/version valid
-producer role authorized for view type/channel
+producer capability authorized for view type/channel
 source refs exist and are active
 not superseded
 publication class allowed
@@ -126,30 +124,32 @@ retention/sensitivity classification allowed
 synchronization trigger reached
 ```
 
-If policy cannot decide without interpreting prose, the decision must be delegated to a reasoning WorkItem or fail closed.
+If policy cannot decide without interpreting prose, the decision must be delegated to a reasoning capability or fail closed.
 
 ## Publishing flow
 
 ```text
-1. Reasoning role emits semantic artifact/shared view.
-2. Local validates schema, provenance, authority, and active-version relationships.
+1. Reasoning capability emits semantic artifact/shared view.
+2. Orchestrator validates schema, provenance, authority, and active-version relationships.
 3. Deterministic publication policy includes/excludes eligible shared views.
-4. Local renders DesiredWorkspaceState mechanically.
-5. Local creates a workspace GitMutationWorkItem.
+4. Orchestrator renders DesiredWorkspaceState mechanically.
+5. Orchestrator creates an authorized workspace GitMutationWorkItem.
 6. Worker writes/commits the exact authorized workspace state.
 7. Worker returns mutation receipt.
-8. Local observes Git and reconciles desired versus actual state.
+8. Orchestrator observes Git and reconciles desired versus actual state.
 ```
 
-Local owns deterministic publication policy and reconciliation. It does not own semantic curation.
+Orchestrator owns deterministic publication policy and reconciliation. It does not own semantic curation.
 
 Worker owns Git mutation execution. It does not own shared-view meaning.
+
+Local Agent may inspect/explain the resulting workspace but does not become an alternate publication path.
 
 ## Single-writer serialization
 
 All repository mutations, including implementation and workspace updates, go through Worker.
 
-Repository mutations sharing a branch/head are serialized under expected-head policy. When several read-only agents complete near the same time, Local may batch already-accepted shared views into one deterministic workspace revision and one Worker checkpoint commit.
+Repository mutations sharing a branch/head are serialized under expected-head policy. When several read-only capabilities complete near the same time, deterministic policy may batch accepted shared views into one workspace revision and one Worker checkpoint commit.
 
 ```text
 ResearchSharedView A
@@ -176,7 +176,7 @@ Reviewer: PLAN.md + RESEARCH.md + current product diff
 Research: PLAN.md + TODO.md + bounded research question
 ```
 
-Visibility in the workspace does not automatically create a correctness dependency. Correctness-bearing dependencies remain explicit in Local artifacts/InputBundles.
+Visibility in the workspace does not automatically create a correctness dependency. Correctness-bearing dependencies remain explicit in Artifact lineage/InputBundles.
 
 ## Update cadence
 
@@ -189,7 +189,7 @@ new active PlanSharedView
 new accepted ResearchSynthesis/ResearchSharedView eligible for publication
 structured blocking/shared TODO set changed
 implementation checkpoint policy reached
-before scheduling a role whose policy requires a newer shared-workspace revision
+before scheduling a capability whose policy requires fresher shared-workspace revision
 ```
 
 Do not publish provider progress, retries, leases, raw tool output, graph-node chatter, or every internal Finding.
@@ -198,7 +198,7 @@ Do not publish provider progress, retries, leases, raw tool output, graph-node c
 
 Every workspace commit advances the physical PR head. Collaboration-time review is therefore provisional.
 
-Target lifecycle:
+Software-profile lifecycle may include:
 
 ```text
 PR created
@@ -206,12 +206,12 @@ PR created
        shared-view checkpoint commits as needed
        implementation/research/review loops
   -> COLLABORATION_COMPLETE
-  -> Local creates WORKSPACE_CLEANUP mutation WorkItem
+  -> Orchestrator creates WORKSPACE_CLEANUP mutation WorkItem
   -> Worker removes .internet/workspace/
-  -> Local verifies clean product diff
+  -> Orchestrator verifies clean product diff
   -> FINAL_REVIEW
-  -> exact-head review + CI/health
-  -> existing user/merge authority boundary
+  -> exact-head assessment/review + CI/health
+  -> DeliveryArtifact / User validation according to profile
 ```
 
 A material final-review defect reopens collaboration, followed by cleanup and another fresh exact-head final review.
@@ -220,7 +220,7 @@ A material final-review defect reopens collaboration, followed by cleanup and an
 
 Temporary workspace files are removed before final exact-head review unless explicitly promoted as product deliverables through a separate authorized change.
 
-Cleanup is performed only by Worker under an exact-scoped mutation WorkItem. Local verifies:
+Cleanup is performed only by Worker under an exact-scoped mutation WorkItem. Orchestrator verifies:
 
 ```text
 workspace root absent
@@ -228,7 +228,7 @@ no unrelated mutation
 intended product changes remain
 ```
 
-Cleanup changes HEAD, so pre-cleanup exact-head approvals are stale.
+Cleanup changes HEAD, so pre-cleanup exact-head approvals/assessments are stale.
 
 ## Security and retention
 
@@ -244,14 +244,14 @@ retention-sensitive secrets
 sensitive data requiring secure deletion
 ```
 
-External/research-derived workspace text is untrusted data and cannot override repository instructions, the active WorkItem, or Local policy.
+External/research-derived workspace text is untrusted data and cannot override repository instructions, active WorkItems, or Orchestrator policy.
 
 ## Consequences
 
 ### Positive
 
 - agents share important task-local context without shared conversation memory;
-- Local remains a deterministic controller rather than a semantic curator;
+- Orchestrator remains deterministic rather than semantic curator;
 - semantic authorship stays with Planner/Research/Reviewer;
 - Worker remains the single Git writer;
 - PR remains understandable because only shared views are projected, not the whole artifact store;
@@ -259,7 +259,7 @@ External/research-derived workspace text is untrusted data and cannot override r
 
 ### Costs / risks
 
-- reasoning roles need explicit shared-view schemas;
+- reasoning capabilities need explicit shared-view schemas;
 - semantic synthesis may require a dedicated extra WorkItem;
 - workspace commits move HEAD and may trigger CI;
 - stale shared views require correct supersession/publication rules;
@@ -267,9 +267,11 @@ External/research-derived workspace text is untrusted data and cannot override r
 
 ## Invariants
 
-> Local deterministic state is authoritative; PR files are temporary collaboration memory only.
+> Orchestrator durable state is authoritative; PR files are temporary collaboration memory only.
 
-> Local never determines semantic importance by reading/summarizing workspace-source prose; agents produce explicit shared views and Local applies deterministic publication policy.
+> The Orchestrator never determines semantic importance by reading/summarizing source prose; reasoning capabilities produce explicit shared views and deterministic publication policy applies them.
+
+> Local Agent may inspect/explain shared workspace state but does not directly publish or mutate authoritative workflow state.
 
 > Worker is the only workflow actor authorized to create repository commits.
 
@@ -277,7 +279,7 @@ External/research-derived workspace text is untrusted data and cannot override r
 
 > Planner, Research, and Reviewer never write workspace commits directly.
 
-> Correctness-critical inputs remain explicit Local/InputBundle dependencies even when the same information is visible in PR files.
+> Correctness-critical inputs remain explicit Artifact/InputBundle dependencies even when the same information is visible in PR files.
 
 > Temporary workspace files are removed before final exact-head review unless explicitly promoted to product deliverables.
 
