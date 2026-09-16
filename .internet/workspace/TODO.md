@@ -281,5 +281,5 @@ The highest-priority implementation gap remains the lack of one authoritative ap
 - [x] Rewrite `SRS-VNEXT.md` as the harmonized umbrella contract (v0.3).
 - [x] Align ADR-0009/0010/0011/0019 and `SRS-VNEXT-KERNEL.md` with core v0.3.
 - [x] Add explicit v3 compatibility/migration language to authoritative core/kernel contracts.
-- [ ] Update documentation indexes/PR summary with `ADR-0021` and `SRS-VNEXT-CONVERGENCE`.
-- [ ] Final terminology/search pass for stale authority phrases in remaining narrative/non-core proposal docs.
+- [x] Update documentation indexes/PR summary with `ADR-0021` and `SRS-VNEXT-CONVERGENCE`.
+- [x] Final terminology/search pass for stale authority phrases in remaining narrative/non-core proposal docs.
