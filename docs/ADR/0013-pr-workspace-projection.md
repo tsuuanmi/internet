@@ -1,4 +1,4 @@
-# ADR-0013 — Use the Pull Request Branch as a Shared Agent Workspace Projection
+# ADR-0013 — Use the Pull Request as a Curated Shared Agent Workspace
 
 - **Status:** Proposed
 - **Date:** 2026-09-16
@@ -6,270 +6,319 @@
 
 ## Context
 
-Website agents do not share one reliable conversation memory. A Research agent may discover evidence that a Reviewer or Worker cannot see unless the Orchestrator explicitly re-delivers it. The vNext artifact model solves correctness by persisting durable structured artifacts, but website agents still benefit from a common external place they can inspect directly.
+Website agents do not share one reliable conversation memory. Research may discover information that Worker and Reviewer should both know, while Planner may refine a plan that later agents need to see.
 
-The implementation pull request already provides a repository/branch that all GitHub-capable agents can inspect. Git also gives immutable commits, file-level diffs, ordering, authorship metadata, and a natural audit trail.
+The vNext runtime already keeps deterministic workflow state and typed artifacts under the Local Orchestrator/WorkflowEngine. Reproducing that whole state model inside Git would add unnecessary synchronization, commit churn, CI churn, and another surface that could drift from the real state.
 
-The question is whether the PR branch can also act as a temporary shared collaboration workspace for selected workflow artifacts without weakening the runtime's authoritative state model or polluting the final repository.
+The useful property of the implementation PR is simpler: it is a common durable place that GitHub-capable Website agents can inspect.
 
 ## Decision
 
-After the implementation PR exists, the workflow may materialize selected workflow artifacts into a dedicated temporary directory on the PR head branch.
+After an implementation PR exists, the workflow may use a small reserved directory on the PR branch as **curated shared collaboration memory**.
 
-The PR branch is a **shared workspace projection**, not the workflow source of truth.
+The Local deterministic runtime remains the only authority for workflow state, WorkItems, routing, findings, exact-input bindings, approvals, budgets, and termination.
 
 ```text
-Authoritative artifact/state store
-          |
-          | deterministic projection
-          v
-PR workspace files + checkpoint commits
-          |
-          | read by Website agents
-          v
-Research / Planner / Worker / Reviewer
+Authoritative Local state / artifacts
+              |
+              | select important shared context
+              v
+      PR shared workspace files
+              |
+              v
+   Research / Worker / Reviewer
+       can inspect the same context
 ```
 
-The runtime artifact store and authoritative graph/job state remain correctness authority. Deleting, rewriting, failing to publish, or failing to read the PR workspace must not destroy authoritative workflow state.
+The PR workspace is deliberately **not** a mirror of the runtime artifact store.
 
-## Workspace location
+## Default workspace
 
-The proposed default path is:
+The proposed minimal layout is:
 
 ```text
 .internet/workspace/
-```
-
-A representative layout is:
-
-```text
-.internet/workspace/
-  README.md
-  manifest.json
+  PLAN.md
+  TODO.md
+  RESEARCH.md
   STATUS.md
-  artifacts/
-    plans/
-    findings/
-    research/
-    reviews/
-    decisions/
 ```
 
-The exact physical layout is an implementation detail, but one reserved root and deterministic paths are required.
-
-## Projection model
-
-Only artifacts explicitly eligible for PR-workspace publication are materialized.
-
-A projection record should bind:
+For unusually large or long-running work, policy may additionally publish:
 
 ```text
-workflowId
-workspaceRevision
-artifactId
-artifactHash
-projectionPath
-projectionBlobHash / commit SHA
-publicationClass
-createdAt
+ROADMAP.md
 ```
 
-The projection must be deterministic from the authoritative artifact payload plus versioned projection rules.
+The runtime should not create per-artifact directories, manifests, finding databases, execution logs, or graph-state files in the PR by default.
 
-A published file is not a new reasoning artifact. It is a transport/view of an existing authoritative artifact unless the schema explicitly defines the file itself as a user-authored artifact.
+## File semantics
 
-## Publication classes
+### `PLAN.md`
 
-Artifacts shall not be published merely because they exist.
+Shared current working plan for agents.
 
-At minimum the runtime should distinguish:
+It should contain only material planning context such as:
 
 ```text
-internal_only
-pr_workspace_safe
-deliverable
+objective
+accepted constraints
+acceptance criteria
+current implementation approach
+important assumptions
+material plan revisions
 ```
 
-Only `pr_workspace_safe` and explicitly allowed `deliverable` content may be written to the PR branch.
+The authoritative plan/version remains in Local state. `PLAN.md` is the readable collaboration view.
 
-The workspace must never contain:
+### `TODO.md`
 
-- credentials, tokens, cookies, auth state, or secrets;
-- private execution internals not intended for repository collaborators;
-- sensitive user data that should not persist in Git history;
-- raw browser/provider state;
-- hidden chain-of-thought or private reasoning;
-- content whose retention policy forbids Git persistence.
+Shared outstanding work that agents benefit from seeing.
 
-Deletion before merge is **not secure erasure**. Historical commits and PR metadata may retain prior content.
-
-## Shared-state visibility
-
-The PR workspace improves discoverability for agents, but does not replace sparse InputBundle projection.
-
-An agent may be instructed to inspect the workspace manifest or selected files. The runtime still determines the correctness-bearing InputBundle consumed by a WorkItem.
-
-Therefore:
+Examples:
 
 ```text
-visible in PR workspace != consumed correctness input
+implementation tasks
+important unresolved review findings
+research questions that materially block work
+validation still required
 ```
 
-If an agent reads additional workspace files opportunistically, those observations are untrusted auxiliary context unless promoted into an explicit artifact/InputBundle dependency.
+It is not the scheduler queue and does not replace WorkItems or graph state.
+
+### `RESEARCH.md`
+
+Curated research/evidence that is broadly useful to downstream agents.
+
+Examples:
+
+```text
+important discovered repository facts
+external-source conclusions
+constraints discovered during research
+contradictions or uncertainty that affect implementation/review
+source references needed by Worker or Reviewer
+```
+
+Not every research artifact belongs here. Only results expected to materially help more than one downstream role should be published.
+
+### `STATUS.md`
+
+A small convenience projection of current collaboration progress.
+
+Examples:
+
+```text
+current broad phase
+latest meaningful checkpoint
+current implementation head
+major open blocking topics
+where an agent should start reading
+```
+
+`STATUS.md` is non-authoritative and may be generated from Local state.
+
+### `ROADMAP.md`
+
+Optional for large tasks that need multiple major milestones. It is unnecessary for ordinary workflow jobs.
+
+## Curated projection, not artifact mirroring
+
+The key rule is:
+
+> Publish information because another agent is likely to need it, not because an artifact exists.
+
+For example:
+
+```text
+Research produces 12 internal evidence artifacts
+        |
+        | Local determines 3 conclusions are broadly relevant
+        v
+RESEARCH.md receives those 3 conclusions
+```
+
+The other 9 artifacts remain only in Local/runtime storage and can still be supplied through exact InputBundles when needed.
+
+This keeps the PR understandable and avoids creating a second workflow database.
+
+## Authority boundary
+
+PR files are collaboration context, never workflow authority.
+
+The following remain exclusively Local/runtime-owned:
+
+```text
+workflow lifecycle/phase state
+Finding and Need lifecycle
+WorkItems
+Graph nodes and dependencies
+InputBundle identity
+routing/capability decisions
+retry/fencing/idempotency
+resource budgets
+exact-head approval state
+CI/health authority
+human authorization
+termination/convergence
+```
+
+An agent editing or suggesting text in `PLAN.md`, `TODO.md`, `RESEARCH.md`, or `STATUS.md` does not directly change any of those authoritative states.
+
+A semantic state change occurs only when the Local Orchestrator validates/accepts it through the normal typed-artifact/control path.
 
 ## Publishing authority
 
-Artifact publication is transport, not semantic generation.
+Research and Reviewer do not gain repository mutation authority merely because their results may appear in the shared workspace.
 
-Preferred order:
-
-1. WorkflowEngine validates/commits the authoritative artifact.
-2. A deterministic workspace-projection operation renders exact bytes.
-3. A mutation-capable transport writes those bytes to the PR branch.
-4. The runtime verifies the resulting path/blob/commit and stores a projection receipt.
-
-If the current runtime cannot write GitHub directly and must use the mutation-capable Worker account as the transport adapter, Worker must not summarize or rewrite the artifact. The returned remote content/hash must be reconciled against the expected projection.
-
-Research and Reviewer roles do not gain repository mutation authority merely because their artifacts are projected into the PR.
-
-## Checkpoint commits
-
-The runtime may batch one or more projection updates into deterministic workspace checkpoint commits rather than committing every small state transition.
-
-Representative commit message:
+Preferred flow:
 
 ```text
-workflow: checkpoint shared agent workspace
-
-Workflow-Job: <jobId>
-Workspace-Revision: <N>
-Workspace-Only: true
+agent result
+  -> Local validates/persists authoritative artifact/state
+  -> Local decides whether shared publication is useful
+  -> mutation-capable transport updates curated workspace file(s)
+  -> Local records publication/checkpoint evidence as needed
 ```
 
-Checkpoint granularity is policy. It should balance agent visibility against Git/CI churn.
+If the Worker account performs the Git mutation as a transport adapter, that does not give Worker authority to reinterpret another role's result. Material changes to shared meaning must remain traceable to their source artifact or accepted Local decision.
 
-## Code commits versus workspace-only commits
+## Update cadence
 
-The runtime should classify branch commits at least as:
+The workspace should be updated at **meaningful synchronization points**, not for every state transition.
+
+Good publication triggers include:
 
 ```text
-implementation
-workspace_only
-workspace_cleanup
-mixed
+initial plan ready
+research synthesis materially changes shared understanding
+plan materially revised
+Worker completes a meaningful implementation checkpoint
+Reviewer discovers a broadly relevant blocking issue
+major TODO set changes
+before another role is started and needs fresher shared context
 ```
 
-A workspace-only commit changes only the reserved workspace root.
+Avoid publishing:
 
-A mixed commit is allowed only when policy deliberately wants one coherent code+state checkpoint; otherwise implementation and workspace projection should remain separable for observability.
+```text
+provider progress
+retry attempts
+heartbeat/lease state
+small internal findings
+raw tool output
+routine graph-node transitions
+```
+
+Updates may be batched into one checkpoint commit.
+
+## Context use
+
+Website agents may be told to begin by reading the shared workspace files relevant to their role.
+
+Typical guidance:
+
+```text
+Worker:
+  read PLAN.md + TODO.md + RESEARCH.md
+
+Reviewer:
+  read PLAN.md + RESEARCH.md + current implementation diff
+
+Research:
+  read PLAN.md + TODO.md, then answer the bounded research question
+```
+
+This is shared situational awareness, not a replacement for exact WorkItem InputBundles.
+
+If correctness depends on a particular fact, the authoritative artifact/input binding still records that dependency in Local state.
+
+## Git/head implications
+
+Any workspace update committed to the PR branch changes the physical PR head SHA.
+
+Therefore collaboration-time review is provisional. Final exact-head approval must occur only after temporary workspace files have stopped changing and, when they are temporary, have been removed.
+
+Target lifecycle:
+
+```text
+PR created
+  -> COLLABORATION
+       plan / research / implementation / review feedback
+       curated workspace updates when materially useful
+  -> COLLABORATION_COMPLETE
+  -> remove temporary .internet/workspace files
+  -> verify clean product diff
+  -> FINAL_REVIEW
+  -> exact-head CI/health
+  -> existing user/merge authority boundary
+```
+
+If final review finds a material defect, collaboration may reopen, followed by cleanup and a fresh final review.
+
+## Cleanup
+
+The default workspace is temporary and must not appear in the final product diff.
+
+Before final exact-head review:
+
+```text
+remove .internet/workspace/
+verify no temporary files remain
+verify intended implementation changes remain
+```
+
+The cleanup commit creates a new head, so any earlier exact-head approval is stale by definition.
+
+A repository may later choose to retain selected files as real deliverables, but that is a separate explicit product decision rather than the default workflow behavior.
 
 ## CI boundary
 
-Workspace checkpoint commits advance the physical PR head and can trigger GitHub Actions/status checks.
+Workspace commits may trigger CI. The runtime should reduce unnecessary churn through coarse checkpointing rather than committing every internal update.
 
-The runtime must not assume `paths-ignore` or commit-level skip directives are always safe for required checks: GitHub documents that skipped required workflows may remain Pending and block merge.
+Repository CI policy must be validated explicitly. The workflow must not assume that skipping required workflows via path filters or commit messages is safe.
 
-Production repositories should use one of these explicit policies:
+## Security and retention
 
-- allow normal CI on workspace commits;
-- keep the same required check visible but make workspace-only execution fast and successful through job-level logic;
-- batch workspace publications to reduce CI churn;
-- use repository-specific non-required auxiliary checks for workspace-only updates.
+Temporary does not mean erasable.
 
-CI policy is repository configuration and must be validated rather than guessed.
-
-## Collaboration phase versus final approval
-
-Workspace commits continuously move the PR head, so intermediate Reviewer work during active collaboration is not merge authorization.
-
-The target lifecycle is:
+Content committed to Git may remain retrievable from branch/PR history after deletion. Therefore the workspace must never contain:
 
 ```text
-WORKSPACE_OPEN
-  -> adaptive Research / Planner / Worker / Reviewer collaboration
-  -> provisional convergence
-  -> WORKSPACE_FINALIZING
-  -> remove all temporary workspace files
-  -> verify clean implementation tree
-  -> FINAL_REVIEW
-  -> exact-head review + required CI/health
-  -> READY_FOR_USER_HANDOFF / merge authority boundary
+credentials/tokens/cookies
+auth/browser state
+hidden chain-of-thought or private reasoning
+retention-sensitive secrets
+sensitive data that must later be securely deleted
 ```
-
-If final review finds a material problem:
-
-```text
-FINAL_REVIEW
-  -> reopen WORKSPACE_OPEN
-  -> further work / artifact projection
-  -> finalize + cleanup again
-  -> fresh exact-head final review
-```
-
-No approval from a pre-cleanup head may authorize the final clean head.
-
-## Cleanup semantics
-
-Before final exact-head review, the runtime creates a workspace-cleanup change that removes all temporary workspace files from the PR branch.
-
-The cleanup is accepted only when deterministic verification establishes that:
-
-```text
-reserved workspace root absent from final tree
-AND no required deliverable was accidentally deleted
-AND implementation diff remains the intended product change
-```
-
-The cleanup commit itself advances PR head and therefore invalidates prior exact-head approval/health evidence.
-
-Final review/health must run after cleanup.
-
-## Squash merge consequence
-
-When the repository uses squash merge, intermediate workspace/checkpoint commits are not preserved as separate commits on the base branch. If workspace files are deleted before merge, the final squashed tree delta does not include them.
-
-This provides a clean `main` history and tree, but it does not mean temporary content was erased from GitHub/PR history.
-
-## Optional PR body projection
-
-The runtime may also maintain one idempotently updated status block in the PR body containing compact non-authoritative information such as:
-
-```text
-workflow job
-workspace revision
-current phase
-open blocking finding count
-latest checkpoint commit
-```
-
-This is an operator/agent navigation aid only. The PR body is not correctness state.
 
 ## Consequences
 
 ### Positive
 
-- Website agents gain a common durable place to inspect current shared context;
-- artifacts become visible without requiring every conversation to receive every prior message;
-- Git provides history, diffs, ordering, and a natural audit trail;
-- the same implementation PR becomes both code-review surface and temporary collaboration room;
-- squash merge plus pre-review cleanup keeps the base branch clean.
+- Worker and Reviewer can see the same important research without re-sending entire conversations;
+- agents gain a simple shared mental model of plan, work remaining, and important discoveries;
+- Git/PR provides durable cross-agent visibility using infrastructure already available to Website agents;
+- Local retains a clean deterministic state machine;
+- implementation cost is much lower than mirroring every runtime artifact into Git.
 
 ### Costs / risks
 
-- artifact-only commits can trigger CI and invalidate literal PR-head evidence;
-- the PR diff is noisier during collaboration;
-- Git publication has retention/security consequences;
-- a projection publisher and cleanup verifier are additional runtime responsibilities;
-- agents may opportunistically read workspace content that was not part of their formal InputBundle.
+- curated files can become stale if publication policy is poor;
+- updates move PR head and can trigger CI;
+- summarization/curation can omit information, so correctness-critical dependencies still belong in Local artifacts/InputBundles;
+- temporary Git content is retained in history even after cleanup.
 
 ## Invariants
 
-> The PR workspace is a projection of authoritative workflow artifacts, never the only source of truth.
+> Local deterministic workflow state remains authoritative; PR shared files are collaboration memory only.
 
-> Publishing an artifact to the PR does not grant its producer repository mutation authority.
+> The PR workspace is curated for cross-agent usefulness, not a mirror of all artifacts or execution state.
 
-> Temporary workspace content must be removed before final exact-head review and merge eligibility.
+> Publishing shared context does not grant Research or Reviewer repository mutation authority.
 
-> Cleanup does not erase Git history; secret or retention-sensitive data must never enter the PR workspace.
+> Correctness-critical inputs remain explicitly bound in Local WorkItems/InputBundles even when the same information is visible in PR files.
 
-> Final review and CI/health bind to the cleaned final PR head, not to an earlier collaboration head.
+> Temporary workspace files are removed before final exact-head review unless explicitly promoted to real product deliverables.
+
+> Secrets and retention-sensitive information never enter the PR workspace.
