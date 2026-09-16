@@ -4,16 +4,45 @@
 
 This roadmap turns the vNext architecture into a staged production migration. It intentionally preserves the current coding workflow while introducing a domain-agnostic runtime incrementally.
 
-The roadmap is outcome-oriented. Detailed design and file-level implementation sequencing live in `PLAN.md`; concrete follow-up tasks live in `TODO.md`.
+The roadmap is outcome-oriented. Detailed design and file-level sequencing live in `PLAN.md`; concrete follow-up tasks live in `TODO.md`.
 
 ## Guiding constraints
 
 - Existing `WorkflowJob` v3 remains supported during migration.
 - Current exact-head, recovery, retry, retention, and Writer authority behavior remains production-authoritative until explicitly superseded.
-- Local Agent is a reasoning client; the Orchestrator/runtime remains deterministic.
+- Local Agent is a reasoning client; the deterministic Orchestrator Runtime owns authoritative workflow transitions.
 - New generic abstractions must have one authoritative execution path and should wrap existing production assets before replacing them.
 - Every milestone must be independently releasable and testable.
-- No milestone may depend on semantic interpretation inside Local/Orchestrator control logic.
+- No milestone may depend on semantic interpretation inside Orchestrator control logic.
+- No complete product journey may claim terminal semantic success before baseline criterion assessment/convergence exists.
+
+## Design Gate D0 — Contract harmonization
+
+### Outcome
+
+The proposed ADR/SRS set gives one unambiguous implementation contract.
+
+### Why first
+
+Older proposal documents still contain stale wording such as `Local/Orchestrator` or assign deterministic WorkItem materialization/invalidation to `Local`. Other documents already define Local Agent as a reasoning client and Orchestrator Runtime as the deterministic control plane.
+
+### Deliverables
+
+- normalize Local Agent vs Orchestrator Runtime terminology;
+- synchronize Need vocabulary (`requirements_change`, `clarification`);
+- define Need -> WorkItem **or** PendingAction materialization;
+- standardize `WAITING_EXTERNAL` terminology;
+- clarify parent-owned source artifact vs child-owned continuation import;
+- add baseline CriterionAssessment/convergence contract;
+- add explicit v3 compatibility/migration language where needed.
+
+### Exit criteria
+
+- no proposed normative document assigns deterministic control-plane authority to Local Agent;
+- no core requirement contradicts specialized admission/interaction/planner/kernel contracts;
+- implementation agents can follow one dependency order without hidden prerequisites.
+
+---
 
 ## Milestone 0 — Authoritative workflow service boundary
 
@@ -21,83 +50,150 @@ The roadmap is outcome-oriented. Detailed design and file-level implementation s
 
 One application/service boundary owns workflow caller authorization and command/tool coordination.
 
-### Why first
-
-Today the slash command and low-level tool reach the runtime differently, and owner checks are not centralized. Every future Local-Agent-facing workflow protocol depends on fixing this boundary first.
-
 ### Deliverables
 
 - `WorkflowService` or equivalent application service;
-- centralized ownership/session authorization;
+- explicit authorization-context/principal input;
+- v3 adapter preserving current owner-session rules;
 - command and tool routed through the same service;
 - cross-session access-denial tests;
 - no change to v3 workflow semantics.
 
 ### Exit criteria
 
-- all workflow operations use one authorization path;
-- another session cannot inspect or mutate a workflow merely by knowing its ID;
+- all protected workflow operations use one authorization path;
+- another session cannot inspect or mutate a v3 workflow merely by knowing its ID;
+- service design does not make creator session identity the permanent vNext authorization model;
 - legacy workflow tests remain green.
 
 ---
 
-## Milestone 1 — Admission protocol and software profile boundary
+## Milestone 1 — Durable admission protocol and software profile boundary
 
 ### Outcome
 
-Natural-language workflow intent can be compiled into a provenance-preserving machine-readable admission request, deterministically preflighted, explicitly confirmed where required, and activated by exact accepted identity.
+Natural-language workflow intent can be compiled into a provenance-preserving machine-readable admission request, deterministically preflighted, durably confirmed where required, and activated by exact accepted identity.
 
 ### Deliverables
 
 - Admission draft/spec types;
+- durable Admission store/record lifecycle;
 - field provenance;
 - deterministic validation/preflight;
 - stable admission hash/version;
+- durable confirmation receipt/provenance;
 - initial software profile descriptor;
 - compatibility adapter from existing `/workflow <objective>` startup.
 
 ### Exit criteria
 
 ```text
-compile -> preflight -> preview/confirmation -> activate(expectedAdmissionHash)
+compile
+ -> persist draft
+ -> preflight
+ -> durable confirmation if required
+ -> accepted AdmissionSpec
+ -> activate(expectedAdmissionHash/version)
 ```
 
-cannot activate a request different from the one accepted.
+cannot activate a request different from the one accepted, and reconnect does not lose an outstanding confirmation.
 
 ---
 
-## Milestone 2 — Parallel vNext durable kernel state
+## Milestone 2 — Parallel vNext durable kernel substrate
 
 ### Outcome
 
-A domain-neutral `WorkflowRun` persistence model exists beside `WorkflowJob` v3 without invalidating existing durable jobs.
+Domain-neutral vNext persistence contracts exist beside `WorkflowJob` v3 without invalidating existing durable jobs.
 
 ### Deliverables
 
-- vNext Run store;
-- Artifact store;
+- WorkflowRun store;
+- Artifact store/envelope;
 - WorkItem store;
 - exact InputBundle representation;
 - capability registry contract;
-- explicit schema/version parsing;
+- schema/version parsing and pinning;
 - deterministic lifecycle invariants.
 
 ### Exit criteria
 
 - v3 and vNext durable state can coexist;
 - v3 parser/store behavior remains unchanged;
-- vNext kernel tests do not depend on software PR concepts.
+- vNext kernel tests do not depend on PR/Git concepts;
+- execution result/receipt/semantic artifact remain distinct.
 
 ---
 
-## Milestone 3 — Existing executors behind capability adapters
+## Milestone 3 — Semantic protocol and baseline convergence
 
 ### Outcome
 
-The new kernel can execute useful work without rewriting production browser/provider runners.
+The runtime has the semantic schemas required to evaluate meaningful workflow progress and eventual success.
 
 ### Deliverables
 
+- ObjectiveArtifact;
+- AcceptanceCriteriaArtifact;
+- PlanArtifact / PlanTask;
+- Need and Finding schemas;
+- Evidence/Report/Delivery/UserFeedback artifacts;
+- CriterionAssessment/Assessment artifact;
+- result-to-artifact promotion contract;
+- planning capability contract;
+- baseline profile convergence predicate.
+
+### Exit criteria
+
+The system can distinguish:
+
+```text
+WorkItem completed
+PlanTask execution complete
+Criterion assessed satisfied
+WorkflowRun converged
+```
+
+without asking Orchestrator to make semantic judgments.
+
+---
+
+## Milestone 4 — Deterministic vNext RunEngine/Driver/Scheduler
+
+### Outcome
+
+A durable vNext run can progress, recover, schedule, invalidate, and converge using the new kernel state rather than the static v3 software graph vocabulary.
+
+### Deliverables
+
+- vNext run coordinator/engine;
+- readiness/dependency evaluation;
+- Need -> WorkItem/PendingAction materialization;
+- exact InputBundle construction;
+- execution leases/fencing/reconciliation;
+- causal invalidation;
+- result promotion;
+- baseline convergence evaluation;
+- restart/resume driver behavior.
+
+### Exit criteria
+
+- vNext run progress survives process restart;
+- stale attempts cannot commit authoritative results;
+- deterministic routing/scheduling does not inspect prose;
+- v3 engine behavior remains unchanged.
+
+---
+
+## Milestone 5 — Existing executors behind capability adapters
+
+### Outcome
+
+The vNext runtime can execute useful semantic work without rewriting production browser/provider runners.
+
+### Deliverables
+
+- planning reasoning adapter;
 - software repository-research adapter;
 - software implementation adapter;
 - software review adapter;
@@ -108,39 +204,12 @@ The new kernel can execute useful work without rewriting production browser/prov
 
 - capability identity is independent from provider/account identity;
 - Team/Writer/Research runner internals remain specialized;
-- no generic executor accumulates software- and research-specific branching.
+- no generic executor accumulates software- and research-specific branching;
+- every adapter yields exact validated execution results/artifact promotion.
 
 ---
 
-## Milestone 4 — Typed semantic artifacts
-
-### Outcome
-
-Correctness-bearing semantic outputs are durable, immutable/versioned artifacts rather than opaque transcript state or execution-result text.
-
-### Deliverables
-
-Initial artifact families:
-
-- Objective;
-- AcceptanceCriteria;
-- Plan;
-- Finding;
-- Evidence;
-- Assessment;
-- Report;
-- Delivery;
-- UserFeedback.
-
-### Exit criteria
-
-- execution result, handoff receipt, and semantic artifact are distinct types;
-- every semantic artifact has explicit identity, producer, inputs/lineage, schema/version, and status/supersession semantics;
-- invalidation is based on declared dependencies, not prose interpretation by Local.
-
----
-
-## Milestone 5 — Durable external interaction
+## Milestone 6 — Durable in-run external interaction
 
 ### Outcome
 
@@ -148,47 +217,50 @@ Workflow runs can wait for or accept external input without globally blocking un
 
 ### Deliverables
 
-- durable `PendingAction` collection;
+- durable PendingAction collection;
 - response authority/provenance policy;
 - stable action IDs and subject versions;
 - idempotent response handling;
 - stale/conflicting response rejection;
-- domain-neutral client/runtime operations such as `query`, `update`, `signal`, `respond`, and `recover`.
+- `query` / `update` / `signal` / `respond` protocol surfaces;
+- derived `WAITING_EXTERNAL` behavior.
 
 ### Exit criteria
 
 - `USER_AUTHORITY` cannot be satisfied by Local Agent provenance;
 - one blocked branch does not stop independent runnable work;
-- restart preserves outstanding interactions.
+- restart preserves outstanding interactions;
+- valid response re-evaluates readiness without a generic `continue` call.
 
 ---
 
-## Milestone 6 — Software delivery checkpoint and feedback loop
+## Milestone 7 — Software delivery checkpoint and feedback loop
 
 ### Outcome
 
-The first complete vNext product journey is available:
+The first complete vNext software journey is available:
 
 ```text
 idea
- -> software run
- -> research / plan / implementation / review
+ -> admission/planning
+ -> research / implementation / review
  -> reviewed PR DeliveryArtifact
- -> User/local validation
+ -> User local validation
  -> feedback
  -> same run resumes
- -> revised exact-head review
- -> final convergence
+ -> revised exact-head review/assessment
+ -> convergence / merge authority
 ```
 
 ### Deliverables
 
-- exact-head `DeliveryArtifact`;
-- User validation `PendingAction`;
+- exact-head DeliveryArtifact;
+- User-validation PendingAction;
 - typed feedback ingestion;
 - feedback-to-semantic-work routing through reasoning capabilities;
 - deterministic stale-result invalidation;
-- fresh review requirement after changed PR head.
+- fresh exact-head assessment/review after changed head;
+- terminal decision using baseline convergence.
 
 ### Compatibility constraint
 
@@ -196,24 +268,25 @@ The legacy v3 path continues to treat review PASS as terminal completion until e
 
 ### Exit criteria
 
-- vNext reviewed PR delivery is usable without implying terminal run completion;
-- stale feedback against an older delivery/head fails closed or is explicitly reconciled;
-- a changed head cannot inherit prior review approval accidentally.
+- vNext reviewed PR delivery is usable without implying terminal completion;
+- stale feedback/approval against an older head fails closed or is explicitly reassessed;
+- a changed head cannot inherit prior review/merge authority accidentally.
 
 ---
 
-## Milestone 7 — Workstream continuation
+## Milestone 8 — Workstream continuation
 
 ### Outcome
 
-Terminal research or other runs can feed later runs without reopening history or creating unsafe cross-run retention dependencies.
+Terminal research or other runs can feed later runs without reopening history or creating unsafe retention dependencies.
 
 ### Deliverables
 
 - Workstream metadata store;
 - continuation admission;
 - explicit source-run/source-artifact lineage;
-- import/copy of correctness-bearing source artifacts into child run storage;
+- child-owned imported correctness-bearing artifact snapshots;
+- source ownership retained in lineage metadata;
 - retention-safe continuation behavior.
 
 ### Exit criteria
@@ -226,11 +299,11 @@ remains reproducible even if R1 later becomes retention-eligible.
 
 ---
 
-## Milestone 8 — Durable Timer/Event and long-running research profile
+## Milestone 9 — Durable Timer/Event and long-running research profile
 
 ### Outcome
 
-The generic runtime supports long-lived workflows that sleep, wake, refresh external evidence, and continue after process restart.
+The generic runtime supports workflows that sleep, wake, refresh external evidence, and continue after process restart.
 
 ### Deliverables
 
@@ -238,44 +311,47 @@ The generic runtime supports long-lived workflows that sleep, wake, refresh exte
 - first-class ExternalEvent;
 - durable wake-up scheduler;
 - research profile using provider-native deep research as a capability;
-- multi-round research/refresh/synthesis/report flow;
+- multi-round research/refresh/synthesis/assessment/report flow;
 - profile-aware bootstrap independent of software Writer availability.
 
 ### Exit criteria
 
-- timers survive process downtime and fire/reconcile correctly after restart;
+- timers survive process downtime and reconcile correctly after restart;
 - duplicate external events are idempotently handled;
 - research workflows can run without requiring `chatgpt-writer`;
 - recovery delay and semantic Timer remain distinct concepts.
 
 ---
 
-## Milestone 9 — Convergence, assessment, and authority hardening
+## Milestone 10 — Convergence, authority, budget, and version hardening
 
 ### Outcome
 
-Workflow completion becomes a deterministic predicate over typed current state rather than a hard-coded phase terminal.
+The baseline convergence model is hardened for long-running production use.
 
 ### Deliverables
 
-- criterion-scoped assessment artifacts;
-- exact subject/input binding;
-- stale assessment invalidation;
-- profile-defined convergence policy;
-- explicit waiver/authorization objects rather than implicit Reviewer override;
-- budget/stagnation stop conditions.
+- assessment policy variants;
+- waiver/override authority objects;
+- contradiction handling;
+- budget accounting;
+- stagnation/equivalent-Need detection;
+- profile/capability/schema migration policy during long waits;
+- advanced profile-specific convergence gates.
 
 ### Exit criteria
 
-Local determines only whether required current typed assessments/gates exist and satisfy code-defined policy; Local never decides semantic criterion satisfaction itself.
+- resource exhaustion never means semantic success;
+- stale assessments/waivers are fenced by exact subject/version rules;
+- workflow can stop safely on bounded non-convergence while preserving causal state.
 
 ---
 
-## Milestone 10 — Legacy migration and cleanup
+## Milestone 11 — Legacy migration and cleanup
 
 ### Outcome
 
-Only after vNext has production parity and sufficient migration confidence, reduce legacy duplication deliberately.
+Only after vNext reaches production parity, reduce legacy duplication deliberately.
 
 ### Candidate cleanup
 
@@ -313,6 +389,8 @@ The roadmap explicitly avoids:
 - introducing a second competing software execution stack;
 - treating transcript text as durable authority;
 - hiding semantic reasoning inside orchestration code;
+- hard-coding current owner session as permanent vNext identity;
+- in-memory-only admission confirmation;
 - using recovery delays as fake semantic timers;
 - premature global artifact reference counting;
 - prematurely moving/renaming production files without a compatibility need;
