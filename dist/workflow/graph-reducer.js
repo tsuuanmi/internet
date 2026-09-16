@@ -62,7 +62,7 @@ export function startWorkflowNode(graph, nodeId, execution) {
 }
 export function updateWorkflowExecution(graph, nodeId, executionId, mutate) {
     const node = requireCurrentExecution(graph, nodeId, executionId);
-    if (node.state !== "RUNNING" && node.state !== "WAITING_USER") {
+    if (node.state !== "RUNNING") {
         throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot update execution from ${node.state}`);
     }
     if (!node.execution)
@@ -72,33 +72,6 @@ export function updateWorkflowExecution(graph, nodeId, executionId, mutate) {
         throw new WorkflowGraphTransitionError(`workflow node ${nodeId} execution id cannot change in place`);
     }
     return checked(replaceNode(graph, { ...node, execution }));
-}
-export function waitWorkflowNodeForUser(graph, nodeId, executionId, failure) {
-    const node = requireCurrentExecution(graph, nodeId, executionId);
-    if (node.state !== "RUNNING" || !node.execution) {
-        throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot wait for user from ${node.state}`);
-    }
-    return checked(replaceNode(graph, {
-        ...node,
-        state: "WAITING_USER",
-        execution: { ...node.execution, providerState: "WAITING_USER" },
-        failure,
-        recovery: undefined,
-        waitReason: failure.code,
-    }));
-}
-export function resumeWorkflowNodeFromUserWait(graph, nodeId, executionId) {
-    const node = requireCurrentExecution(graph, nodeId, executionId);
-    if (node.state !== "WAITING_USER" || !node.execution) {
-        throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot resume user wait from ${node.state}`);
-    }
-    return checked(replaceNode(graph, {
-        ...node,
-        state: "RUNNING",
-        execution: { ...node.execution, providerState: undefined },
-        failure: undefined,
-        waitReason: undefined,
-    }));
 }
 export function completeWorkflowNode(graph, nodeId, executionId, output) {
     const node = requireCurrentExecution(graph, nodeId, executionId);
@@ -119,29 +92,9 @@ export function completeWorkflowNode(graph, nodeId, executionId, output) {
         waitReason: undefined,
     }));
 }
-export function completeWorkflowGateNode(graph, nodeId, output) {
-    const node = requireNode(graph, nodeId);
-    if (node.state !== "READY") {
-        throw new WorkflowGraphTransitionError(`workflow gate ${nodeId} cannot complete from ${node.state}`);
-    }
-    if (node.execution !== undefined) {
-        throw new WorkflowGraphTransitionError(`workflow gate ${nodeId} must not own a provider execution`);
-    }
-    if (!node.input || !workflowNodeInputMatchesDependencies(node, graph.nodes)) {
-        throw new WorkflowGraphTransitionError(`workflow gate ${nodeId} cannot complete with stale dependency inputs`);
-    }
-    return checked(replaceNode(graph, {
-        ...node,
-        state: "COMPLETED",
-        output,
-        failure: undefined,
-        recovery: undefined,
-        waitReason: undefined,
-    }));
-}
 export function recoverWorkflowNode(graph, nodeId, executionId, executionState, failure, recovery) {
     const node = requireCurrentExecution(graph, nodeId, executionId);
-    if (node.state !== "RUNNING" && node.state !== "WAITING_USER") {
+    if (node.state !== "RUNNING") {
         throw new WorkflowGraphTransitionError(`workflow node ${nodeId} cannot recover from ${node.state}`);
     }
     if (!node.execution)

@@ -8,10 +8,9 @@ export const WORKFLOW_CONFIRMATION_ACTIONS = [
     "merge_pull_request",
 ];
 export class WorkflowConfirmationError extends Error {
-    constructor(kind, message) {
+    constructor(message) {
         super(message);
         this.name = "WorkflowConfirmationError";
-        this.kind = kind;
     }
 }
 const IMPLEMENTATION_ACTIONS = new Set([
@@ -52,11 +51,7 @@ function expectedBranch(context) {
     return context.pullRequest?.head ?? workflowWriterBranch(context.jobId);
 }
 function allowedActions(authority) {
-    if (authority === "IMPLEMENTATION")
-        return IMPLEMENTATION_ACTIONS;
-    if (authority === "REMEDIATION")
-        return REMEDIATION_ACTIONS;
-    return undefined;
+    return authority === "IMPLEMENTATION" ? IMPLEMENTATION_ACTIONS : REMEDIATION_ACTIONS;
 }
 export function classifyWorkflowConfirmation(context, observation) {
     if (context.accountId !== "chatgpt-writer") {
@@ -79,35 +74,8 @@ export function classifyWorkflowConfirmation(context, observation) {
         normalizeGitHubRepository(context.pullRequest.repository) !== authoritativeRepository) {
         return { kind: "unknown", reason: "persisted pull-request repository does not match workflow authority" };
     }
-    if (observation.action === "merge_pull_request") {
-        if (context.pullRequest === undefined) {
-            return context.authority === "MERGE"
-                ? { kind: "unknown", reason: "merge confirmation requires the persisted workflow PR" }
-                : { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
-        }
-        if (observation.prNumber !== undefined && observation.prNumber !== context.pullRequest.number) {
-            return { kind: "unknown", reason: "merge confirmation PR number does not match the workflow PR" };
-        }
-        if (observation.branch !== undefined && observation.branch !== context.pullRequest.head) {
-            return { kind: "unknown", reason: "merge confirmation branch does not match the workflow PR head" };
-        }
-        if (context.authority !== "MERGE" || context.mergeAuthorization === undefined) {
-            return { kind: "merge-requires-user", reason: "merge requires explicit user authorization" };
-        }
-        const authorization = context.mergeAuthorization;
-        if (normalizeGitHubRepository(authorization.repository) !== authoritativeRepository) {
-            return { kind: "unknown", reason: "merge authorization repository does not match workflow authority" };
-        }
-        if (authorization.number !== context.pullRequest.number ||
-            authorization.url !== context.pullRequest.url ||
-            authorization.head !== context.pullRequest.head ||
-            authorization.headSha !== context.pullRequest.headSha) {
-            return { kind: "unknown", reason: "merge authorization is stale or bound to a different pull request" };
-        }
-        return { kind: "auto-approve", action: "merge_pull_request" };
-    }
     const allowed = allowedActions(context.authority);
-    if (allowed === undefined || !allowed.has(observation.action)) {
+    if (!allowed.has(observation.action)) {
         return {
             kind: "unknown",
             reason: `confirmation action is not permitted for ${context.authority.toLowerCase()} authority`,

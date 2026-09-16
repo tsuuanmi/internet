@@ -40,7 +40,7 @@ function snapshot(nodes: readonly WorkflowGraphNode[]): WorkflowGraphSnapshot {
 }
 
 describe("workflow graph model", () => {
-	it("builds stable cycle/head-scoped node identities", () => {
+	it("builds stable research, review, and remediation identities", () => {
 		expect(workflowNodeId.researchMember("B", 2, 2)).toBe("research:B:round:2:member:2");
 		expect(workflowNodeId.researchSynthesis("B")).toBe("research:B:synthesis");
 		expect(workflowNodeId.researchHandoffGate()).toBe("research:handoff-gate");
@@ -49,9 +49,6 @@ describe("workflow graph model", () => {
 		expect(workflowNodeId.reviewSynthesis(2, "A")).toBe("review:cycle:2:A:synthesis");
 		expect(workflowNodeId.reviewHandoffGate(2)).toBe("review:cycle:2:handoff-gate");
 		expect(workflowNodeId.writerRemediation(2)).toBe("writer:remediation:cycle:2");
-		expect(workflowNodeId.prHealth(2)).toBe("pr-health:cycle:2");
-		expect(workflowNodeId.mergeAuthorization(2)).toBe("merge-authorization:cycle:2");
-		expect(workflowNodeId.merge(2)).toBe("merge:cycle:2");
 	});
 
 	it("reuses completion only for the exact input receipt", () => {
@@ -127,7 +124,7 @@ describe("workflow graph model", () => {
 		expect(() => assertWorkflowGraph(snapshot([recovering]))).toThrow("requires failure and recovery receipts");
 	});
 
-	it("requires RUNNING and WAITING_USER nodes to own a valid unique live execution", () => {
+	it("requires running nodes to own a valid unique live execution", () => {
 		const running: WorkflowGraphNode = {
 			nodeId: "writer:implementation",
 			kind: "WRITER_IMPLEMENTATION",
@@ -137,9 +134,8 @@ describe("workflow graph model", () => {
 			input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} },
 		};
 		expect(() => assertWorkflowGraph(snapshot([running]))).toThrow("requires a live execution");
-		const waitingUser: WorkflowGraphNode = {
+		const live: WorkflowGraphNode = {
 			...running,
-			state: "WAITING_USER",
 			execution: {
 				executionId: "exec-1",
 				attempt: 1,
@@ -150,11 +146,9 @@ describe("workflow graph model", () => {
 				leaseUntil: "2026-09-10T10:01:00.000Z",
 			},
 		};
-		expect(() => assertWorkflowGraph(snapshot([waitingUser]))).not.toThrow();
-		expect(() =>
-			assertWorkflowGraph(
-				snapshot([waitingUser, { ...waitingUser, nodeId: "writer:other", execution: waitingUser.execution }]),
-			),
-		).toThrow("execution id is duplicated");
+		expect(() => assertWorkflowGraph(snapshot([live]))).not.toThrow();
+		expect(() => assertWorkflowGraph(snapshot([live, { ...live, nodeId: "writer:other" }]))).toThrow(
+			"execution id is duplicated",
+		);
 	});
 });

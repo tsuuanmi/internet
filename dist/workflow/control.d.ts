@@ -1,4 +1,4 @@
-export declare const WORKFLOW_CONTROL_KINDS: readonly ["START_IMPLEMENTATION", "APPLY_REVIEWS", "CHECK_PR_HEALTH", "MERGE_AUTHORIZED"];
+export declare const WORKFLOW_CONTROL_KINDS: readonly ["START_IMPLEMENTATION", "APPLY_REVIEWS"];
 export type WorkflowControlKind = (typeof WORKFLOW_CONTROL_KINDS)[number];
 export interface WorkflowControlMessage {
     readonly kind: WorkflowControlKind;

@@ -89,10 +89,7 @@ describe("workflow recovery policy", () => {
 	});
 
 	it("does not consume a new attempt for user-owned confirmation", () => {
-		const failure = classifyWorkflowFailure(
-			new WorkflowConfirmationError("unknown", "inspect confirmation"),
-			startedAt,
-		);
+		const failure = classifyWorkflowFailure(new WorkflowConfirmationError("inspect confirmation"), startedAt);
 		expect(recoveryPlanForFailure(failure, 2)).toEqual({ action: "USER_ACTION", attempt: 2, maxAttempts: 3 });
 	});
 });

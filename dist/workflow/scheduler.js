@@ -23,7 +23,7 @@ export function schedulableWorkflowNodes(graph) {
 }
 export function activeWorkflowNodes(graph) {
     return Object.values(graph.nodes)
-        .filter((node) => node.state === "RUNNING" || node.state === "WAITING_USER" || node.state === "RECOVERING")
+        .filter((node) => node.state === "RUNNING" || node.state === "RECOVERING")
         .sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 }
 //# sourceMappingURL=scheduler.js.map

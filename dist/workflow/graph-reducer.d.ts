@@ -7,10 +7,7 @@ export declare function promotableWorkflowNodeIds(graph: WorkflowGraphSnapshot):
 export declare function promoteWorkflowNode(graph: WorkflowGraphSnapshot, nodeId: string, input: WorkflowNodeInputReceipt): WorkflowGraphSnapshot;
 export declare function startWorkflowNode(graph: WorkflowGraphSnapshot, nodeId: string, execution: WorkflowExecutionRecord): WorkflowGraphSnapshot;
 export declare function updateWorkflowExecution(graph: WorkflowGraphSnapshot, nodeId: string, executionId: string, mutate: (current: WorkflowExecutionRecord) => WorkflowExecutionRecord): WorkflowGraphSnapshot;
-export declare function waitWorkflowNodeForUser(graph: WorkflowGraphSnapshot, nodeId: string, executionId: string, failure: WorkflowFailure): WorkflowGraphSnapshot;
-export declare function resumeWorkflowNodeFromUserWait(graph: WorkflowGraphSnapshot, nodeId: string, executionId: string): WorkflowGraphSnapshot;
 export declare function completeWorkflowNode(graph: WorkflowGraphSnapshot, nodeId: string, executionId: string, output: WorkflowNodeOutputReceipt): WorkflowGraphSnapshot;
-export declare function completeWorkflowGateNode(graph: WorkflowGraphSnapshot, nodeId: string, output: WorkflowNodeOutputReceipt): WorkflowGraphSnapshot;
 export declare function recoverWorkflowNode(graph: WorkflowGraphSnapshot, nodeId: string, executionId: string, executionState: "FENCED" | "ORPHANED" | "FAILED", failure: WorkflowFailure, recovery: WorkflowRecoveryPlan): WorkflowGraphSnapshot;
 export declare function retryWorkflowNode(graph: WorkflowGraphSnapshot, nodeId: string, execution: WorkflowExecutionRecord): WorkflowGraphSnapshot;
 export declare function failWorkflowNode(graph: WorkflowGraphSnapshot, nodeId: string, failure: WorkflowFailure): WorkflowGraphSnapshot;

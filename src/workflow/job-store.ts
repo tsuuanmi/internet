@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { accountHasCapability, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 import { assertWorkflowGraph, type WorkflowGraphSnapshot } from "#internet/workflow/graph";
-import { WORKFLOW_CI_STATUSES, WORKFLOW_PENDING_ACTION_KINDS, type WorkflowJob } from "#internet/workflow/types";
+import { WORKFLOW_PENDING_ACTION_KINDS, type WorkflowJob } from "#internet/workflow/types";
 
 const JOB_SCHEMA = "@tsuuanmi/internet-workflow-job" as const;
 
@@ -82,8 +82,8 @@ export class WorkflowJobStore {
 }
 
 export function parseWorkflowJob(value: unknown): WorkflowJob {
-	if (!isRecord(value) || value.schema !== JOB_SCHEMA || value.version !== 2) {
-		throw new Error("unsupported workflow job schema; only graph job version 2 is accepted");
+	if (!isRecord(value) || value.schema !== JOB_SCHEMA || value.version !== 3) {
+		throw new Error("unsupported workflow job schema; only review-handoff job version 3 is accepted");
 	}
 	assertJobIdValue(value.jobId);
 	if (!isPositiveInteger(value.revision)) throw new Error("invalid workflow job revision");
@@ -100,9 +100,6 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 	assertWriterConversation(value.writerConversation, value.ownerSessionId, value.jobId);
 	assertHandoffReceipts(value.handoffReceipts);
 	assertPullRequest(value.pullRequest);
-	assertCiReceipt(value.ciReceipt);
-	assertMergeAuthorization(value.mergeAuthorization);
-	assertMergeReceipt(value.mergeReceipt);
 	if (typeof value.reviewCycle !== "number" || !Number.isSafeInteger(value.reviewCycle) || value.reviewCycle < 0)
 		throw new Error("invalid review cycle");
 	assertPendingAction(value.pendingAction);
@@ -162,6 +159,9 @@ function assertWriterConversation(value: unknown, ownerSessionId: string, jobId:
 	if (!isRecord(value) || value.accountId !== "chatgpt-writer") throw new Error("invalid writer conversation");
 	if (value.sessionId !== `${ownerSessionId}:workflow:${jobId}:writer`)
 		throw new Error("writer conversation identity mismatch");
+	if (value.url !== undefined && (typeof value.url !== "string" || !/^https:\/\/chatgpt\.com\/c\//u.test(value.url))) {
+		throw new Error("invalid writer conversation URL");
+	}
 }
 
 function assertHandoffReceipts(value: unknown): void {
@@ -192,45 +192,6 @@ function assertPullRequest(value: unknown): void {
 		throw new Error("invalid pull request URL");
 	if (typeof value.base !== "string" || typeof value.head !== "string" || !isFullSha(value.headSha))
 		throw new Error("invalid pull request identity");
-}
-
-function assertCiReceipt(value: unknown): void {
-	if (value === undefined) return;
-	if (!isRecord(value) || typeof value.repository !== "string" || !isPositiveInteger(value.number))
-		throw new Error("invalid CI receipt");
-	if (typeof value.url !== "string" || !/^https:\/\/github\.com\//u.test(value.url) || !isFullSha(value.headSha))
-		throw new Error("invalid CI identity");
-	if (typeof value.status !== "string" || !(WORKFLOW_CI_STATUSES as readonly string[]).includes(value.status))
-		throw new Error("invalid CI status");
-	if (!isTimestamp(value.checkedAt)) throw new Error("invalid CI timestamp");
-}
-
-function assertMergeAuthorization(value: unknown): void {
-	if (value === undefined) return;
-	if (!isRecord(value) || typeof value.repository !== "string" || !isPositiveInteger(value.number))
-		throw new Error("invalid merge authorization");
-	if (typeof value.url !== "string" || typeof value.head !== "string" || !isFullSha(value.headSha))
-		throw new Error("invalid merge authorization identity");
-	if (
-		!isPositiveInteger(value.reviewCycle) ||
-		!isTimestamp(value.authorizedAt) ||
-		typeof value.authorizedByOwnerSessionId !== "string"
-	)
-		throw new Error("invalid merge authorization fields");
-}
-
-function assertMergeReceipt(value: unknown): void {
-	if (value === undefined) return;
-	if (!isRecord(value) || typeof value.repository !== "string" || !isPositiveInteger(value.number))
-		throw new Error("invalid merge receipt");
-	if (
-		typeof value.url !== "string" ||
-		!isFullSha(value.headSha) ||
-		!isFullSha(value.mergedSha) ||
-		value.executorAccountId !== "chatgpt-writer" ||
-		!isTimestamp(value.mergedAt)
-	)
-		throw new Error("invalid merge receipt fields");
 }
 
 function assertPendingAction(value: unknown): void {

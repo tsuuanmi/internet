@@ -10,13 +10,14 @@ import {
 
 const jobId = "0123456789abcdef0123456789abcdef";
 const writerSessionId = `agent:workflow:${jobId}:writer`;
+const conversationUrl = "https://chatgpt.com/c/workflow-writer-test";
 const policy = { hardTimeoutMs: 900_000, stallTimeoutMs: 180_000 } as const;
 
 function job(): WorkflowJob {
 	const timestamp = "2026-09-08T00:00:00.000Z";
 	return {
 		schema: "@tsuuanmi/internet-workflow-job",
-		version: 2,
+		version: 3,
 		revision: 1,
 		jobId,
 		ownerSessionId: "agent",
@@ -45,38 +46,37 @@ function job(): WorkflowJob {
 	};
 }
 
+const prJson =
+	'{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}';
+
 describe("parseWorkflowWriterResult", () => {
-	it("accepts exact JSON and rejects presentation-prefixed JSON", () => {
-		const json =
-			'{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}';
-		expect(parseWorkflowWriterResult(json)).toMatchObject({ status: "PR_OPEN" });
-		expect(() => parseWorkflowWriterResult(`Worked for 2m 51s\n\n${json}`)).toThrow(
+	it("accepts exact PR JSON and rejects presentation-prefixed output", () => {
+		expect(parseWorkflowWriterResult(prJson)).toMatchObject({ status: "PR_OPEN" });
+		expect(() => parseWorkflowWriterResult(`Worked for 2m 51s\n\n${prJson}`)).toThrow(
 			"workflow writer did not return the required JSON result",
 		);
 	});
 });
 
 describe("BrowserWorkflowWriterRunner", () => {
-	it("passes exact approval scope and provider deadlines without asserting runtime identity", async () => {
+	it("returns the persistent Writer URL and exact scoped implementation authority", async () => {
 		let observedAccount: string | undefined;
 		let observedRequest: Parameters<WorkflowWriterBrowser["chat"]>[1] | undefined;
 		const browser: WorkflowWriterBrowser = {
 			async chat(accountId, request) {
 				observedAccount = accountId;
 				observedRequest = request;
-				return {
-					text: '{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}',
-				};
+				return { text: prJson, url: conversationUrl };
 			},
 		};
-		const runner = new BrowserWorkflowWriterRunner(browser, policy);
 		const current = job();
-		await runner.runControl({
+		const result = await new BrowserWorkflowWriterRunner(browser, policy).runControl({
 			sessionId: writerSessionId,
 			requestKey: "writer-request",
 			job: current,
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
+		expect(result).toMatchObject({ status: "PR_OPEN", conversationUrl });
 		expect(observedAccount).toBe("chatgpt-writer");
 		expect(observedRequest).toMatchObject({
 			requestKey: "writer-request",
@@ -94,35 +94,43 @@ describe("BrowserWorkflowWriterRunner", () => {
 		expect(observedRequest?.confirmation).not.toHaveProperty("sessionId");
 	});
 
-	it("maps domain confirmation interruptions without depending on ChatGPT adapter errors", async () => {
-		const current = job();
-		for (const [kind, status] of [
-			["unknown", "UNKNOWN_CONFIRMATION"],
-			["merge-requires-user", "BLOCKED"],
-		] as const) {
-			const browser: WorkflowWriterBrowser = {
-				async chat() {
-					throw new WorkflowConfirmationError(kind, `confirmation: ${kind}`);
-				},
-			};
-			const result = await new BrowserWorkflowWriterRunner(browser, policy).runControl({
+	it("returns Writer URL when delivering exact handoffs", async () => {
+		const browser: WorkflowWriterBrowser = {
+			async chat() {
+				return { text: "ok", url: conversationUrl };
+			},
+		};
+		await expect(
+			new BrowserWorkflowWriterRunner(browser, policy).deliverExact({
 				sessionId: writerSessionId,
-				requestKey: `writer-${kind}`,
-				job: current,
-				control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
-			});
-			expect(result).toEqual({ status, message: `confirmation: ${kind}` });
-		}
+				requestKey: "handoff",
+				payload: "review",
+			}),
+		).resolves.toEqual({ conversationUrl });
 	});
 
-	it("makes START_IMPLEMENTATION PR creation retry-safe by exact workflow branch", async () => {
+	it("maps workflow-scoped confirmation interruptions to fail-closed output", async () => {
+		const browser: WorkflowWriterBrowser = {
+			async chat() {
+				throw new WorkflowConfirmationError("inspect confirmation");
+			},
+		};
+		await expect(
+			new BrowserWorkflowWriterRunner(browser, policy).runControl({
+				sessionId: writerSessionId,
+				requestKey: "writer-confirmation",
+				job: job(),
+				control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
+			}),
+		).resolves.toEqual({ status: "UNKNOWN_CONFIRMATION", message: "inspect confirmation" });
+	});
+
+	it("makes implementation PR creation retry-safe and explicitly forbids merge", async () => {
 		let prompt = "";
 		const browser: WorkflowWriterBrowser = {
 			async chat(_accountId, request) {
 				prompt = request.prompt;
-				return {
-					text: '{"status":"PR_OPEN","repository":"example/repo","number":7,"url":"https://github.com/example/repo/pull/7","base":"main","head":"internet-workflow/0123456789abcdef0123456789abcdef","headSha":"abcdef0123456789abcdef0123456789abcdef01"}',
-				};
+				return { text: prJson, url: conversationUrl };
 			},
 		};
 		await new BrowserWorkflowWriterRunner(browser, policy).runControl({
@@ -136,5 +144,6 @@ describe("BrowserWorkflowWriterRunner", () => {
 		expect(prompt).toContain("reconcile GitHub by the exact workflow branch");
 		expect(prompt).toContain("Reuse exactly one matching open PR");
 		expect(prompt).toContain("Never create a second workflow PR");
+		expect(prompt).toContain("never merge");
 	});
 });

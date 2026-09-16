@@ -1,9 +1,11 @@
 import type { ProviderProgressEvent } from "#internet/browser/completion";
 import { type WorkflowApprovalScope } from "#internet/workflow/approval-policy";
 import type { WorkflowControlMessage } from "#internet/workflow/control";
-import type { WorkflowCiStatus, WorkflowJob, WorkflowPullRequestReceipt } from "#internet/workflow/types";
+import type { WorkflowJob, WorkflowPullRequestReceipt } from "#internet/workflow/types";
 export interface WorkflowWriterRunner {
-    deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void>;
+    deliverExact(request: WorkflowWriterDeliveryRequest): Promise<{
+        readonly conversationUrl: string;
+    }>;
     runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult>;
 }
 export interface WorkflowWriterBrowser {
@@ -18,6 +20,7 @@ export interface WorkflowWriterBrowser {
         readonly signal?: AbortSignal;
     }): Promise<{
         readonly text: string;
+        readonly url: string;
     }>;
 }
 interface WorkflowWriterProviderPolicy {
@@ -40,34 +43,32 @@ export interface WorkflowWriterControlRequest extends WorkflowWriterRequestBase 
 export type WorkflowWriterResult = {
     readonly status: "PR_OPEN";
     readonly pullRequest: WorkflowPullRequestReceipt;
-} | {
-    readonly status: "PR_HEALTH";
-    readonly repository: string;
-    readonly number: number;
-    readonly url: string;
-    readonly headSha: string;
-    readonly health: WorkflowCiStatus;
-} | {
-    readonly status: "MERGED";
-    readonly repository: string;
-    readonly number: number;
-    readonly url: string;
-    readonly headSha: string;
-    readonly mergedSha: string;
+    readonly conversationUrl: string;
 } | {
     readonly status: "BLOCKED";
     readonly message: string;
+    readonly conversationUrl?: string;
 } | {
     readonly status: "UNKNOWN_CONFIRMATION";
     readonly message: string;
+    readonly conversationUrl?: string;
 };
-export declare function parseWorkflowWriterResult(text: string): WorkflowWriterResult;
+type WorkflowWriterPayload = {
+    readonly status: "PR_OPEN";
+    readonly pullRequest: WorkflowPullRequestReceipt;
+} | {
+    readonly status: "BLOCKED";
+    readonly message: string;
+};
+export declare function parseWorkflowWriterResult(text: string): WorkflowWriterPayload;
 export declare class BrowserWorkflowWriterRunner implements WorkflowWriterRunner {
     private readonly browser;
     private readonly policy;
     constructor(browser: WorkflowWriterBrowser, policy: WorkflowWriterProviderPolicy);
     private providerRequest;
-    deliverExact(request: WorkflowWriterDeliveryRequest): Promise<void>;
+    deliverExact(request: WorkflowWriterDeliveryRequest): Promise<{
+        readonly conversationUrl: string;
+    }>;
     runControl(request: WorkflowWriterControlRequest): Promise<WorkflowWriterResult>;
 }
 export {};

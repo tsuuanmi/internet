@@ -77,22 +77,16 @@ export class WorkflowDriver {
         this.engine.reconcile(jobId, ownerInstanceId);
         while (!signal.aborted) {
             let job = this.engine.advance(jobId);
-            if (workflowJobIsTerminal(job) ||
-                job.graph.lifecycle === "BLOCKED" ||
-                job.graph.lifecycle === "WAITING_USER") {
+            if (workflowJobIsTerminal(job) || job.graph.lifecycle === "BLOCKED")
                 return;
-            }
             const runnable = this.engine.runnableNodeIds(jobId);
             if (runnable.length > 0) {
                 await Promise.all(runnable.map((nodeId) => this.engine.executeNode(jobId, nodeId, ownerInstanceId, signal)));
                 continue;
             }
             job = this.engine.reconcile(jobId, ownerInstanceId);
-            if (workflowJobIsTerminal(job) ||
-                job.graph.lifecycle === "BLOCKED" ||
-                job.graph.lifecycle === "WAITING_USER") {
+            if (workflowJobIsTerminal(job) || job.graph.lifecycle === "BLOCKED")
                 return;
-            }
             if (this.engine.runnableNodeIds(jobId).length > 0)
                 continue;
             const notBefore = this.engine.nextRecoveryAt(jobId);

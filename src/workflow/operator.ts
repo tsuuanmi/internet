@@ -39,9 +39,8 @@ function selectJob(
 	const owned = ownerJobs(jobs, ownerSessionId);
 	if (explicitJobId !== undefined) {
 		const job = owned.find((candidate) => candidate.jobId === explicitJobId);
-		if (job === undefined) {
+		if (job === undefined)
 			throw new WorkflowOperatorError(`workflow job ${explicitJobId} does not belong to this session`);
-		}
 		if (requireActive && workflowJobIsTerminal(job)) {
 			throw new WorkflowOperatorError(`workflow job ${job.jobId} is already terminal (${job.graph.lifecycle})`);
 		}
@@ -75,21 +74,14 @@ function nodeLabel(nodeId: string): string {
 	if (nodeId === "research:handoff-gate") return "Research · Handoff";
 	if (nodeId === "writer:implementation") return "Writer · Implementation";
 	const reviewMember = nodeId.match(/^review:cycle:(\d+):([AB]):round:(\d+):member:(\d+)$/u);
-	if (reviewMember) {
+	if (reviewMember)
 		return `Review ${reviewMember[2]} · Cycle ${reviewMember[1]} · R${reviewMember[3]} · Member ${reviewMember[4]}`;
-	}
 	const reviewSynthesis = nodeId.match(/^review:cycle:(\d+):([AB]):synthesis$/u);
 	if (reviewSynthesis) return `Review ${reviewSynthesis[2]} · Cycle ${reviewSynthesis[1]} · Synthesis`;
 	const reviewGate = nodeId.match(/^review:cycle:(\d+):handoff-gate$/u);
 	if (reviewGate) return `Review · Cycle ${reviewGate[1]} · Decision`;
 	const remediation = nodeId.match(/^writer:remediation:cycle:(\d+)$/u);
 	if (remediation) return `Writer · Remediation ${remediation[1]}`;
-	const health = nodeId.match(/^pr-health:cycle:(\d+)$/u);
-	if (health) return `PR health · Cycle ${health[1]}`;
-	const authorization = nodeId.match(/^merge-authorization:cycle:(\d+)$/u);
-	if (authorization) return `Merge authorization · Cycle ${authorization[1]}`;
-	const merge = nodeId.match(/^merge:cycle:(\d+)$/u);
-	if (merge) return `Merge · Cycle ${merge[1]}`;
 	return nodeId;
 }
 
@@ -110,20 +102,24 @@ function blockedBy(job: WorkflowJob, node: WorkflowGraphNode): readonly string[]
 
 function activeNodes(job: WorkflowJob): readonly WorkflowGraphNode[] {
 	return Object.values(job.graph.nodes)
-		.filter((node) => node.state === "RUNNING" || node.state === "WAITING_USER" || node.state === "RECOVERING")
+		.filter((node) => node.state === "RUNNING" || node.state === "RECOVERING")
 		.sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 }
 
 function nextDescription(job: WorkflowJob): string {
 	if (job.pendingAction !== undefined) return `user action: ${job.pendingAction.kind}`;
+	if (job.graph.lifecycle === "COMPLETED") {
+		return job.writerConversation.url === undefined
+			? "workflow complete"
+			: "workflow complete; open the Writer chat for optional changes or merge";
+	}
 	const ready = Object.values(job.graph.nodes)
 		.filter((node) => node.state === "READY")
 		.sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 	if (ready.length > 0) return ready.map((node) => nodeLabel(node.nodeId)).join(" + ");
 	const recovering = Object.values(job.graph.nodes).find((node) => node.state === "RECOVERING");
-	if (recovering !== undefined) {
+	if (recovering !== undefined)
 		return `${nodeLabel(recovering.nodeId)} · ${recovering.recovery?.action ?? "recovery"}`;
-	}
 	const waiting = Object.values(job.graph.nodes).find((node) => node.state === "WAITING");
 	if (waiting !== undefined) return `${nodeLabel(waiting.nodeId)} waits on dependencies`;
 	return job.graph.lifecycle.toLowerCase();
@@ -160,8 +156,6 @@ export function formatWorkflowStatus(
 		`  Research  ${phaseSummary(job, "RESEARCH")}`,
 		`  Writer    ${phaseSummary(job, "WRITER")}`,
 		`  Review    ${phaseSummary(job, "REVIEW")}`,
-		`  Health    ${phaseSummary(job, "HEALTH")}`,
-		`  Merge     ${phaseSummary(job, "MERGE")}`,
 	];
 
 	const active = activeNodes(job);
@@ -204,7 +198,22 @@ export function formatWorkflowStatus(
 			`  head_sha=${job.pullRequest.headSha}`,
 			`  review_cycle=${job.reviewCycle}`,
 		);
-		if (job.ciReceipt !== undefined) lines.push(`  ci=${job.ciReceipt.status} checked=${job.ciReceipt.checkedAt}`);
+	}
+
+	lines.push(
+		"",
+		"Writer",
+		`  account=${job.writerConversation.accountId}`,
+		`  chat=${job.writerConversation.url ?? "pending"}`,
+	);
+	if (job.graph.lifecycle === "COMPLETED" && job.pullRequest !== undefined) {
+		lines.push(
+			"",
+			"Handoff",
+			`  reviewed_head=${job.pullRequest.headSha}`,
+			"  Review coverage ends at this exact head.",
+			"  Open the Writer chat for any additional changes or to merge; subsequent changes are user-controlled.",
+		);
 	}
 
 	if (job.pendingAction !== undefined) {
@@ -255,15 +264,6 @@ export class WorkflowOperator {
 		return formatWorkflowStatus(job, this.events.list(job.jobId), this.driver.isActive(job.jobId));
 	}
 
-	watch(ownerSessionId: string, jobId?: string): string {
-		const job = selectJob(this.jobs, ownerSessionId, jobId, false);
-		return [
-			formatWorkflowStatus(job, this.events.list(job.jobId), this.driver.isActive(job.jobId)),
-			"",
-			"Watching: durable graph events will report node readiness, execution, recovery, user-action boundaries, and completion.",
-		].join("\n");
-	}
-
 	async stop(ownerSessionId: string, jobId?: string): Promise<string> {
 		const selected = selectJob(this.jobs, ownerSessionId, jobId, true);
 		const cancelled = await this.driver.cancel(selected.jobId);
@@ -284,14 +284,8 @@ export class WorkflowOperator {
 
 	continue(ownerSessionId: string, jobId?: string): string {
 		const selected = selectJob(this.jobs, ownerSessionId, jobId, true);
-		if (selected.graph.lifecycle === "WAITING_USER") {
-			throw new WorkflowOperatorError(
-				`workflow job ${selected.jobId} is waiting for explicit user authority; continue would not duplicate that action`,
-			);
-		}
-		if (this.driver.isActive(selected.jobId)) {
+		if (this.driver.isActive(selected.jobId))
 			throw new WorkflowOperatorError(`workflow job ${selected.jobId} already has an active driver`);
-		}
 		if (selected.graph.lifecycle !== "BLOCKED" && selected.graph.lifecycle !== "RECOVERING") {
 			throw new WorkflowOperatorError(`workflow job ${selected.jobId} has no explicit recovery path`);
 		}

@@ -62,13 +62,7 @@ export function classifyTeamFailure(detail) {
 export function classifyWorkflowFailure(error, at = new Date().toISOString()) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof WorkflowConfirmationError) {
-        return {
-            class: "USER",
-            code: error.kind === "merge-requires-user" ? "MERGE_AUTHORIZATION_REQUIRED" : "UNKNOWN_CONFIRMATION",
-            message,
-            retry: "USER_ACTION",
-            at,
-        };
+        return { class: "USER", code: "UNKNOWN_CONFIRMATION", message, retry: "USER_ACTION", at };
     }
     const selector = selectorFailure(message, at);
     if (selector !== undefined)

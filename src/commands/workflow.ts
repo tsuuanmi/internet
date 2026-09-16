@@ -8,9 +8,8 @@ import {
 } from "#internet/workflow/repository-context";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 
-const USAGE =
-	"Usage: /workflow <objective> | list | status [jobId] | watch [jobId] | stop [jobId] | continue [jobId] | delete <jobId>";
-const OPERATIONS = new Set(["list", "status", "watch", "stop", "continue", "delete"]);
+const USAGE = "Usage: /workflow <objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>";
+const OPERATIONS = new Set(["list", "status", "stop", "continue", "delete"]);
 
 export type { GitRunner } from "#internet/workflow/repository-context";
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
@@ -26,7 +25,6 @@ export interface WorkflowEnqueuer {
 export interface WorkflowCommandOperator {
 	list(ownerSessionId: string): string;
 	status(ownerSessionId: string, jobId?: string): string;
-	watch(ownerSessionId: string, jobId?: string): string;
 	stop(ownerSessionId: string, jobId?: string): Promise<string>;
 	continue(ownerSessionId: string, jobId?: string): string;
 	delete(ownerSessionId: string, jobId?: string): Promise<string>;
@@ -61,9 +59,9 @@ export function defineWorkflowCommand(dependencies: WorkflowCommandDependencies)
 	const runGit = dependencies.runGit ?? runGitCommand;
 	return {
 		name: "workflow",
-		description: "start, inspect, follow, stop, or resume a durable reviewed implementation workflow",
+		description: "start, inspect, stop, or resume a durable reviewed implementation workflow",
 		input: {
-			hint: "<objective> | list | status [jobId] | watch [jobId] | stop [jobId] | continue [jobId] | delete <jobId>",
+			hint: "<objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>",
 		},
 		async handler(invocation) {
 			const rawInput = invocation.rawInput.trim();
@@ -76,8 +74,6 @@ export function defineWorkflowCommand(dependencies: WorkflowCommandDependencies)
 						return { kind: "success", text: dependencies.operator.list(ownerSessionId) };
 					if (parsed.operation === "status")
 						return { kind: "success", text: dependencies.operator.status(ownerSessionId, parsed.jobId) };
-					if (parsed.operation === "watch")
-						return { kind: "success", text: dependencies.operator.watch(ownerSessionId, parsed.jobId) };
 					if (parsed.operation === "stop")
 						return { kind: "success", text: await dependencies.operator.stop(ownerSessionId, parsed.jobId) };
 					if (parsed.operation === "delete")

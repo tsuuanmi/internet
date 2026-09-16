@@ -33,7 +33,7 @@ function fakeJob(input: StartWorkflowInput): WorkflowJob {
 	const at = "2026-09-08T00:00:00.000Z";
 	return {
 		schema: "@tsuuanmi/internet-workflow-job",
-		version: 2,
+		version: 3,
 		revision: 1,
 		jobId: JOB_ID,
 		ownerSessionId: "agent",
@@ -73,7 +73,6 @@ function driver() {
 function operator(): WorkflowCommandOperator & {
 	list: ReturnType<typeof vi.fn>;
 	status: ReturnType<typeof vi.fn>;
-	watch: ReturnType<typeof vi.fn>;
 	stop: ReturnType<typeof vi.fn>;
 	continue: ReturnType<typeof vi.fn>;
 	delete: ReturnType<typeof vi.fn>;
@@ -81,7 +80,6 @@ function operator(): WorkflowCommandOperator & {
 	return {
 		list: vi.fn(() => "LIST"),
 		status: vi.fn(() => "STATUS"),
-		watch: vi.fn(() => "WATCH"),
 		stop: vi.fn(async () => "STOPPED"),
 		continue: vi.fn(() => "CONTINUED"),
 		delete: vi.fn(async () => "DELETED"),
@@ -127,7 +125,7 @@ describe("defineWorkflowCommand", () => {
 		expect(enqueuer.enqueue).toHaveBeenCalledWith(JOB_ID);
 	});
 
-	it("routes list/status/watch/stop/continue without inspecting Git", async () => {
+	it("routes list/status/stop/continue without inspecting Git", async () => {
 		const runGit = vi.fn(createRunner());
 		const op = operator();
 		const command = defineWorkflowCommand({ engine: engine(), driver: driver(), operator: op, runGit });
@@ -135,8 +133,6 @@ describe("defineWorkflowCommand", () => {
 			["list", "LIST"],
 			["status", "STATUS"],
 			[`status ${JOB_ID}`, "STATUS"],
-			["watch", "WATCH"],
-			[`watch ${JOB_ID}`, "WATCH"],
 			["stop", "STOPPED"],
 			[`stop ${JOB_ID}`, "STOPPED"],
 			["continue", "CONTINUED"],
@@ -147,7 +143,6 @@ describe("defineWorkflowCommand", () => {
 		}
 		expect(op.list).toHaveBeenCalledWith("1-1");
 		expect(op.status).toHaveBeenCalledWith("1-1", JOB_ID);
-		expect(op.watch).toHaveBeenCalledWith("1-1", JOB_ID);
 		expect(op.stop).toHaveBeenCalledWith("1-1", JOB_ID);
 		expect(op.continue).toHaveBeenCalledWith("1-1", JOB_ID);
 		expect(op.delete).toHaveBeenCalledWith("1-1", JOB_ID);

@@ -25,47 +25,17 @@ export interface WorkflowPullRequestReceipt {
 	readonly headSha: string;
 }
 
-export const WORKFLOW_CI_STATUSES = ["PASS", "FAIL", "PENDING", "NONE", "UNKNOWN"] as const;
-export type WorkflowCiStatus = (typeof WORKFLOW_CI_STATUSES)[number];
-
-export interface WorkflowCiReceipt {
-	readonly repository: string;
-	readonly number: number;
-	readonly url: string;
-	readonly headSha: string;
-	readonly status: WorkflowCiStatus;
-	readonly checkedAt: string;
-}
-
-export interface WorkflowMergeAuthorization {
-	readonly repository: string;
-	readonly number: number;
-	readonly url: string;
-	readonly head: string;
-	readonly headSha: string;
-	readonly reviewCycle: number;
-	readonly authorizedAt: string;
-	readonly authorizedByOwnerSessionId: string;
-}
-
-export interface WorkflowMergeReceipt {
-	readonly repository: string;
-	readonly number: number;
-	readonly url: string;
-	readonly headSha: string;
-	readonly mergedSha: string;
-	readonly executorAccountId: "chatgpt-writer";
-	readonly mergedAt: string;
+export interface WorkflowWriterConversation {
+	readonly sessionId: string;
+	readonly accountId: "chatgpt-writer";
+	readonly url?: string;
 }
 
 export const WORKFLOW_PENDING_ACTION_KINDS = [
-	"MERGE_AUTHORIZATION_REQUIRED",
 	"WRITER_BLOCKED",
 	"UNKNOWN_CONFIRMATION",
 	"REVIEW_LIMIT_REACHED",
 	"ACCOUNT_REAUTH_REQUIRED",
-	"CI_HEALTH_FAILED",
-	"CI_HEALTH_UNKNOWN",
 	"USER_ACTION_REQUIRED",
 	"CODE_FIX_REQUIRED",
 ] as const;
@@ -89,7 +59,7 @@ export interface WorkflowEventRecord {
 
 export interface WorkflowJob {
 	readonly schema: "@tsuuanmi/internet-workflow-job";
-	readonly version: 2;
+	readonly version: 3;
 	readonly revision: number;
 	readonly jobId: string;
 	readonly ownerSessionId: string;
@@ -99,14 +69,8 @@ export interface WorkflowJob {
 	readonly graph: WorkflowGraphSnapshot;
 	readonly accountRouting: WorkflowAccountRouting;
 	readonly handoffReceipts: readonly WorkflowHandoffReceipt[];
-	readonly writerConversation: {
-		readonly sessionId: string;
-		readonly accountId: "chatgpt-writer";
-	};
+	readonly writerConversation: WorkflowWriterConversation;
 	readonly pullRequest?: WorkflowPullRequestReceipt;
-	readonly ciReceipt?: WorkflowCiReceipt;
-	readonly mergeAuthorization?: WorkflowMergeAuthorization;
-	readonly mergeReceipt?: WorkflowMergeReceipt;
 	readonly reviewCycle: number;
 	readonly pendingAction?: WorkflowPendingAction;
 	readonly lastEvent?: WorkflowEventRecord;
@@ -119,11 +83,6 @@ export interface StartWorkflowInput {
 	readonly repository: string;
 	readonly baseRevision: string;
 	readonly ownerSessionId: string;
-}
-
-export interface WorkflowDecisionInput {
-	readonly jobId: string;
-	readonly expectedHeadSha?: string;
 }
 
 export const TERMINAL_WORKFLOW_LIFECYCLES: ReadonlySet<WorkflowLifecycle> = new Set(["COMPLETED", "CANCELLED"]);
