@@ -2,52 +2,19 @@
 
 - **Status:** Proposed
 - **Date:** 2026-09-16
-- **Related:** ADR-0002, ADR-0004, ADR-0009, ADR-0010, ADR-0011, ADR-0012
+- **Related:** ADR-0002, ADR-0004, ADR-0009..0012, ADR-0014, ADR-0015
 
 ## Context
 
-Website agents do not share one reliable conversation memory. Research may discover information that Worker and Reviewer should both know, while Planner may refine a plan that later agents need to see.
+Website agents do not share one reliable conversation memory. Planner, Research, Worker, and Reviewer therefore benefit from a small common repository-native surface containing task-local context that is useful across roles.
 
-The vNext runtime already keeps deterministic workflow state and typed artifacts under the Local Orchestrator/WorkflowEngine. Reproducing that whole state model inside Git would add unnecessary synchronization, commit churn, CI churn, and another surface that could drift from the real state.
+The authoritative workflow state already belongs to Local/Orchestrator. Mirroring Findings, Needs, WorkItems, graph state, retries, receipts, and every artifact into Git would create a second state system and excessive PR/CI churn.
 
-The useful property of the implementation PR is simpler: it is a common durable place that GitHub-capable Website agents can inspect.
-
-A current architectural constraint is also important: **Worker is the only workflow actor allowed to write repository commits.** Planner, Research, and Reviewer remain read-only with respect to repository mutation.
+Worker is the only workflow actor allowed to create repository commits. Local/Orchestrator is deterministic and non-reasoning under ADR-0015.
 
 ## Decision
 
-After an implementation PR exists, the workflow may use a small reserved directory on the PR branch as **curated shared collaboration memory**.
-
-The Local deterministic runtime remains the only authority for workflow state, WorkItems, routing, findings, exact-input bindings, approvals, budgets, and termination.
-
-Worker remains the only workflow actor with repository commit authority.
-
-```text
-Planner / Research / Reviewer
-        |
-        | semantic artifacts / proposals only
-        v
-Local Orchestrator / WorkflowEngine
-        |
-        | validates state
-        | decides what shared context should be published
-        | prepares/binds desired publication
-        v
-Worker
-        |
-        | exact authorized Git mutation only
-        v
-PR shared workspace files
-        |
-        v
-all GitHub-capable agents may inspect
-```
-
-The PR workspace is deliberately **not** a mirror of the runtime artifact store.
-
-## Default workspace
-
-The proposed minimal layout is:
+After an implementation PR exists, the workflow may maintain a small reserved directory on the PR branch as **temporary shared collaboration memory**:
 
 ```text
 .internet/workspace/
@@ -55,418 +22,263 @@ The proposed minimal layout is:
   TODO.md
   RESEARCH.md
   STATUS.md
+  # ROADMAP.md only when needed
 ```
 
-For unusually large or long-running work, policy may additionally publish:
+The workspace is a readable projection of typed semantic views plus deterministic runtime status. It is not the artifact store, scheduler queue, event log, or workflow database.
 
 ```text
-ROADMAP.md
+Planner / Research / Reviewer
+        |
+        | typed semantic artifacts + shared views
+        v
+Local / Orchestrator
+        |
+        | schema + provenance + publication-policy checks only
+        | deterministic render / desired workspace state
+        v
+Worker
+        |
+        | sole authorized Git writer
+        v
+PR shared workspace
 ```
-
-The runtime should not create per-artifact directories, manifests, finding databases, execution logs, or graph-state files in the PR by default.
 
 ## Three memory layers
 
-The architecture should distinguish three different lifetimes and authorities:
+The architecture distinguishes:
 
 ```text
 1. Durable repository knowledge
-   AGENTS.md / architecture docs / ADRs / product docs
+   AGENTS.md / architecture docs / ADRs
    lifetime: many workflows
 
-2. Workflow shared collaboration memory
-   PLAN.md / TODO.md / RESEARCH.md / STATUS.md / optional ROADMAP.md
-   lifetime: one workflow / one PR
+2. PR collaboration memory
+   PLAN.md / TODO.md / RESEARCH.md / STATUS.md
+   lifetime: one workflow / PR
 
-3. Authoritative runtime state
+3. Authoritative Local state
    Findings / Needs / WorkItems / graph / InputBundles / receipts / gates
-   lifetime: workflow execution and durable recovery requirements
+   lifetime: workflow execution and recovery
 ```
 
-These layers shall not silently substitute for one another.
+No layer silently substitutes for another.
 
-Stable repository guidance should not be rewritten into temporary workflow files, and temporary workflow notes should not become permanent repository instructions unless explicitly promoted by a product/documentation change.
-
-## File semantics
+## Semantic source of each file
 
 ### `PLAN.md`
 
-Shared current working plan for agents.
+Derived from the active Planner-produced `PlanSharedView` (and, if schema permits, linked Objective/AcceptanceCriteria views).
 
-It should contain only material planning context such as:
-
-```text
-objective
-accepted constraints
-acceptance criteria
-current implementation approach
-important assumptions
-material plan revisions
-```
-
-The authoritative plan/version remains in Local state. `PLAN.md` is the readable collaboration view.
-
-### `TODO.md`
-
-Shared outstanding work that agents benefit from seeing.
-
-Examples:
-
-```text
-implementation tasks
-important unresolved review topics
-research questions that materially block work
-validation still required
-```
-
-It is not the scheduler queue and does not replace WorkItems or graph state.
+Local may validate, select the active version by explicit version/supersession rules, and render a template. Local shall not rewrite or summarize the plan semantically.
 
 ### `RESEARCH.md`
 
-Curated research/evidence that is broadly useful to downstream agents.
+Derived from `ResearchSharedView` / explicit Research Synthesis artifacts.
 
-Examples:
+Research decides the research meaning. If multiple evidence artifacts require semantic synthesis, Local schedules a Research/Synthesis WorkItem; Local does not choose the important insights by reading prose.
 
-```text
-important discovered repository facts
-external-source conclusions
-constraints discovered during research
-contradictions or uncertainty that affect implementation/review
-source references needed by Worker or Reviewer
-```
+### `TODO.md`
 
-Not every research artifact belongs here. Only results expected to materially help more than one downstream role should be published.
+Derived from structured shared TODO/blocker items produced by authorized semantic roles plus explicitly defined deterministic runtime items.
+
+Local may filter by status, stable identity, publication class, and deterministic policy. Local does not invent TODO meaning from prose.
 
 ### `STATUS.md`
 
-A small convenience projection of current collaboration progress.
+A deterministic projection of Local runtime state, such as broad workflow phase, current PR head, running/blocked WorkItems, and counts of structured blocking items.
 
-Examples:
-
-```text
-current broad phase
-latest meaningful checkpoint
-current implementation head
-major open blocking topics
-where an agent should start reading
-```
-
-`STATUS.md` is non-authoritative and should normally be rendered from Local state rather than authored freely by Worker.
+This is the file Local can generate directly because no semantic synthesis is required.
 
 ### `ROADMAP.md`
 
-Optional for large tasks that need multiple major milestones. It is unnecessary for ordinary workflow jobs.
+Optional. Derived from a Planner-produced `RoadmapSharedView` for unusually large workflows.
 
-## Curated projection, not artifact mirroring
+## Publication candidates
 
-The key rule is:
-
-> Publish information because another agent is likely to need it, not because an artifact exists.
-
-For example:
-
-```text
-Research produces 12 internal evidence artifacts
-        |
-        | Local determines 3 conclusions are broadly relevant
-        v
-publication intent for RESEARCH.md
-        |
-        | Worker writes exact authorized update
-        v
-RESEARCH.md contains those 3 conclusions
-```
-
-The other 9 artifacts remain only in Local/runtime storage and can still be supplied through exact InputBundles when needed.
-
-This keeps the PR understandable and avoids creating a second workflow database.
-
-## Semantic ownership versus mutation authority
-
-The workflow shall distinguish **who determines meaning** from **who is allowed to write Git**.
-
-### Semantic ownership
-
-Representative ownership is:
-
-```text
-PLAN.md
-  semantic source: Planner decisions accepted by Local
-
-RESEARCH.md
-  semantic source: accepted Research artifacts / synthesis
-
-TODO.md
-  semantic source: Local projection of accepted plan/findings/work remaining
-
-STATUS.md
-  semantic source: deterministic Local runtime state
-
-ROADMAP.md
-  semantic source: accepted Planner/Local milestone model
-```
-
-### Mutation authority
-
-For all of these files:
-
-```text
-Git writer: Worker only
-```
-
-Worker being the Git writer does not make Worker the semantic owner of the content.
-
-Worker shall not silently add, remove, reinterpret, or resolve Planner/Research/Reviewer meaning while publishing shared context.
-
-If Worker believes the requested publication is inconsistent, unsafe, stale, or impossible to apply, Worker returns a typed failure/finding rather than improvising a different semantic update.
-
-## Publishing flow
-
-The preferred flow is:
-
-```text
-1. Planner / Research / Reviewer produces semantic artifact.
-2. Local validates and persists authoritative state.
-3. Local decides whether the change has cross-agent collaboration value.
-4. Local derives an exact or bounded publication request.
-5. Local creates an authorized repository-mutation WorkItem for Worker.
-6. Worker applies the workspace change and commits it.
-7. Worker returns commit SHA / head / changed-path receipt.
-8. Local verifies the resulting repository state against publication intent.
-9. Only after verification is the workspace checkpoint considered published.
-```
-
-This is deliberately asymmetric:
-
-```text
-Local owns publication policy.
-Worker owns repository mutation execution.
-```
-
-Neither side alone may convert arbitrary agent prose into authoritative workflow state.
-
-## Publication request precision
-
-Where practical, Local should provide Worker with deterministic or tightly bounded desired output rather than an open-ended instruction to "update the workspace".
-
-For example:
-
-```text
-preferred:
-  replace RESEARCH.md with rendered content hash H
-
-acceptable during migration:
-  update RESEARCH.md from explicitly supplied accepted research artifacts,
-  preserving required headings and no other files
-
-avoid:
-  read the workflow and decide what everyone should know
-```
-
-If Worker performs any summarization because deterministic rendering is not yet implemented, that output is a proposed projection and Local must validate it before treating publication as complete.
-
-## Single-writer serialization
-
-Because Worker is the only Git writer, PR workspace updates and implementation commits share one mutation lane.
-
-The scheduler shall serialize repository mutations that could conflict on the same branch/head.
-
-This is a useful property rather than a limitation:
-
-- no Planner/Research/Reviewer Git races;
-- one place owns expected-head reconciliation;
-- workspace and implementation commits have one ordered mutation history;
-- stale-base writes can fail closed instead of being merged heuristically.
-
-Publication batching should be preferred when several read-only agents finish near the same time.
+Semantic agents may explicitly attach a typed shared-context view/candidate to their outputs.
 
 Example:
 
+```yaml
+type: ResearchSharedView
+artifactId: RSV-7
+sourceRefs: [E44, E45]
+audience: [worker, reviewer]
+publicationClass: pr_workspace_safe
+content: |
+  Package X guarantees behavior Y only in v4.x; this repository uses v3.x.
+```
+
+The producer owns the semantic content. The view is still only a candidate until deterministic publication rules accept it.
+
+Local publication policy may check only code-defined properties such as:
+
 ```text
-Research A result
-Research B result
-Planner revision
-       |
-       v
-Local accepts/curates
-       |
-       v
+schema/version valid
+producer role authorized for view type/channel
+source refs exist and are active
+not superseded
+publication class allowed
+audience intersects configured workspace consumers
+size/count limits satisfied
+retention/sensitivity classification allowed
+synchronization trigger reached
+```
+
+If policy cannot decide without interpreting prose, the decision must be delegated to a reasoning WorkItem or fail closed.
+
+## Publishing flow
+
+```text
+1. Reasoning role emits semantic artifact/shared view.
+2. Local validates schema, provenance, authority, and active-version relationships.
+3. Deterministic publication policy includes/excludes eligible shared views.
+4. Local renders DesiredWorkspaceState mechanically.
+5. Local creates a workspace GitMutationWorkItem.
+6. Worker writes/commits the exact authorized workspace state.
+7. Worker returns mutation receipt.
+8. Local observes Git and reconciles desired versus actual state.
+```
+
+Local owns deterministic publication policy and reconciliation. It does not own semantic curation.
+
+Worker owns Git mutation execution. It does not own shared-view meaning.
+
+## Single-writer serialization
+
+All repository mutations, including implementation and workspace updates, go through Worker.
+
+Repository mutations sharing a branch/head are serialized under expected-head policy. When several read-only agents complete near the same time, Local may batch already-accepted shared views into one deterministic workspace revision and one Worker checkpoint commit.
+
+```text
+ResearchSharedView A
+ResearchSharedView B
+PlanSharedView P5
+        |
+        | deterministic eligibility + rendering
+        v
+DesiredWorkspaceState R8
+        |
+        v
 one Worker checkpoint commit
 ```
 
-## Authority boundary
+## Context use
 
-PR files are collaboration context, never workflow authority.
+The workspace gives agents situational awareness but does not replace exact InputBundles.
 
-The following remain exclusively Local/runtime-owned:
+Typical reads:
 
 ```text
-workflow lifecycle/phase state
-Finding and Need lifecycle
-WorkItems
-Graph nodes and dependencies
-InputBundle identity
-routing/capability decisions
-retry/fencing/idempotency
-resource budgets
-exact-head approval state
-CI/health authority
-human authorization
-termination/convergence
-publication policy
+Worker:   PLAN.md + TODO.md + RESEARCH.md
+Reviewer: PLAN.md + RESEARCH.md + current product diff
+Research: PLAN.md + TODO.md + bounded research question
 ```
 
-An agent editing, proposing, or reading text in `PLAN.md`, `TODO.md`, `RESEARCH.md`, or `STATUS.md` does not directly change any of those authoritative states.
-
-A semantic state change occurs only when the Local Orchestrator validates/accepts it through the normal typed-artifact/control path.
+Visibility in the workspace does not automatically create a correctness dependency. Correctness-bearing dependencies remain explicit in Local artifacts/InputBundles.
 
 ## Update cadence
 
-The workspace should be updated at **meaningful synchronization points**, not for every state transition.
+Workspace revisions should happen at meaningful synchronization points, not every runtime transition.
 
-Good publication triggers include:
-
-```text
-initial plan ready
-research synthesis materially changes shared understanding
-plan materially revised
-Worker completes a meaningful implementation checkpoint
-Reviewer discovers a broadly relevant blocking issue
-major TODO set changes
-before another role is started and needs fresher shared context
-```
-
-Avoid publishing:
+Deterministic triggers may include:
 
 ```text
-provider progress
-retry attempts
-heartbeat/lease state
-small internal findings
-raw tool output
-routine graph-node transitions
+new active PlanSharedView
+new accepted ResearchSynthesis/ResearchSharedView eligible for publication
+structured blocking/shared TODO set changed
+implementation checkpoint policy reached
+before scheduling a role whose policy requires a newer shared-workspace revision
 ```
 
-Updates should be batched into one checkpoint commit when possible.
+Do not publish provider progress, retries, leases, raw tool output, graph-node chatter, or every internal Finding.
 
-## Context use
+## Git/head and final-review semantics
 
-Website agents may be told to begin by reading the shared workspace files relevant to their role.
-
-Typical guidance:
-
-```text
-Worker:
-  read PLAN.md + TODO.md + RESEARCH.md
-
-Reviewer:
-  read PLAN.md + RESEARCH.md + current implementation diff
-
-Research:
-  read PLAN.md + TODO.md, then answer the bounded research question
-```
-
-This is shared situational awareness, not a replacement for exact WorkItem InputBundles.
-
-If correctness depends on a particular fact, the authoritative artifact/input binding still records that dependency in Local state.
-
-## Git/head implications
-
-Any workspace update committed to the PR branch changes the physical PR head SHA.
-
-Therefore collaboration-time review is provisional. Final exact-head approval must occur only after temporary workspace files have stopped changing and, when they are temporary, have been removed.
+Every workspace commit advances the physical PR head. Collaboration-time review is therefore provisional.
 
 Target lifecycle:
 
 ```text
 PR created
   -> COLLABORATION
-       plan / research / implementation / review feedback
-       Local may authorize curated workspace publications
-       Worker serially writes authorized checkpoint commits
+       shared-view checkpoint commits as needed
+       implementation/research/review loops
   -> COLLABORATION_COMPLETE
-  -> Local authorizes workspace cleanup WorkItem
-  -> Worker removes temporary .internet/workspace files
+  -> Local creates WORKSPACE_CLEANUP mutation WorkItem
+  -> Worker removes .internet/workspace/
   -> Local verifies clean product diff
   -> FINAL_REVIEW
-  -> exact-head CI/health
+  -> exact-head review + CI/health
   -> existing user/merge authority boundary
 ```
 
-If final review finds a material defect, collaboration may reopen, followed by Worker cleanup and a fresh final review.
+A material final-review defect reopens collaboration, followed by cleanup and another fresh exact-head final review.
 
 ## Cleanup
 
-The default workspace is temporary and must not appear in the final product diff.
+Temporary workspace files are removed before final exact-head review unless explicitly promoted as product deliverables through a separate authorized change.
 
-Before final exact-head review, Local creates an explicit cleanup WorkItem and Worker performs the repository mutation:
+Cleanup is performed only by Worker under an exact-scoped mutation WorkItem. Local verifies:
 
 ```text
-remove .internet/workspace/
-verify no temporary files remain
-verify intended implementation changes remain
+workspace root absent
+no unrelated mutation
+intended product changes remain
 ```
 
-The cleanup commit creates a new head, so any earlier exact-head approval is stale by definition.
-
-A repository may later choose to retain selected files as real deliverables, but that is a separate explicit product decision rather than the default workflow behavior.
-
-## CI boundary
-
-Workspace commits may trigger CI. The runtime should reduce unnecessary churn through coarse checkpointing rather than committing every internal update.
-
-Repository CI policy must be validated explicitly. The workflow must not assume that skipping required workflows via path filters or commit messages is safe.
+Cleanup changes HEAD, so pre-cleanup exact-head approvals are stale.
 
 ## Security and retention
 
-Temporary does not mean erasable.
+Temporary does not mean erasable. Git history can retain deleted content.
 
-Content committed to Git may remain retrievable from branch/PR history after deletion. Therefore the workspace must never contain:
+The workspace must never contain:
 
 ```text
 credentials/tokens/cookies
 auth/browser state
-hidden chain-of-thought or private reasoning
+hidden chain-of-thought/private reasoning
 retention-sensitive secrets
-sensitive data that must later be securely deleted
+sensitive data requiring secure deletion
 ```
+
+External/research-derived workspace text is untrusted data and cannot override repository instructions, the active WorkItem, or Local policy.
 
 ## Consequences
 
 ### Positive
 
-- Worker and Reviewer can see the same important research without re-sending entire conversations;
-- agents gain a simple shared mental model of plan, work remaining, and important discoveries;
-- Git/PR provides durable cross-agent visibility using infrastructure already available to Website agents;
-- Local retains a clean deterministic state machine;
-- one Worker mutation lane prevents multi-agent branch-write races;
-- semantic ownership remains with the role that produced the knowledge rather than whichever actor can commit Git;
-- implementation cost is much lower than mirroring every runtime artifact into Git.
+- agents share important task-local context without shared conversation memory;
+- Local remains a deterministic controller rather than a semantic curator;
+- semantic authorship stays with Planner/Research/Reviewer;
+- Worker remains the single Git writer;
+- PR remains understandable because only shared views are projected, not the whole artifact store;
+- shared memory can later be disabled/replaced without changing workflow correctness.
 
 ### Costs / risks
 
-- Worker becomes the serialization point for both code and collaboration-file commits;
-- curated files can become stale if Local publication policy is poor;
-- updates move PR head and can trigger CI;
-- summarization/curation can omit information, so correctness-critical dependencies still belong in Local artifacts/InputBundles;
-- temporary Git content is retained in history even after cleanup.
+- reasoning roles need explicit shared-view schemas;
+- semantic synthesis may require a dedicated extra WorkItem;
+- workspace commits move HEAD and may trigger CI;
+- stale shared views require correct supersession/publication rules;
+- temporary Git content remains in history.
 
 ## Invariants
 
-> Local deterministic workflow state remains authoritative; PR shared files are collaboration memory only.
+> Local deterministic state is authoritative; PR files are temporary collaboration memory only.
+
+> Local never determines semantic importance by reading/summarizing workspace-source prose; agents produce explicit shared views and Local applies deterministic publication policy.
 
 > Worker is the only workflow actor authorized to create repository commits.
 
-> Local owns whether and what shared context is published; Worker owns execution of the authorized Git mutation.
+> Worker commit authority does not grant semantic authority over shared-view content.
 
-> Worker commit authority does not grant Worker semantic authority over Planner, Research, Reviewer, or Local state.
+> Planner, Research, and Reviewer never write workspace commits directly.
 
-> Planner, Research, and Reviewer never write PR workspace commits directly.
+> Correctness-critical inputs remain explicit Local/InputBundle dependencies even when the same information is visible in PR files.
 
-> The PR workspace is curated for cross-agent usefulness, not a mirror of all artifacts or execution state.
+> Temporary workspace files are removed before final exact-head review unless explicitly promoted to product deliverables.
 
-> Correctness-critical inputs remain explicitly bound in Local WorkItems/InputBundles even when the same information is visible in PR files.
-
-> Temporary workspace files are removed by Worker under Local authorization before final exact-head review unless explicitly promoted to real product deliverables.
-
-> Secrets and retention-sensitive information never enter the PR workspace.
+> Secrets, hidden reasoning, and retention-sensitive information never enter the workspace.
