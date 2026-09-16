@@ -2,25 +2,29 @@
 
 ## Current status
 
-Architecture/design only. No runtime implementation should be started in this PR until Design Gate D0 is complete.
+Architecture/design only. Runtime implementation should begin only after Design Gate D0 is complete.
 
-The highest-priority current-production gap remains the lack of one authoritative application/service boundary shared by the slash command and low-level workflow tool. The architecture review also found several proposal-contract inconsistencies that must be resolved before vNext implementation relies on them.
+**Design Gate D0 is now complete.** The core SRS was rewritten as v0.3 and the narrower Planner, Git mutation, PR workspace, adaptive routing, WorkItem/capability, kernel, continuation, and convergence contracts were harmonized around the same Local-Agent/Orchestrator authority boundary.
+
+The highest-priority implementation gap remains the lack of one authoritative application/service boundary shared by the slash command and low-level workflow tool.
 
 ## D0 — Design contract harmonization
 
-- [ ] Replace stale `Local/Orchestrator` terminology in core SRS/ADRs with explicit `Local Agent` vs `Orchestrator Runtime` ownership.
-- [ ] Fix `SRS-VNEXT.md` actor section so Local Agent is not called the authoritative orchestrator.
-- [ ] Fix Planner ADR/SRS so Orchestrator Runtime, not Local Agent, materializes WorkItems, routes typed Needs, applies lineage invalidation, and performs authority/state transitions.
-- [ ] Fix PR-workspace ADR/SRS so Orchestrator Runtime owns deterministic publication/reconciliation and Local Agent remains only a client/operator.
-- [ ] Fix Git-mutation ADR/SRS so Orchestrator Runtime owns desired-effect derivation/reconciliation and Local Agent does not become repository control authority.
-- [ ] Add/confirm core Need vocabulary: `requirements_change` and `clarification`.
-- [ ] Correct core wording that implies `plan_change` may alter acceptance criteria; criteria/objective revision must use `requirements_change`.
-- [ ] Update core Need routing so validated Need may materialize as `WorkItem` or `PendingAction` depending on typed semantics/policy.
-- [ ] Standardize workflow external-wait terminology on `WAITING_EXTERNAL` for vNext.
-- [ ] Clarify parent-owned source Artifact vs child-owned imported continuation Artifact/snapshot.
-- [ ] Add baseline CriterionAssessment/convergence ADR/SRS before implementation reaches complete product journeys.
-- [ ] Add explicit v3 compatibility/migration wording where overview/core contracts still imply clean-slate replacement.
-- [ ] Distinguish existing v3 `WorkflowPendingAction` from vNext durable multi-action model.
+- [x] Replace stale `Local/Orchestrator` terminology in normative proposed docs with explicit `Local Agent` vs `Orchestrator Runtime` ownership where authoritative control is involved.
+- [x] Rewrite `SRS-VNEXT.md` actor/core model so Local Agent is a reasoning client/operator, not the authoritative orchestrator.
+- [x] Fix Planner ADR/SRS so Orchestrator Runtime, not Local Agent, materializes WorkItems, routes typed Needs, applies lineage invalidation, and performs authority/state transitions.
+- [x] Fix PR-workspace ADR/SRS so Orchestrator Runtime owns deterministic publication/reconciliation and Local Agent remains only a client/operator.
+- [x] Fix Git-mutation ADR/SRS so Orchestrator Runtime owns desired-effect derivation/reconciliation and Local Agent does not become repository control authority.
+- [x] Add/confirm core Need vocabulary: `requirements_change` and `clarification`.
+- [x] Correct core wording that implied `plan_change` may alter acceptance criteria; criteria/objective revision now uses `requirements_change`.
+- [x] Update core/ADR Need routing so validated Need may materialize as `WorkItem` or `PendingAction` depending on typed semantics/policy.
+- [x] Standardize workflow external-wait terminology on `WAITING_EXTERNAL` for vNext.
+- [x] Clarify parent-owned source Artifact vs child-owned imported continuation Artifact/snapshot.
+- [x] Add baseline CriterionAssessment/convergence ADR/SRS before complete product journeys.
+- [x] Add explicit v3 compatibility/migration wording to core/kernel contracts.
+- [x] Distinguish existing v3 `WorkflowPendingAction` from the vNext durable multi-action model.
+- [x] Remove graph-as-universal-semantic-authority wording from ADR-0011/kernel contracts.
+- [x] Scope Worker terminology to profiles that actually use an implementation/generation role rather than making Worker mandatory kernel vocabulary.
 
 ## P0 — WorkflowService / authorization boundary
 
@@ -40,7 +44,7 @@ The highest-priority current-production gap remains the lack of one authoritativ
 
 ## P0 — Migration contract
 
-- [ ] Document `WorkflowJob` v3 as a supported compatibility runtime during migration.
+- [ ] Document `WorkflowJob` v3 as a supported compatibility runtime during migration in implementation-facing code/comments/tests where needed.
 - [ ] Do not change the current v3 parser so existing durable job files become unreadable.
 - [ ] Introduce vNext `WorkflowRun` state in parallel storage rather than in-place replacement.
 - [ ] Define schema/version compatibility rules for vNext stores.
@@ -101,15 +105,15 @@ The highest-priority current-production gap remains the lack of one authoritativ
 
 ## P1 — Baseline criterion assessment and convergence
 
-- [ ] Create ADR/SRS for criterion-scoped assessment and baseline convergence.
-- [ ] Define assessment identity and exact subject binding.
-- [ ] Define verdicts: SATISFIED / UNSATISFIED / INCONCLUSIVE.
-- [ ] Define deterministic vs Reviewer vs User assessment methods/policies.
-- [ ] Define stale assessment rules when criterion/head/InputBundle/evidence changes.
+- [x] Create ADR/SRS for criterion-scoped assessment and baseline convergence.
+- [ ] Implement assessment identity and exact subject binding.
+- [ ] Implement verdicts: SATISFIED / UNSATISFIED / INCONCLUSIVE.
+- [ ] Implement deterministic vs Reviewer vs User assessment methods/policies.
+- [ ] Implement stale assessment rules when criterion/head/InputBundle/evidence changes.
 - [ ] Keep waiver/override as separate authority object rather than normal assessment verdict.
-- [ ] Define a minimum profile convergence predicate over current valid assessments, Findings, required deliverables, authority gates, and external state.
-- [ ] Distinguish WorkItem completion, PlanTask execution completion, criterion satisfaction, and WorkflowRun convergence.
-- [ ] Ensure no product-journey milestone claims terminal success before this baseline exists.
+- [ ] Implement a minimum profile convergence predicate over current valid assessments, Findings, required deliverables, authority gates, and external state.
+- [ ] Distinguish WorkItem completion, PlanTask execution completion, criterion satisfaction, and WorkflowRun convergence in runtime state/tests.
+- [ ] Ensure no product-journey implementation claims terminal success before this baseline exists.
 
 ## P1 — vNext RunEngine / Driver / Scheduler
 
@@ -232,7 +236,7 @@ The highest-priority current-production gap remains the lack of one authoritativ
 - [ ] Move software-only repository context under software profile boundary when compatibility allows.
 - [ ] Move/rename Writer runner only after public import compatibility is handled.
 - [ ] Retire static v3 graph builder only after vNext software profile reaches production parity.
-- [ ] Retire legacy semantic handoff path only after typed artifacts fully replace its semantic role.
+- [ ] Retire legacy semantic handoff path only after typed Artifacts fully replace its semantic role.
 - [ ] Define v3 durable-state retirement/migration policy before deleting v3 parser/store support.
 
 ## Required edge-case tests
@@ -253,7 +257,7 @@ The highest-priority current-production gap remains the lack of one authoritativ
 - [ ] Criterion assessment becomes stale after exact subject/head changes.
 - [ ] Equivalent Need/patch repeats without meaningful state change.
 - [ ] Merge authorization is for H1 but H2 exists at execution time.
-- [ ] Parent run becomes retention-eligible after child continuation imported source artifacts.
+- [ ] Parent run becomes retention-eligible after child continuation imported source Artifacts.
 - [ ] Cancellation races with an active external mutation.
 
 ## Validation checklist for every implementation PR
@@ -267,12 +271,15 @@ The highest-priority current-production gap remains the lack of one authoritativ
 
 ## Design-PR completion checklist
 
-- [x] Record initial production migration sequence in `PLAN.md`.
-- [x] Record initial milestone/outcome sequence in `ROADMAP.md`.
-- [x] Record implementation backlog in this `TODO.md`.
+- [x] Record production migration sequence in `PLAN.md`.
+- [x] Record milestone/outcome sequence in `ROADMAP.md`.
+- [x] Record actionable implementation backlog in this `TODO.md`.
 - [x] Review PLAN/ROADMAP/TODO against current codebase and identify hidden dependency/order corrections.
-- [ ] Complete Design Gate D0 terminology/authority corrections across normative proposed docs.
-- [ ] Add baseline CriterionAssessment/convergence ADR/SRS.
-- [ ] Synchronize Planner Need types into core Need/capability docs.
-- [ ] Review remaining vNext docs for wording that implies current durable primitives are introduced from zero rather than evolved.
-- [ ] Add explicit v3 compatibility/migration language to authoritative vNext overview/SRS where needed.
+- [x] Complete Design Gate D0 terminology/authority corrections across normative proposed docs.
+- [x] Add baseline CriterionAssessment/convergence ADR/SRS.
+- [x] Synchronize Planner Need types into core Need/capability docs.
+- [x] Rewrite `SRS-VNEXT.md` as the harmonized umbrella contract (v0.3).
+- [x] Align ADR-0009/0010/0011/0019 and `SRS-VNEXT-KERNEL.md` with core v0.3.
+- [x] Add explicit v3 compatibility/migration language to authoritative core/kernel contracts.
+- [ ] Update documentation indexes/PR summary with `ADR-0021` and `SRS-VNEXT-CONVERGENCE`.
+- [ ] Final terminology/search pass for stale authority phrases in remaining narrative/non-core proposal docs.
