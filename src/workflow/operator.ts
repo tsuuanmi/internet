@@ -4,10 +4,10 @@ import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowRetentionManager } from "#internet/workflow/retention";
 import {
 	WorkflowService,
-	WorkflowServiceError,
-	workflowSessionAuthorizationContext,
 	type WorkflowServiceDriver,
 	type WorkflowServiceEngine,
+	WorkflowServiceError,
+	workflowSessionAuthorizationContext,
 } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
 
@@ -224,7 +224,9 @@ export class WorkflowOperator {
 			return;
 		}
 		if (jobs === undefined || events === undefined || retention === undefined) {
-			throw new WorkflowOperatorError("legacy WorkflowOperator construction requires engine, driver, jobs, events, and retention");
+			throw new WorkflowOperatorError(
+				"legacy WorkflowOperator construction requires engine, driver, jobs, events, and retention",
+			);
 		}
 		this.service = new WorkflowService(serviceOrEngine, eventsOrDriver as WorkflowOperatorDriver, jobs, retention);
 		this.events = events;
