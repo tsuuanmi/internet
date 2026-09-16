@@ -2,7 +2,7 @@
 
 - **Status:** Proposed
 - **Date:** 2026-09-16
-- **Related:** ADR-0018, ADR-0019, `WORKFLOW-VNEXT-USE-CASES.md`
+- **Related:** ADR-0018, ADR-0019, ADR-0021, `WORKFLOW-VNEXT-USE-CASES.md`
 
 ## Context
 
@@ -48,11 +48,11 @@ Terminal runs remain terminal.
 
 A User follow-up after terminal completion creates a new continuation WorkflowRun rather than changing `COMPLETED -> RUNNING` on the old run.
 
-The continuation binds explicit parent/source references such as:
+The continuation binds explicit source references such as:
 
 ```text
 continuesFromWorkflowRun
-inputArtifactRefs
+selected sourceArtifactRefs/source hashes
 sourceWorkstream
 new User source/admission
 ```
@@ -61,9 +61,7 @@ This preserves historical correctness and makes the semantic transition auditabl
 
 ## In-run feedback is different from continuation
 
-A non-terminal run may wait for User validation or feedback and then resume the **same run**.
-
-Example software lifecycle:
+A non-terminal run may wait for User validation or feedback and then resume the same run.
 
 ```text
 implementation/review
@@ -72,10 +70,8 @@ implementation/review
  -> User feedback
  -> same run resumes
  -> H8 implementation
- -> fresh review
+ -> fresh assessment/review
 ```
-
-This is not a new continuation because the original admitted software objective has not yet converged/terminated.
 
 Thus:
 
@@ -85,34 +81,23 @@ Thus:
 
 Producing a usable artifact does not imply terminal workflow completion.
 
-The runtime may persist a `DeliveryArtifact` or equivalent checkpoint that identifies:
+A DeliveryArtifact/checkpoint identifies at least:
 
 ```text
 deliverable type
 artifact references
 exact version/head/identity
 instructions for User evaluation where relevant
-criteria/review state references
+criteria/assessment state references
 createdAt
 supersedes prior delivery checkpoint when applicable
 ```
 
-Examples:
-
-```text
-reviewed PR ready for local test
-research draft ready for User review
-report candidate awaiting feedback
-built dataset/model package awaiting acceptance
-```
-
-A newer implementation head supersedes an older exact-head software delivery checkpoint.
+A newer implementation head supersedes an older exact-head software delivery checkpoint and stales dependent assessments/authority according to ADR-0021.
 
 ## User feedback
 
 User feedback enters through the Local Agent/workflow interaction protocol with explicit provenance and target binding.
-
-Conceptually:
 
 ```text
 UserFeedbackInput
@@ -132,36 +117,62 @@ Finding
 requirements_change
 plan_change
 implementation_change
-no change / informational input
+informational/no-change
 ```
 
 Typed results then drive deterministic invalidation/routing.
 
-## Cross-run artifact reuse
+## Cross-run artifact reuse and retention safety
 
-A continuation WorkflowRun may consume artifacts from completed runs through explicit references.
+A continuation WorkflowRun may consume correctness-bearing content produced by a completed source run, but it must not become operationally dependent on source-run files being retained forever.
 
-Example:
+The architecture therefore distinguishes **historical source ownership** from **child-run durable possession**.
+
+```text
+Source Artifact
+  owned by producing WorkflowRun
+  immutable/superseding history
+
+Imported Artifact / ImportedArtifactSnapshot
+  owned/persisted by receiving child WorkflowRun
+  exact content/schema snapshot required by the child
+  lineage points to sourceRunId/sourceArtifactId/sourceHash
+```
+
+For the initial production implementation, correctness-bearing source artifacts selected for continuation shall be imported/copied into child-owned durable storage before child activation/execution depends on them.
+
+Conceptually:
 
 ```text
 ResearchRun R1
-  Report RP1
-  Evidence E1,E2,E3
+  Report RP1 hash=H1
+  Evidence E1 hash=H2
 
 SoftwareRun R2
-  admission.continuesFrom = R1
-  semantic inputs = RP1 + selected E*
+  ImportedReport IR1
+    contentHash=H1
+    sourceRunId=R1
+    sourceArtifactId=RP1
+    sourceHash=H1
+
+  ImportedEvidence IE1
+    contentHash=H2
+    sourceRunId=R1
+    sourceArtifactId=E1
+    sourceHash=H2
 ```
 
-Artifacts remain owned by their producing run. The continuation records consumption/derivation lineage rather than copying semantic authority invisibly.
+The original artifacts remain historically owned by R1. The imported child copies do not rewrite that ownership or history; they create an exact retention-safe dependency in R2.
 
-Artifact reuse remains subject to compatibility/freshness/profile policy.
+This avoids global cross-run reference-counted garbage collection for the first implementation while permitting R1 to become retention-eligible later without breaking R2 reproducibility.
+
+Artifact import/reuse remains subject to schema compatibility, freshness, sensitivity, access, and receiving-profile policy.
 
 ## Research-to-implementation transition
 
 A research report is not automatically an implementation plan.
 
-The continuation software run normally invokes Planner to translate the accepted research outcome into software-specific:
+The continuation software run invokes Planner to translate the new User request plus imported research artifacts into software-specific:
 
 ```text
 Objective
@@ -185,7 +196,7 @@ It may resolve natural-language references such as:
 "continue the feature work"
 ```
 
-When target resolution is unambiguous, it issues the corresponding Query/Update/Signal/Respond call.
+When target resolution is unambiguous, it submits explicit typed target references through the workflow protocol.
 
 When multiple plausible active/terminal runs exist and choosing incorrectly would materially affect state, Local Agent asks the User or uses an explicit confirmation flow.
 
@@ -216,14 +227,16 @@ A Workstream may remain available for future continuation long after all current
 - gives User one continuous project experience across research and implementation;
 - supports explicit cross-run artifact provenance;
 - keeps profile/version/budget boundaries per run;
-- supports PR delivery/user testing loops without falsely completing the software run;
-- makes later follow-ups auditable rather than mutating old history.
+- supports PR delivery/User testing loops without falsely completing the software run;
+- makes later follow-ups auditable rather than mutating old history;
+- child runs remain reproducible after parent retention cleanup.
 
 ### Costs
 
 - runtime/client needs Workstream plus WorkflowRun identity;
 - Local Agent needs safe natural-language target resolution;
-- cross-run artifact import/reuse policy must be explicit;
+- continuation needs explicit artifact import policy and additional storage;
+- duplicated immutable snapshots may use more disk than global reference counting, intentionally trading storage for simpler correctness initially;
 - status UI must distinguish current run state from broader workstream history.
 
 ## Invariants
@@ -236,6 +249,8 @@ A Workstream may remain available for future continuation long after all current
 
 > Producing a report, PR, or other usable DeliveryArtifact does not by itself imply WorkflowRun completion.
 
-> Cross-run continuation uses explicit artifact/run lineage; completed-run semantic history is never silently rewritten.
+> Cross-run continuation preserves source ownership/lineage while importing exact correctness-bearing snapshots into child-owned durable state so parent retention cannot silently break child reproducibility.
+
+> Completed-run semantic history is never silently rewritten.
 
 > The Orchestrator operates on typed Workstream/WorkflowRun/artifact references and does not interpret conversational referents or feedback prose semantically.
