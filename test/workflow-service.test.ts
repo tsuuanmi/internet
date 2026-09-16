@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import {
+	type WorkflowAuthorizationContext,
 	WorkflowService,
 	WorkflowServiceError,
 	workflowSessionAuthorizationContext,
-	type WorkflowAuthorizationContext,
 } from "#internet/workflow/service";
 import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
 
