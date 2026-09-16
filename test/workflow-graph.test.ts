@@ -65,7 +65,7 @@ describe("workflow graph model", () => {
 		expect(workflowNodeInputMatchesDependencies(second, nodes)).toBe(true);
 	});
 
-	it("rejects malformed dependency receipts and cycles", () => {
+	it("rejects malformed dependency receipts", () => {
 		const first = completedNode("first");
 		const second = completedNode("second", [first.nodeId]);
 		expect(() =>
@@ -73,6 +73,20 @@ describe("workflow graph model", () => {
 				snapshot([first, { ...second, input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} } }]),
 			),
 		).toThrow("keys do not match dependencies");
+		expect(() =>
+			assertWorkflowGraph(
+				snapshot([
+					first,
+					{
+						...second,
+						input: { inputHash: "b".repeat(64), dependencyOutputHashes: { first: "invalid" } },
+					},
+				]),
+			),
+		).toThrow("invalid dependency output hash");
+	});
+
+	it("rejects dependency cycles and unknown dependencies", () => {
 		const a: WorkflowGraphNode = {
 			nodeId: "a",
 			kind: "TEAM_MEMBER",
@@ -80,11 +94,37 @@ describe("workflow graph model", () => {
 			dependencies: ["b"],
 			state: "WAITING",
 		};
-		const b: WorkflowGraphNode = { ...a, nodeId: "b", dependencies: ["a"] };
+		const b: WorkflowGraphNode = {
+			nodeId: "b",
+			kind: "TEAM_MEMBER",
+			phase: "RESEARCH",
+			dependencies: ["a"],
+			state: "WAITING",
+		};
 		expect(() => assertWorkflowGraph(snapshot([a, b]))).toThrow("dependency cycle");
+		expect(() => assertWorkflowGraph(snapshot([{ ...a, dependencies: ["missing"] }]))).toThrow("unknown dependency");
 	});
 
-	it("requires live unique executions for running nodes", () => {
+	it("requires exact receipts for completed and recovering nodes", () => {
+		const completed: WorkflowGraphNode = {
+			nodeId: "completed",
+			kind: "TEAM_MEMBER",
+			phase: "RESEARCH",
+			dependencies: [],
+			state: "COMPLETED",
+			input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} },
+		};
+		expect(() => assertWorkflowGraph(snapshot([completed]))).toThrow("requires an output receipt");
+		const recovering: WorkflowGraphNode = {
+			...completed,
+			nodeId: "recovering",
+			state: "RECOVERING",
+			output: undefined,
+		};
+		expect(() => assertWorkflowGraph(snapshot([recovering]))).toThrow("requires failure and recovery receipts");
+	});
+
+	it("requires running nodes to own a valid unique live execution", () => {
 		const running: WorkflowGraphNode = {
 			nodeId: "writer:implementation",
 			kind: "WRITER_IMPLEMENTATION",
@@ -94,12 +134,12 @@ describe("workflow graph model", () => {
 			input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} },
 		};
 		expect(() => assertWorkflowGraph(snapshot([running]))).toThrow("requires a live execution");
-		const live = {
+		const live: WorkflowGraphNode = {
 			...running,
 			execution: {
 				executionId: "exec-1",
 				attempt: 1,
-				state: "ACTIVE" as const,
+				state: "ACTIVE",
 				ownerInstanceId: "driver-1",
 				startedAt: now,
 				heartbeatAt: now,
