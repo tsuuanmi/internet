@@ -1,4 +1,4 @@
-# ADR-0015 — Local Is the Deterministic Orchestrator, Not a Reasoning Agent
+# ADR-0015 — Separate the Local Agent Client from the Deterministic Orchestrator
 
 - **Status:** Proposed
 - **Date:** 2026-09-16
@@ -6,341 +6,294 @@
 
 ## Context
 
-Earlier vNext drafts described Local as a semantic/user-facing Orchestrator that could interpret workflow state and participate in semantic decisions. That boundary is too broad.
+The current as-built architecture already has an important boundary that vNext must preserve:
 
-The architecture already depends on a deterministic control plane for durable recovery, exact-input binding, routing, graph transitions, mutation fencing, convergence, and authority. Allowing that same control-plane actor to perform model-like interpretation or synthesis creates an ambiguous correctness boundary:
+- a **Local agent** is the user-facing workflow client/operator and calls the workflow tool;
+- `internet_workflow` / `/workflow` expose the deterministic workflow surface;
+- `WorkflowEngine` owns durable workflow-domain state and transitions.
 
-- state transitions could depend on unrecorded reasoning;
-- recovery might require reproducing a semantic judgment;
-- Local could silently become a hidden Planner, Reviewer, or Research synthesizer;
-- shared-context publication could depend on subjective Local summarization;
-- testing the control plane would require model behavior rather than pure state-machine tests.
+Earlier vNext wording collapsed `Local` and `Orchestrator` into one deterministic actor. That is inaccurate and unnecessarily constrains the client agent.
 
-Production workflow systems provide a cleaner pattern: code-owned controllers reconcile typed desired/current state and delegate nondeterministic or semantic work to activities/specialists.
+The Local agent may reason, converse with the user, decide when to invoke a tool, explain status, and carry explicit user choices. Workflow correctness must not depend on the Local agent's hidden reasoning, however. Only explicit validated tool inputs may change authoritative workflow state.
 
 ## Decision
 
-**Local and Orchestrator are the same logical control-plane actor.**
-
-Local/Orchestrator is deterministic and does not use an LLM/model to think, plan, summarize, interpret evidence, review implementation, or decide semantic consequences.
-
-`WorkflowEngine` is the deterministic workflow/state-machine implementation component inside the Local/Orchestrator boundary, not a separate semantic actor.
+The architecture shall distinguish three boundaries:
 
 ```text
-                    User
-                      |
-                      | raw objective / explicit authority
-                      v
-        +--------------------------------+
-        |       Local / Orchestrator     |
-        |                                |
-        | deterministic control plane    |
-        | validate / persist / route     |
-        | schedule / reconcile / gate    |
-        +---------------+----------------+
-                        |
-              typed WorkItems/InputBundles
-                        |
-          +-------------+-------------+
-          |             |             |
-          v             v             v
-       Planner       Research       Reviewer
-          |             |             |
-          +-------------+-------------+
-                        |
-                     Worker
-                        |
-                        v
-                  typed Artifacts
-                        |
-                        v
-        +--------------------------------+
-        |       Local / Orchestrator     |
-        | deterministic validation       |
-        | and next-state transition      |
-        +--------------------------------+
+User
+  <-> Local Agent
+        user-facing reasoning client/operator
+        |
+        | workflow tool/API
+        v
+      Orchestrator Runtime / WorkflowEngine
+        deterministic control plane
+        |
+        | typed WorkItems / InputBundles
+        v
+      Planner / Research / Reviewer / Worker
 ```
 
-## Local/Orchestrator responsibilities
+### Local Agent
 
-Local may perform only code/policy operations whose result is determined by authoritative typed inputs and versioned policy.
+The Local agent is a reasoning-capable **workflow client**, not the workflow state machine.
 
-This includes:
+It may:
 
 ```text
-command/API intake
-workflow creation
-raw user-objective persistence
+understand conversational user intent
+choose when to start/inspect/control a workflow
+call workflow tool operations
+present status/progress/results
+explain workflow state to the user
+carry explicit user authorization/clarification/choices
+perform advisory reasoning outside workflow correctness state
+```
+
+Its chain-of-thought, implicit conclusions, or conversational assumptions are never authoritative workflow state.
+
+### Orchestrator Runtime / WorkflowEngine
+
+The Orchestrator is the deterministic runtime behind the tool surface.
+
+`WorkflowEngine` is the implementation component that owns workflow-domain transitions. The surrounding driver/tool/runtime may own scheduling, provider transport, event delivery, and external-state reconciliation, but the overall orchestration boundary is deterministic.
+
+It owns:
+
+```text
+workflow creation from explicit tool input
 schema validation
-artifact identity/provenance validation
-state persistence
+artifact/state persistence
 Finding/Need/WorkItem lifecycle mechanics
-capability lookup from typed Need
-request-owner routing
-InputBundle construction from explicit dependencies
-graph motif instantiation
-scheduling/readiness
-provider/account allocation under policy
-side-effect/authority checks
+capability routing from typed fields
+InputBundle construction
+graph motif materialization
+readiness/scheduling policy
+side-effect authority
 retry/fencing/idempotency
 exact-head checks
-Git desired-state reconciliation
-artifact invalidation from explicit dependency rules
-resource-budget enforcement
-termination/convergence evaluation from explicit predicates
-status projection
-human-action gating
+Git reconciliation
+lineage invalidation
+resource budgets
+termination/convergence predicates
+pending-action state
 ```
 
-Local may also render deterministic files/messages from structured state, such as `STATUS.md`, when rendering requires no semantic synthesis.
+It does not use model reasoning to invent semantic transitions.
 
-## Local/Orchestrator non-responsibilities
+## Tool/API is the authority boundary
 
-Local shall not perform semantic reasoning such as:
+The workflow tool/API is the explicit protocol between the Local agent and deterministic Orchestrator.
+
+Current as-built examples include:
 
 ```text
-interpreting an ambiguous objective
-inventing or refining acceptance criteria
-planning implementation strategy
-summarizing research
-judging which evidence is convincing
-resolving contradictions by reasoning
-reviewing code quality/correctness
-classifying a prose finding by intuition
-rewriting an agent conclusion
-choosing what an evidence result means for implementation
-creating a repair strategy
-curating shared context by subjective importance
+/workflow <objective>
+/workflow list
+/workflow status [jobId]
+/workflow watch [jobId]
+/workflow stop [jobId]
+/workflow continue [jobId]
+/workflow delete <jobId>
 ```
 
-If progress requires one of those operations, Local creates/routes a WorkItem to an appropriate reasoning capability or fails closed when no such capability exists.
+The Local agent can therefore interact with a running workflow, but only through supported operations and explicit arguments.
 
-## Initial user objective
+The architecture must never treat arbitrary Local-agent conversation context as implicit workflow input.
 
-A free-form user request enters the workflow as user-owned input, not as a Local interpretation.
+## Correctness-bearing interaction rule
 
-Conceptually:
-
-```text
-UserObjectiveInput
-  rawText
-  explicit repository/branch/authority bindings
-  explicit structured options, if supplied
-```
-
-For workflows that require semantic decomposition, deterministic workflow policy routes that input to Planner.
-
-```text
-UserObjectiveInput
-  -> Planner WorkItem
-  -> Objective/AcceptanceCriteria/Plan artifacts
-```
-
-Local validates the returned schemas and provenance but does not decide whether the Planner's interpretation is substantively good. That judgment belongs to later Reviewer/User gates according to policy.
-
-## Policy decisions versus semantic decisions
-
-The boundary is:
-
-| Question | Owner |
-| --- | --- |
-| `Need.type == external_evidence`; which registered capability handles it? | Local deterministic policy |
-| What external question should be asked? | Requesting reasoning agent |
-| Did Research return a schema-valid artifact? | Local |
-| Is the evidence persuasive enough to resolve a finding? | Reviewer / verification capability |
-| Has PR head changed? | Local |
-| How should code adapt to the newly observed head? | Worker or Planner, depending on typed Need |
-| Is a WorkItem over budget? | Local |
-| Is another research round semantically useful? | Request owner emits another Need; Local only checks policy/budget |
-| Does a plan revision invalidate a dependent review by explicit lineage? | Local |
-| What should the revised plan be? | Planner |
-| Does a patch satisfy code-quality/behavior requirements? | Reviewer + deterministic tests |
-| Which account currently has capacity? | Local scheduler |
-
-The rule is:
-
-> Local may choose among outcomes already encoded by deterministic policy; it may not invent semantic meaning to create a new outcome.
-
-## No hidden model fallback
-
-Local shall not contain an implicit or emergency LLM fallback such as:
-
-```text
-if routing unclear -> ask model what to do
-if artifact conflict -> ask model which is right
-if plan missing -> synthesize one locally
-if research too long -> summarize locally
-```
-
-When deterministic policy has no valid transition, Local must instead:
-
-- create a typed WorkItem for a registered reasoning capability when policy defines one;
-- produce a durable `BLOCKED` / `HUMAN_ACTION_REQUIRED` state;
-- reject the incompatible artifact/request.
-
-This makes unsupported cases visible rather than silently shifting reasoning into the control plane.
-
-## Semantic artifact ownership
-
-Semantic conclusions remain owned by reasoning roles/capabilities.
+If Local-agent reasoning should affect workflow behavior, it must cross the tool boundary as an explicit typed input.
 
 Examples:
 
 ```text
-Planner
-  -> PlanArtifact
-  -> PlanRevisionArtifact
-  -> PlanSharedView
+Local thinks: "the user approved merge"
+  -> not authoritative
 
-Research / Research Synthesis
-  -> EvidenceArtifact
-  -> ContradictionArtifact
-  -> ResearchSharedView
-
-Reviewer
-  -> FindingArtifact
-  -> ReviewArtifact
-  -> ApprovalArtifact
-  -> SharedTodoItem / review-context candidate
-
-Worker
-  -> ImplementationArtifact
-  -> ValidationArtifact
-  -> mutation receipts
+Local tool call:
+  actionId=<pending merge authorization>
+  decision=approve
+  expectedHead=<exact SHA>
+  -> authoritative only after runtime validation
 ```
 
-Local validates and routes these artifacts but does not rewrite their substantive meaning.
+Likewise:
+
+```text
+Local infers a clarification answer from conversation
+  -> not authoritative
+
+Local submits explicit user response to the matching pending action
+  -> runtime persists response with causal action identity
+```
+
+This preserves user-facing intelligence without moving hidden reasoning into the control plane.
+
+## Current interaction model
+
+The Local agent may currently:
+
+```text
+start a workflow
+list jobs
+inspect authoritative status
+watch progress/action-required events
+stop/cancel a workflow
+continue an engine-approved recovery boundary
+delete an exact selected workflow
+```
+
+The current operator contract already scopes jobs to the current Local owner session and treats `internet_workflow` as the lower-level deterministic tool surface.
+
+Thus the relationship is:
+
+```text
+Local Agent
+  = workflow client/operator
+
+Workflow tool
+  = command/query boundary
+
+WorkflowEngine
+  = authoritative deterministic state machine
+```
+
+## vNext interaction requirement
+
+Adaptive workflows introduce more user-facing pending actions than the current mostly fixed pipeline, especially:
+
+```text
+semantic clarification
+requirements-change approval
+policy exception
+mutation/authority confirmation
+merge/release authority
+blocked-choice resolution
+```
+
+These should not require direct filesystem/state mutation or ad-hoc conversational coupling.
+
+The target tool surface should therefore support one generic typed pending-action response operation conceptually equivalent to:
+
+```yaml
+respond:
+  workflowId: wf_123
+  actionId: action_17
+  responseType: authorization | clarification | choice | acknowledgement
+  payload: ...
+  expectedStateVersion: ...
+```
+
+Exact command/API naming remains implementation-specific.
+
+The runtime validates that:
+
+```text
+action exists and is still pending
+response type matches action schema
+Local owner/session is authorized
+expected state/head/version is current where required
+response satisfies policy
+response has not already been consumed incompatibly
+```
+
+Only then does it commit the corresponding state transition.
+
+## Local-agent reasoning versus specialist reasoning
+
+The Local agent may reason for the user's benefit, but it should not silently replace workflow specialist roles.
+
+For example, Local may say conversationally that a research result appears important, but if that judgment must alter workflow correctness it must be represented by an appropriate Planner/Reviewer/Research artifact or explicit user decision.
+
+Similarly, Local may help the user understand a pending requirements change, but the workflow's formal proposal and affected criteria must come from typed Planner/Reviewer artifacts rather than from Local's hidden analysis.
+
+This distinction allows a capable Local agent without making workflow recovery depend on reproducing that agent's private reasoning.
+
+## Semantic work inside workflow
+
+When the deterministic Orchestrator needs semantic work to progress, it delegates through typed WorkItems:
+
+```text
+objective interpretation/decomposition -> Planner
+research question/evidence -> Research
+research synthesis -> Research/Synthesis
+implementation -> Worker
+review/criterion judgment -> Reviewer
+evidence contradiction resolution -> Reviewer/Verification
+semantic clarification wording/proposal -> Planner/Reviewer/Clarification capability
+```
+
+The Orchestrator does not perform that semantic work itself.
 
 ## Shared PR workspace consequence
 
-ADR-0013's shared notebook must obey the same boundary.
+The same boundary applies to temporary PR collaboration memory.
 
-Local does not read twelve research artifacts and subjectively decide which three insights are important.
-
-Instead, reasoning agents explicitly produce bounded shared-context artifacts/fields under schema, for example:
-
-```yaml
-type: ResearchSharedView
-producerRole: research
-channel: research
-audience: [worker, reviewer]
-sourceRefs: [E44, E45]
-content: |
-  Package X guarantees behavior Y only in v4.x; the repository uses v3.x.
-```
-
-Local then applies deterministic publication policy:
+Reasoning roles produce typed shared views such as:
 
 ```text
-schema valid?
-producer authorized for channel?
-artifact active/not superseded?
-publication class allowed?
-size/count limits satisfied?
-retention/sensitivity policy allowed?
-synchronization trigger reached?
+PlanSharedView
+ResearchSharedView
+SharedTodoItem
+RoadmapSharedView
 ```
 
-If yes, Local deterministically includes the view in `DesiredWorkspaceState` and creates a Worker workspace-mutation WorkItem.
+The deterministic Orchestrator applies schema/policy/filter/order/render rules and creates an authorized Worker mutation WorkItem.
 
-If multiple semantic artifacts require synthesis or prioritization beyond deterministic ordering/filtering, Local schedules a synthesis WorkItem to the appropriate reasoning capability. Local does not perform the synthesis itself.
-
-## Deterministic workspace rendering
-
-The default target is:
-
-```text
-PLAN.md
-  <- latest active Planner-produced PlanSharedView
-
-RESEARCH.md
-  <- active ResearchSharedView artifacts,
-     deterministically grouped/ordered,
-     or one explicit ResearchSynthesis output
-
-TODO.md
-  <- structured SharedTodoItems from authorized roles,
-     deterministically filtered/sorted
-
-STATUS.md
-  <- Local deterministic runtime projection
-
-ROADMAP.md
-  <- latest active Planner-produced RoadmapSharedView, when enabled
-```
-
-This keeps semantic authorship outside Local while retaining deterministic publication.
+The Local agent may inspect or discuss these files, but its conversational edits do not become workflow state unless submitted through a supported typed operation.
 
 ## Human interaction
 
-Local may communicate with the user as a control-plane surface, but it does not invent semantic advice.
-
-Examples Local may surface directly:
+The preferred human interaction path is:
 
 ```text
-workflow status
-current phase
-blocking WorkItem/failure category
-request for an already-defined authorization
-structured HumanActionNeed produced by policy/agent
-exact PR/head/check state
+specialist/policy produces PendingAction
+  -> Orchestrator persists it
+  -> workflow tool/event exposes it
+  -> Local Agent presents it to User
+  -> User responds
+  -> Local Agent submits typed response
+  -> Orchestrator validates and commits transition
 ```
 
-If the workflow requires a semantic clarification question, a Planner/Reviewer or dedicated clarification capability should produce the question artifact. Local presents it and records the user's response.
+This keeps Local useful as the user-facing agent while preserving deterministic authority.
 
 ## Determinism definition
 
-For Local/Orchestrator, determinism means:
+For the Orchestrator Runtime:
 
-> Given the same authoritative workflow state, accepted artifacts, observed external receipts/state, and policy/schema versions, Local chooses the same valid control transition without model inference.
+> Given the same authoritative workflow state, accepted artifacts, explicit tool inputs, observed external receipts/state, and policy/schema versions, the same valid control transition is chosen without model inference.
 
-External observations can change over time, but once captured as typed observations/receipts, transition logic is code-defined.
-
-## Relationship to nondeterministic execution
-
-Nondeterminism is explicitly pushed to bounded activities:
-
-```text
-Planner reasoning
-Research/web exploration
-Research synthesis
-Worker implementation generation
-Reviewer evaluation
-model-assisted verification
-```
-
-Their outputs cross back into Local only as typed artifacts subject to schema, provenance, authority, and exact-input validation.
-
-Local never needs to replay hidden chain-of-thought to recover workflow state.
+The Local agent itself is not required to be deterministic.
 
 ## Consequences
 
 ### Positive
 
-- one unambiguous control-plane boundary;
-- Local can be tested as a state machine without model/eval variance;
-- recovery/reconciliation does not depend on reproducing semantic reasoning;
-- role ownership becomes clearer: Planner plans, Research researches, Reviewer judges, Worker mutates/implements, Local coordinates;
-- hidden semantic coupling and prompt-injection authority inside orchestration are reduced;
-- changing models/providers does not change orchestration semantics.
+- preserves the current tool/client architecture;
+- Local can remain a capable conversational reasoning agent;
+- deterministic workflow correctness does not depend on Local hidden reasoning;
+- user authority enters through explicit auditable commands/responses;
+- the workflow can be driven by different Local agents/harnesses without changing state-machine semantics;
+- reconnect/recovery works from durable state rather than conversational memory;
+- adaptive clarification/authorization can be modeled cleanly as pending actions.
 
 ### Costs
 
-- some cases that a smart local LLM could improvise around must instead create explicit reasoning WorkItems;
-- shared-context synthesis requires schemas and possibly dedicated synthesis WorkItems;
-- initial user ambiguity may require an extra Planner/clarification turn;
-- capability contracts must be rich enough that Local can route without reading prose semantically.
+- the tool/API needs a richer typed pending-action response contract for vNext;
+- Local may know useful information conversationally that must be explicitly submitted before the workflow can use it;
+- status/action schemas must contain enough information for a client agent to present useful choices without reading private runtime state.
 
 ## Invariants
 
-> Local and Orchestrator are the same logical deterministic control-plane actor.
+> Local Agent is a reasoning-capable workflow client/operator; it is not the authoritative workflow state machine.
 
-> Local/Orchestrator does not use model reasoning to choose workflow transitions, interpret evidence, plan, review, summarize, or synthesize semantic content.
+> The Orchestrator Runtime / WorkflowEngine is deterministic and does not use model reasoning to choose control transitions.
 
-> WorkflowEngine is an implementation component of the Local/Orchestrator control plane, not a separate reasoning role.
+> Only explicit validated workflow-tool inputs may change authoritative workflow state; Local-agent conversation context and hidden reasoning never do so implicitly.
 
-> When a transition requires semantic judgment, Local routes a typed WorkItem to a reasoning capability or fails closed; it never silently performs the judgment itself.
+> User decisions are carried through Local Agent but become authority only after matching a persisted pending action/policy gate and passing runtime validation.
 
-> Local validates semantic artifacts structurally and by authority/context, not by replacing the producing role's semantic judgment with its own.
-
-> Shared-context publication is selected and rendered by deterministic policy over agent-produced shared-view artifacts; Local does not subjectively curate prose.
+> When workflow progress requires semantic judgment, the deterministic Orchestrator routes a typed reasoning WorkItem rather than performing that judgment itself.
