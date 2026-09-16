@@ -1,7 +1,7 @@
 # Software Requirements Specification — vNext PR Shared Workspace
 
 - **Status:** proposed requirements; not implemented production contract
-- **Version:** 0.2
+- **Version:** 0.3
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
 - **Decision:** [`ADR/0013-pr-workspace-projection.md`](./ADR/0013-pr-workspace-projection.md)
@@ -14,13 +14,15 @@ It extends, but does not override, the core vNext requirements in `SRS-VNEXT.md`
 
 For current production behavior, current code and the as-built contracts remain authoritative. None of the requirements below are implemented merely because this document exists.
 
-The PR workspace is explicitly **not** the authoritative workflow state store. Authoritative artifacts, Findings, Needs, WorkItems, graph state, InputBundles, approvals, budgets, and authority gates remain in the Local deterministic runtime.
+The PR workspace is explicitly **not** the authoritative workflow state store. Authoritative Artifacts, Findings, Needs, WorkItems, InputBundles, approvals, budgets, and authority gates remain in the deterministic Orchestrator Runtime.
+
+The Local Agent may inspect/explain this state through workflow APIs, but it is not an alternate state store or publication authority.
 
 ## 2. Functional requirements
 
 ### PW-FR-001 — Curated shared workspace
 
-After the implementation PR exists, runtime policy may maintain a small temporary shared workspace on the PR branch for information that materially benefits multiple agents.
+After the implementation PR exists, software-profile runtime policy may maintain a small temporary shared workspace on the PR branch for information that materially benefits multiple agents.
 
 The workspace shall not mirror all runtime artifacts or execution state.
 
@@ -49,72 +51,67 @@ The runtime shall not require a per-artifact directory tree, graph-state dump, e
 
 ### PW-FR-004 — `PLAN.md` semantics
 
-`PLAN.md` shall contain a human/model-readable projection of material shared planning context, such as objective, constraints, acceptance criteria, implementation approach, important assumptions, and major plan revisions.
+`PLAN.md` shall contain a human/model-readable projection of material shared planning context produced by Planner-owned typed views.
 
-The authoritative PlanArtifact/version remains in Local state.
+The authoritative PlanArtifact/version remains in Orchestrator durable state.
 
 ### PW-FR-005 — `TODO.md` semantics
 
-`TODO.md` shall contain broadly useful outstanding work, such as implementation tasks, major unresolved review findings, material research questions, and required validation.
+`TODO.md` shall contain broadly useful outstanding work derived from structured shared items, such as implementation tasks, major unresolved review findings, material research questions, and required validation.
 
-It shall not be the scheduler queue and shall not replace WorkItems or graph dependencies.
+It shall not be the scheduler queue and shall not replace WorkItems or graph/dependency state.
 
 ### PW-FR-006 — `RESEARCH.md` semantics
 
-`RESEARCH.md` shall contain only research/evidence conclusions expected to materially help multiple downstream roles.
+`RESEARCH.md` shall contain only research/evidence conclusions explicitly produced for shared publication by authorized reasoning capabilities.
 
-It may include important repository facts, external evidence, discovered constraints, relevant contradictions/uncertainty, and source references.
-
-The runtime shall not publish every EvidenceArtifact merely because it exists.
+The Orchestrator shall not select semantic importance by reading raw evidence prose.
 
 ### PW-FR-007 — `STATUS.md` semantics
 
-`STATUS.md` may expose a compact non-authoritative view of broad collaboration progress, latest meaningful checkpoint, implementation head, important blockers, and navigation guidance.
+`STATUS.md` may expose a compact non-authoritative deterministic projection of broad collaboration progress, current implementation head, important blockers, PendingActions, and navigation guidance.
 
-It shall not override Local state.
+It shall not override authoritative run state.
 
 ### PW-FR-008 — Optional `ROADMAP.md`
 
 `ROADMAP.md` shall be optional and used only when the task has enough major milestones to justify persistent cross-agent roadmap context.
 
+Its semantic content shall originate from a Planner/shared-view artifact rather than Orchestrator or Local Agent semantic synthesis.
+
 ### PW-FR-009 — Runtime state remains authoritative
 
 The workflow shall remain semantically correct if shared PR files are unavailable, stale, deleted, or unreadable.
 
-A failure to publish shared context may block a Website agent that depends on that transport, but shall not redefine authoritative workflow state.
+A failure to publish shared context may block an agent capability that depends on that transport, but shall not redefine authoritative workflow state.
 
-### PW-FR-010 — Curated publication policy
+### PW-FR-010 — Deterministic publication policy
 
-Runtime/Orchestrator policy shall select information for PR publication based on cross-agent usefulness rather than one-to-one artifact mirroring.
+Orchestrator policy shall select publication candidates using code-owned schema/provenance/status/publication rules rather than free-form semantic curation.
 
-A typical publication rule is:
+If publication suitability cannot be decided without semantic judgment, the workflow shall delegate that judgment to a reasoning capability or fail closed.
 
-```text
-publish when another role is reasonably expected to need the information
-keep internal otherwise
-```
-
-### PW-FR-011 — Correctness-critical dependency remains Local
+### PW-FR-011 — Correctness-critical dependency remains explicit
 
 Information visible in a PR workspace file shall not automatically become a correctness-bearing WorkItem input.
 
-When correctness depends on a specific fact/artifact, Local state shall retain explicit artifact/InputBundle provenance regardless of whether a readable summary also appears on the PR branch.
+When correctness depends on a specific fact/artifact, authoritative Artifact/InputBundle provenance shall remain explicit regardless of whether a readable summary also appears on the PR branch.
 
-### PW-FR-012 — PR text cannot mutate Local authority
+### PW-FR-012 — PR text cannot mutate Orchestrator authority
 
 Editing `PLAN.md`, `TODO.md`, `RESEARCH.md`, `STATUS.md`, or `ROADMAP.md` shall not directly change authoritative workflow state.
 
-Any semantic state change must pass through normal typed-artifact/control validation by the Local Orchestrator/WorkflowEngine.
+Any semantic state change must pass through normal typed Artifact/control validation by the Orchestrator Runtime.
 
 ### PW-FR-013 — Producer mutation authority remains unchanged
 
 Research and Reviewer shall not gain repository mutation authority because their information can be represented in the shared workspace.
 
-A mutation-capable transport may publish accepted shared context on their behalf.
+Only Worker may perform repository commits under an authorized mutation WorkItem.
 
 ### PW-FR-014 — Traceable shared meaning
 
-When shared workspace content materially represents another agent's result or an accepted decision, the Local runtime should retain enough provenance to identify the source artifact/decision from which that content was curated.
+When shared workspace content materially represents another capability's result or accepted decision, runtime state shall retain enough provenance to identify the source Artifact/decision from which that content was derived.
 
 The PR file itself need not be the canonical artifact.
 
@@ -122,21 +119,21 @@ The PR file itself need not be the canonical artifact.
 
 Shared files should be updated at meaningful synchronization points rather than on every graph/event transition.
 
-Appropriate triggers include:
+Appropriate deterministic triggers include:
 
 ```text
-initial plan becomes ready
-research materially changes shared understanding
+initial active PlanSharedView becomes ready
+research materially changes an accepted ResearchSharedView
 material plan revision
 meaningful Worker implementation checkpoint
-Reviewer discovers a broadly relevant blocker
-major TODO set changes
-before starting a role that needs fresher shared context
+Reviewer emits a broadly relevant structured blocker
+shared TODO set changes
+before starting a capability whose policy requires fresher shared context
 ```
 
-### PW-FR-016 — Internal runtime noise is excluded
+### PW-FR-016 — Internal runtime noise excluded
 
-The PR workspace shall not be used for provider progress, retries, leases/heartbeats, raw graph-node state, raw tool output, or other control-plane noise.
+The PR workspace shall not be used for provider progress, retries, leases/heartbeats, raw graph/run state, raw tool output, or other control-plane noise.
 
 ### PW-FR-017 — Batched checkpoint commits
 
@@ -154,13 +151,13 @@ Reviewer -> PLAN.md + RESEARCH.md + implementation diff
 Research -> PLAN.md + TODO.md + bounded research question
 ```
 
-These files provide situational awareness; formal exact WorkItem inputs remain controlled by Local state.
+These files provide situational awareness; formal exact WorkItem inputs remain controlled by InputBundles.
 
 ### PW-FR-019 — Physical PR head remains literal
 
 Every committed shared-workspace update changes the physical PR head SHA.
 
-Runtime shall not reuse an exact-head final approval after any such commit.
+Runtime shall not reuse an exact-head final assessment/approval after any such commit.
 
 ### PW-FR-020 — Collaboration evaluation is provisional
 
@@ -170,7 +167,7 @@ It may create Findings, Needs, repairs, or additional research.
 
 ### PW-FR-021 — Collaboration/final-review boundary
 
-The target lifecycle shall distinguish at least:
+The software profile may distinguish at least:
 
 ```text
 COLLABORATION
@@ -180,9 +177,11 @@ FINAL_REVIEW
 
 `COLLABORATION` permits curated shared-file updates and adaptive work.
 
-`COLLABORATION_COMPLETE` freezes collaboration content and prepares a clean implementation head.
+`COLLABORATION_COMPLETE` freezes collaboration publication and prepares a clean implementation head.
 
 `FINAL_REVIEW` evaluates only the cleaned exact head.
+
+These are software-profile lifecycle concepts, not mandatory generic kernel phases.
 
 ### PW-FR-022 — Temporary shared files removed before final review
 
@@ -192,7 +191,7 @@ A file may remain only if explicitly promoted as a real product deliverable rath
 
 ### PW-FR-023 — Cleanup verification
 
-Before entering `FINAL_REVIEW`, deterministic checks shall establish at least:
+Before entering software-profile final review, deterministic Orchestrator checks shall establish at least:
 
 ```text
 reserved temporary workspace absent from final tree
@@ -202,9 +201,9 @@ no required deliverable was accidentally removed
 
 ### PW-FR-024 — Cleanup invalidates prior exact-head evidence
 
-Workspace cleanup changes PR head and therefore invalidates prior exact-head review/health evidence.
+Workspace cleanup changes PR head and therefore invalidates prior exact-head assessment/health evidence.
 
-Final review and health shall bind to the post-cleanup head.
+Final review and health shall bind the post-cleanup head.
 
 ### PW-FR-025 — Reopen on final-review defect
 
@@ -216,9 +215,9 @@ Shared-workspace commits may trigger CI. Runtime policy should minimize unnecess
 
 Repository CI behavior shall be validated rather than assumed.
 
-### PW-FR-027 — Required-check correctness remains unchanged
+### PW-FR-027 — Required-check correctness unchanged
 
-Shared-workspace optimizations shall not weaken current exact-head CI/health semantics or intentionally leave required checks permanently Pending.
+Shared-workspace optimizations shall not weaken exact-head CI/health semantics or intentionally leave required checks permanently Pending.
 
 ### PW-FR-028 — Sensitive-data prohibition
 
@@ -228,13 +227,13 @@ Deleting a committed file shall not be treated as secure erasure from Git/PR his
 
 ### PW-FR-029 — Optional transport
 
-The architecture shall permit PR shared-workspace publication to be disabled in the future while retaining the core Local artifact/WorkItem/InputBundle model.
+The architecture shall permit PR shared-workspace publication to be disabled while retaining the core Artifact/WorkItem/InputBundle model.
 
 No correctness-bearing semantic artifact shall require Git publication as its only persistence mechanism.
 
 ### PW-FR-030 — Status observability
 
-Runtime/operator status may expose whether shared context is current enough for the next role, the latest collaboration checkpoint commit, publication failures, and whether final review is operating on a clean workspace-free head.
+Runtime/operator status may expose whether shared context is current enough for the next capability, latest collaboration checkpoint commit, publication failures, and whether final review is operating on a clean workspace-free head.
 
 ## 3. Default workspace
 
@@ -247,38 +246,33 @@ Runtime/operator status may expose whether shared context is current enough for 
   # ROADMAP.md optional
 ```
 
-The files should remain concise enough that a Website agent can read the relevant set at the beginning of a task without reconstructing the entire workflow history.
-
 ## 4. Example collaboration flow
 
 ```text
 Research produces detailed internal evidence artifacts
-  -> Local persists authoritative evidence
-  -> Local curates broadly useful conclusions into RESEARCH.md
+  -> Orchestrator persists authoritative evidence
+  -> Research/Synthesis emits ResearchSharedView
+  -> deterministic publication policy renders RESEARCH.md
 
 Planner revises approach
-  -> Local accepts PlanArtifact v2
-  -> PLAN.md updated with material plan changes
-  -> TODO.md updated with new shared work
+  -> accepted PlanArtifact v2 / PlanSharedView
+  -> PLAN.md/TODO.md publication becomes eligible
 
 Worker begins/remediates implementation
-  -> reads PLAN.md / TODO.md / RESEARCH.md
-  -> implementation checkpoint may update STATUS.md/TODO.md
+  -> reads published PLAN/TODO/RESEARCH for situational awareness
+  -> exact correctness inputs still come from its WorkItem/InputBundle
 
 Reviewer inspects implementation
-  -> reads PLAN.md / RESEARCH.md
-  -> detailed Findings/Needs stay in Local state
-  -> only broadly relevant blocker is reflected in TODO.md/STATUS.md
+  -> detailed Findings/Needs remain authoritative runtime artifacts
+  -> only structured broadly relevant blocker is eligible for shared publication
 ```
-
-The PR provides shared situational awareness. Local still decides what is authoritative and what executes next.
 
 ## 5. Finalization flow
 
 ```text
 COLLABORATION
   -> shared files updated only at meaningful checkpoints
-  -> provisional convergence
+  -> provisional convergence toward a deliverable
 
 COLLABORATION_COMPLETE
   -> stop temporary shared-file publication
@@ -286,9 +280,9 @@ COLLABORATION_COMPLETE
   -> verify clean product diff
 
 FINAL_REVIEW
-  -> independent exact-head review
+  -> independent exact-head assessment/review
   -> required CI/health
-  -> existing user handoff/merge authority boundary
+  -> DeliveryArtifact / User validation / convergence according to software profile
 ```
 
 ## 6. Non-goals
@@ -304,4 +298,4 @@ This proposal does not make the PR:
 - a secret store;
 - a direct control channel between agents.
 
-The PR is simply a **curated shared notebook for agents**. Deterministic workflow state remains Local.
+The PR is a temporary shared notebook. Deterministic Orchestrator state remains authoritative; Local Agent remains the User-facing client/operator.
