@@ -2,6 +2,8 @@
 
 - **Status:** Proposed
 - **Date:** 2026-09-16
+- **Updated:** 2026-09-16 after core-SRS harmonization
+- **Related:** ADR-0010, ADR-0011, ADR-0012, ADR-0019
 
 ## Context
 
@@ -9,77 +11,80 @@ The current workflow preserves research and review outputs verbatim and delivers
 
 Free-form handoffs are useful for human-readable reasoning, yet they are a weak workflow protocol because the runtime must infer control meaning from prose. Examples include:
 
-- whether a reviewer needs more research or an implementation change;
-- which finding a new evidence packet resolves;
-- whether a result applies to the current plan/head;
+- whether a Reviewer needs more research, implementation change, plan change, requirements change, or clarification;
+- which Finding a new EvidenceArtifact resolves;
+- whether a result applies to the current criterion/plan/deliverable/exact subject;
 - who should consume the result next;
 - whether two requests are duplicates;
-- whether an artifact may be safely reused after state changes.
+- whether an Artifact may be safely reused after state changes.
 
-A dynamic graph requires explicit machine-readable state and causal relationships.
+Adaptive durable workflows therefore require explicit machine-readable semantic state and causal relationships.
 
 ## Decision
 
-Correctness-bearing inter-agent communication shall evolve toward **typed, schema-versioned, durable artifacts**.
+Correctness-bearing communication between reasoning capabilities and the deterministic Orchestrator shall evolve toward **typed, schema-versioned, durable Artifacts/Assessments**.
 
-Markdown remains allowed as an explanatory field, but it is not authoritative workflow control.
+Markdown/prose remains allowed as explanatory content, but it is not authoritative workflow control.
 
 Conceptual common envelope:
 
 ```yaml
 schemaVersion: "1"
 artifactId: artifact_0192
-workflowId: wf_123
+workflowRunId: run_123
 producer:
-  role: reviewer
-  instance: review-a
+  capability: review
+  executionRef: exec_77
 context:
-  planVersion: 4
-  headSha: def456
-type: action_request
+  criterionSetVersion: AC-4
+  inputBundleRef: IB-31
+type: finding
 payload:
-  need: external_evidence
-  subject:
-    findingId: REV-A-009
-  question: Does package X guarantee behavior Y?
-  blocking: true
+  findingId: F-9
+  need:
+    type: external_evidence
+    question: Does package X guarantee behavior Y?
 markdown: |
   Human/model-readable explanation.
 ```
 
-The exact schema may differ by artifact type, but every correctness-bearing artifact must expose enough structured identity for deterministic validation, persistence, routing, and reuse decisions.
+The exact schema differs by Artifact/Assessment type, but every correctness-bearing object must expose enough structured identity for deterministic validation, persistence, routing, lineage, stale-state detection, and reuse decisions.
 
-## Artifact classes
+## Semantic families
 
-Initial target classes include:
+Initial target families include:
 
 ```text
-objective / constraints / acceptance criteria
-plan / plan revision
+User source / imported source input
+Objective / constraints / acceptance criteria
+Plan / plan revision / assumptions
 claim / evidence / contradiction
-finding
-need / action request
-implementation result
-validation result
-review result / approval
-external receipt
-routing decision
+Finding
+Need
+implementation/generated output
+validation/verification result
+CriterionAssessment / review assessment
+Report
+Delivery
+UserFeedback
+proposed requirements revision
 ```
 
-The runtime may add more classes as concrete requirements appear.
+Runtime control records such as WorkItem, InputBundle, PendingAction, Timer, ExternalEvent, execution receipts, budgets, and routing decisions are distinct from semantic Artifacts even when they reference one another.
 
 ## Artifact properties
 
-Correctness-bearing artifacts should be:
+Correctness-bearing Artifacts/Assessments should be:
 
 - schema-versioned;
-- immutable after commit, or replaced only through explicit supersession;
+- immutable after commit, or changed only through explicit supersession/versioning;
 - hashable/content-addressable where practical;
-- bound to workflow identity;
-- bound to exact plan/repository/PR/head context where applicable;
-- attributable to a producer role/node;
-- machine-validated before state transition or routing;
-- persisted outside transient model conversation context.
+- bound to WorkflowRun identity;
+- bound to exact criterion/plan/input/deliverable/repository/head context where applicable;
+- attributable to a producer capability/execution;
+- machine-validated before authoritative state transition or routing;
+- persisted outside transient Local/provider conversation context;
+- lineage-addressable for reuse/invalidation/continuation.
 
 ## Relationship to ADR-0002
 
@@ -102,54 +107,71 @@ free-form payload -> verbatim next agent
 Instead:
 
 ```text
-typed artifact
+typed Artifact / Assessment
   + exact structured payload
-  + optional verbatim explanatory Markdown
-  -> deterministic persistence/routing
+  + optional explanatory prose
+  -> deterministic validation / persistence / routing
 ```
 
-A schema transformation is allowed only when it is an explicit, versioned runtime operation that preserves provenance. Silent LLM reinterpretation is not a valid transport mechanism.
+A correctness-bearing schema transformation is allowed only when it is explicit, versioned, provenance-preserving, and deterministic or produced through a typed authorized capability contract. Silent LLM reinterpretation is not a valid transport mechanism.
 
-## Shared state
+## Shared state and exact delivery
 
-The durable artifact set forms a workflow blackboard/shared state. Agents receive the smallest relevant subset of exact artifacts needed for their task rather than the entire accumulated transcript.
+The durable Artifact set forms semantic shared state, but persistence is not broadcast delivery.
 
-This does not make the artifact store an event-sourced workflow engine. The authoritative graph/job snapshot may remain the state-machine authority while artifacts provide the correctness-bearing data referenced by graph nodes and transitions.
+Capability executions receive the smallest exact relevant subset through InputBundles rather than the entire accumulated workflow history.
 
-## Logical Worker terminology
+An Artifact may exist in shared state while being absent from a particular WorkItem InputBundle.
 
-The target logical role previously called **Writer** becomes **Worker**.
+The ArtifactStore is not itself the workflow state machine. WorkflowRun/control records remain authoritative for lifecycle, execution authorization, dependencies, interaction, budgets, and convergence.
 
-For the current simplification, Worker combines two conceptual capabilities:
+## Roles versus capabilities
 
-- **Worker:** execute implementation/mutation work;
-- **Generator:** produce final/generated artifacts from validated inputs.
+The generic kernel is capability-driven and does not require one universal role topology.
 
-The existing account/route name `chatgpt-writer` may remain temporarily as an implementation identifier. Renaming the logical role does not require an immediate account migration.
+Planner, Research, Worker, Reviewer, Synthesis, Verification, and other logical roles may be useful executor identities for particular profiles, but capability contracts are the stable semantic execution boundary.
+
+### Software-profile Worker terminology
+
+For software/profile flows that contain an implementation/generation role, the target logical role previously called **Writer** is named **Worker**.
+
+In that profile, Worker may cover capabilities such as:
+
+- authorized implementation/repository mutation;
+- generated output production from validated inputs.
+
+This naming does **not** make Worker mandatory for research, monitoring, or other profiles.
+
+The existing account/route name `chatgpt-writer` may remain temporarily as a transport identifier during migration. Renaming the logical software role does not require an immediate account migration.
 
 ## Consequences
 
 ### Positive
 
 - routing can be deterministic instead of prose-inferred;
-- findings and evidence can have persistent lifecycle and provenance;
-- exact-input reuse/invalidation can extend beyond PR head checks;
-- equivalent requests can be deduplicated;
-- agents can receive smaller, task-relevant context;
-- workflow replay/debugging becomes more precise;
-- future specialist roles can be added without changing upstream agents' prose conventions.
+- Findings, Evidence, Assessments, Deliveries, and feedback can have persistent lifecycle/provenance;
+- exact-input reuse/invalidation extends beyond PR head checks;
+- equivalent requests can be deduplicated under typed policy;
+- capability executions receive smaller task-relevant context;
+- replay/debugging/audit become more precise;
+- new profiles/capabilities can be added without changing upstream prose conventions;
+- software-era Worker terminology no longer leaks into every generic workflow.
 
 ### Costs
 
 - schemas require versioning and migration policy;
-- artifact validation/storage becomes a first-class runtime responsibility;
-- models must produce outputs that satisfy structured contracts;
-- the runtime must distinguish human-readable explanation from authoritative structured fields.
+- Artifact/Assessment validation/storage becomes first-class runtime responsibility;
+- reasoning executors must produce outputs satisfying structured contracts;
+- runtime must distinguish semantic Artifacts from control records and explanatory prose.
 
 ## Invariants
 
-> Correctness-bearing inter-agent coordination is represented by validated typed artifacts, not by inference over unstructured conversation text.
+> Correctness-bearing semantic coordination is represented by validated typed Artifacts/Assessments, not inference over unstructured conversation text.
 
-> Routing may preserve and present explanatory Markdown, but control meaning comes from structured artifact fields.
+> Routing may preserve explanatory prose, but authoritative control meaning comes from validated structured fields.
 
-> The target logical implementation/generation role is Worker; the existing `chatgpt-writer` account name may remain a transport detail during migration.
+> Persistence in shared Artifact state does not imply broadcast delivery; exact InputBundles determine correctness-bearing consumption.
+
+> The generic kernel is capability-driven; Worker is a software-profile logical role where applicable, not a mandatory universal actor.
+
+> The existing `chatgpt-writer` account name may remain a transport detail during migration without defining generic workflow semantics.
