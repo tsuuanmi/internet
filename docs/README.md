@@ -104,13 +104,14 @@ These are production-oriented proposals, not implemented behavior:
 
 - [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md) — target domain-agnostic adaptive artifact-based architecture.
 - [`WORKFLOW-VNEXT-USE-CASES.md`](./WORKFLOW-VNEXT-USE-CASES.md) — concrete end-to-end product journeys: feature-to-PR/user-feedback/merge and research-to-report-to-implementation continuation.
-- [`SRS-VNEXT.md`](./SRS-VNEXT.md) — proposed core testable vNext requirements.
+- [`SRS-VNEXT.md`](./SRS-VNEXT.md) — harmonized core umbrella vNext requirements.
 - [`SRS-VNEXT-ADMISSION.md`](./SRS-VNEXT-ADMISSION.md) — natural-language to machine-readable admission requirements.
 - [`SRS-VNEXT-KERNEL.md`](./SRS-VNEXT-KERNEL.md) — domain-agnostic durable kernel requirements.
-- [`SRS-VNEXT-ORCHESTRATOR.md`](./SRS-VNEXT-ORCHESTRATOR.md) — Local Agent client versus deterministic Orchestrator/WorkflowEngine boundary.
+- [`SRS-VNEXT-ORCHESTRATOR.md`](./SRS-VNEXT-ORCHESTRATOR.md) — Local Agent client versus deterministic Orchestrator boundary.
 - [`SRS-VNEXT-PLANNER.md`](./SRS-VNEXT-PLANNER.md) — User Objective / Acceptance Criteria / Plan / PlanTask / Need / WorkItem lifecycle.
 - [`SRS-VNEXT-INTERACTION.md`](./SRS-VNEXT-INTERACTION.md) — autonomous-by-default workflow plus durable User/Local-Agent external interaction.
-- [`SRS-VNEXT-CONTINUATION.md`](./SRS-VNEXT-CONTINUATION.md) — Workstream/WorkflowRun continuity, User feedback, delivery checkpoints, and cross-run artifact lineage.
+- [`SRS-VNEXT-CONVERGENCE.md`](./SRS-VNEXT-CONVERGENCE.md) — criterion-scoped assessment and deterministic profile convergence.
+- [`SRS-VNEXT-CONTINUATION.md`](./SRS-VNEXT-CONTINUATION.md) — Workstream/WorkflowRun continuity, User feedback, delivery checkpoints, and retention-safe cross-run artifact lineage.
 - [`SRS-VNEXT-PR-WORKSPACE.md`](./SRS-VNEXT-PR-WORKSPACE.md) — curated temporary PR collaboration memory for the software-engineering profile.
 - [`SRS-VNEXT-GIT-MUTATION.md`](./SRS-VNEXT-GIT-MUTATION.md) — expected-head scoped Git mutation/reconciliation for the software-engineering profile.
 
@@ -128,6 +129,7 @@ Proposed ADRs:
 - [`ADR/0018-workflow-admission-protocol.md`](./ADR/0018-workflow-admission-protocol.md)
 - [`ADR/0019-domain-agnostic-durable-workflow-kernel.md`](./ADR/0019-domain-agnostic-durable-workflow-kernel.md)
 - [`ADR/0020-workstream-run-continuation.md`](./ADR/0020-workstream-run-continuation.md)
+- [`ADR/0021-criterion-assessment-and-convergence.md`](./ADR/0021-criterion-assessment-and-convergence.md)
 
 ### Product interaction model
 
@@ -145,13 +147,16 @@ Local Agent
         |
         | typed workflow protocol
         v
+WorkflowService / API boundary
+        |
+        v
 Deterministic Orchestrator Runtime
         |
         v
 Capabilities / durable workflow state
 ```
 
-The User should not need to know `/workflow status`, `/workflow continue`, or other internal commands in normal use. The Local Agent queries/updates the workflow tool and explains the authoritative machine state conversationally. Slash commands remain useful as explicit CLI/debug/operator shortcuts.
+The User should not need to know `/workflow status`, `/workflow continue`, or other internal commands in normal use. The Local Agent queries/updates the workflow tool and explains authoritative machine state conversationally. Slash commands remain useful as explicit CLI/debug/operator shortcuts.
 
 ### Workflow admission protocol
 
@@ -161,7 +166,7 @@ Natural-language requests do not become authoritative workflow state directly.
 User source
   -> Local Agent compiles WorkflowAdmissionDraft
   -> deterministic Orchestrator preflight
-  -> AdmissionPreview
+  -> durable AdmissionPreview / confirmation when required
   -> AUTO_SUBMIT / LOCAL_CONFIRM / USER_CONFIRM
   -> exact accepted AdmissionSpec/hash
   -> workflow activation
@@ -209,7 +214,7 @@ follow-up after terminal completion
 
 A reviewed PR, report candidate, dataset, or other usable result may be delivered before the run is terminal. `Artifact delivered != WorkflowRun completed`.
 
-Cross-run continuation explicitly references source WorkflowRuns and selected Artifacts; completed-run history is never reopened or silently rewritten.
+Cross-run continuation preserves source ownership and imports exact correctness-bearing child snapshots with source run/artifact/hash lineage before depending on source payloads that may later be retention-cleaned.
 
 ### Latest vNext authority model
 
@@ -224,9 +229,14 @@ Local Agent
   = resolves conversational references to exact typed targets before mutation
   = may reason, but hidden reasoning is not durable workflow authority
 
-Orchestrator Runtime / WorkflowEngine
+WorkflowService / API
+  = caller authorization + typed request dispatch boundary
+
+Orchestrator Runtime
   = deterministic control plane
-  = validation / persistence / routing / scheduling / reconciliation / gates
+  = validation / persistence / Need materialization / routing
+  = scheduling / fencing / reconciliation / invalidation / gates
+  = assessment freshness + profile convergence evaluation
   = no model reasoning for authoritative state transitions
 
 Capabilities / specialist agents
@@ -264,11 +274,16 @@ AuthorityPolicy
 ConvergencePolicy
 ```
 
-Long-running dependencies may be satisfied by:
+A typed Need may materialize as:
 
 ```text
-WorkItem       -> internal capability execution
-PendingAction  -> User/Local external input or authority
+WorkItem       -> internal executable capability
+PendingAction  -> external input/authority
+```
+
+Long-running dependencies may additionally wait on:
+
+```text
 Timer          -> durable time-based wakeup
 ExternalEvent  -> webhook/signal/observed condition
 ```
@@ -318,11 +333,34 @@ User/Admission source
   -> ObjectiveArtifact
   -> AcceptanceCriteriaArtifact
   -> PlanArtifact / PlanTask
-  -> NeedArtifact
+  -> Need
   -> Orchestrator materializes WorkItem or PendingAction
 ```
 
 Ordinary replanning changes strategy/decomposition, not the definition of success. Requirements/criteria changes follow their own provenance/authority path and may create User-authority PendingActions.
+
+### Assessment and convergence
+
+Workflow vNext distinguishes:
+
+```text
+WorkItem completed
+!= PlanTask execution complete
+!= Criterion assessed satisfied
+!= WorkflowRun converged
+```
+
+Semantic criterion satisfaction is represented by current typed `CriterionAssessment`/Assessment artifacts bound to exact criterion/subject/input/evidence identity.
+
+Baseline semantic verdicts are:
+
+```text
+SATISFIED
+UNSATISFIED
+INCONCLUSIVE
+```
+
+The Orchestrator evaluates deterministic profile convergence over current typed state; it does not decide semantic truth by reading prose. Budget/timeout/stagnation exhaustion never means success.
 
 ### Capability/profile model
 
@@ -332,18 +370,20 @@ Example profiles:
 
 ```text
 software_change.v1
+  planning
   repository_research
   implementation
   git_mutation
-  code_review
+  code_review / assessment
   ci_verification
 
 deep_research.v1
+  planning
   web_research
   source_acquisition
   evidence_extraction
   research_synthesis
-  citation_verification
+  citation_verification / assessment
   report_generation
 
 monitoring.v1
@@ -368,7 +408,7 @@ A software workflow may temporarily contain:
   # ROADMAP.md optional
 ```
 
-These files are cross-agent collaboration memory only. Semantic views originate from the reasoning roles; the Orchestrator applies deterministic publication/render policy; Worker performs all Git writes. Temporary files are removed before final exact-head review.
+These files are cross-agent collaboration memory only. Semantic views originate from reasoning roles; the Orchestrator applies deterministic publication/render policy; Worker performs all Git writes. Temporary files are removed before final exact-head review.
 
 ### Recoverability and long-running execution
 
@@ -386,9 +426,21 @@ uncertain side-effect responses
 runtime/profile/model upgrades during long workflows
 ```
 
-Recovery is based on durable workflow state, typed artifacts, exact InputBundles, execution fencing, receipts, timers/events, and external observation. Hidden chain-of-thought or transient conversations are never replay state.
+Recovery is based on durable workflow state, typed Artifacts/Assessments, exact InputBundles, execution fencing, Receipts, Timers/Events, and external observation. Hidden chain-of-thought or transient conversations are never replay state.
 
-Long-lived workflows bind relevant schema/profile/policy/capability/agent-definition versions and do not silently resume under incompatible definitions.
+Long-lived WorkflowRuns bind relevant schema/profile/policy/capability/agent-definition versions and do not silently resume under incompatible definitions.
+
+### Migration boundary
+
+The current `WorkflowJob` v3 software runtime remains supported while vNext is introduced.
+
+```text
+current jobs/ + current v3 behavior
+        coexist with
+vNext admissions/runs/artifacts/work-items/actions/workstreams
+```
+
+vNext should adapt existing production executors and recovery/fencing mechanics where appropriate before introducing duplicate execution implementations.
 
 ### vNext research notes
 
@@ -396,16 +448,17 @@ Long-lived workflows bind relevant schema/profile/policy/capability/agent-defini
 
 ## Architecture decisions
 
-Accepted current ADRs remain historical/as-built authority according to their status. Proposed ADRs 0009–0020 define target vNext intent only.
+Accepted current ADRs remain historical/as-built authority according to their status. Proposed ADRs 0009–0021 define target vNext intent only.
 
 Notable current/vNext relationship:
 
 - [`ADR/0001-local-control-plane.md`](./ADR/0001-local-control-plane.md) — current Local Agent is user-facing workflow client/authority broker; WorkflowEngine deterministically orchestrates.
 - [`ADR/0015-deterministic-local-orchestrator.md`](./ADR/0015-deterministic-local-orchestrator.md) — **Proposed:** preserves and sharpens that client/runtime boundary for vNext.
 - [`ADR/0017-autonomous-external-interaction.md`](./ADR/0017-autonomous-external-interaction.md) — **Proposed:** autonomous execution continues until an actual external dependency requires durable interaction.
-- [`ADR/0018-workflow-admission-protocol.md`](./ADR/0018-workflow-admission-protocol.md) — **Proposed:** natural-language intent is compiled/preflighted/confirmed as a typed admission protocol before activation.
-- [`ADR/0019-domain-agnostic-durable-workflow-kernel.md`](./ADR/0019-domain-agnostic-durable-workflow-kernel.md) — **Proposed:** coding/research/monitoring are profiles above one artifact-based durable workflow kernel.
-- [`ADR/0020-workstream-run-continuation.md`](./ADR/0020-workstream-run-continuation.md) — **Proposed:** continuous User projects span bounded WorkflowRuns through explicit continuation and artifact lineage.
+- [`ADR/0018-workflow-admission-protocol.md`](./ADR/0018-workflow-admission-protocol.md) — **Proposed:** natural-language intent is compiled/preflighted/confirmed as a typed durable admission protocol before activation.
+- [`ADR/0019-domain-agnostic-durable-workflow-kernel.md`](./ADR/0019-domain-agnostic-durable-workflow-kernel.md) — **Proposed:** coding/research/monitoring are profiles above one Artifact/Assessment-based durable workflow kernel.
+- [`ADR/0020-workstream-run-continuation.md`](./ADR/0020-workstream-run-continuation.md) — **Proposed:** continuous User projects span bounded WorkflowRuns through explicit continuation and retention-safe Artifact lineage.
+- [`ADR/0021-criterion-assessment-and-convergence.md`](./ADR/0021-criterion-assessment-and-convergence.md) — **Proposed:** semantic criterion satisfaction is represented by exact-subject typed Assessments and completion is a deterministic profile convergence predicate.
 
 ## Document authority table
 
@@ -418,43 +471,67 @@ Notable current/vNext relationship:
 | `WORKFLOW-OPERATOR-CONTRACT.md` | current workflow control/inspection | current operator contract |
 | `WORKFLOW-VNEXT.md` | vNext overview | proposed architecture narrative |
 | `WORKFLOW-VNEXT-USE-CASES.md` | concrete target product journeys | explanatory design anchor |
-| `SRS-VNEXT.md` | vNext core requirements | proposed requirements |
+| `SRS-VNEXT.md` | vNext core umbrella | proposed requirements |
 | `SRS-VNEXT-ADMISSION.md` | workflow admission | proposed specialized requirements |
 | `SRS-VNEXT-KERNEL.md` | generic durable kernel | proposed specialized requirements |
 | `SRS-VNEXT-ORCHESTRATOR.md` | client/runtime boundary | proposed specialized requirements |
 | `SRS-VNEXT-PLANNER.md` | semantic planning lifecycle | proposed specialized requirements |
 | `SRS-VNEXT-INTERACTION.md` | durable external interaction | proposed specialized requirements |
+| `SRS-VNEXT-CONVERGENCE.md` | criterion assessment and convergence | proposed specialized requirements |
 | `SRS-VNEXT-CONTINUATION.md` | Workstream/continuation/user feedback | proposed specialized requirements |
 | `SRS-VNEXT-PR-WORKSPACE.md` | software-profile PR collaboration memory | proposed specialized requirements |
 | `SRS-VNEXT-GIT-MUTATION.md` | software-profile repository mutation protocol | proposed specialized requirements |
-| `ADR/0009..0020` | narrow vNext decisions | proposed decisions |
+| `ADR/0009..0021` | narrow vNext decisions | proposed decisions |
 | `WORKFLOW-VNEXT-RESEARCH.md` | external evidence/candidates | non-normative research |
+
+## Design Gate D0
+
+The production-readiness review/harmonization gate is complete at the design-contract level.
+
+Resolved before runtime implementation:
+
+```text
+Local Agent vs Orchestrator authority
+Need -> WorkItem | PendingAction
+plan_change vs requirements_change vs clarification
+graph as implementation mechanism, not universal semantic authority
+Workstream vs WorkflowRun
+retention-safe continuation imports
+CriterionAssessment + profile convergence
+v3 coexistence/migration boundary
+profile-scoped Worker terminology
+```
+
+The first runtime implementation milestone is `WorkflowService` plus centralized caller authorization consistency while preserving v3 behavior.
 
 ## Current completion boundary
 
-Workflow vNext remains outside the implemented completion boundary. Major proposed areas include:
+Workflow vNext remains outside the implemented completion boundary. Major proposed implementation areas include:
 
 ```text
-natural-language workflow admission protocol
-typed domain artifacts
+WorkflowService / authorization principal boundary
+durable natural-language workflow admission protocol
+parallel vNext WorkflowRun stores and runtime
+typed domain Artifacts/Assessments
 Workstream / WorkflowRun / DeliveryArtifact continuation model
 Finding / Need / WorkItem / PendingAction separation
 capability registry and workflow profiles
 exact sparse InputBundles
-artifact lineage / causal invalidation
-Local Agent <-> typed workflow protocol <-> deterministic Orchestrator boundary
+Artifact lineage / causal invalidation
 Planner objective/criteria/task separation
+baseline CriterionAssessment/profile convergence
 adaptive feedback routing
 first-class PendingAction / Timer / ExternalEvent
 scoped waiting with continued independent work
-runtime-approved dynamic graph motifs
-convergence/resource-budget policy
+runtime-approved execution/dependency motifs
+resource-budget / stagnation hardening
 verification capabilities
 general long-running/recoverable execution
 version-pinned long-lived workflow definitions
 software-profile PR collaboration workspace
 software-profile single-writer reconciled Git mutation protocol
 semantic coordination tracing / outcome evals
+v3 migration/retirement only after parity
 ```
 
 The vNext kernel explicitly targets non-coding use cases such as deep research and monitoring. Arbitrary user-authored executable DAGs, autonomous production deployment, degraded quorum modes, and multi-writer repository mutation remain separate design questions rather than assumptions of the generic kernel.
