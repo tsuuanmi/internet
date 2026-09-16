@@ -7,9 +7,9 @@ import {
 	WorkflowRepositoryError,
 } from "#internet/workflow/repository-context";
 import {
+	type WorkflowAuthorizationContext,
 	WorkflowServiceError,
 	workflowSessionAuthorizationContext,
-	type WorkflowAuthorizationContext,
 } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
 
