@@ -60,9 +60,11 @@ describe("parseWorkflowWriterResult", () => {
 
 describe("BrowserWorkflowWriterRunner", () => {
 	it("returns the persistent Writer URL and exact scoped implementation authority", async () => {
+		let observedAccount: string | undefined;
 		let observedRequest: Parameters<WorkflowWriterBrowser["chat"]>[1] | undefined;
 		const browser: WorkflowWriterBrowser = {
-			async chat(_accountId, request) {
+			async chat(accountId, request) {
+				observedAccount = accountId;
 				observedRequest = request;
 				return { text: prJson, url: conversationUrl };
 			},
@@ -75,10 +77,12 @@ describe("BrowserWorkflowWriterRunner", () => {
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
 		expect(result).toMatchObject({ status: "PR_OPEN", conversationUrl });
+		expect(observedAccount).toBe("chatgpt-writer");
 		expect(observedRequest).toMatchObject({
 			requestKey: "writer-request",
 			timeoutMs: policy.hardTimeoutMs,
 			stallTimeoutMs: policy.stallTimeoutMs,
+			responseRepresentation: "text",
 			confirmation: {
 				jobId,
 				writerSessionId,
@@ -86,6 +90,8 @@ describe("BrowserWorkflowWriterRunner", () => {
 				authority: "IMPLEMENTATION",
 			},
 		});
+		expect(observedRequest?.confirmation).not.toHaveProperty("accountId");
+		expect(observedRequest?.confirmation).not.toHaveProperty("sessionId");
 	});
 
 	it("returns Writer URL when delivering exact handoffs", async () => {
@@ -133,8 +139,11 @@ describe("BrowserWorkflowWriterRunner", () => {
 			job: job(),
 			control: createWorkflowControlMessage("START_IMPLEMENTATION", jobId),
 		});
+		expect(prompt).toContain("Required base branch: main");
+		expect(prompt).toContain("Required base revision");
 		expect(prompt).toContain("reconcile GitHub by the exact workflow branch");
 		expect(prompt).toContain("Reuse exactly one matching open PR");
+		expect(prompt).toContain("Never create a second workflow PR");
 		expect(prompt).toContain("never merge");
 	});
 });
