@@ -33,7 +33,6 @@ export declare class WorkflowEngine {
     reconcile(jobId: string, ownerInstanceId: string, at?: number): WorkflowJob;
     executeNode(jobId: string, nodeId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<WorkflowJob>;
     continue(jobId: string): WorkflowJob;
-    authorizeMerge(jobId: string, ownerSessionId: string, expectedHeadSha: string): WorkflowJob;
     blockSchedulerFailure(jobId: string, error: unknown): WorkflowJob;
     cancel(jobId: string): WorkflowJob;
     private runNode;
@@ -42,14 +41,14 @@ export declare class WorkflowEngine {
     private runWriterImplementation;
     private runReviewGate;
     private runWriterRemediation;
-    private runHealth;
-    private runMerge;
     private commitNodeResult;
     private commitReconciledResult;
     private handleExecutionFailure;
     private failNode;
     private block;
     private handleWriterNonSuccess;
+    private captureWriterConversation;
+    private updateWriterConversationUrl;
     private updateHandoffReceipts;
     private heartbeat;
     private recordTeamProgress;
@@ -67,7 +66,6 @@ export declare class WorkflowEngine {
     private handoffReceipt;
     private assertImplementationPr;
     private assertRemediationPr;
-    private assertHealth;
     private requirePr;
     private cycleFromNode;
     private teamSession;

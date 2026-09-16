@@ -38,7 +38,4 @@ export declare function createTeamStepInputReceipt(input: TeamStepInputReceiptIn
 export declare function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): WorkflowGraphSnapshot;
 export declare function buildReviewCycleNodes(input: ReviewCycleGraphInput): readonly WorkflowGraphNode[];
 export declare function buildRemediationNode(cycle: number): WorkflowGraphNode;
-export declare function buildHealthNode(cycle: number): WorkflowGraphNode;
-export declare function buildMergeAuthorizationNode(cycle: number): WorkflowGraphNode;
-export declare function buildMergeNode(cycle: number): WorkflowGraphNode;
 //# sourceMappingURL=graph-builder.d.ts.map

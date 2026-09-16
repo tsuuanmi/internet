@@ -62,11 +62,7 @@ function observationFromStructuredApproval(approval) {
         case "update_file":
             return { action: "write_file", repository, branch: approval.branch };
         case "create_pull_request":
-            return {
-                action: "create_pull_request",
-                repository,
-                branch: approval.head ?? approval.headBranch,
-            };
+            return { action: "create_pull_request", repository, branch: approval.head ?? approval.headBranch };
         case "update_pull_request":
             return {
                 action: "update_pull_request",
@@ -90,9 +86,8 @@ async function primaryApprovalButton(root) {
     let lastTopology = "actionBars=0 buttons=0 directButtons=0 splitGroups=0 splitButtons=0";
     while (true) {
         const actionBars = await visibleMatches(root.locator(CHATGPT_ACTION_BUTTONS_SELECTOR));
-        if (actionBars.length > 1) {
-            throw new WorkflowConfirmationError("unknown", "multiple Website tool action bars are visible");
-        }
+        if (actionBars.length > 1)
+            throw new WorkflowConfirmationError("multiple Website tool action bars are visible");
         if (actionBars.length === 1) {
             const actionBar = actionBars[0];
             const [buttons, directButtons, splitGroups] = await Promise.all([
@@ -101,14 +96,13 @@ async function primaryApprovalButton(root) {
                 visibleMatches(actionBar.locator(":scope > div")),
             ]);
             if (splitGroups.length > 1 || buttons.length > 3 || directButtons.length > 1) {
-                throw new WorkflowConfirmationError("unknown", "Website approval action topology is ambiguous");
+                throw new WorkflowConfirmationError("Website approval action topology is ambiguous");
             }
             if (splitGroups.length === 1) {
                 const splitButtons = await visibleMatches(splitGroups[0].locator(":scope > button"));
                 lastTopology = `actionBars=1 buttons=${buttons.length} directButtons=${directButtons.length} splitGroups=1 splitButtons=${splitButtons.length}`;
-                if (splitButtons.length > 2) {
-                    throw new WorkflowConfirmationError("unknown", "Website approval split control is ambiguous");
-                }
+                if (splitButtons.length > 2)
+                    throw new WorkflowConfirmationError("Website approval split control is ambiguous");
                 if (buttons.length === 3 && directButtons.length === 1 && splitButtons.length === 2) {
                     const primary = splitButtons[0];
                     const menu = splitButtons[1];
@@ -117,7 +111,7 @@ async function primaryApprovalButton(root) {
                         menu.getAttribute("aria-haspopup"),
                     ]);
                     if (primaryPopup !== null || menuPopup !== "menu") {
-                        throw new WorkflowConfirmationError("unknown", "Website approval split control semantics are invalid");
+                        throw new WorkflowConfirmationError("Website approval split control semantics are invalid");
                     }
                     return primary;
                 }
@@ -130,48 +124,39 @@ async function primaryApprovalButton(root) {
             lastTopology = "actionBars=0 buttons=0 directButtons=0 splitGroups=0 splitButtons=0";
         }
         if (Date.now() >= deadline) {
-            throw new WorkflowConfirmationError("unknown", `GitHub confirmation action topology did not match the expected split approval control (${lastTopology})`);
+            throw new WorkflowConfirmationError(`GitHub confirmation action topology did not match the expected split approval control (${lastTopology})`);
         }
         await new Promise((resolve) => setTimeout(resolve, ACTIONABLE_CONTROL_POLL_MS));
     }
 }
-/**
- * Inspect one visible ChatGPT Website GitHub confirmation and either approve
- * the exact in-scope action or fail closed. Actual account/session identity is
- * supplied by BrowserManager rather than asserted by the workflow caller.
- */
+/** Inspect one workflow-scoped ChatGPT GitHub confirmation and auto-approve only exact in-scope PR preparation actions. */
 export async function chatgptHandleWorkflowConfirmation(page, scope, accountId, sessionId) {
     const roots = await visibleMatches(page.locator(CHATGPT_APPROVAL_CARD_SELECTOR));
     if (roots.length === 0)
         return false;
-    if (roots.length !== 1) {
-        throw new WorkflowConfirmationError("unknown", "multiple Website tool confirmations are visible");
-    }
+    if (roots.length !== 1)
+        throw new WorkflowConfirmationError("multiple Website tool confirmations are visible");
     const root = roots[0];
     const approval = await structuredToolApproval(root);
     if (approval === undefined) {
-        throw new WorkflowConfirmationError("unknown", "Website confirmation structured tool metadata is unavailable");
+        throw new WorkflowConfirmationError("Website confirmation structured tool metadata is unavailable");
     }
-    if (!approval.isWrite) {
-        throw new WorkflowConfirmationError("unknown", "Website confirmation is not a write action");
-    }
+    if (!approval.isWrite)
+        throw new WorkflowConfirmationError("Website confirmation is not a write action");
     const observation = observationFromStructuredApproval(approval);
     if (observation.action === undefined) {
-        throw new WorkflowConfirmationError("unknown", `Website confirmation tool action is unsupported: ${approval.actionName}`);
+        throw new WorkflowConfirmationError(`Website confirmation tool action is unsupported: ${approval.actionName}`);
     }
     const context = { ...scope, accountId, sessionId };
     const decision = classifyWorkflowConfirmation(context, observation);
-    if (decision.kind === "merge-requires-user") {
-        throw new WorkflowConfirmationError("merge-requires-user", decision.reason);
-    }
     if (decision.kind === "unknown")
-        throw new WorkflowConfirmationError("unknown", decision.reason);
+        throw new WorkflowConfirmationError(decision.reason);
     const primary = await primaryApprovalButton(root);
     await primary.click({ timeout: ACTIONABLE_CONTROL_TIMEOUT_MS }).catch((error) => {
-        throw new WorkflowConfirmationError("unknown", `Website primary approval action was not actionable: ${error instanceof Error ? error.message : String(error)}`);
+        throw new WorkflowConfirmationError(`Website primary approval action was not actionable: ${error instanceof Error ? error.message : String(error)}`);
     });
     await root.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {
-        throw new WorkflowConfirmationError("unknown", "Website confirmation remained visible after scoped approval");
+        throw new WorkflowConfirmationError("Website confirmation remained visible after scoped approval");
     });
     return true;
 }

@@ -1,9 +1,8 @@
 import type { AccountId } from "#internet/core/accounts";
-import type { WorkflowMergeAuthorization, WorkflowPullRequestReceipt } from "#internet/workflow/types";
+import type { WorkflowPullRequestReceipt } from "#internet/workflow/types";
 export declare const WORKFLOW_CONFIRMATION_ACTIONS: readonly ["create_branch", "write_file", "create_commit", "push_branch", "create_pull_request", "update_pull_request", "merge_pull_request"];
 export type WorkflowConfirmationAction = (typeof WORKFLOW_CONFIRMATION_ACTIONS)[number];
-export type WorkflowConfirmationIssue = "unknown" | "merge-requires-user";
-export type WorkflowWriterAuthority = "IMPLEMENTATION" | "REMEDIATION" | "MERGE";
+export type WorkflowWriterAuthority = "IMPLEMENTATION" | "REMEDIATION";
 export interface WorkflowConfirmationObservation {
     readonly action?: WorkflowConfirmationAction;
     readonly repository?: string;
@@ -16,7 +15,6 @@ export interface WorkflowApprovalScope {
     readonly repository: string;
     readonly authority: WorkflowWriterAuthority;
     readonly pullRequest?: WorkflowPullRequestReceipt;
-    readonly mergeAuthorization?: WorkflowMergeAuthorization;
 }
 export interface WorkflowApprovalContext extends WorkflowApprovalScope {
     readonly accountId: AccountId;
@@ -26,15 +24,11 @@ export type WorkflowConfirmationDecision = {
     readonly kind: "auto-approve";
     readonly action: WorkflowConfirmationAction;
 } | {
-    readonly kind: "merge-requires-user";
-    readonly reason: string;
-} | {
     readonly kind: "unknown";
     readonly reason: string;
 };
 export declare class WorkflowConfirmationError extends Error {
-    readonly kind: WorkflowConfirmationIssue;
-    constructor(kind: WorkflowConfirmationIssue, message: string);
+    constructor(message: string);
 }
 export declare function workflowWriterBranch(jobId: string): string;
 export declare function normalizeGitHubRepository(value: string): string | undefined;

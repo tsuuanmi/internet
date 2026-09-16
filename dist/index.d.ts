@@ -60,8 +60,8 @@ export type { WorkflowPromptContext, WorkflowReviewPromptContext, WorkflowTeamLa
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export type { WorkflowTeamRunner, WorkflowTeamStepRequest } from "#internet/workflow/team-runner";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
-export type { StartWorkflowInput, WorkflowAccountRouting, WorkflowCiReceipt, WorkflowCiStatus, WorkflowDecisionInput, WorkflowEventRecord, WorkflowHandoffReceipt, WorkflowJob, WorkflowPendingAction, WorkflowPullRequestReceipt, } from "#internet/workflow/types";
-export { WORKFLOW_CI_STATUSES, workflowJobIsTerminal } from "#internet/workflow/types";
+export type { StartWorkflowInput, WorkflowAccountRouting, WorkflowEventRecord, WorkflowHandoffReceipt, WorkflowJob, WorkflowPendingAction, WorkflowPullRequestReceipt, WorkflowWriterConversation, } from "#internet/workflow/types";
+export { workflowJobIsTerminal } from "#internet/workflow/types";
 export type { WorkflowWriterControlRequest, WorkflowWriterDeliveryRequest, WorkflowWriterResult, WorkflowWriterRunner, } from "#internet/workflow/writer-runner";
 export { BrowserWorkflowWriterRunner, parseWorkflowWriterResult } from "#internet/workflow/writer-runner";
 //# sourceMappingURL=index.d.ts.map

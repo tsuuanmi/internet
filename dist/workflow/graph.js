@@ -1,12 +1,5 @@
-export const WORKFLOW_PHASES = ["RESEARCH", "WRITER", "REVIEW", "HEALTH", "MERGE", "DONE"];
-export const WORKFLOW_LIFECYCLES = [
-    "RUNNING",
-    "WAITING_USER",
-    "RECOVERING",
-    "BLOCKED",
-    "COMPLETED",
-    "CANCELLED",
-];
+export const WORKFLOW_PHASES = ["RESEARCH", "WRITER", "REVIEW", "DONE"];
+export const WORKFLOW_LIFECYCLES = ["RUNNING", "RECOVERING", "BLOCKED", "COMPLETED", "CANCELLED"];
 export const WORKFLOW_NODE_KINDS = [
     "TEAM_MEMBER",
     "TEAM_SYNTHESIS",
@@ -14,15 +7,11 @@ export const WORKFLOW_NODE_KINDS = [
     "WRITER_IMPLEMENTATION",
     "REVIEW_HANDOFF_GATE",
     "WRITER_REMEDIATION",
-    "PR_HEALTH",
-    "MERGE_AUTHORIZATION",
-    "MERGE",
 ];
 export const WORKFLOW_NODE_STATES = [
     "WAITING",
     "READY",
     "RUNNING",
-    "WAITING_USER",
     "RECOVERING",
     "COMPLETED",
     "FAILED",
@@ -43,7 +32,6 @@ export const WORKFLOW_PROVIDER_STATES = [
     "THINKING",
     "STREAMING",
     "CONFIRMATION_REQUIRED",
-    "WAITING_USER",
     "STALLED",
     "RATE_LIMITED",
     "AUTH_REQUIRED",
@@ -97,15 +85,6 @@ export const workflowNodeId = {
     writerRemediation(cycle) {
         return `writer:remediation:cycle:${positiveInteger(cycle, "cycle")}`;
     },
-    prHealth(cycle) {
-        return `pr-health:cycle:${positiveInteger(cycle, "cycle")}`;
-    },
-    mergeAuthorization(cycle) {
-        return `merge-authorization:cycle:${positiveInteger(cycle, "cycle")}`;
-    },
-    merge(cycle) {
-        return `merge:cycle:${positiveInteger(cycle, "cycle")}`;
-    },
 };
 export function workflowNodeDependenciesCompleted(node, nodes) {
     return node.dependencies.every((dependencyId) => nodes[dependencyId]?.state === "COMPLETED");
@@ -138,7 +117,7 @@ export function assertWorkflowGraph(snapshot) {
         for (const dependencyId of node.dependencies)
             if (!snapshot.nodes[dependencyId])
                 throw new Error(`workflow graph node ${nodeId} has unknown dependency ${dependencyId}`);
-        if (["READY", "RUNNING", "WAITING_USER", "RECOVERING", "COMPLETED", "FAILED"].includes(node.state) && !node.input)
+        if (["READY", "RUNNING", "RECOVERING", "COMPLETED", "FAILED"].includes(node.state) && !node.input)
             throw new Error(`workflow graph node ${nodeId} in ${node.state} requires an input receipt`);
         if (node.input)
             assertNodeInput(node);
@@ -152,12 +131,11 @@ export function assertWorkflowGraph(snapshot) {
             throw new Error(`completed workflow graph node ${nodeId} requires an output receipt`);
         if (node.state === "WAITING" && node.dependencies.length === 0 && !node.waitReason)
             throw new Error(`waiting workflow graph node ${nodeId} requires a dependency or wait reason`);
-        if (node.execution) {
+        if (node.execution)
             assertExecution(nodeId, node.execution, executionIds);
-        }
-        if (node.state === "RUNNING" || node.state === "WAITING_USER") {
+        if (node.state === "RUNNING") {
             if (!node.execution || !["STARTING", "ACTIVE"].includes(node.execution.state))
-                throw new Error(`${node.state.toLowerCase()} workflow graph node ${nodeId} requires a live execution`);
+                throw new Error(`running workflow graph node ${nodeId} requires a live execution`);
         }
         if (node.state === "RECOVERING" && (!node.failure || !node.recovery))
             throw new Error(`recovering workflow graph node ${nodeId} requires failure and recovery receipts`);

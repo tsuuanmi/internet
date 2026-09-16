@@ -91,18 +91,6 @@ export function buildRemediationNode(cycle) {
     const nodeId = workflowNodeId.writerRemediation(cycle);
     return waitingNode(nodeId, "WRITER_REMEDIATION", "WRITER", [workflowNodeId.reviewHandoffGate(cycle)]);
 }
-export function buildHealthNode(cycle) {
-    const nodeId = workflowNodeId.prHealth(cycle);
-    return waitingNode(nodeId, "PR_HEALTH", "HEALTH", [workflowNodeId.reviewHandoffGate(cycle)]);
-}
-export function buildMergeAuthorizationNode(cycle) {
-    const nodeId = workflowNodeId.mergeAuthorization(cycle);
-    return waitingNode(nodeId, "MERGE_AUTHORIZATION", "MERGE", [workflowNodeId.prHealth(cycle)]);
-}
-export function buildMergeNode(cycle) {
-    const nodeId = workflowNodeId.merge(cycle);
-    return waitingNode(nodeId, "MERGE", "MERGE", [workflowNodeId.mergeAuthorization(cycle)]);
-}
 function buildTeamNodes(input) {
     const nodes = {};
     const nodeIdsByStepId = new Map(input.plan.steps.map((step) => [step.stepId, input.nodeIdForStep(step)]));

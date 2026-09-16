@@ -3,7 +3,7 @@ import type { BrowserManager } from "#internet/browser/runtime";
 import type { WorkflowDriver } from "#internet/workflow/driver";
 import type { WorkflowEngine } from "#internet/workflow/engine";
 import type { GitRunner } from "#internet/workflow/repository-context";
-export declare const WORKFLOW_OPERATIONS: readonly ["start", "test", "status", "authorize_merge", "cancel", "continue"];
+export declare const WORKFLOW_OPERATIONS: readonly ["start", "test", "status", "cancel", "continue"];
 export type WorkflowOperation = (typeof WORKFLOW_OPERATIONS)[number];
 export interface WorkflowTestDependencies {
     readonly browser?: Pick<BrowserManager, "status">;

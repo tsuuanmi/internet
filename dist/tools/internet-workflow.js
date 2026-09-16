@@ -2,7 +2,7 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { ACCOUNT_IDS } from "#internet/core/accounts";
 import { sleep } from "#internet/core/sleep";
 import { resolveWorkflowRepository, WorkflowRepositoryError } from "#internet/workflow/repository-context";
-export const WORKFLOW_OPERATIONS = ["start", "test", "status", "authorize_merge", "cancel", "continue"];
+export const WORKFLOW_OPERATIONS = ["start", "test", "status", "cancel", "continue"];
 const DEFAULT_TEST_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_TEST_POLL_MS = 1_000;
 function graphSummary(job) {
@@ -43,23 +43,13 @@ function project(job) {
                 prUrl: job.pullRequest.url,
                 prHeadSha: job.pullRequest.headSha,
             }),
+        ...(job.writerConversation.url === undefined ? {} : { writerChatUrl: job.writerConversation.url }),
         ...(job.pendingAction === undefined
             ? {}
             : {
                 pendingAction: job.pendingAction.kind,
                 pendingMessage: job.pendingAction.message,
             }),
-        ...(job.ciReceipt === undefined
-            ? {}
-            : {
-                ciStatus: job.ciReceipt.status,
-                ciHeadSha: job.ciReceipt.headSha,
-                ciCheckedAt: job.ciReceipt.checkedAt,
-            }),
-        ...(job.mergeAuthorization === undefined ? {} : { authorizedHeadSha: job.mergeAuthorization.headSha }),
-        ...(job.mergeReceipt === undefined
-            ? {}
-            : { mergedSha: job.mergeReceipt.mergedSha, mergeExecutor: job.mergeReceipt.executorAccountId }),
         updatedAt: job.updatedAt,
     };
 }
@@ -70,20 +60,18 @@ function workflowTestObjective(marker) {
         `workflow-acceptance=${marker}`,
         "Change only docs/.workflow-smoke.",
         "Do not modify runtime code, dependencies, configuration, tests, or any other documentation.",
-        "Open exactly one pull request for this change and do not merge it until the workflow sends MERGE_AUTHORIZED.",
+        "Open exactly one pull request for this change and never merge it as part of the workflow.",
     ].join("\n");
 }
 function testFailure(job, message) {
     return { ok: false, operation: "test", result: "FAIL", ...project(job), message };
 }
-function mergeEvidenceIsExact(job) {
-    return (job.graph.lifecycle === "WAITING_USER" &&
-        job.pendingAction?.kind === "MERGE_AUTHORIZATION_REQUIRED" &&
+function completedHandoffIsExact(job) {
+    return (job.graph.lifecycle === "COMPLETED" &&
+        job.graph.phase === "DONE" &&
         job.pullRequest !== undefined &&
-        job.pendingAction.expectedHeadSha === job.pullRequest.headSha &&
-        job.ciReceipt !== undefined &&
-        job.ciReceipt.headSha === job.pullRequest.headSha &&
-        (job.ciReceipt.status === "PASS" || job.ciReceipt.status === "NONE"));
+        job.writerConversation.url !== undefined &&
+        job.reviewCycle > 0);
 }
 async function runAcceptanceTest(engine, driver, dependencies, exec) {
     if (dependencies.browser === undefined) {
@@ -132,25 +120,24 @@ async function runAcceptanceTest(engine, driver, dependencies, exec) {
     while (Date.now() < deadline) {
         if (exec.signal.aborted)
             throw exec.signal.reason ?? new Error("workflow test aborted");
-        let current = engine.status(job.jobId);
+        const current = engine.status(job.jobId);
         if (current.graph.lifecycle === "COMPLETED") {
+            if (!completedHandoffIsExact(current)) {
+                return testFailure(current, "workflow completed without an exact reviewed PR and Writer chat handoff");
+            }
             return {
                 ok: true,
                 operation: "test",
                 result: "PASS",
                 accountPreflight,
                 ...project(current),
-                message: "full workflow acceptance test completed through real exact-head merge",
+                message: "full workflow acceptance test completed through exact-head review and Writer handoff",
             };
         }
-        if (mergeEvidenceIsExact(current)) {
-            current = engine.authorizeMerge(current.jobId, ownerSessionId, current.pullRequest.headSha);
-            driver.enqueue(current.jobId);
-        }
-        else if (current.graph.lifecycle === "BLOCKED") {
+        if (current.graph.lifecycle === "BLOCKED") {
             return testFailure(current, current.pendingAction?.message ?? "workflow acceptance test blocked");
         }
-        else if (current.graph.lifecycle === "CANCELLED") {
+        if (current.graph.lifecycle === "CANCELLED") {
             return testFailure(current, "workflow acceptance test was cancelled");
         }
         await sleep(pollMs, exec.signal);
@@ -168,7 +155,7 @@ async function runAcceptanceTest(engine, driver, dependencies, exec) {
 export function defineInternetWorkflowTool(engine, driver, testDependencies = {}) {
     return defineTool({
         name: "internet_workflow",
-        description: "Create and control graph-driven durable coding workflows. test performs a full real acceptance workflow and authorizes only the exact reviewed healthy PR head.",
+        description: "Create and control graph-driven durable coding workflows. test performs a full real workflow through exact-head review and Writer chat handoff without merging.",
         parameters: {
             operation: {
                 type: "string",
@@ -180,7 +167,6 @@ export function defineInternetWorkflowTool(engine, driver, testDependencies = {}
             objective: { type: "string", description: "Coding objective for start." },
             repository: { type: "string", description: "Authoritative repository URL for start." },
             baseRevision: { type: "string", description: "Full 40-character Git SHA for start." },
-            expectedHeadSha: { type: "string", description: "Exact PR head SHA for merge authorization." },
         },
         output: {
             schema: {
@@ -205,14 +191,9 @@ export function defineInternetWorkflowTool(engine, driver, testDependencies = {}
                     prNumber: { type: "number" },
                     prUrl: { type: "string" },
                     prHeadSha: { type: "string" },
+                    writerChatUrl: { type: "string" },
                     pendingAction: { type: "string" },
                     pendingMessage: { type: "string" },
-                    ciStatus: { type: "string" },
-                    ciHeadSha: { type: "string" },
-                    ciCheckedAt: { type: "string" },
-                    authorizedHeadSha: { type: "string" },
-                    mergedSha: { type: "string" },
-                    mergeExecutor: { type: "string" },
                     updatedAt: { type: "string" },
                     message: { type: "string" },
                 },
@@ -262,15 +243,8 @@ export function defineInternetWorkflowTool(engine, driver, testDependencies = {}
                     job = engine.status(args.jobId);
                 else if (operation === "cancel")
                     job = await driver.cancel(args.jobId);
-                else if (operation === "continue") {
-                    job = engine.continue(args.jobId);
-                    driver.enqueue(job.jobId);
-                }
                 else {
-                    if (typeof args.expectedHeadSha !== "string") {
-                        return { ok: false, operation, message: "authorize_merge requires expectedHeadSha" };
-                    }
-                    job = engine.authorizeMerge(args.jobId, String(exec.agent?.id ?? ""), args.expectedHeadSha);
+                    job = engine.continue(args.jobId);
                     driver.enqueue(job.jobId);
                 }
                 return { ok: true, operation, ...project(job) };
