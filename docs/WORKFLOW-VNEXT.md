@@ -1,21 +1,41 @@
-# Workflow vNext — Adaptive Artifact-Based Orchestration
+# Workflow vNext — Domain-Agnostic Durable Artifact Orchestration
 
 - **Status:** evolving design proposal; not yet the as-built runtime contract
 - **Started:** 2026-09-16
-- **Scope:** typed artifacts, semantic planning, WorkItems, exact InputBundles, adaptive routing, durable external interaction, shared PR memory, Git mutation, and deterministic convergence
+- **Scope:** natural-language admission, deterministic orchestration, typed artifacts, capability routing, durable interaction/waits, recoverable long-running execution, workflow profiles, and convergence
 
-This document is the high-level target architecture. Narrow Proposed ADRs and specialized `SRS-VNEXT-*` modules override this narrative where they are more specific. Current code and as-built contracts remain authoritative until vNext behavior is implemented, tested, and promoted.
+This document is the high-level target architecture. Narrow Proposed ADRs and specialized `SRS-VNEXT-*` modules override this narrative where they are more specific. Current code and as-built contracts remain authoritative until corresponding vNext behavior is implemented, tested, and promoted.
 
-## 1. Core design
+## 1. North star
 
-The workflow evolves from a mostly sequential pipeline into an autonomous deterministic runtime coordinating bounded reasoning agents through typed durable artifacts.
+The target is not only a coding workflow. It is a **domain-agnostic durable workflow runtime** that can support software engineering, deep research, monitoring, document/report generation, and future long-running task classes.
+
+North-star properties:
 
 ```text
-User
-  <-> Local Agent
-        reasoning-capable workflow client/operator
+efficient
+deterministic control plane
+artifact-based correctness state
+capability/profile driven
+autonomous by default
+recoverable across process/client/provider failures
+interruptible only by explicit external dependencies/authority
+natural-language accessible through a reasoning Local Agent
+```
+
+The intended product interaction is:
+
+```text
+User natural language
+        ^
         |
-        | workflow tool/API
+        v
+Local Agent
+  reasoning workflow client
+  - Intake Compiler
+  - Operator Interface
+        |
+        | typed workflow protocol
         v
 +-------------------------------------------+
 | Deterministic Orchestrator Runtime        |
@@ -25,137 +45,184 @@ User
 | reconcile / fence / invalidate / gate     |
 +--------------------+----------------------+
                      |
-         typed WorkItems/InputBundles
-                     |
-      +--------------+--------------+
-      |              |              |
-      v              v              v
-   Planner        Research       Reviewer
-      |              |              |
-      +--------------+--------------+
-                     |
-                  Worker
+         typed WorkItems / Awaitables
                      |
                      v
-                typed Artifacts
+             Capability Executors
+                     |
+                     v
+        typed Artifacts / Assessments
+                  / Receipts
 ```
 
-The runtime does not use an LLM to decide control transitions.
+The Local Agent and specialist capabilities may reason. The Orchestrator does not use model reasoning to choose authoritative workflow transitions.
 
-The Local Agent may reason conversationally, but its hidden reasoning is not workflow correctness state. Only explicit validated tool/API inputs may alter durable workflow authority.
+## 2. Natural-language workflow admission
 
-## 2. Autonomous by default
+User language is not treated as an already-executable workflow specification.
 
-Once started, the workflow continues as far as possible without requiring Local Agent/User presence.
+The startup path is:
 
 ```text
-ready WorkItem exists
-  -> execute
-
-result creates more typed Needs
-  -> route/materialize more work
-
-external authority/input genuinely required
-  -> durable PendingAction
-  -> block only dependent paths
-  -> continue independent ready work
-
-no autonomous work remains + blocking PendingAction exists
-  -> WAITING_EXTERNAL
+User source
+  -> Local Agent compiles WorkflowAdmissionDraft
+  -> Orchestrator deterministic preflight
+  -> AdmissionPreview
+  -> AUTO_SUBMIT / LOCAL_CONFIRM / USER_CONFIRM
+  -> exact AcceptedAdmissionSpec identity/hash
+  -> activate
+  -> Planner / semantic execution
 ```
 
-A Local Agent may disconnect and reconnect later without stopping the workflow or requiring reconstruction of prior hidden reasoning.
-
-## 3. External interaction
-
-External interaction is modeled as a first-class durable dependency rather than an ad-hoc conversational pause.
+The admission layer preserves the distinction between:
 
 ```text
+what the User explicitly said
+what the Local Agent inferred
+what policy defaulted
+what the User confirmed
+what Planner later derived
+```
+
+A schema-valid request is not automatically proof that the Local Agent understood the User correctly.
+
+The Orchestrator validates structure, capability availability, authority, budget/risk policy, target resolution, and other mechanically decidable constraints. Material semantic alignment is handled by Local Agent/User interaction according to confirmation policy.
+
+Admission is intentionally thin. It does not replace Planner-owned Objective, AcceptanceCriteria, Plan, or Need semantics.
+
+## 3. Local Agent as reasoning workflow client
+
+The Local Agent has two conceptual responsibilities.
+
+### Intake Compiler
+
+```text
+natural-language request
+  -> provenance-preserving typed workflow admission/input
+```
+
+### Operator Interface
+
+```text
+authoritative machine workflow state/actions
+  -> natural-language explanation and interaction
+```
+
+The User should not need to know `/workflow status`, `/workflow continue`, or similar internal commands in normal use.
+
+Examples:
+
+```text
+User: "How is yesterday's workflow doing?"
+Local Agent -> Query(status) -> explain authoritative result
+
+User: "Continue it."
+Local Agent -> Query current state first
+  -> recovery boundary: issue Continue/Update
+  -> already RUNNING: explain no action needed
+  -> WAITING_EXTERNAL: inspect/respond to PendingAction
+```
+
+Slash commands remain useful as CLI/debug/operator shortcuts.
+
+The Local Agent may reason conversationally, but its hidden reasoning is never durable workflow authority.
+
+## 4. Domain-neutral workflow protocol
+
+The Local Agent and other clients interact with the runtime through typed operations conceptually equivalent to:
+
+```text
+Query
+  read authoritative workflow state without mutation
+
+Update
+  validated tracked mutation with explicit success/failure
+
+Signal
+  asynchronous external/User input that may trigger later work
+
+Respond
+  resolve one persisted PendingAction
+```
+
+Only explicit validated protocol inputs may change authoritative workflow state.
+
+## 5. Deterministic Orchestrator boundary
+
+The Orchestrator owns code/policy operations such as:
+
+```text
+admission/schema validation
+durable state persistence
+Need -> capability resolution
+WorkItem creation
+InputBundle construction
+approved graph/dependency motifs
+readiness/scheduling
+Timer/external-event registration and wakeup
+PendingAction lifecycle
+authority enforcement
+retry/fencing/idempotency
+resource budgets
+lineage invalidation
+side-effect reconciliation
+convergence predicates
+recovery
+```
+
+It does not:
+
+```text
+interpret ambiguous prose semantically
+invent plans
+summarize research
+judge evidence quality through hidden reasoning
+review semantic correctness
+silently rewrite agent conclusions
+```
+
+Semantic judgment is delegated to bounded reasoning capabilities and returned as typed artifacts/assessments.
+
+## 6. Domain-neutral object model
+
+The generic kernel understands concepts such as:
+
+```text
+Workflow
+WorkflowAdmissionSpec
+Objective
+Constraint
+Criterion
+Plan
+Finding
 Need
-  +-> executable semantic capability -> WorkItem
-  +-> external authority/input       -> PendingAction
+WorkItem
+InputBundle
+Artifact
+Assessment
+Receipt
+PendingAction
+Timer
+ExternalEvent
+Budget
+AuthorityPolicy
+ConvergencePolicy
 ```
 
-`PendingAction` responder classes include:
+Domain profiles may extend this vocabulary with specialized Need/Artifact/Receipt types while preserving the same control semantics.
+
+## 7. Semantic planning boundary
+
+The semantic planning chain remains separated from runtime execution:
 
 ```text
-USER_AUTHORITY
-LOCAL_AGENT_INPUT
-USER_OR_LOCAL
-```
-
-The workflow tool/API exposes pending actions through status/watch and accepts typed responses through a generic response boundary. Unsolicited user/client directives use a separate typed signal/input path.
-
-Resolving an action re-evaluates readiness automatically; operator `continue` remains recovery semantics rather than a generic semantic resume command.
-
-## 4. User and Local Agent boundary
-
-### User
-
-Owns reserved human authority such as explicit merge/release authorization and changes to user-owned constraints when policy requires consent.
-
-### Local Agent
-
-Acts as user-facing workflow client/operator. It may:
-
-```text
-understand conversation
-start/query/watch/control workflows
-explain status and choices
-carry explicit user decisions
-submit allowed Local-Agent input
-submit unsolicited explicit user directives
-```
-
-It is not the durable state machine and cannot satisfy a User-only authority gate from its own judgment.
-
-### Workflow tool/API
-
-Is the authority boundary between client reasoning and workflow state.
-
-Current lifecycle concepts remain:
-
-```text
-start
-list
-status
-watch
-stop/cancel
-continue/recover
-delete
-```
-
-vNext additionally targets:
-
-```text
-respond(actionId, typed response)
-signal(typed external input)
-```
-
-## 5. Semantic roles
-
-| Role | Responsibility |
-| --- | --- |
-| **Planner** | objective interpretation, acceptance criteria, decomposition, assumptions, semantic tasks, replanning |
-| **Research / Explorer** | bounded repository/external evidence gathering and research synthesis when assigned |
-| **Worker** | implementation/generation plus all authorized Git mutation; sole repository writer |
-| **Reviewer** | semantic correctness/criterion judgment, Findings, approvals, follow-up Needs |
-| **Verification capabilities** | narrow deterministic/model-assisted checks where useful |
-
-Agents do not directly invoke each other. They emit typed artifacts/Needs that the deterministic runtime validates and routes.
-
-## 6. Objective, criteria, plan, task, execution
-
-The planning chain remains explicitly separated:
-
-```text
-UserObjectiveInput
+Admission/User source
   -> ObjectiveArtifact
   -> AcceptanceCriteriaArtifact
   -> PlanArtifact
        -> PlanTask(s)
        -> NeedArtifact(s)
-  -> Orchestrator materializes WorkItem(s)
+  -> Orchestrator materializes WorkItem/PendingAction
 ```
 
 Key distinctions:
@@ -167,291 +234,350 @@ Plan            = semantic strategy
 PlanTask        = semantic unit of intended work
 Need            = requested capability/input
 WorkItem        = runtime-owned execution authorization
-PendingAction   = external input/authority dependency
+PendingAction   = external authority/input dependency
 ```
 
-Ordinary replanning changes strategy/decomposition, not acceptance criteria. A true requirements change follows a separate authority path and may create a `USER_AUTHORITY` PendingAction.
+Ordinary replanning changes strategy/decomposition, not the definition of success. Requirements changes follow a separate provenance/authority path.
 
-## 7. Finding / Need / WorkItem / Artifact
+## 8. Capability-first execution
 
-Core execution flow:
+The kernel routes typed Needs to versioned capabilities rather than hard-coding one universal team topology.
+
+Logical roles such as Planner, Research, Worker, and Reviewer remain useful executor identities but are not mandatory for every workflow.
+
+Examples:
+
+```text
+software_change.v1
+  repository_research
+  implementation
+  git_mutation
+  code_review
+  ci_verification
+
+deep_research.v1
+  web_research
+  source_acquisition
+  evidence_extraction
+  research_synthesis
+  citation_verification
+  report_generation
+
+monitoring.v1
+  observation
+  periodic_refresh
+  condition_evaluation
+  notification_artifact
+```
+
+Provider/model/account/session routing remains below semantic capability selection.
+
+## 9. Artifact-based communication
+
+Correctness-bearing semantic communication uses typed durable artifacts rather than transient chat transcripts.
+
+Artifacts are:
+
+```text
+schema-versioned
+persisted
+producer-attributed
+exact-context/input bound where required
+immutable or explicitly superseded
+lineage-addressable
+```
+
+Human/model-readable prose may accompany structured data, but structured fields carry authoritative control meaning.
+
+Shared visibility is not equivalent to correctness-bearing delivery:
+
+```text
+artifact exists in shared state
+  !=
+artifact belongs in every InputBundle
+```
+
+Every executable WorkItem receives one persisted exact sparse InputBundle.
+
+## 10. Need, WorkItem, and causal ownership
+
+Core internal flow:
 
 ```text
 Finding / unresolved decision
   -> Need
-  -> deterministic validation
+  -> deterministic validation/routing
   -> WorkItem OR PendingAction
-  -> exact InputBundle / exact external-action contract
-  -> execution or external response
-  -> Artifact / resolution
+  -> execution/external response
+  -> Artifact / Assessment / Receipt / Resolution
   -> return to causal owner
   -> next typed Need or convergence
 ```
 
-A Need specifies semantic demand, not provider account, browser session, retries, graph IDs, budgets, or mutation authority.
+A Need describes semantic demand, not provider account, browser session, retries, graph IDs, budgets, or authority.
 
-## 8. Capability routing and safe graph expansion
+Result routing returns first to the persisted causal owner unless a validated routing contract says otherwise.
 
-Need-to-capability mapping is code/configuration-owned and versioned.
+## 11. Long-running awaitables
 
-Representative mappings:
+Long-running workflows need first-class durable waiting beyond WorkItems.
 
-```text
-external_evidence       -> external_research
-repository_evidence     -> repository_research
-implementation_change   -> repository_implementation
-plan_change             -> planning
-requirements_change     -> planning + authority path
-review_current_state    -> review
-research_synthesis      -> research_synthesis
-```
-
-Dynamic workflow shape is created only through runtime-approved motifs such as:
+A dependency may wait on:
 
 ```text
-Owner -> Research -> Owner
-Owner -> Research[1..N] -> Synthesis -> Owner
-Reviewer -> Worker -> fresh Review
-Reviewer -> Planner -> Worker -> fresh Review
+WorkItem
+  internal capability execution
+
+PendingAction
+  User/Local input or authority
+
+Timer
+  durable time-based wakeup
+
+ExternalEvent
+  webhook/signal/observed external condition
 ```
 
-PendingActions can appear as dependency nodes without globally pausing unrelated graph branches.
+Waiting is not failure.
 
-## 9. Exact InputBundles
+The scheduler reasons mechanically over dependency satisfaction rather than domain meaning.
 
-Every executable WorkItem receives one persisted exact InputBundle before execution.
+## 12. Autonomous by default
 
-Visibility in durable shared state or PR collaboration files does not automatically make content a correctness-bearing input.
+Once activated, the workflow continues as far as possible without requiring a connected Local Agent/User.
 
 ```text
-shared visibility != InputBundle membership
+ready autonomous work exists
+  -> execute it
+
+one dependency needs external input
+  -> create durable PendingAction
+  -> block only dependent paths
+  -> continue unrelated work
+
+no autonomous work remains + blocking external dependency exists
+  -> WAITING_EXTERNAL
 ```
 
-Once an execution starts, its correctness-bearing bundle is immutable for that execution identity.
+A Local Agent may disappear and a different authorized client may reconnect later using durable state.
 
-## 10. Causal ownership and return routing
+## 13. External interaction and authority
 
-Every Need preserves its causal owner.
-
-Default rule:
-
-> A WorkItem result or PendingAction resolution returns first to the owner whose unresolved decision caused it unless an explicit validated routing contract says otherwise.
-
-Example:
+`PendingAction` is distinct from WorkItem and may require responder policies such as:
 
 ```text
-Reviewer/Finding F17
- -> Need(external_evidence)
- -> Research WorkItem
- -> Evidence E44
- -> Reviewer/F17
+USER_AUTHORITY
+LOCAL_AGENT_INPUT
+USER_OR_LOCAL
 ```
 
-Research answers the question. Reviewer decides whether the evidence resolves the finding or creates implementation/plan/requirements work.
-
-## 11. External interaction is scoped
-
-Interaction is a dependency, not a workflow-wide stop.
+Responses preserve provenance, such as:
 
 ```text
-Reviewer branch A
-  -> PendingAction A17
-  -> waits
-
-Research branch B
-  -> W41
-  -> continues
+user_explicit
+local_agent
+operator/system_policy
 ```
 
-The workflow may be `RUNNING` with pending actions. `WAITING_EXTERNAL` is reserved for the state where no useful autonomous work remains and one or more unresolved external dependencies block progress.
+Local Agent reasoning cannot impersonate User-only authority.
 
-Responses are schema-validated, authority-checked, version/head-fenced, idempotent, and reject stale/superseded actions.
+Responses are schema-validated, authority-checked, version/state-fenced, idempotent, and reject stale/superseded actions.
 
-## 12. Shared PR collaboration memory
+Resolving an action automatically re-evaluates readiness; `continue` remains an operator recovery concept rather than generic semantic resume.
 
-After a PR exists, selected semantic shared views may be projected into:
+Unsolicited User changes use Signal/Update and are routed to semantic capabilities when interpretation/replanning is required.
+
+## 14. Recovery and durable execution
+
+The target runtime must survive:
 
 ```text
-.internet/workspace/
-  PLAN.md
-  TODO.md
-  RESEARCH.md
-  STATUS.md
-  # ROADMAP.md optional
+Local Agent disconnect/restart
+Orchestrator process restart
+provider/browser/session failure
+partial execution failure
+transport loss
+long User waits
+multi-day timers
+uncertain external side-effect responses
+runtime/profile/model upgrades during long workflows
 ```
 
-This is task-local collaboration memory, not workflow state.
+Recovery uses durable workflow state, typed artifacts, exact InputBundles, execution identity/fencing, receipts, timers/events, and external observation.
 
-Semantic sources:
+Hidden chain-of-thought and transient conversation state are never replay requirements.
+
+Recovery should target the smallest failed/orphaned work unit compatible with correctness and preserve completed independent work.
+
+## 15. Versioning for long-lived workflows
+
+Long-running workflows may outlive profile/runtime/model deployments.
+
+Correctness-bearing records therefore bind relevant versions, including as applicable:
 
 ```text
-PLAN.md       <- Planner shared view
-RESEARCH.md   <- Research/Synthesis shared view
-TODO.md       <- structured shared task/blocker items
-STATUS.md     <- deterministic runtime projection
-ROADMAP.md    <- optional Planner shared view
+workflow schema version
+profile version
+policy version
+capability version
+artifact schema version
+InputBundle projection version
+agent/prompt definition version when compatibility matters
 ```
 
-The Orchestrator applies deterministic publication/render policy. Worker alone creates commits.
+A workflow must not silently resume under incompatible definitions. Cross-version migration is explicit and provenance-preserving.
 
-## 13. Single-writer Git mutation
+## 16. Efficiency
 
-Worker remains the only workflow actor authorized to mutate the repository.
+Efficiency is a first-class architectural goal.
 
-Mutation modes include:
+Principles include:
 
 ```text
-WORKSPACE_EXACT
-IMPLEMENTATION_AGENTIC
-WORKSPACE_CLEANUP
+deterministic checks before model calls
+sparse exact InputBundles
+parallel independent WorkItems
+reuse compatible artifacts
+causal invalidation instead of global replay
+deduplicate compatible outstanding work
+continue independent work while external dependencies wait
+Timer/Event waits instead of busy polling when possible
+bounded feedback loops and explicit budgets
 ```
 
-Every mutation binds an exact expected head and authorized path/effect scope. Worker does not silently merge/rebase/force-push stale work. The Orchestrator independently reconciles the resulting remote state against mutation receipts and postconditions.
+Resource limits are safety/efficiency controls and never imply semantic success.
 
-## 14. Artifact lineage and invalidation
+## 17. Workflow profiles
 
-The runtime tracks explicit relations such as:
+A profile is code/configuration-owned composition for one class of workflows.
+
+It may define:
 
 ```text
-derived_from
-supports
-contradicts
-resolves
-supersedes
-invalidates
+admission schema/defaults
+capability set
+Need/Artifact schemas
+side-effect policy
+authority/interaction policy
+budget defaults
+convergence policy
+status projections
+domain integrations
 ```
 
-A changed criterion, plan input, exact PR head, or external decision invalidates only dependent artifacts according to explicit lineage/exact-input policy.
+Software-specific concepts such as repository, PR, Git head, CI, merge authority, Worker-only commits, and PR shared workspace belong to the software profile rather than the generic kernel.
 
-No invalidation decision is inferred from prose similarity.
+Research workflows may instead use Source/Evidence/Synthesis/Citation/Report artifacts plus Timers and external-access PendingActions.
 
-## 15. Convergence
+## 18. Software profile extension
 
-Workflow success is semantic convergence, not completion of a fixed phase count.
-
-Conceptually:
+A software workflow may additionally define:
 
 ```text
-all required acceptance assessments satisfied
-AND no blocking Findings
-AND required exact-head review/approvals current
-AND required validations/CI current
-AND no unresolved critical contradictions
-AND no unresolved required external authority
+RepositoryTarget
+PullRequestArtifact
+GitMutationWorkItem
+HeadBoundReview
+CIHealthReceipt
+MergeAuthorization
+PR shared collaboration workspace
 ```
 
-Resource limits/stagnation guards are separate from success. Exhausting a budget yields durable blocked/action-required state, never silent success.
+Worker may remain the sole repository writer for this profile.
 
-## 16. Deterministic versus nondeterministic boundary
+Exact-head Git/review/CI semantics remain mandatory where software-profile policy requires them.
 
-Deterministic runtime:
+## 19. Deep research example
+
+A multi-day research workflow may look like:
 
 ```text
-schema validation
-state persistence
-Need routing
-WorkItem/PendingAction creation
-InputBundle construction
-graph motif materialization
-readiness/scheduling
-retry/fencing/idempotency
-side-effect authority
-Git reconciliation
-lineage invalidation
-resource policy
-external-response validation
-termination/convergence predicates
+Admission
+ -> Planning
+ -> Research round 1
+ -> EvidenceArtifacts
+ -> Timer
+ -> Research round 2
+ -> Evidence update/supersession
+ -> Timer
+ -> Final research round
+ -> Synthesis
+ -> Citation/source verification
+ -> ReportArtifact
 ```
 
-Nondeterministic bounded work:
+If a paid/authenticated source is encountered:
 
 ```text
-Planner reasoning
-Research/web/repository exploration
-Research synthesis
-Worker implementation generation
-Reviewer evaluation
-model-assisted verification
-Local Agent conversational/advisory reasoning
+Need(external access)
+ -> PendingAction(USER_AUTHORITY)
 ```
 
-Only typed artifacts/tool inputs bridge nondeterministic reasoning into authoritative workflow state.
+Independent research continues while that branch waits.
 
-## 17. Event/trace versus correctness state
+No PR, Git, Worker, or CI primitive is required.
 
-Durable artifact/job/PendingAction state is correctness authority.
+## 20. Status and observability
 
-Event history explains what happened but is not replayed as model reasoning to reconstruct correctness.
+Core status is machine-readable and domain-neutral.
 
-Representative semantic trace:
+Representative dimensions:
 
 ```text
-Finding F17
- -> Need N22
- -> WorkItem W31
- -> InputBundle IB31
- -> Evidence E44
- -> PendingAction A9 (if external authority required)
- -> Response R3
- -> returned_to Reviewer/F17
- -> Resolution R8
+workflow lifecycle
+autonomous progress available?
+ready/running/recovering/completed WorkItems
+pending external actions
+active Timers/Event waits
+blocking Findings/dependencies
+budget usage
+latest significant Artifacts
+terminal/convergence state
 ```
 
-## 18. Final-review boundary
+Profiles may add views such as PR/head/CI or research coverage/source freshness.
 
-PR workspace collaboration is provisional and may move physical PR HEAD.
+The Local Agent converts this machine state into natural-language answers for the User.
 
-Target finalization:
+## 21. Convergence
+
+The kernel does not define success as reaching one hard-coded coding phase.
+
+Profiles compose explicit convergence predicates over typed state, such as:
 
 ```text
-COLLABORATION
- -> autonomous/adaptive work + scoped interactions
- -> provisional convergence
- -> stop temporary publication
- -> Worker removes .internet/workspace/
- -> Orchestrator verifies clean implementation tree
- -> FINAL_REVIEW on cleaned exact head
- -> exact-head CI/health
- -> existing User merge-authority boundary
+required criteria assessed satisfied
+required deliverable artifacts exist
+blocking Findings resolved
+required assessments acceptable
+required authority gates resolved
+critical contradictions absent
+required awaitables completed/resolved
 ```
 
-A final-review defect reopens collaboration and requires fresh cleanup/review afterward.
+A software profile may add exact-head CI/review conditions. A research profile may add coverage/source/citation/report conditions.
 
-## 19. Evaluation model
+## 22. Horizontal contracts
 
-Evaluate:
+The architecture is organized around three domain-neutral contracts:
 
 ```text
-final repository/PR state
-acceptance criteria
-Finding resolution
-artifact/evidence lineage
-exact-head correctness
-authority invariants
-PendingAction/response correctness
-absence of stale approvals/responses
-resource efficiency
+1. Workflow Admission Protocol
+   Local Agent -> Orchestrator
+   natural language compiled/preflighted/confirmed as typed admission
+
+2. Workflow Runtime Protocol
+   Orchestrator <-> capabilities
+   Needs / WorkItems / InputBundles / Artifacts / Assessments / Receipts / Awaitables
+
+3. Workflow Interaction Protocol
+   Orchestrator <-> Local Agent/User
+   Query / Update / Signal / Respond / PendingAction
 ```
 
-Do not require one canonical execution trajectory when several valid dynamic paths converge correctly.
+Coding, research, monitoring, and future domains specialize above these contracts rather than creating separate workflow engines.
 
-## 20. Migration direction
-
-A practical sequence remains:
-
-```text
-A. typed artifact/Need schemas
-B. first-class WorkItem + capability registry + InputBundle
-C. Local-Agent/tool/runtime boundary hardening
-D. Planner objective/criteria/task separation
-E. durable PendingAction + respond/signal API
-F. adaptive Reviewer/Planner/Research feedback motifs
-G. PR shared collaboration projection
-H. reconciled single-writer Git mutation
-I. convergence/verification/evaluation hardening
-```
-
-## 21. Production boundary
+## 23. Production boundary
 
 Nothing in this document claims current implementation.
 
