@@ -1,21 +1,21 @@
 # Software Requirements Specification — vNext Git Mutation Protocol
 
 - **Status:** proposed requirements; not implemented production contract
-- **Version:** 0.1
+- **Version:** 0.2
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
 - **Decision:** [`ADR/0014-reconciled-git-mutation-protocol.md`](./ADR/0014-reconciled-git-mutation-protocol.md)
 
 ## 1. Purpose and authority
 
-This module defines the proposed contract between Local/WorkflowEngine and the single repository-writing Worker.
+This module defines the proposed contract between the deterministic **Orchestrator Runtime** and the single repository-writing Worker.
 
 It does not change the current production authority model. Until implementation, current code and as-built documents remain authoritative.
 
 The target design separates:
 
 ```text
-Local/WorkflowEngine
+Orchestrator Runtime
   = desired repository effect + policy + reconciliation
 
 Worker
@@ -23,6 +23,9 @@ Worker
 
 Git/GitHub
   = observed repository state
+
+Local Agent
+  = User-facing reasoning client/operator using the workflow API
 ```
 
 Worker is the only workflow actor allowed to create repository commits, but that mutation authority does not grant Worker semantic workflow authority.
@@ -43,13 +46,13 @@ WORKSPACE_CLEANUP
 
 ### GM-FR-002 — Exact workspace mode
 
-`WORKSPACE_EXACT` shall treat Local-provided workspace bytes/content identities as desired state. Worker shall not reinterpret or semantically rewrite exact content unless the WorkItem explicitly requests a non-exact migration behavior.
+`WORKSPACE_EXACT` shall treat Orchestrator-provided desired workspace bytes/content identities as desired state. Worker shall not reinterpret or semantically rewrite exact content unless the WorkItem explicitly requests a non-exact migration behavior.
 
 ### GM-FR-003 — Agentic implementation mode
 
 `IMPLEMENTATION_AGENTIC` may grant Worker implementation freedom inside explicitly declared objective, path, authority, and validation constraints.
 
-Semantic correctness shall be established by validation/review rather than exact output hashing.
+Semantic correctness shall be established by validation/review/assessment rather than exact output hashing.
 
 ### GM-FR-004 — Exact cleanup mode
 
@@ -89,7 +92,7 @@ The resulting commit for a successful mutation shall descend directly from the a
 
 ### GM-FR-011 — Desired workspace snapshot
 
-For `WORKSPACE_EXACT`, Local should represent the desired collaboration workspace as one deterministic snapshot/revision rather than an unordered set of prose edit requests.
+For `WORKSPACE_EXACT`, Orchestrator shall represent the desired collaboration workspace as one deterministic snapshot/revision rather than an unordered set of prose edit requests.
 
 ### GM-FR-012 — Desired file identity
 
@@ -101,27 +104,27 @@ One logical workspace revision should normally be published as one coherent chec
 
 ### GM-FR-014 — No per-event Git mirroring
 
-Correctness shall not require publishing every Local artifact, event, or graph transition into Git.
+Correctness shall not require publishing every Artifact, event, or run transition into Git.
 
 ## 5. Semantic publication provenance
 
 ### GM-FR-015 — Publishable collaboration summary
 
-Semantic agent artifacts may include an explicitly publishable summary/candidate intended for cross-agent collaboration context.
+Semantic reasoning artifacts may include an explicitly publishable summary/candidate intended for cross-agent collaboration context.
 
 ### GM-FR-016 — Candidate is not authority
 
-A source agent's publishable summary is a publication candidate, not authority to mutate the repository.
+A source capability's publishable summary is a publication candidate, not authority to mutate the repository.
 
-Local shall accept/reject publication according to policy.
+The Orchestrator shall accept/reject publication according to deterministic policy.
 
 ### GM-FR-017 — Preserve semantic source
 
-When an accepted source-agent summary is sufficient, publication should preserve its meaning rather than asking Worker to independently resynthesize the underlying evidence.
+When an accepted source summary is sufficient, publication should preserve its meaning rather than asking Worker to independently resynthesize the underlying evidence.
 
-### GM-FR-018 — Local-rendered derived files
+### GM-FR-018 — Runtime-rendered derived files
 
-`STATUS.md` and other state projections whose meaning comes from deterministic workflow state should be rendered from Local state rather than freely authored by Worker.
+`STATUS.md` and other state projections whose meaning comes from deterministic workflow state should be rendered from Orchestrator state rather than freely authored by Worker.
 
 ## 6. Single-writer execution
 
@@ -129,7 +132,7 @@ When an accepted source-agent summary is sufficient, publication should preserve
 
 Worker shall remain the only workflow actor authorized to create repository commits.
 
-Planner, Research, and Reviewer shall not directly publish workspace or implementation commits.
+Planner, Research, Reviewer, and Local Agent shall not directly publish workspace or implementation commits.
 
 ### GM-FR-020 — Mutation serialization
 
@@ -137,11 +140,11 @@ Repository mutation WorkItems targeting the same workflow branch shall be serial
 
 ### GM-FR-021 — Batch compatible workspace updates
 
-When multiple accepted shared-context changes are simultaneously ready, Local should be able to batch them into one `WORKSPACE_EXACT` checkpoint.
+When multiple accepted shared-context changes are simultaneously ready, Orchestrator policy should be able to batch them into one `WORKSPACE_EXACT` checkpoint.
 
 ### GM-FR-022 — Worker does not own publication policy
 
-Worker shall not decide independently that an unrequested artifact should be published or that an authorized publication should be omitted based on semantic preference.
+Worker shall not decide independently that an unrequested Artifact should be published or that an authorized publication should be omitted based on semantic preference.
 
 ## 7. Mutation receipt
 
@@ -154,7 +157,7 @@ Every attempted repository mutation shall return a structured receipt.
 The receipt shall identify at least:
 
 ```text
-workflowId
+workflowRunId
 workItemId
 mutationMode
 preHeadSha
@@ -166,23 +169,23 @@ push/update result
 
 ### GM-FR-025 — Workspace receipt details
 
-For exact workspace publication, the receipt shall include enough information for Local to verify resulting file identities and workspace revision.
+For exact workspace publication, the receipt shall include enough information for Orchestrator to verify resulting file identities and workspace revision.
 
 ### GM-FR-026 — Receipt is evidence, not authority
 
 Worker self-report shall not by itself mark repository mutation as converged.
 
-Local reconciliation against observed remote state is required.
+Orchestrator reconciliation against observed remote state is required.
 
 ## 8. Reconciliation
 
 ### GM-FR-027 — Observe actual state after mutation
 
-After Worker reports mutation completion, Local shall independently observe repository/PR state before accepting convergence.
+After Worker reports mutation completion, Orchestrator shall independently observe repository/PR state before accepting convergence.
 
 ### GM-FR-028 — Exact workspace postconditions
 
-For `WORKSPACE_EXACT`, Local shall verify at minimum:
+For `WORKSPACE_EXACT`, Orchestrator shall verify at minimum:
 
 ```text
 remote head identity
@@ -195,7 +198,7 @@ absence of unrelated tree changes
 
 ### GM-FR-029 — Cleanup postconditions
 
-For `WORKSPACE_CLEANUP`, Local shall verify at minimum:
+For `WORKSPACE_CLEANUP`, Orchestrator shall verify at minimum:
 
 ```text
 workspace root absent
@@ -205,17 +208,17 @@ desired product changes still present
 
 ### GM-FR-030 — Agentic implementation postconditions
 
-For `IMPLEMENTATION_AGENTIC`, Local shall verify structural/authority constraints and then rely on normal tests, evidence, and review for semantic correctness.
+For `IMPLEMENTATION_AGENTIC`, Orchestrator shall verify structural/authority constraints and then rely on normal tests, evidence, Reviewer/CriterionAssessment policy for semantic correctness.
 
 ### GM-FR-031 — Desired-state convergence
 
-If observed Git state already satisfies the authorized desired state, Local may declare the mutation converged without creating a duplicate commit.
+If observed Git state already satisfies the authorized desired state, Orchestrator may declare the mutation converged without creating a duplicate commit.
 
 ## 9. Retry and idempotency
 
 ### GM-FR-032 — Retry observes first
 
-Before retrying an uncertain mutation, Local shall observe current remote state.
+Before retrying an uncertain mutation, Orchestrator shall observe current remote state.
 
 ### GM-FR-033 — No blind duplicate commit
 
@@ -223,11 +226,11 @@ If a previous attempt actually succeeded despite a lost/ambiguous response, retr
 
 ### GM-FR-034 — Changed head requires reconciliation
 
-If branch head changed after the original WorkItem was created, Local shall reconcile and create/rebind work according to policy instead of telling Worker to apply the stale WorkItem opportunistically.
+If branch head changed after the original WorkItem was created, Orchestrator shall reconcile and create/rebind work according to policy instead of telling Worker to apply the stale WorkItem opportunistically.
 
 ### GM-FR-035 — Deterministic idempotency identity
 
-Mutation policy should derive an idempotency/equivalence identity from correctness-bearing inputs such as workflow, mutation mode, expected head, desired state/input identity, and policy/render version.
+Mutation policy should derive an idempotency/equivalence identity from correctness-bearing inputs such as WorkflowRun, mutation mode, expected head, desired state/InputBundle identity, and policy/render version.
 
 ## 10. Failure taxonomy
 
@@ -282,43 +285,43 @@ Promotion into repository documentation/instructions requires an explicit produc
 ### Scenario A — Exact research publication
 
 1. Research returns authoritative evidence plus a `sharedContextCandidate`.
-2. Local accepts the candidate for `RESEARCH.md`.
-3. Local renders desired workspace revision `R8`.
-4. Local creates `WORKSPACE_EXACT` against head `H12`.
+2. Orchestrator policy accepts the candidate for `RESEARCH.md`.
+3. Orchestrator renders desired workspace revision `R8`.
+4. Orchestrator creates `WORKSPACE_EXACT` against head `H12`.
 5. Worker verifies `HEAD == H12`.
 6. Worker writes the desired snapshot and creates one commit `H13` with parent `H12`.
 7. Worker returns a mutation receipt.
-8. Local fetches `H13`, verifies paths/content hashes, and marks workspace revision `R8` published.
+8. Orchestrator observes `H13`, verifies paths/content hashes, and marks workspace revision `R8` published.
 
 ### Scenario B — Stale publication
 
-1. Local creates workspace WorkItem against `H12`.
+1. Orchestrator creates workspace WorkItem against `H12`.
 2. Another authorized Worker mutation advances branch to `H13` before execution.
 3. Worker observes mismatch and returns `STALE_HEAD` without committing.
-4. Local observes `H13`, recomputes desired workspace state if still needed, and issues a new WorkItem against `H13`.
+4. Orchestrator observes `H13`, recomputes/rebinds desired workspace state if still needed, and issues a new WorkItem according to policy.
 
 ### Scenario C — Lost success response
 
 1. Worker pushes expected commit `H13` but transport response is lost.
-2. Local sees uncertain attempt state.
-3. Local observes remote branch and workspace content.
+2. Orchestrator sees uncertain attempt state.
+3. Orchestrator observes remote branch and workspace content.
 4. Desired state already matches revision `R8` at `H13`.
-5. Local records convergence without asking Worker for a duplicate commit.
+5. Orchestrator records convergence without asking Worker for a duplicate commit.
 
 ### Scenario D — Worker changes extra file
 
 1. `WORKSPACE_EXACT` authorizes only `.internet/workspace/**`.
 2. Worker commit also modifies `src/app.ts`.
-3. Local reconciliation detects unauthorized path change.
+3. Orchestrator reconciliation detects unauthorized path change.
 4. WorkItem fails regardless of workspace content correctness.
 5. Runtime blocks/repairs according to repository mutation policy rather than silently accepting the extra change.
 
 ### Scenario E — Agentic implementation
 
-1. Local creates `IMPLEMENTATION_AGENTIC` with objective, exact head, allowed paths, and required validation.
+1. Orchestrator creates `IMPLEMENTATION_AGENTIC` with objective, exact head, allowed paths, and required validation.
 2. Worker chooses implementation details within scope.
-3. Local verifies commit ancestry/path authority.
-4. Tests/review determine semantic correctness.
+3. Orchestrator verifies commit ancestry/path authority.
+4. Tests/Reviewer/CriterionAssessment determine semantic correctness.
 5. Exact byte equality is not required because this mutation class intentionally delegates implementation design to Worker.
 
 ## 14. Non-goals
@@ -332,4 +335,6 @@ This protocol does not make Worker:
 - free to write outside WorkItem scope;
 - a trusted source of final repository truth without reconciliation.
 
-It also does not require Git to become the workflow database. Git remains an observed mutation target and collaboration surface; Local remains authoritative for workflow state.
+It does not make Local Agent the Git control plane.
+
+It also does not require Git to become the workflow database. Git remains an observed mutation target and collaboration surface; Orchestrator durable state remains authoritative.
