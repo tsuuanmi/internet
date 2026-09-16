@@ -1,36 +1,38 @@
 # Software Requirements Specification — vNext Planner Lifecycle
 
 - **Status:** proposed requirements; not implemented production contract
-- **Version:** 0.1
+- **Version:** 0.2
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
 - **Decision:** [`ADR/0016-planner-objective-plan-task-boundary.md`](./ADR/0016-planner-objective-plan-task-boundary.md)
 
 ## 1. Purpose and authority
 
-This module defines proposed requirements for the semantic planning boundary between user intent, objective interpretation, acceptance criteria, task decomposition, execution Needs, and runtime WorkItems.
+This module defines proposed requirements for the semantic planning boundary between accepted User intent, Objective interpretation, AcceptanceCriteria, task decomposition, execution Needs, runtime WorkItems/PendingActions, and later plan/requirements revisions.
 
 It extends the core vNext requirements. Current code and as-built contracts remain production authority until these requirements are implemented and promoted.
 
-Local/Orchestrator remains deterministic and non-reasoning under ADR-0015.
+The **Local Agent** is a reasoning-capable workflow client/operator under ADR-0015/ADR-0018. The **Orchestrator Runtime** remains deterministic and owns authoritative routing/materialization/invalidation/state transitions.
 
 ## 2. Functional requirements
 
-### PL-FR-001 — Persist raw user objective
+### PL-FR-001 — Persist accepted User source
 
-The workflow shall persist the original user request and explicit user constraints as `UserObjectiveInput` before semantic planning.
+The workflow shall durably preserve the accepted User source and explicit User constraints from the admission protocol before semantic planning.
 
-### PL-FR-002 — Local does not interpret objective semantics
+### PL-FR-002 — Orchestrator does not interpret objective semantics
 
-Local shall not rewrite, summarize, resolve ambiguity in, or infer acceptance criteria from free-form user text.
+The Orchestrator Runtime shall not rewrite, summarize, resolve ambiguity in, or infer acceptance criteria from free-form User text.
 
-When semantic interpretation is required, Local shall route a Planner/clarification WorkItem according to deterministic policy.
+When semantic interpretation is required, it shall route a Planner/clarification reasoning capability according to typed policy.
+
+The Local Agent may perform conversational interpretation for admission UX, but that interpretation is authoritative only when submitted through the typed admission protocol with provenance.
 
 ### PL-FR-003 — Planner-owned ObjectiveArtifact
 
-Planner shall produce a structured `ObjectiveArtifact` that references the source `UserObjectiveInput` and preserves explicit user-owned constraints by identity/provenance.
+Planner shall produce a structured `ObjectiveArtifact` that references the accepted source/admission and preserves explicit User-owned constraints by identity/provenance.
 
-### PL-FR-004 — Objective is distinct from Plan
+### PL-FR-004 — Objective distinct from Plan
 
 The desired semantic outcome shall be versioned independently from the execution strategy used to achieve it.
 
@@ -86,25 +88,27 @@ Parent/group tasks shall not automatically become executable WorkItems.
 
 Planner should express only necessary semantic ordering/dependency relationships.
 
-Local shall not add dependencies by interpreting task prose.
+The Orchestrator Runtime shall not add dependencies by interpreting task prose.
 
 ### PL-FR-015 — Explicit execution Need required
 
 A semantic task requiring agent/tool execution shall have an explicit typed Need or equivalent schema-defined execution intent produced by an authorized reasoning role.
 
-### PL-FR-016 — Local does not infer capability from task prose
+### PL-FR-016 — Orchestrator does not infer capability from task prose
 
-Local shall not map natural-language task descriptions directly to providers/capabilities.
+The Orchestrator Runtime shall not map natural-language task descriptions directly to providers/capabilities.
 
-Capability routing shall operate on typed Needs.
+Capability routing shall operate on typed Need fields through the registered capability policy.
 
 ### PL-FR-017 — PlanTask causal ownership
 
-A task-linked Need may identify `PlanTask` as causal request owner so returned output can be attached to the task without automatically invoking Planner again.
+A task-linked Need may identify PlanTask as causal request owner so returned output can be attached to the task without automatically invoking Planner again.
 
-### PL-FR-018 — WorkItem materialization remains Local-owned
+### PL-FR-018 — Runtime-owned execution materialization
 
-Once a typed Need is valid, Local shall deterministically resolve capability/policy and materialize the runtime WorkItem.
+Once a typed Need is valid, the deterministic Orchestrator Runtime shall resolve capability/policy and materialize the required runtime dependency.
+
+A Need requiring internal execution may materialize as a WorkItem. A Need requiring external authority/input may materialize as a PendingAction.
 
 ### PL-FR-019 — Task execution completion differs from acceptance
 
@@ -114,12 +118,12 @@ The runtime shall distinguish at least:
 WorkItem completed
 PlanTask execution completed
 AcceptanceCriterion satisfied
-Workflow converged
+WorkflowRun converged
 ```
 
 ### PL-FR-020 — Task result does not imply criterion satisfaction
 
-A produced implementation/evidence Artifact shall not automatically mark related acceptance criteria satisfied unless an explicit deterministic validation or authorized Reviewer judgment does so.
+A produced implementation/evidence Artifact shall not automatically mark related acceptance criteria satisfied unless a current authorized CriterionAssessment/deterministic validation establishes that state under ADR-0021.
 
 ### PL-FR-021 — PlanRevisionArtifact required
 
@@ -139,13 +143,13 @@ changed assumptions
 explicit affected references
 ```
 
-### PL-FR-023 — Local invalidates from explicit refs
+### PL-FR-023 — Runtime invalidates from explicit refs
 
-Local shall use declared artifact/task/criteria relationships and version lineage for stale-state propagation.
+The Orchestrator Runtime shall use declared artifact/task/criteria relationships and version lineage for stale-state propagation.
 
-Local shall not infer invalidation by reading semantic prose.
+It shall not infer invalidation by reading semantic prose.
 
-### PL-FR-024 — Plan change and requirements change are distinct
+### PL-FR-024 — Plan change, requirements change, and clarification are distinct
 
 The workflow shall distinguish at least:
 
@@ -157,82 +161,89 @@ clarification
 
 ### PL-FR-025 — Plan change preserves success definition
 
-`plan_change` shall mean that objective/acceptance criteria remain active while strategy/decomposition changes.
+`plan_change` shall mean that Objective/AcceptanceCriteria remain active while strategy/decomposition changes.
 
 ### PL-FR-026 — Requirements change may alter success definition
 
-`requirements_change` shall represent proposed change to Objective or AcceptanceCriteria and shall follow applicable authority rules before activation.
+`requirements_change` shall represent a proposed change to Objective or AcceptanceCriteria and shall follow applicable authority rules before activation.
 
-### PL-FR-027 — User authorization for user-owned requirement changes
+### PL-FR-027 — Clarification obtains missing outside information
 
-If a proposed criteria/objective revision would weaken, remove, or materially reinterpret user-owned constraints, Local shall require explicit user authority unless policy already provides a narrower deterministic rule.
+`clarification` shall represent missing semantic/contextual input required before planning/requirements interpretation can safely continue.
 
-### PL-FR-028 — Local does not judge semantic quality of revised requirements
+When external input is required, the Orchestrator shall materialize a PendingAction according to interaction policy rather than treating clarification as an execution retry.
 
-Local shall only validate schema/provenance/authority for proposed Objective/Criteria revisions.
+### PL-FR-028 — User authorization for user-owned requirement changes
 
-Semantic adequacy belongs to Planner/Reviewer/User according to workflow policy.
+If a proposed criteria/objective revision would weaken, remove, or materially reinterpret User-owned constraints, the Orchestrator shall require explicit User authority unless policy provides a narrower deterministic rule.
 
-### PL-FR-029 — Criteria revision invalidates dependents
+### PL-FR-029 — Orchestrator does not judge semantic quality of revised requirements
 
-When active acceptance criteria are superseded, dependent Plan/Implementation/Review/Approval artifacts shall become stale or require re-evaluation according to explicit lineage rules.
+The Orchestrator shall validate schema/provenance/authority/currentness only. Semantic adequacy belongs to Planner/Reviewer/User according to workflow policy.
 
-### PL-FR-030 — Plan revision preserves unaffected work
+### PL-FR-030 — Criteria revision invalidates dependents
+
+When active acceptance criteria are superseded, dependent Plan/Implementation/Review/Assessment/Approval artifacts shall become stale or require re-evaluation according to explicit lineage rules.
+
+### PL-FR-031 — Plan revision preserves unaffected work
 
 When a Plan revision changes only a subset of tasks/assumptions/dependencies, unrelated compatible completed artifacts should remain reusable according to exact-input and lineage policy.
 
-### PL-FR-031 — Planner may re-enter after workflow start
+### PL-FR-032 — Planner may re-enter after workflow start
 
-Planner shall be invokable when a later typed Need requires replanning, criteria revision proposal, semantic clarification, or plan synthesis.
+Planner shall be invokable when a later typed Need requires replanning, criteria revision proposal, semantic clarification, or plan/shared-view synthesis.
 
-### PL-FR-032 — Planner is not a fixed phase gate
+### PL-FR-033 — Planner is not a fixed phase gate
 
-Local shall not invoke Planner solely because a hard-coded phase number has been reached.
+The Orchestrator shall not invoke Planner solely because a hard-coded phase number has been reached.
 
-Invocation shall be triggered by initial workflow policy or an explicit typed Need.
+Invocation shall be triggered by initial profile policy or explicit typed semantic demand.
 
-### PL-FR-033 — Planner clarification artifact
+### PL-FR-034 — Planner clarification artifact
 
-When user intent is materially ambiguous and cannot be resolved under deterministic policy, Planner/clarification capability shall produce a structured clarification request for Local to present to the user.
+When User intent is materially ambiguous and cannot be resolved under deterministic policy, Planner/clarification capability shall produce a structured clarification request/question artifact.
 
-### PL-FR-034 — Local presents, does not invent, semantic questions
+### PL-FR-035 — Local Agent presents clarification safely
 
-Local may present a previously produced clarification question and persist the response, but shall not formulate its own semantic interpretation question through model reasoning.
+Local Agent may present/explain a persisted clarification PendingAction and carry an allowed response, but its hidden reasoning shall not directly mutate Objective/Criteria/Plan state.
 
-### PL-FR-035 — Shared Plan view belongs to Planner semantics
+### PL-FR-036 — Shared Plan view belongs to Planner semantics
 
 Temporary PR `PLAN.md` content shall derive from a Planner-produced `PlanSharedView` or equivalent accepted semantic artifact.
 
-Local may render/order/filter it deterministically but shall not rewrite its substantive plan meaning.
+The Orchestrator may validate/filter/order/render deterministically; Local Agent may inspect/explain but shall not become semantic plan authority.
 
-### PL-FR-036 — Optional Roadmap view
+### PL-FR-037 — Optional Roadmap view
 
-For large workflows, Planner may produce a `RoadmapSharedView` that Local can publish under deterministic workspace policy.
+For large workflows, Planner may produce a `RoadmapSharedView` that deterministic publication policy can expose.
 
-### PL-FR-037 — Shared TODO items have semantic provenance
+### PL-FR-038 — Shared TODO items have semantic provenance
 
-Task/blocker items displayed in `TODO.md` shall originate from typed structured items produced by authorized roles or explicit deterministic runtime status, rather than Local prose synthesis.
+Task/blocker items displayed in `TODO.md` shall originate from typed structured items produced by authorized roles or explicit deterministic runtime status, rather than Local Agent prose synthesis.
 
-### PL-FR-038 — Assumptions are first-class
+### PL-FR-039 — Assumptions are first-class
 
 Material Planner assumptions that affect downstream correctness shall have stable identity or explicit references sufficient for later evidence to contradict/supersede them.
 
-### PL-FR-039 — Evidence may trigger replan without Local interpretation
+### PL-FR-040 — Evidence may trigger replan without Orchestrator interpretation
 
 When Research/Reviewer determines that evidence invalidates a planning assumption, that reasoning role shall emit the appropriate typed Need/contradiction reference.
 
-Local shall route/invalidate mechanically from the typed result.
+The Orchestrator routes/invalidate mechanically from typed relationships.
 
-### PL-FR-040 — Concurrency from declared dependencies
+### PL-FR-041 — Concurrency from declared dependencies
 
 Independent executable task Needs may run concurrently when their declared dependencies, side-effect constraints, and resource policy permit.
 
-Local shall not serialize tasks merely because they appeared sequentially in Planner prose.
+The Orchestrator shall not serialize tasks merely because they appeared sequentially in Planner prose.
 
 ## 3. Object relationship
 
 ```text
-UserObjectiveInput UO1
+Accepted Admission / User source
+        |
+        v
+    Planner WorkItem
         |
         v
 ObjectiveArtifact O1
@@ -251,22 +262,22 @@ AcceptanceCriteria AC1    assumptions
           |               |
        Need N1          Need N2
           |               |
-       WorkItem W1      WorkItem W2
+   WorkItem/PendingAction ...
 ```
 
-When N1 and N2 are independent, Local may schedule W1/W2 concurrently under deterministic policy.
+Independent execution dependencies may proceed concurrently under runtime policy.
 
 ## 4. Requirements-change flow
 
 ```text
 Reviewer
-  -> Finding: acceptance definition ambiguous
+  -> Finding: acceptance definition ambiguous/incomplete
   -> Need(requirements_change)
-  -> Local routes Planner
+  -> Orchestrator routes Planner WorkItem
   -> Planner proposes AC2 / Objective revision
-  -> Local validates authority
-  -> user approval if required
-  -> activate AC2
+  -> Orchestrator validates authority/currentness
+  -> PendingAction(USER_AUTHORITY) if required
+  -> activate AC2 only after valid authority
   -> deterministic lineage invalidation
   -> Planner replan if needed
 ```
@@ -277,56 +288,70 @@ Reviewer
 Reviewer
   -> Finding: current strategy is incomplete
   -> Need(plan_change)
-  -> Local routes Planner
+  -> Orchestrator routes Planner WorkItem
   -> Plan P2 supersedes P1
-  -> Local invalidates only declared affected dependents
+  -> Orchestrator invalidates declared affected dependents
   -> typed task Needs become ready
   -> execution continues
 ```
 
-## 6. Acceptance scenarios
+## 6. Clarification flow
+
+```text
+Planner/Reviewer
+  -> Need(clarification)
+  -> Orchestrator materializes PendingAction if outside input required
+  -> Local Agent presents question
+  -> allowed response enters through interaction protocol
+  -> Orchestrator persists/validates response
+  -> Planner/Reviewer resumes under policy
+```
+
+## 7. Acceptance scenarios
 
 ### Scenario A — ordinary initial planning
 
-1. Local persists raw user objective.
-2. Deterministic startup policy creates Planner WorkItem.
-3. Planner returns Objective, AcceptanceCriteria, Plan, PlanSharedView, and executable task Needs.
-4. Local validates schema/refs/authority.
-5. Local routes ready Needs without reading task prose semantically.
+1. Admission preserves accepted User source/provenance.
+2. Startup profile policy creates Planner WorkItem.
+3. Planner returns Objective, AcceptanceCriteria, Plan, optional shared views, and typed executable Needs.
+4. Orchestrator validates schema/refs/authority.
+5. Orchestrator routes ready typed Needs without interpreting task prose semantically.
 
 ### Scenario B — planner changes strategy only
 
 1. Evidence invalidates assumption A3.
 2. Reviewer/Planner produces `plan_change` Need with A3 reference.
 3. Planner returns P2 superseding P1, changing T4/T5 only.
-4. Local keeps unrelated completed task evidence reusable.
-5. Local schedules new typed Needs for changed tasks.
+4. Orchestrator keeps unrelated completed evidence reusable according to lineage/input rules.
+5. Orchestrator schedules new typed Needs for changed tasks.
 
-### Scenario C — user criterion needs change
+### Scenario C — User criterion needs change
 
-1. Reviewer finds explicit user constraint incompatible with requested outcome.
+1. Reviewer finds explicit User constraint incompatible with requested outcome.
 2. Reviewer emits `requirements_change` Need.
 3. Planner proposes revision.
-4. Local detects user-owned criterion provenance and requests explicit user authorization.
+4. Orchestrator detects User-owned criterion provenance and creates User-authority interaction when required.
 5. Without authorization, active criteria remain unchanged.
 
-### Scenario D — WorkItem succeeds but task fails acceptance
+### Scenario D — WorkItem succeeds but criterion fails acceptance
 
 1. Worker completes implementation WorkItem.
 2. PlanTask records execution output.
-3. Reviewer evaluates implementation against criterion AC7.
-4. Reviewer finds AC7 unsatisfied.
+3. Reviewer assesses implementation against AC7.
+4. CriterionAssessment is `UNSATISFIED`.
 5. Workflow creates repair/replan Need rather than marking workflow successful.
 
-## 7. Non-goals
+## 8. Non-goals
 
 This module does not make Planner:
 
 - the scheduler;
 - the provider/account router;
 - the Git writer;
-- the final acceptance authority;
-- the owner of user authorization;
+- the workflow lifecycle authority;
+- the owner of User authorization;
 - the source of runtime retry/budget policy.
 
-Planner owns semantic interpretation and decomposition. Local owns deterministic coordination. Reviewer/tests own acceptance evidence. Worker owns authorized implementation/Git mutation.
+It does not make Local Agent the deterministic orchestrator.
+
+Planner owns semantic interpretation/decomposition. Orchestrator Runtime owns deterministic coordination. Assessment/Reviewer/tests/User authority establish acceptance evidence. Worker owns authorized implementation/Git mutation.
