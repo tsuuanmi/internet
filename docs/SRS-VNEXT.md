@@ -1,17 +1,19 @@
 # Software Requirements Specification — Workflow vNext
 
 - **Status:** proposed requirements; not yet implemented normative contract
-- **Version:** 0.1
+- **Version:** 0.2
 - **Started:** 2026-09-16
-- **Related:** [`SRS.md`](./SRS.md), [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md), ADR-0009, ADR-0010
+- **Related:** [`SRS.md`](./SRS.md), [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md), ADR-0009, ADR-0010, ADR-0011, ADR-0012
 
-## 1. Purpose
+## 1. Purpose and authority boundary
 
-This document defines testable requirements for the proposed next workflow architecture: typed artifact communication, shared durable state, capability-based routing, adaptive graph feedback, and convergence-based completion.
+This document defines testable requirements for the proposed next workflow architecture: typed artifact communication, shared durable state, capability-based routing, bounded WorkItems, sparse exact InputBundles, adaptive graph feedback, and convergence-based completion.
 
-The current implemented contract remains [`SRS.md`](./SRS.md) until individual vNext requirements are implemented and promoted.
+The current implemented contract remains [`SRS.md`](./SRS.md) until individual vNext requirements are implemented, tested, and promoted. Nothing in this document authorizes runtime behavior that the current as-built contracts do not already permit.
 
-## 2. Target actors
+If this document conflicts with a current as-built contract, the current as-built contract wins for production behavior. If this document conflicts with a Proposed ADR, the narrower Proposed ADR controls the vNext design intent until amended.
+
+## 2. Target actors and authority
 
 ### User
 
@@ -19,11 +21,11 @@ Owns final human authority and exception decisions.
 
 ### Orchestrator
 
-The Local agent acts as the semantic and user-facing orchestrator. It interprets user intent and workflow-visible typed needs, but does not become the durable state machine or silently rewrite reasoning artifacts.
+The Local agent acts as the semantic and user-facing orchestrator. It interprets user intent and workflow-visible typed needs, but does not become the durable state machine, execution scheduler, graph mutation authority, or silent transformer of reasoning artifacts.
 
 ### WorkflowEngine
 
-Owns deterministic schema validation, durable artifact/state persistence, graph transitions, need-to-capability routing policy, exact-input binding, scheduling prerequisites, loop/convergence policy, and authority gates.
+Owns deterministic schema validation, durable artifact/state persistence, WorkItem creation, graph transitions, capability routing policy, exact-input binding, scheduling prerequisites, loop/convergence policy, and authority gates.
 
 ### Planner
 
@@ -43,7 +45,22 @@ The existing account name `chatgpt-writer` may remain as a transport/routing ide
 
 Evaluates exact current artifacts and inputs, persists findings, approves satisfied conditions, and emits typed needs when further research, planning, implementation, or verification is required.
 
-## 3. Functional requirements
+## 3. Core object model
+
+The vNext runtime shall distinguish:
+
+```text
+Finding   = observed defect, uncertainty, contradiction, or unmet criterion
+Need      = semantic capability/information request
+WorkItem  = code-owned bounded unit of authorized runtime work
+GraphNode = execution mechanics used to realize a WorkItem
+Artifact  = durable domain result produced by WorkItem/runtime execution
+InputBundle = exact correctness-bearing input manifest for one WorkItem
+```
+
+These objects shall not be collapsed into one untyped handoff record.
+
+## 4. Functional requirements
 
 ### VN-FR-001 — Logical Worker terminology
 
@@ -69,91 +86,212 @@ Committed correctness-bearing artifacts shall not be silently mutated. Changes s
 
 The runtime shall persist workflow artifacts independently of transient Website conversation context. The set of active artifacts shall form the workflow's shared information state/blackboard.
 
-### VN-FR-007 — Minimal relevant agent context
+### VN-FR-007 — Persistent finding lifecycle
 
-An executable agent node should receive only the exact artifact subset required for its task, plus explicitly allowed explanatory context. The runtime shall not require concatenating the full workflow transcript into every downstream prompt.
+Reviewer findings shall be first-class durable artifacts with stable identity and lifecycle state. At minimum the model shall distinguish open, resolved, and superseded findings.
 
-### VN-FR-008 — Persistent finding lifecycle
+### VN-FR-008 — Finding causality
 
-Reviewer findings shall be first-class durable artifacts with stable identity and lifecycle state. At minimum the model shall distinguish unresolved/open findings from resolved or superseded findings.
+A finding that creates follow-up work shall reference the Need it caused. Resolution shall reference the evidence, implementation, plan, or other artifact used to resolve it.
 
-### VN-FR-009 — Finding causality
+### VN-FR-009 — Needs describe semantic demand
 
-A finding that creates follow-up work shall reference the need/request artifact it caused. Resolution shall reference the evidence, implementation, plan, or other artifact used to resolve it.
+A Need shall describe what capability or information is required, not how it is executed.
 
-### VN-FR-010 — Needs describe capability, not provider
+A model-produced Need shall not authoritatively choose provider account, Website session, retry policy, execution attempt, graph node IDs/edges, budget override, mutation authority, or human authorization.
 
-A model-generated request shall express the semantic capability required, such as `external_evidence`, `implementation_change`, or `plan_change`. It shall not select a concrete provider account as workflow authority.
+### VN-FR-010 — No direct agent spawning
 
-### VN-FR-011 — No direct agent spawning
+Planner, Research, Worker, and Reviewer shall not directly invoke one another. They emit artifacts. Orchestration validates the artifact and decides whether and how to schedule work.
 
-Planner, Research, Worker, and Reviewer shall not directly invoke one another. They emit artifacts. Orchestration validates the artifact and schedules the appropriate capability.
+### VN-FR-011 — First-class WorkItem
 
-### VN-FR-012 — Deterministic need routing
+A validated Need that requires execution shall be materialized as a runtime-owned WorkItem before provider/tool execution begins.
 
-`WorkflowEngine` shall map a validated semantic need to a capability/node type through deterministic policy. Provider/account routing remains a lower-level scheduling concern.
+### VN-FR-012 — WorkItem causal binding
 
-### VN-FR-013 — Persisted request owner
+Every WorkItem shall persist the Need that caused it and the causal request owner whose unresolved decision or finding required the work.
 
-Each routed need shall persist the causal request owner: the node/role/finding whose unresolved decision required the work.
+### VN-FR-013 — WorkItem execution authority
 
-### VN-FR-014 — Default result return rule
+Only deterministic runtime code may create authoritative WorkItems, assign execution policy, or materialize graph nodes/edges.
 
-A capability result shall return first to the request owner unless the request contains an explicit routing contract that the runtime validates.
+### VN-FR-014 — WorkItem boundedness
+
+A WorkItem shall bind at least capability identity/version, exact InputBundle identity, side-effect class, applicable budget/policy, idempotency/equivalence identity, lifecycle state, execution references, and result Artifact references.
+
+### VN-FR-015 — WorkItem versus graph realization
+
+One WorkItem may map to one graph node or a deterministic runtime-approved subgraph motif. The runtime shall not equate a Need with one hard-coded graph node.
+
+### VN-FR-016 — Capability-based routing
+
+WorkflowEngine shall resolve validated Needs through a versioned code-owned capability registry. Provider/account selection remains a lower-level execution concern.
+
+### VN-FR-017 — Capability contract
+
+A capability descriptor shall define at minimum accepted Need types, produced Artifact types, side-effect class, required authority/gates, eligible logical executor classes, input schema, output schema, and relevant policy hooks.
+
+### VN-FR-018 — Capability registry authority
+
+Model output shall not add, redefine, or override capability descriptors. Adding a provider/account shall not implicitly create a new semantic capability.
+
+### VN-FR-019 — Side-effect class enforcement
+
+At minimum, runtime policy shall distinguish read-only work from repository/external mutation and human-authority-required work. Read-only semantic demand shall never silently become mutation authority.
+
+### VN-FR-020 — Deterministic need routing
+
+Need-to-capability resolution shall be deterministic for the same validated Need, workflow policy version, and relevant authoritative state.
+
+### VN-FR-021 — Persisted request owner
+
+Each routed Need shall persist the causal request owner: the node/role/finding whose unresolved decision required the work.
+
+### VN-FR-022 — Default result return rule
+
+A capability result shall return first to the request owner unless an explicit routing contract is validated.
 
 Example:
 
 ```text
-Reviewer/Finding -> external_evidence -> Research -> Evidence -> Reviewer/Finding
+Reviewer/Finding -> Need(external_evidence)
+-> WorkItem(external_research)
+-> EvidenceArtifact
+-> Reviewer/Finding
 ```
 
 The runtime shall not automatically interpret the evidence as an instruction to Worker or Planner.
 
-### VN-FR-015 — Shared-state visibility is not broadcast
+### VN-FR-023 — Research output does not own downstream policy
 
-Persisting a result in shared state shall not imply delivery to every role. Exact graph dependencies and routing decisions shall determine which nodes consume which artifacts.
+Research shall answer its bounded question and produce evidence/claim state. Unless the WorkItem explicitly grants decision authority, Research shall not determine whether Worker, Planner, or another Reviewer must run next.
 
-### VN-FR-016 — Reviewer-driven research loop
+### VN-FR-024 — Reviewer retains finding authority
 
-A Reviewer shall be able to emit a need for additional Research without forcing immediate Worker remediation. The resulting evidence shall be re-evaluated by the owning Reviewer/finding before further action is selected.
+When Reviewer creates a finding and asks for supporting capability work, Reviewer retains responsibility for resolving, superseding, or keeping that finding open after the requested result returns.
 
-### VN-FR-017 — Reviewer-driven plan revision
+### VN-FR-025 — Exact InputBundle required
+
+Every executable WorkItem shall be bound to one persisted, deterministic InputBundle before execution begins.
+
+### VN-FR-026 — InputBundle identity
+
+An InputBundle shall identify all correctness-bearing artifact references and runtime facts needed by the WorkItem, plus projection-policy identity and a deterministic input hash.
+
+### VN-FR-027 — Sparse context projection
+
+Shared-state visibility shall not imply prompt delivery. Runtime projection shall include only artifacts/facts required by explicit dependencies and the WorkItem contract.
+
+Unrelated branches, superseded artifacts, stale exact-head results, and the full workflow transcript shall be excluded by default.
+
+### VN-FR-028 — Projection authority
+
+Input projection shall be runtime-owned and versioned. Models may make semantic requests for information but shall not authoritatively inject arbitrary shared artifacts into their own correctness-bearing context.
+
+### VN-FR-029 — Immutable execution input
+
+Once a WorkItem execution attempt starts, its canonical InputBundle identity shall not change. Materially changed input requires a new execution identity and, when correctness semantics changed, a new/replaced WorkItem according to policy.
+
+### VN-FR-030 — Result-to-input provenance
+
+Every correctness-bearing result Artifact from agent execution shall reference the producing WorkItem and InputBundle/input hash.
+
+### VN-FR-031 — Independent review projection
+
+When independent review is required, one reviewer's conclusions shall not be included in another reviewer's InputBundle before independent evaluation completes. A later synthesis/join may consume both explicitly.
+
+### VN-FR-032 — Independent research projection
+
+When independent research is required, peer conclusions shall not be injected into another research WorkItem unless the graph motif explicitly defines a critique/refinement dependency.
+
+### VN-FR-033 — Untrusted-content boundary
+
+Model-produced prose, external excerpts, and peer reasoning included in an InputBundle shall remain untrusted data and shall be delimited from runtime control instructions and authoritative workflow facts.
+
+### VN-FR-034 — Shared-state visibility is not broadcast
+
+Persisting a result in shared state shall not imply delivery to every role. Exact graph dependencies and InputBundle projection determine consumption.
+
+### VN-FR-035 — Persistent artifact lineage
+
+Correctness-bearing artifacts shall support explicit causal/dependency relationships sufficient for provenance and invalidation. Initial relation vocabulary should support at least `derived_from`, `supports`, `contradicts`, `resolves`, `supersedes`, and `invalidates` where semantically applicable.
+
+### VN-FR-036 — Causal invalidation
+
+When an authoritative artifact is superseded or invalidated, runtime policy shall identify dependent results whose correctness-bearing inputs changed and mark them stale/re-evaluation-required rather than globally restarting unrelated work.
+
+### VN-FR-037 — Incremental graph expansion
+
+The durable graph shall support adding deterministic nodes and dependencies in response to validated Needs after workflow start.
+
+### VN-FR-038 — Runtime-approved graph motifs
+
+Adaptive graph expansion shall use code-owned node/subgraph templates. Model output shall not directly author arbitrary DAG topology.
+
+Initial motifs may include:
+
+```text
+research-return
+parallel-research-join
+repair-review
+replan-execute-review
+verify-return
+```
+
+### VN-FR-039 — Parallel independent needs
+
+When two validated WorkItems are independent by exact dependency analysis, the scheduler may execute them concurrently subject to account/session/resource policy.
+
+### VN-FR-040 — Deduplicate equivalent outstanding work
+
+Before creating a new WorkItem, runtime should detect an already-active compatible equivalent request and join/reuse that work when deterministic equivalence policy allows.
+
+Natural-language similarity alone shall not be sufficient correctness authority for deduplication.
+
+### VN-FR-041 — Reviewer-driven research loop
+
+A Reviewer shall be able to emit a Need for additional Research without forcing immediate Worker remediation. The resulting evidence shall be re-evaluated by the owning Reviewer/finding before further action is selected.
+
+### VN-FR-042 — Reviewer-driven plan revision
 
 A Reviewer shall be able to emit `plan_change` when the implementation satisfies the current plan but the plan or acceptance criteria are incomplete or invalid.
 
-### VN-FR-018 — Plan versioning
+### VN-FR-043 — Plan versioning
 
 Planner changes shall create an explicit plan revision with version identity, superseded version, reason, and affected tasks/criteria/assumptions sufficient for downstream invalidation decisions.
 
-### VN-FR-019 — Worker-driven artifact production
+### VN-FR-044 — Worker-driven artifact production
 
-Worker shall be able to consume validated plan/evidence/review artifacts and produce implementation or generated-output artifacts. A separate Generator role is not required for the initial vNext architecture.
+Worker shall consume validated plan/evidence/review artifacts and produce implementation or generated-output artifacts. A separate Generator role is not required for the initial vNext architecture.
 
-### VN-FR-020 — Incremental graph expansion
-
-The durable graph shall support adding deterministic nodes and dependencies in response to validated need artifacts after workflow start.
-
-### VN-FR-021 — Parallel independent needs
-
-When two validated needs are independent by exact dependency analysis, the scheduler may execute them concurrently subject to account/session capacity limits.
-
-### VN-FR-022 — Exact-input preservation
+### VN-FR-045 — Exact-input preservation
 
 Adaptive graph expansion shall preserve exact-input binding. Dynamic routing shall never make stale artifacts valid for changed correctness-bearing inputs.
 
-### VN-FR-023 — Exact-head review remains mandatory
+### VN-FR-046 — Exact-head review remains mandatory
 
 Review approval and implementation findings concerning repository code shall remain bound to the exact PR head SHA they inspected.
 
-### VN-FR-024 — Plan-sensitive invalidation
+### VN-FR-047 — Plan-sensitive invalidation
 
-If a plan revision changes an acceptance criterion, assumption, or task dependency that a prior finding/approval consumed, the runtime shall invalidate or explicitly re-evaluate that dependent result rather than silently reuse it.
+If a plan revision changes an acceptance criterion, assumption, or task dependency that a prior finding/approval consumed, runtime shall invalidate or explicitly re-evaluate that dependent result rather than silently reuse it.
 
-### VN-FR-025 — Evidence-sensitive reuse
+### VN-FR-048 — Evidence-sensitive reuse
 
-A research/evidence artifact may be reused only when its bounded question and required context/freshness/source policy remain compatible with the new request.
+A research/evidence artifact may be reused only when its bounded question and required context/freshness/source policy remain compatible with the new WorkItem.
 
-### VN-FR-026 — Convergence-based success
+### VN-FR-049 — Verification as capability
+
+Verification shall initially be modeled as one or more capabilities rather than requiring a permanent dedicated Verifier role/team.
+
+Potential capabilities include schema validation, source reachability, citation entailment, freshness/quality checks, claim coverage, and contradiction checks.
+
+### VN-FR-050 — Deterministic validation first
+
+Where a correctness check can be expressed deterministically, runtime shall prefer deterministic validation over invoking another model solely to perform that check.
+
+### VN-FR-051 — Convergence-based success
 
 The target workflow shall determine successful completion from explicit satisfied conditions rather than merely reaching a fixed semantic round count.
 
@@ -167,61 +305,83 @@ no unresolved critical evidence contradiction
 acceptance criteria satisfied
 ```
 
-### VN-FR-027 — Bounded non-convergence
+### VN-FR-052 — Termination policy is first-class
 
-The runtime shall enforce bounded feedback-loop policy so equivalent research/repair/review cycles cannot continue indefinitely.
+Success conditions, resource limits, and stagnation rules shall be represented as explicit workflow policy rather than implicit prompt convention.
 
-### VN-FR-028 — Stagnation detection
+### VN-FR-053 — Safety limits do not define success
 
-The convergence policy should detect at least repeated reopening of the same finding and repeated work that produces no materially new evidence or implementation change.
+Max-round, max-WorkItem, timeout, token/cost, or reopen limits are safety/resource guards and shall not by themselves constitute successful completion.
 
-### VN-FR-029 — Fail-closed loop exhaustion
+### VN-FR-054 — Bounded non-convergence
 
-When a loop budget or stagnation boundary is reached, the workflow shall stop at a durable blocked/action-required state with the unresolved causal artifacts preserved.
+Runtime shall enforce bounded feedback-loop policy so equivalent research/repair/review cycles cannot continue indefinitely.
 
-### VN-FR-030 — Deduplicate equivalent outstanding needs
+### VN-FR-055 — Stagnation detection
 
-Before scheduling new work, the runtime should detect when an equivalent unresolved request already exists and reuse/join that work rather than creating redundant parallel requests.
+Termination policy should detect repeated reopening of the same finding, equivalent Needs without new correctness-bearing inputs, and repeated repair attempts that produce no materially new implementation state.
 
-### VN-FR-031 — Research output does not own downstream policy
+### VN-FR-056 — Fail-closed loop exhaustion
 
-Research shall answer its bounded question and produce evidence/claim state. Unless the research task explicitly grants decision authority, Research shall not determine whether Worker, Planner, or another Reviewer must run next.
+When loop/resource/stagnation policy is exhausted, workflow shall stop at a durable blocked/action-required state with unresolved causal artifacts preserved.
 
-### VN-FR-032 — Reviewer retains finding authority
+### VN-FR-057 — Explicit workflow effort budget
 
-When Reviewer creates a finding and asks for supporting capability work, Reviewer retains responsibility for resolving, superseding, or keeping that finding open after the requested result returns.
+Workflow policy shall be able to bind resource budgets independently of semantic success criteria. Budget dimensions may include concurrent WorkItems, specialist fan-out, model turns, tool calls, token/cost budget, and wall-clock time.
 
-### VN-FR-033 — Deterministic schema rejection
+### VN-FR-058 — No silent budget escalation
+
+Agents shall not override or silently increase runtime resource budgets. Budget changes requiring user/policy authority must be explicit and durable.
+
+### VN-FR-059 — Retry remains exact-input bounded
+
+Retries belong to runtime policy. A retry shall preserve causal ownership, exact InputBundle identity, side-effect/idempotency constraints, and fencing. Materially changed inputs require an explicit replacement/new WorkItem path.
+
+### VN-FR-060 — Deterministic schema rejection
 
 Malformed, unknown-version, or context-incompatible correctness-bearing artifacts shall fail closed before they trigger graph transitions.
 
-### VN-FR-034 — Provenance-preserving transformation
+### VN-FR-061 — Provenance-preserving transformation
 
 Any runtime transformation from one artifact schema/version to another shall be explicit, deterministic, versioned, and provenance-preserving. An unrecorded LLM summary shall not serve as a correctness-bearing schema conversion.
 
-### VN-FR-035 — Current pipeline remains migration-compatible
+### VN-FR-062 — Semantic coordination trace
 
-The vNext artifact model may initially execute through the existing mostly sequential workflow policy. Artifact/state correctness shall be separable from when adaptive graph routing is enabled.
+Runtime observability shall be able to explain at least:
 
-## 4. Initial capability routing vocabulary
+```text
+Finding -> Need -> WorkItem -> InputBundle -> execution -> Artifact -> return owner -> resolution
+```
+
+Trace/history shall remain diagnostic and shall not replace authoritative workflow/artifact state.
+
+### VN-FR-063 — Outcome-oriented evaluation
+
+Evaluation of dynamic workflows shall judge final state, required checkpoints, authority invariants, correctness relationships, and resource use rather than requiring one canonical execution trajectory.
+
+### VN-FR-064 — Current pipeline remains migration-compatible
+
+The vNext artifact/WorkItem/InputBundle model may initially execute through the existing mostly sequential workflow policy. Artifact/state correctness shall be separable from when adaptive graph routing is enabled.
+
+## 5. Initial capability vocabulary
 
 The initial design should support at least:
 
-| Need | Capability |
-| --- | --- |
-| `external_evidence` | Research / Explorer |
-| `repository_evidence` | Research / Explorer |
-| `implementation_change` | Worker |
-| `artifact_generation` | Worker |
-| `plan_change` | Planner |
-| `evidence_verification` | Reviewer or future Verifier |
-| `review_current_state` | Reviewer |
+| Need | Capability | Default side-effect class |
+| --- | --- | --- |
+| `external_evidence` | `external_research` | read-only |
+| `repository_evidence` | `repository_research` | read-only |
+| `implementation_change` | `repository_implementation` | repository mutation |
+| `artifact_generation` | `artifact_generation` | context-dependent |
+| `plan_change` | `planning` | read-only workflow state change |
+| `evidence_verification` | `evidence_verification` | read-only |
+| `review_current_state` | `review` | read-only |
 
 This table is semantic policy, not provider/account routing.
 
-## 5. Core target artifacts
+## 6. Core target artifacts and runtime records
 
-Initial artifact families should include:
+Initial domain artifact families should include:
 
 ```text
 ObjectiveArtifact
@@ -233,7 +393,6 @@ EvidenceArtifact
 ContradictionArtifact
 FindingArtifact
 NeedArtifact
-RoutingDecisionArtifact
 ImplementationArtifact
 ValidationArtifact
 ReviewArtifact
@@ -241,9 +400,63 @@ ApprovalArtifact
 ExternalReceiptArtifact
 ```
 
-Exact JSON Schema definitions are intentionally deferred to the implementation design step.
+Initial runtime/control records should include:
 
-## 6. Target end-to-end behavior
+```text
+CapabilityDescriptor
+WorkItem
+InputBundle
+RoutingDecision
+TerminationPolicy
+ResourceBudget
+ExecutionReceipt
+```
+
+Runtime/control records are not interchangeable with model-produced domain artifacts.
+
+## 7. Production boundary summary
+
+### Models may
+
+```text
+reason over supplied inputs
+produce schema-valid domain artifacts
+raise Findings
+request semantic Needs
+answer bounded WorkItems
+explain uncertainty
+```
+
+### Models may not authoritatively
+
+```text
+create graph nodes/edges
+select privileged provider/account/session identity
+change retry/fencing policy
+expand resource budget
+promote read-only work into mutation authority
+invent user authorization
+merge stale or incompatible artifact state
+mutate committed artifact history
+```
+
+### Runtime must
+
+```text
+validate schemas/context
+create WorkItems
+resolve capabilities
+construct exact InputBundles
+materialize approved graph motifs
+bind side-effect authority
+schedule/fence/retry executions
+commit artifacts/receipts
+perform invalidation
+apply convergence/resource policy
+fail closed on ambiguity
+```
+
+## 8. Target end-to-end behavior
 
 A simple task may still follow the shortest path:
 
@@ -251,53 +464,52 @@ A simple task may still follow the shortest path:
 Research -> Worker -> Review -> converged
 ```
 
+Internally this is represented as bounded WorkItems and Artifacts rather than one implicit conversational pipeline.
+
 A task with missing evidence may evolve as:
 
 ```text
-Research -> Worker -> Review
-                      |
-                      v
-                external_evidence
-                      |
-                      v
-                  Research
-                      |
-                      v
-                    Review
-                      |
-                      v
-          implementation_change
-                      |
-                      v
-                    Worker
-                      |
-                      v
-                    Review
-                      |
-                      v
-                  converged
+Review Finding
+-> Need(external_evidence)
+-> WorkItem(external_research)
+-> EvidenceArtifact
+-> owning Reviewer
+-> Need(implementation_change)
+-> WorkItem(repository_implementation)
+-> Worker
+-> fresh exact-head Review
+-> converged
 ```
 
 A planning defect may evolve as:
 
 ```text
-Review -> plan_change -> Planner -> Worker -> Review
+Review Finding
+-> Need(plan_change)
+-> Planning WorkItem
+-> PlanRevisionArtifact
+-> Worker WorkItem
+-> fresh Review
 ```
 
-All semantic edges are consequences of validated artifacts and routing policy rather than direct agent-to-agent invocation.
+All semantic edges are consequences of validated artifacts and code-owned routing policy rather than direct agent-to-agent invocation.
 
-## 7. Migration acceptance order
+## 9. Migration acceptance order
 
 Recommended implementation order:
 
 1. logical Worker terminology in new schema/runtime APIs;
-2. common artifact envelope and validation;
-3. persistent findings/needs/evidence with exact provenance;
-4. request ownership and return routing;
-5. Reviewer -> Research -> Reviewer feedback loop;
-6. Planner re-entry and plan-version invalidation;
-7. generalized adaptive graph expansion;
-8. convergence/stagnation policy;
-9. specialist roles only when concrete quality data justifies them.
+2. common artifact envelope and schema validation;
+3. first-class Finding and Need artifacts;
+4. first-class WorkItem + capability registry;
+5. exact InputBundle projection and result provenance;
+6. request ownership and return routing;
+7. Reviewer -> Research -> Reviewer feedback loop;
+8. Planner re-entry and plan-version invalidation;
+9. runtime-approved dynamic graph motifs;
+10. convergence, stagnation, and resource-budget policy;
+11. verification capabilities;
+12. semantic tracing and outcome-oriented eval harness;
+13. specialist roles only when measured quality data justifies them.
 
 The design intentionally prioritizes stronger coordination semantics over increasing generic team size or fixed round count.
