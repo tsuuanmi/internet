@@ -8,8 +8,7 @@ import {
 } from "#internet/workflow/repository-context";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 
-const USAGE =
-	"Usage: /workflow <objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>";
+const USAGE = "Usage: /workflow <objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>";
 const OPERATIONS = new Set(["list", "status", "stop", "continue", "delete"]);
 
 export type { GitRunner } from "#internet/workflow/repository-context";
