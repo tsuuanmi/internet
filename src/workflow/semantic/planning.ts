@@ -81,7 +81,9 @@ export function parseWorkflowPlanningOutput(value: unknown): WorkflowPlanningOut
 	const mode = parseMode(value.mode);
 	const objective = value.objective === undefined ? undefined : parseWorkflowObjectivePayload(value.objective);
 	const acceptanceCriteria =
-		value.acceptanceCriteria === undefined ? undefined : parseWorkflowAcceptanceCriteriaPayload(value.acceptanceCriteria);
+		value.acceptanceCriteria === undefined
+			? undefined
+			: parseWorkflowAcceptanceCriteriaPayload(value.acceptanceCriteria);
 	const plan = value.plan === undefined ? undefined : parseWorkflowPlanPayload(value.plan);
 	const needs = parseList(value.needs, "workflow planning Needs", parseWorkflowNeedPayload);
 	const findings = parseList(value.findings, "workflow planning Findings", parseWorkflowFindingPayload);

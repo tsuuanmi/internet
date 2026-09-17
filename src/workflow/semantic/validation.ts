@@ -1,3 +1,4 @@
+import type { WorkflowArtifactRef, WorkflowEntityRef, WorkflowVersionRef } from "#internet/workflow/kernel/types";
 import {
 	WORKFLOW_ASSESSMENT_METHODS,
 	WORKFLOW_ASSESSMENT_VERDICTS,
@@ -23,7 +24,6 @@ import {
 	type WorkflowSemanticPayload,
 	type WorkflowUserFeedbackPayload,
 } from "#internet/workflow/semantic/types";
-import type { WorkflowArtifactRef, WorkflowEntityRef, WorkflowVersionRef } from "#internet/workflow/kernel/types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -156,7 +156,8 @@ function assertPlanTask(value: unknown): asserts value is WorkflowPlanTask {
 	if (value.parentTaskId !== undefined) assertText(value.parentTaskId, "workflow plan task parent id");
 	assertStringList(value.criterionIds, "workflow plan task criterion id");
 	assertStringList(value.needIds, "workflow plan task Need id");
-	if (value.dependsOn.includes(value.taskId)) throw new Error(`workflow plan task ${value.taskId} cannot depend on itself`);
+	if (value.dependsOn.includes(value.taskId))
+		throw new Error(`workflow plan task ${value.taskId} cannot depend on itself`);
 	if (value.parentTaskId === value.taskId) throw new Error(`workflow plan task ${value.taskId} cannot parent itself`);
 }
 
@@ -205,7 +206,8 @@ export function parseWorkflowAcceptanceCriteriaPayload(value: unknown): Workflow
 	const ids = new Set<string>();
 	for (const criterion of value.criteria) {
 		assertCriterion(criterion);
-		if (ids.has(criterion.criterionId)) throw new Error(`duplicate workflow acceptance criterion ${criterion.criterionId}`);
+		if (ids.has(criterion.criterionId))
+			throw new Error(`duplicate workflow acceptance criterion ${criterion.criterionId}`);
 		ids.add(criterion.criterionId);
 	}
 	assertOptionalArtifactRef(value.supersedes, "workflow acceptance criteria supersedes reference");
@@ -227,7 +229,8 @@ export function parseWorkflowPlanPayload(value: unknown): WorkflowPlanPayload {
 	}
 	for (const task of value.tasks as readonly WorkflowPlanTask[]) {
 		for (const dependency of task.dependsOn) {
-			if (!taskIds.has(dependency)) throw new Error(`workflow plan task ${task.taskId} has unknown dependency ${dependency}`);
+			if (!taskIds.has(dependency))
+				throw new Error(`workflow plan task ${task.taskId} has unknown dependency ${dependency}`);
 		}
 		if (task.parentTaskId !== undefined && !taskIds.has(task.parentTaskId))
 			throw new Error(`workflow plan task ${task.taskId} has unknown parent ${task.parentTaskId}`);
@@ -255,7 +258,8 @@ export function parseWorkflowNeedPayload(value: unknown): WorkflowNeedPayload {
 	assertText(value.needId, "workflow Need id");
 	assertText(value.type, "workflow Need type");
 	assertEntityRef(value.requestOwner, "workflow Need request owner");
-	if (value.requestedCapability !== undefined) assertText(value.requestedCapability, "workflow Need requested capability");
+	if (value.requestedCapability !== undefined)
+		assertText(value.requestedCapability, "workflow Need requested capability");
 	assertText(value.question, "workflow Need question");
 	assertEntityRefs(value.subjects, "workflow Need subject");
 	assertArtifactRefs(value.relatedArtifacts, "workflow Need related artifact");
@@ -304,7 +308,8 @@ export function parseWorkflowCriterionAssessmentPayload(value: unknown): Workflo
 	)
 		throw new Error("invalid workflow criterion assessment verdict");
 	assertVersionRef(value.policyRef, "workflow criterion assessment policy");
-	if (value.inputBundleId !== undefined) assertHex(value.inputBundleId, 64, "workflow criterion assessment input bundle id");
+	if (value.inputBundleId !== undefined)
+		assertHex(value.inputBundleId, 64, "workflow criterion assessment input bundle id");
 	assertArtifactRefs(value.evidence, "workflow criterion assessment evidence");
 	assertStringList(value.findingIds, "workflow criterion assessment Finding id");
 	return value as unknown as WorkflowCriterionAssessmentPayload;
@@ -347,7 +352,10 @@ export function parseWorkflowUserFeedbackPayload(value: unknown): WorkflowUserFe
 	return value as unknown as WorkflowUserFeedbackPayload;
 }
 
-export function parseWorkflowSemanticPayload(type: WorkflowSemanticArtifactType, value: unknown): WorkflowSemanticPayload {
+export function parseWorkflowSemanticPayload(
+	type: WorkflowSemanticArtifactType,
+	value: unknown,
+): WorkflowSemanticPayload {
 	switch (type) {
 		case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.objective:
 			return parseWorkflowObjectivePayload(value);

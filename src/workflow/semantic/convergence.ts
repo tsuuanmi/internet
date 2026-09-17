@@ -132,7 +132,8 @@ export function evaluateWorkflowConvergence(
 	}
 	const receipts = new Set(state.receiptIds);
 	for (const id of unique(policy.requiredReceiptIds)) {
-		if (!receipts.has(id)) blockers.push({ kind: "receipt", id, reason: "required deterministic receipt is missing" });
+		if (!receipts.has(id))
+			blockers.push({ kind: "receipt", id, reason: "required deterministic receipt is missing" });
 	}
 	for (const id of unique(policy.requiredDependencyIds)) {
 		if (!state.dependencies.some((dependency) => dependency.id === id && dependency.resolved)) {
