@@ -7,6 +7,7 @@ import { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 
 const runId = "11111111111111111111111111111111";
 const workItemId = "22222222222222222222222222222222";
+const needArtifactId = "3".repeat(64);
 const bundleId = "a".repeat(64);
 const at = "2026-09-17T00:00:00.000Z";
 
@@ -17,6 +18,7 @@ function item(): WorkflowWorkItem {
 		revision: 1,
 		workItemId,
 		runId,
+		needArtifact: { runId, artifactId: needArtifactId },
 		needId: "need-1",
 		requestOwner: { kind: "workflow_run", id: runId },
 		capability: { id: "repository_research", version: "1" },
@@ -61,7 +63,7 @@ describe("workflow work item store", () => {
 		).toThrow("input bundle cannot change once bound");
 	});
 
-	it("rejects authority/capability mutation and reference deletion", () => {
+	it("rejects authority/capability/Need mutation and reference deletion", () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-workflow-work-item-authority-"));
 		const store = new WorkflowWorkItemStore(root);
 		store.create({ ...item(), inputBundleId: bundleId, state: "RUNNING", executionIds: ["execution-1"] });
@@ -73,6 +75,14 @@ describe("workflow work item store", () => {
 				updatedAt: "2026-09-17T00:00:01.000Z",
 			})),
 		).toThrow("capability cannot change");
+		expect(() =>
+			store.update(runId, workItemId, 1, (current) => ({
+				...current,
+				revision: 2,
+				needArtifact: { runId, artifactId: "4".repeat(64) },
+				updatedAt: "2026-09-17T00:00:01.000Z",
+			})),
+		).toThrow("Need artifact cannot change");
 		expect(() =>
 			store.update(runId, workItemId, 1, (current) => ({
 				...current,
