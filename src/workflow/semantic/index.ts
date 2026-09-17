@@ -3,15 +3,16 @@ export {
 	type WorkflowCriterionAssessmentRequirement,
 } from "#internet/workflow/semantic/assessment";
 export {
-	assertCriterionRevisionAuthority,
-	criterionChanged,
-	requiredCriterionRevisionAuthority,
-	WorkflowCriterionAuthorityError,
+	assertAcceptanceCriteriaRevisionAuthority,
+	assertObjectiveRevisionAuthority,
+	WorkflowRequirementAuthorityError,
 } from "#internet/workflow/semantic/authority";
 export {
 	evaluateWorkflowConvergence,
 	WORKFLOW_CONVERGENCE_BLOCKER_KINDS,
 	type WorkflowConvergenceArtifactState,
+	type WorkflowConvergenceAssessmentState,
+	type WorkflowConvergenceAuthorityRequirement,
 	type WorkflowConvergenceBlocker,
 	type WorkflowConvergenceBlockerKind,
 	type WorkflowConvergenceDependencyState,
@@ -42,6 +43,7 @@ export {
 	type WorkflowSemanticArtifactDraft,
 	type WorkflowSemanticExecutionResult,
 	type WorkflowSemanticPromotionContext,
+	type WorkflowSemanticPromotionResult,
 } from "#internet/workflow/semantic/promotion";
 export * from "#internet/workflow/semantic/types";
 export {
