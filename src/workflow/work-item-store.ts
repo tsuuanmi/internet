@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { canonicalJson } from "#internet/core/canonical-json";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 import type { WorkflowWorkItem } from "#internet/workflow/kernel/types";
 import { parseWorkflowWorkItem } from "#internet/workflow/kernel/validation";
@@ -22,6 +23,12 @@ function assertPrivateFile(path: string, label: string): void {
 	if (!stat.isFile()) throw new WorkflowWorkItemStoreError(`${label} is not a regular file`);
 	if (process.platform !== "win32" && (stat.mode & 0o077) !== 0)
 		throw new WorkflowWorkItemStoreError(`${label} permissions must be 0600`);
+}
+
+function assertAppendOnly(current: readonly string[], next: readonly string[], label: string): void {
+	if (next.length < current.length || current.some((value, index) => next[index] !== value)) {
+		throw new WorkflowWorkItemStoreError(`${label} must be append-only`);
+	}
 }
 
 export class WorkflowWorkItemStore {
@@ -96,6 +103,22 @@ export class WorkflowWorkItemStore {
 		if (next.runId !== current.runId) throw new WorkflowWorkItemStoreError("workflow work item run id cannot change");
 		if (next.workItemId !== current.workItemId) throw new WorkflowWorkItemStoreError("workflow work item id cannot change");
 		if (next.needId !== current.needId) throw new WorkflowWorkItemStoreError("workflow work item need id cannot change");
+		if (next.createdAt !== current.createdAt) throw new WorkflowWorkItemStoreError("workflow work item creation timestamp cannot change");
+		if (canonicalJson(next.requestOwner) !== canonicalJson(current.requestOwner))
+			throw new WorkflowWorkItemStoreError("workflow work item request owner cannot change");
+		if (canonicalJson(next.capability) !== canonicalJson(current.capability))
+			throw new WorkflowWorkItemStoreError("workflow work item capability cannot change");
+		if (next.sideEffect !== current.sideEffect)
+			throw new WorkflowWorkItemStoreError("workflow work item side-effect class cannot change");
+		if (next.authorityRef !== current.authorityRef)
+			throw new WorkflowWorkItemStoreError("workflow work item authority reference cannot change");
+		if (next.budgetRef !== current.budgetRef)
+			throw new WorkflowWorkItemStoreError("workflow work item budget reference cannot change");
+		if (current.inputBundleId !== undefined && next.inputBundleId !== current.inputBundleId)
+			throw new WorkflowWorkItemStoreError("workflow work item input bundle cannot change once bound");
+		assertAppendOnly(current.executionIds, next.executionIds, "workflow work item execution ids");
+		assertAppendOnly(current.resultArtifactIds, next.resultArtifactIds, "workflow work item result artifact ids");
+		assertAppendOnly(current.receiptIds, next.receiptIds, "workflow work item receipt ids");
 		if (next.revision !== current.revision + 1)
 			throw new WorkflowWorkItemStoreError("workflow work item revision must increment by one");
 		parseWorkflowWorkItem(next);
