@@ -125,6 +125,13 @@ describe("workflow admission activation recovery", () => {
 		expect(() => workflow.activateAdmission(authorization, accepted.admissionId, accepted.acceptedSpecHash!)).toThrow(
 			"conflicts with accepted admission identity",
 		);
-		expect(admissions.get(authorization.principal, accepted.admissionId)?.state).toBe("ACCEPTED");
+		expect(admissions.get(authorization.principal, accepted.admissionId)).toMatchObject({
+			state: "ACTIVATING",
+			activationIntent: {
+				targetKind: "workflow_job",
+				targetId: accepted.admissionId,
+				acceptedSpecHash: accepted.acceptedSpecHash,
+			},
+		});
 	});
 });
