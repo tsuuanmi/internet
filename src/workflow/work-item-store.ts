@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalJson } from "#internet/core/canonical-json";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
-import type { WorkflowWorkItem } from "#internet/workflow/kernel/types";
+import type { WorkflowWorkItem, WorkflowWorkItemState } from "#internet/workflow/kernel/types";
 import { parseWorkflowWorkItem } from "#internet/workflow/kernel/validation";
 
 export class WorkflowWorkItemStoreError extends Error {
@@ -11,6 +11,16 @@ export class WorkflowWorkItemStoreError extends Error {
 		this.name = "WorkflowWorkItemStoreError";
 	}
 }
+
+const WORKFLOW_WORK_ITEM_TRANSITIONS: Readonly<Record<WorkflowWorkItemState, readonly WorkflowWorkItemState[]>> = {
+	PENDING: ["READY", "CANCELLED", "FENCED"],
+	READY: ["RUNNING", "CANCELLED", "FENCED"],
+	RUNNING: ["READY", "SUCCEEDED", "FAILED", "CANCELLED", "FENCED"],
+	SUCCEEDED: [],
+	FAILED: [],
+	CANCELLED: [],
+	FENCED: [],
+};
 
 function assertHex(value: string, length: number, label: string): void {
 	if (!new RegExp(`^[0-9a-f]{${String(length)}}$`, "u").test(value)) {
@@ -29,6 +39,12 @@ function assertAppendOnly(current: readonly string[], next: readonly string[], l
 	if (next.length < current.length || current.some((value, index) => next[index] !== value)) {
 		throw new WorkflowWorkItemStoreError(`${label} must be append-only`);
 	}
+}
+
+function assertStateTransition(current: WorkflowWorkItemState, next: WorkflowWorkItemState): void {
+	if (current === next) return;
+	if (!WORKFLOW_WORK_ITEM_TRANSITIONS[current].includes(next))
+		throw new WorkflowWorkItemStoreError(`invalid workflow work item state transition ${current} -> ${next}`);
 }
 
 export class WorkflowWorkItemStore {
@@ -126,6 +142,7 @@ export class WorkflowWorkItemStore {
 		assertAppendOnly(current.executionIds, next.executionIds, "workflow work item execution ids");
 		assertAppendOnly(current.resultArtifactIds, next.resultArtifactIds, "workflow work item result artifact ids");
 		assertAppendOnly(current.receiptIds, next.receiptIds, "workflow work item receipt ids");
+		assertStateTransition(current.state, next.state);
 		if (next.revision !== current.revision + 1)
 			throw new WorkflowWorkItemStoreError("workflow work item revision must increment by one");
 		parseWorkflowWorkItem(next);
