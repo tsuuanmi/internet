@@ -12,6 +12,7 @@ import {
 
 const runId = "1".repeat(32);
 const workItemId = "2".repeat(32);
+const needArtifactId = "5".repeat(64);
 const inputBundleId = "3".repeat(64);
 const capability = { id: WORKFLOW_PLANNING_CAPABILITY.id, version: WORKFLOW_PLANNING_CAPABILITY.version };
 
@@ -21,6 +22,7 @@ const workItem: WorkflowWorkItem = {
 	revision: 1,
 	workItemId,
 	runId,
+	needArtifact: { runId, artifactId: needArtifactId },
 	needId: "planning-need",
 	requestOwner: { kind: "run", id: runId },
 	capability,
