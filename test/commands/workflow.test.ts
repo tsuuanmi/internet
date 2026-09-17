@@ -115,6 +115,7 @@ describe("defineWorkflowCommand", () => {
 			input.signal,
 		);
 		expect(runGit).not.toHaveBeenCalledWith("/repo", ["rev-parse", "HEAD"], input.signal);
+		expect(workflow.autoSubmit).toHaveBeenCalledTimes(1);
 		expect(workflow.autoSubmit).toHaveBeenCalledWith(
 			{ principal: { kind: "session", id: "1-1" }, ownerSessionId: "1-1" },
 			{
