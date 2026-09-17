@@ -32,7 +32,7 @@ function run(capabilities: readonly WorkflowCapabilityDescriptor[]): WorkflowRun
 		revision: 1,
 		runId,
 		admissionId: "2".repeat(32),
-		owner: { kind: "local_agent", id: "agent-1" },
+		owner: { kind: "service", id: "workflow-service" },
 		lifecycle: "ACTIVE",
 		definitions: {
 			profile: { id: "test", version: "1" },
@@ -52,6 +52,8 @@ function need(requestedCapability?: string): WorkflowNeedPayload {
 		type: "execution",
 		requestOwner: { kind: "workflow_run", id: runId },
 		question: "Implement the task",
+		subjects: [],
+		relatedArtifacts: [],
 		requestedCapability,
 	};
 }
