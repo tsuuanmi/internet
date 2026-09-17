@@ -2,19 +2,25 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { BrowserManager } from "#internet/browser/runtime";
 import { ACCOUNT_IDS } from "#internet/core/accounts";
 import { sleep } from "#internet/core/sleep";
+import type {
+	AdmissionConfirmationInput,
+	WorkflowAdmissionDraftInput,
+	WorkflowAdmissionRecord,
+} from "#internet/workflow/admission/types";
+import {
+	type WorkflowAuthorizationContext,
+	workflowSessionAuthorizationContext,
+} from "#internet/workflow/authorization";
+import { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 import type { GitRunner } from "#internet/workflow/repository-context";
 import { resolveWorkflowRepository, WorkflowRepositoryError } from "#internet/workflow/repository-context";
-import {
-	type StartAuthorizedWorkflowInput,
-	type WorkflowAuthorizationContext,
-	WorkflowServiceError,
-	workflowSessionAuthorizationContext,
-} from "#internet/workflow/service";
+import { WorkflowServiceError } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
 
-export const WORKFLOW_OPERATIONS = ["start", "test", "status", "cancel", "continue"] as const;
+export const WORKFLOW_OPERATIONS = ["admit", "confirm", "activate", "test", "status", "cancel", "continue"] as const;
 export type WorkflowOperation = (typeof WORKFLOW_OPERATIONS)[number];
 
+const CONFIRMATION_PROVENANCE = ["local_interpreted", "user_explicit"] as const;
 const DEFAULT_TEST_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_TEST_POLL_MS = 1_000;
 
@@ -26,7 +32,18 @@ export interface WorkflowTestDependencies {
 }
 
 export interface InternetWorkflowService {
-	start(context: WorkflowAuthorizationContext, input: StartAuthorizedWorkflowInput): WorkflowJob;
+	admit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord;
+	confirmAdmission(
+		context: WorkflowAuthorizationContext,
+		admissionId: string,
+		expectedRevision: number,
+		input: AdmissionConfirmationInput,
+	): WorkflowAdmissionRecord;
+	activateAdmission(
+		context: WorkflowAuthorizationContext,
+		admissionId: string,
+		expectedAcceptedSpecHash: string,
+	): WorkflowJob;
 	status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
 	cancel(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowJob>;
 	continue(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
@@ -82,6 +99,24 @@ function project(job: WorkflowJob) {
 	};
 }
 
+function admissionProject(record: WorkflowAdmissionRecord) {
+	return {
+		admissionId: record.admissionId,
+		admissionState: record.state,
+		admissionRevision: record.revision,
+		draftHash: record.draftHash,
+		...(record.acceptedSpecHash === undefined ? {} : { acceptedSpecHash: record.acceptedSpecHash }),
+		...(record.preview === undefined
+			? {}
+			: {
+					confirmationLevel: record.preview.confirmation.level,
+					confirmationReasons: record.preview.confirmation.reasons
+						.map((reason) => `${reason.field}: ${reason.reason}`)
+						.join("; "),
+				}),
+	};
+}
+
 function workflowTestObjective(marker: string): string {
 	return [
 		"Run the repository workflow acceptance test with the smallest possible real change.",
@@ -105,6 +140,24 @@ function completedHandoffIsExact(job: WorkflowJob): boolean {
 		job.writerConversation.url !== undefined &&
 		job.reviewCycle > 0
 	);
+}
+
+function acceptedTestAdmission(
+	service: InternetWorkflowService,
+	authorization: WorkflowAuthorizationContext,
+	draft: WorkflowAdmissionDraftInput,
+): WorkflowAdmissionRecord {
+	const admitted = service.admit(authorization, draft);
+	if (admitted.state === "ACCEPTED") return admitted;
+	if (admitted.state !== "AWAITING_CONFIRMATION" || admitted.preview?.confirmation.level !== "LOCAL_CONFIRM") {
+		throw new WorkflowServiceError(
+			`workflow acceptance admission ${admitted.admissionId} did not reach a locally confirmable state`,
+		);
+	}
+	return service.confirmAdmission(authorization, admitted.admissionId, admitted.revision, {
+		expectedDraftHash: admitted.draftHash,
+		provenance: "local_interpreted",
+	});
 }
 
 async function runAcceptanceTest(
@@ -149,17 +202,22 @@ async function runAcceptanceTest(
 	const repository = await resolveWorkflowRepository(cwd, exec.signal, dependencies.runGit, "internet_workflow test");
 	const marker = `${new Date().toISOString()}-${Math.random().toString(16).slice(2, 10)}`;
 	const objective = workflowTestObjective(marker);
-	const job = service.start(authorization, {
-		objective,
-		repository: repository.url,
-		baseRevision: repository.revision,
-		admission: {
+	const accepted = acceptedTestAdmission(
+		service,
+		authorization,
+		createSoftwareAdmissionDraft({
 			rawSource: objective,
 			sourceProvenance: "local_interpreted",
+			repository: repository.url,
+			baseRevision: repository.revision,
 			targetProvenance: "system_observed",
 			authorityProvenance: "local_interpreted",
-		},
-	});
+		}),
+	);
+	if (accepted.acceptedSpecHash === undefined) {
+		throw new WorkflowServiceError(`workflow acceptance admission ${accepted.admissionId} has no accepted spec hash`);
+	}
+	const job = service.activateAdmission(authorization, accepted.admissionId, accepted.acceptedSpecHash);
 
 	const timeoutMs = dependencies.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS;
 	const pollMs = dependencies.pollMs ?? DEFAULT_TEST_POLL_MS;
@@ -206,7 +264,7 @@ export function defineInternetWorkflowTool(
 	return defineTool({
 		name: "internet_workflow",
 		description:
-			"Create and control graph-driven durable coding workflows. test performs a full real workflow through exact-head review and Writer chat handoff without merging.",
+			"Admit and control durable coding workflows. Local Agent starts use admit -> confirm when required -> activate; test runs the full real workflow without merging.",
 		parameters: {
 			operation: {
 				type: "string",
@@ -214,10 +272,19 @@ export function defineInternetWorkflowTool(
 				enum: [...WORKFLOW_OPERATIONS],
 				description: "Workflow operation.",
 			},
-			jobId: { type: "string", description: "32-character workflow job ID for non-start/test operations." },
-			objective: { type: "string", description: "Coding objective for start." },
-			repository: { type: "string", description: "Authoritative repository URL for start." },
-			baseRevision: { type: "string", description: "Full 40-character Git SHA for start." },
+			admissionId: { type: "string", description: "Durable workflow admission ID." },
+			admissionRevision: { type: "number", description: "Expected admission revision for confirmation." },
+			draftHash: { type: "string", description: "Expected admission draft hash for confirmation." },
+			acceptedSpecHash: { type: "string", description: "Exact accepted admission spec hash for activation." },
+			confirmationProvenance: {
+				type: "string",
+				enum: [...CONFIRMATION_PROVENANCE],
+				description: "Authority provenance for confirm. Use user_explicit only for an explicit User confirmation.",
+			},
+			jobId: { type: "string", description: "32-character workflow job ID for runtime control operations." },
+			objective: { type: "string", description: "Local-Agent interpretation/source for admission." },
+			repository: { type: "string", description: "Repository URL for software admission." },
+			baseRevision: { type: "string", description: "Full 40-character Git SHA for software admission." },
 		},
 		output: {
 			schema: {
@@ -228,6 +295,13 @@ export function defineInternetWorkflowTool(
 					operation: { type: "string", required: true },
 					result: { type: "string", enum: ["PASS", "FAIL", "TIMEOUT"] },
 					accountPreflight: { type: "string" },
+					admissionId: { type: "string" },
+					admissionState: { type: "string" },
+					admissionRevision: { type: "number" },
+					draftHash: { type: "string" },
+					acceptedSpecHash: { type: "string" },
+					confirmationLevel: { type: "string" },
+					confirmationReasons: { type: "string" },
 					jobId: { type: "string" },
 					phase: { type: "string" },
 					lifecycle: { type: "string" },
@@ -253,6 +327,8 @@ export function defineInternetWorkflowTool(
 				const result = value as Record<string, unknown>;
 				const summary = [`ok=${String(result.ok)}`, `operation=${String(result.operation)}`];
 				if (result.result !== undefined) summary.push(`result=${String(result.result)}`);
+				if (result.admissionId !== undefined) summary.push(`admission=${String(result.admissionId)}`);
+				if (result.admissionState !== undefined) summary.push(`admission_state=${String(result.admissionState)}`);
 				if (result.jobId !== undefined) summary.push(`job=${String(result.jobId)}`);
 				if (result.phase !== undefined) summary.push(`phase=${String(result.phase)}`);
 				if (result.lifecycle !== undefined) summary.push(`status=${String(result.lifecycle)}`);
@@ -266,27 +342,57 @@ export function defineInternetWorkflowTool(
 			const operation = args.operation as WorkflowOperation;
 			try {
 				if (operation === "test") return await runAcceptanceTest(service, testDependencies, exec as never);
-				const ownerSessionId = String(exec.agent?.id ?? "");
-				const authorization = workflowSessionAuthorizationContext(ownerSessionId);
-				if (operation === "start") {
+				const authorization = workflowSessionAuthorizationContext(String(exec.agent?.id ?? ""));
+				if (operation === "admit") {
 					if (
 						typeof args.objective !== "string" ||
 						typeof args.repository !== "string" ||
 						typeof args.baseRevision !== "string"
 					) {
-						return { ok: false, operation, message: "start requires objective, repository, and baseRevision" };
+						return { ok: false, operation, message: "admit requires objective, repository, and baseRevision" };
 					}
-					const job = service.start(authorization, {
-						objective: args.objective,
-						repository: args.repository,
-						baseRevision: args.baseRevision,
-						admission: {
+					const admitted = service.admit(
+						authorization,
+						createSoftwareAdmissionDraft({
 							rawSource: args.objective,
 							sourceProvenance: "local_interpreted",
+							repository: args.repository,
+							baseRevision: args.baseRevision,
 							targetProvenance: "local_interpreted",
 							authorityProvenance: "local_interpreted",
+						}),
+					);
+					return { ok: true, operation, ...admissionProject(admitted) };
+				}
+				if (operation === "confirm") {
+					if (
+						typeof args.admissionId !== "string" ||
+						typeof args.admissionRevision !== "number" ||
+						typeof args.draftHash !== "string" ||
+						!CONFIRMATION_PROVENANCE.includes(args.confirmationProvenance as never)
+					) {
+						return {
+							ok: false,
+							operation,
+							message: "confirm requires admissionId, admissionRevision, draftHash, and confirmationProvenance",
+						};
+					}
+					const confirmed = service.confirmAdmission(
+						authorization,
+						args.admissionId,
+						args.admissionRevision,
+						{
+							expectedDraftHash: args.draftHash,
+							provenance: args.confirmationProvenance as AdmissionConfirmationInput["provenance"],
 						},
-					});
+					);
+					return { ok: true, operation, ...admissionProject(confirmed) };
+				}
+				if (operation === "activate") {
+					if (typeof args.admissionId !== "string" || typeof args.acceptedSpecHash !== "string") {
+						return { ok: false, operation, message: "activate requires admissionId and acceptedSpecHash" };
+					}
+					const job = service.activateAdmission(authorization, args.admissionId, args.acceptedSpecHash);
 					return { ok: true, operation, ...project(job) };
 				}
 				if (typeof args.jobId !== "string") return { ok: false, operation, message: `${operation} requires jobId` };
