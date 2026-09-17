@@ -3,10 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
-import {
-	WorkflowCapabilityRegistry,
-	type WorkflowCapabilityDescriptor,
-} from "#internet/workflow/capability-registry";
+import { type WorkflowCapabilityDescriptor, WorkflowCapabilityRegistry } from "#internet/workflow/capability-registry";
 import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { WorkflowRunStore } from "#internet/workflow/run-store";
@@ -126,7 +123,9 @@ describe("workflow vNext run coordinator", () => {
 		const { coordinator, need, workItems, inputBundles } = fixture();
 		expect(coordinator.advance(runId).lifecycle).toBe("ACTIVE");
 		const [item] = workItems.list(runId);
-		expect(item).toEqual(expect.objectContaining({ state: "READY", needArtifact: { runId, artifactId: need.artifactId } }));
+		expect(item).toEqual(
+			expect.objectContaining({ state: "READY", needArtifact: { runId, artifactId: need.artifactId } }),
+		);
 		expect(item?.inputBundleId).toBeDefined();
 		const bundle = inputBundles.get(runId, item?.inputBundleId ?? "");
 		expect(bundle?.artifacts).toContainEqual({ runId, artifactId: need.artifactId });
