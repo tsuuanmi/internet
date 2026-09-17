@@ -59,6 +59,21 @@ jobs:
             'const result = await executor.execute({ run, workItem: running, execution, inputBundle: bundle }, signal);\n\t\t\tconst current = this.dependencies.executions.get(runId, executionId);\n\t\t\tif (current === undefined || current.state !== "RUNNING" || Date.parse(current.leaseUntil) <= this.now())\n\t\t\t\tthrow new Error("workflow execution lost its lease before result persistence");\n\t\t\tconst stored = this.dependencies.results.create(current, result);',
             'const result = await executor.execute(\n\t\t\t\t{\n\t\t\t\t\trun,\n\t\t\t\t\tworkItem: running,\n\t\t\t\t\texecution,\n\t\t\t\t\tinputBundle: bundle,\n\t\t\t\t\theartbeat: () => this.heartbeat(runId, executionId, ownerInstanceId),\n\t\t\t\t},\n\t\t\t\tsignal,\n\t\t\t);\n\t\t\tconst current = this.dependencies.executions.get(runId, executionId);\n\t\t\tif (current === undefined || current.state !== "RUNNING") return this.advance(runId);\n\t\t\tif (Date.parse(current.leaseUntil) <= this.now()) {\n\t\t\t\tawait this.reconcileExpiredExecution(current, signal);\n\t\t\t\treturn this.advance(runId);\n\t\t\t}\n\t\t\tconst stored = this.dependencies.results.create(current, result);',
           );
+          replace(
+            'src/workflow/runtime/coordinator.ts',
+            'const current = currentWorkflowArtifactIds(artifacts);',
+            'const current = currentWorkflowArtifactIds(artifacts, this.dependencies.inputBundles.list(run.runId));',
+          );
+          replace(
+            'src/workflow/runtime/coordinator.ts',
+            'const currentArtifacts = currentWorkflowArtifactIds(artifacts);',
+            'const currentArtifacts = currentWorkflowArtifactIds(artifacts, this.dependencies.inputBundles.list(run.runId));',
+          );
+          replace(
+            'src/workflow/work-item-store.ts',
+            '\tSUCCEEDED: [],',
+            '\tSUCCEEDED: ["FENCED"],',
+          );
 
           const indexPath = 'src/index.ts';
           let index = fs.readFileSync(indexPath, 'utf8');
