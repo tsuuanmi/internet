@@ -45,8 +45,12 @@ export { WorkflowAdmissionStore, WorkflowAdmissionStoreError } from "#internet/w
 export type { AcceptedAdmissionSpec, AdmissionActivationReceipt, AdmissionConfirmationInput, AdmissionConfirmationReason, AdmissionConfirmationReceipt, AdmissionPreview, ProvenancedValue, WorkflowAdmissionAuthority, WorkflowAdmissionBudgetHints, WorkflowAdmissionConfirmationLevel, WorkflowAdmissionDraft, WorkflowAdmissionDraftInput, WorkflowAdmissionProvenance, WorkflowAdmissionRecord, WorkflowAdmissionSource, WorkflowAdmissionSourceKind, WorkflowAdmissionState, WorkflowAdmissionTarget, WorkflowAdmissionTemporalHints, } from "#internet/workflow/admission/types";
 export { WORKFLOW_ADMISSION_CONFIRMATION_LEVELS, WORKFLOW_ADMISSION_PROVENANCE, WORKFLOW_ADMISSION_SOURCE_KINDS, WORKFLOW_ADMISSION_STATES, } from "#internet/workflow/admission/types";
 export { parseWorkflowAdmissionDraft, parseWorkflowAdmissionRecord } from "#internet/workflow/admission/validation";
+export type { CreateWorkflowArtifactInput } from "#internet/workflow/artifact-store";
+export { WorkflowArtifactStore, WorkflowArtifactStoreError } from "#internet/workflow/artifact-store";
 export type { WorkflowAuthorizationContext, WorkflowPrincipal, WorkflowPrincipalKind, } from "#internet/workflow/authorization";
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
+export type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
+export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -58,7 +62,10 @@ export type { WorkflowExecutionRecord, WorkflowFailure, WorkflowGraphNode, Workf
 export { assertWorkflowGraph, workflowNodeId } from "#internet/workflow/graph";
 export type { CreateWorkflowHandoffInput, WorkflowHandoff, WorkflowHandoffStatus, } from "#internet/workflow/handoff-store";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
+export type { CreateWorkflowInputBundleInput } from "#internet/workflow/input-bundle-store";
+export { WorkflowInputBundleStore, WorkflowInputBundleStoreError } from "#internet/workflow/input-bundle-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export * from "#internet/workflow/kernel/index";
 export type { WorkflowNodeResult } from "#internet/workflow/node-result-store";
 export { parseWorkflowNodeResult, WorkflowNodeResultStore, workflowNodeResultId, } from "#internet/workflow/node-result-store";
 export { formatWorkflowList, formatWorkflowStatus, WorkflowOperator, WorkflowOperatorError, } from "#internet/workflow/operator";
@@ -70,6 +77,7 @@ export type { WorkflowCleanupAudit, WorkflowCleanupCandidate, WorkflowRetentionP
 export { DEFAULT_WORKFLOW_RETENTION_POLICY, WORKFLOW_RETENTION_AUDIT_SCHEMA, WorkflowRetentionError, WorkflowRetentionManager, } from "#internet/workflow/retention";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
+export { WorkflowRunStore, WorkflowRunStoreError } from "#internet/workflow/run-store";
 export type { WorkflowServiceDriver, WorkflowServiceEngine } from "#internet/workflow/service";
 export { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 export type { WorkflowPromptContext, WorkflowReviewPromptContext, WorkflowTeamLane, WorkflowTeamPhase, } from "#internet/workflow/team-prompt-builder";
@@ -78,6 +86,7 @@ export type { WorkflowTeamRunner, WorkflowTeamStepRequest } from "#internet/work
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 export type { StartWorkflowInput, WorkflowAccountRouting, WorkflowEventRecord, WorkflowHandoffReceipt, WorkflowJob, WorkflowPendingAction, WorkflowPullRequestReceipt, WorkflowWriterConversation, } from "#internet/workflow/types";
 export { workflowJobIsTerminal } from "#internet/workflow/types";
+export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";
 export type { WorkflowWriterControlRequest, WorkflowWriterDeliveryRequest, WorkflowWriterResult, WorkflowWriterRunner, } from "#internet/workflow/writer-runner";
 export { BrowserWorkflowWriterRunner, parseWorkflowWriterResult } from "#internet/workflow/writer-runner";
 //# sourceMappingURL=index.d.ts.map
