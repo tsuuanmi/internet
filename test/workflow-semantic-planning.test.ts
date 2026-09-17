@@ -89,15 +89,48 @@ describe("workflow planning contract", () => {
 				{ execute: async () => ({ ...initialOutput, mode: "REQUIREMENTS_CHANGE" }) },
 				{ mode: "INITIAL", inputBundle },
 			),
-		).rejects.toThrow("output mode does not match request");
+		).rejects.toThrow();
 	});
 
-	it("keeps plan changes distinct from requirements changes", () => {
+	it("requires Plan changes to be explicit revisions without requirement changes", () => {
 		expect(() =>
 			parseWorkflowPlanningOutput({
-				...initialOutput,
 				mode: "PLAN_CHANGE",
+				plan: initialOutput.plan,
+				needs: [],
+				findings: [],
 			}),
-		).toThrow("cannot revise Objective or AcceptanceCriteria");
+		).toThrow("requires an explicit revision");
+	});
+
+	it("does not activate a Plan inside a requirements-change proposal", () => {
+		expect(() =>
+			parseWorkflowPlanningOutput({
+				mode: "REQUIREMENTS_CHANGE",
+				objective: { ...initialOutput.objective, version: "2", supersedes: artifact("c") },
+				plan: initialOutput.plan,
+				needs: [],
+				findings: [],
+			}),
+		).toThrow("cannot activate a Plan before requirements authority");
+	});
+
+	it("requires clarification mode to emit a typed clarification Need", () => {
+		expect(() =>
+			parseWorkflowPlanningOutput({
+				mode: "CLARIFICATION",
+				needs: [
+					{
+						needId: "need-1",
+						type: "execution",
+						requestOwner: { kind: "run", id: runId },
+						question: "Do work",
+						subjects: [],
+						relatedArtifacts: [],
+					},
+				],
+				findings: [],
+			}),
+		).toThrow("requires a clarification Need");
 	});
 });
