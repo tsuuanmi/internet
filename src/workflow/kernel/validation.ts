@@ -132,7 +132,8 @@ function assertInputFacts(value: unknown): asserts value is readonly WorkflowInp
 	if (!Array.isArray(value)) throw new Error("invalid workflow input facts");
 	const names = new Set<string>();
 	for (const item of value) {
-		if (!isRecord(item)) throw new Error("invalid workflow input fact");
+		if (!isRecord(item) || !Object.hasOwn(item, "value") || item.value === undefined)
+			throw new Error("invalid workflow input fact");
 		assertText(item.name, "workflow input fact name");
 		if (names.has(item.name)) throw new Error(`duplicate workflow input fact ${item.name}`);
 		names.add(item.name);
@@ -146,10 +147,14 @@ export function parseWorkflowRun(value: unknown): WorkflowRun {
 	assertHex(value.runId, 32, "workflow run id");
 	assertHex(value.admissionId, 32, "workflow run admission id");
 	assertPrincipal(value.owner);
-	if (typeof value.lifecycle !== "string" || !WORKFLOW_RUN_LIFECYCLES.includes(value.lifecycle as WorkflowRun["lifecycle"]))
+	if (
+		typeof value.lifecycle !== "string" ||
+		!WORKFLOW_RUN_LIFECYCLES.includes(value.lifecycle as WorkflowRun["lifecycle"])
+	)
 		throw new Error("invalid workflow run lifecycle");
 	assertDefinitions(value.definitions);
-	if (!isTimestamp(value.createdAt) || !isTimestamp(value.updatedAt)) throw new Error("invalid workflow run timestamps");
+	if (!isTimestamp(value.createdAt) || !isTimestamp(value.updatedAt))
+		throw new Error("invalid workflow run timestamps");
 	return value as unknown as WorkflowRun;
 }
 
@@ -166,7 +171,8 @@ export function parseWorkflowArtifact(value: unknown): WorkflowArtifact {
 	if (value.inputBundleId !== undefined) assertHex(value.inputBundleId, 64, "workflow artifact input bundle id");
 	assertLineage(value.lineage);
 	assertHex(value.payloadHash, 64, "workflow artifact payload hash");
-	if (workflowArtifactPayloadHash(value.payload) !== value.payloadHash) throw new Error("workflow artifact payload hash mismatch");
+	if (workflowArtifactPayloadHash(value.payload) !== value.payloadHash)
+		throw new Error("workflow artifact payload hash mismatch");
 	if (!isTimestamp(value.createdAt)) throw new Error("invalid workflow artifact timestamp");
 	const expectedId = workflowArtifactId({
 		runId: value.runId,
@@ -190,7 +196,10 @@ export function parseWorkflowWorkItem(value: unknown): WorkflowWorkItem {
 	assertText(value.needId, "workflow work item need id");
 	assertEntityRef(value.requestOwner, "workflow work item request owner");
 	assertVersionRef(value.capability, "workflow work item capability");
-	if (typeof value.sideEffect !== "string" || !WORKFLOW_SIDE_EFFECT_CLASSES.includes(value.sideEffect as WorkflowWorkItem["sideEffect"]))
+	if (
+		typeof value.sideEffect !== "string" ||
+		!WORKFLOW_SIDE_EFFECT_CLASSES.includes(value.sideEffect as WorkflowWorkItem["sideEffect"])
+	)
 		throw new Error("invalid workflow work item side-effect class");
 	if (typeof value.state !== "string" || !WORKFLOW_WORK_ITEM_STATES.includes(value.state as WorkflowWorkItem["state"]))
 		throw new Error("invalid workflow work item state");
@@ -203,7 +212,8 @@ export function parseWorkflowWorkItem(value: unknown): WorkflowWorkItem {
 	assertStringList(value.resultArtifactIds, "workflow work item result artifact id");
 	for (const artifactId of value.resultArtifactIds) assertHex(artifactId, 64, "workflow work item result artifact id");
 	assertStringList(value.receiptIds, "workflow work item receipt id");
-	if (!isTimestamp(value.createdAt) || !isTimestamp(value.updatedAt)) throw new Error("invalid workflow work item timestamps");
+	if (!isTimestamp(value.createdAt) || !isTimestamp(value.updatedAt))
+		throw new Error("invalid workflow work item timestamps");
 	return value as unknown as WorkflowWorkItem;
 }
 
