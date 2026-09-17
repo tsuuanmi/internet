@@ -20,8 +20,8 @@ import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import { WorkflowOperator } from "#internet/workflow/operator";
+import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
 import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
-import { WorkflowProfileRegistry } from "#internet/workflow/profiles/types";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowService } from "#internet/workflow/service";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
@@ -281,10 +281,10 @@ export {
 	WorkflowOperator,
 	WorkflowOperatorError,
 } from "#internet/workflow/operator";
+export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/registry";
+export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
 export { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 export { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
-export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/types";
-export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/types";
 export type {
 	WorkflowCleanupAudit,
 	WorkflowCleanupCandidate,

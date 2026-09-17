@@ -47,25 +47,25 @@ export class WorkflowService {
 		private readonly driver: WorkflowServiceDriver,
 		private readonly jobs: WorkflowJobStore,
 		private readonly retention: WorkflowRetentionManager,
-		private readonly admissionsStore: WorkflowAdmissionService,
+		private readonly admissionService: WorkflowAdmissionService,
 	) {}
 
 	admit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord {
 		assertWorkflowPrincipal(context.principal);
-		const created = this.admissionsStore.create(context.principal, input);
-		return this.admissionsStore.preflight(context.principal, created.admissionId, created.revision);
+		const created = this.admissionService.create(context.principal, input);
+		return this.admissionService.preflight(context.principal, created.admissionId, created.revision);
 	}
 
 	admission(context: WorkflowAuthorizationContext, admissionId: string): WorkflowAdmissionRecord {
 		assertWorkflowPrincipal(context.principal);
-		const record = this.admissionsStore.get(context.principal, admissionId);
+		const record = this.admissionService.get(context.principal, admissionId);
 		if (record === undefined) throw new WorkflowServiceError(`workflow admission ${admissionId} does not exist`);
 		return record;
 	}
 
 	admissions(context: WorkflowAuthorizationContext): readonly WorkflowAdmissionRecord[] {
 		assertWorkflowPrincipal(context.principal);
-		return this.admissionsStore.list(context.principal);
+		return this.admissionService.list(context.principal);
 	}
 
 	confirmAdmission(
@@ -75,7 +75,7 @@ export class WorkflowService {
 		input: AdmissionConfirmationInput,
 	): WorkflowAdmissionRecord {
 		assertWorkflowPrincipal(context.principal);
-		return this.admissionsStore.confirm(context.principal, admissionId, expectedRevision, input);
+		return this.admissionService.confirm(context.principal, admissionId, expectedRevision, input);
 	}
 
 	start(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob {
@@ -99,7 +99,12 @@ export class WorkflowService {
 	): WorkflowJob {
 		const ownerSessionId = requireWorkflowOwnerSessionId(context);
 		const activator = createSoftwareWorkflowActivator(this.engine, this.driver, this.jobs, ownerSessionId);
-		const record = this.admissionsStore.activate(context.principal, admissionId, expectedAcceptedSpecHash, activator);
+		const record = this.admissionService.activate(
+			context.principal,
+			admissionId,
+			expectedAcceptedSpecHash,
+			activator,
+		);
 		if (record.activation?.targetKind !== "workflow_job") {
 			throw new WorkflowServiceError(`workflow admission ${admissionId} did not activate a software workflow job`);
 		}

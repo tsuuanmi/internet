@@ -17,7 +17,7 @@ import {
 	type WorkflowPrincipal,
 	workflowPrincipalEquals,
 } from "#internet/workflow/authorization";
-import type { WorkflowProfileRegistry } from "#internet/workflow/profiles/types";
+import type { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
 
 export interface WorkflowAdmissionLifecycleOptions {
 	readonly now?: () => Date;

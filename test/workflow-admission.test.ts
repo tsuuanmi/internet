@@ -9,9 +9,9 @@ import { WorkflowAdmissionService, WorkflowAdmissionServiceError } from "#intern
 import { WorkflowAdmissionStore, WorkflowAdmissionStoreError } from "#internet/workflow/admission/store";
 import type { AcceptedAdmissionSpec } from "#internet/workflow/admission/types";
 import { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
+import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
 import { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
-import { WorkflowProfileRegistry } from "#internet/workflow/profiles/types";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowService } from "#internet/workflow/service";
 import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
