@@ -67,6 +67,7 @@ export interface StartWorkflowInput {
     readonly repository: string;
     readonly baseRevision: string;
     readonly ownerSessionId: string;
+    readonly jobId?: string;
 }
 export declare const TERMINAL_WORKFLOW_LIFECYCLES: ReadonlySet<WorkflowLifecycle>;
 export declare function workflowJobIsTerminal(job: WorkflowJob): boolean;

@@ -58,6 +58,12 @@ export function defineWorkflowCommand(dependencies) {
                     objective: rawInput,
                     repository: repository.url,
                     baseRevision: repository.revision,
+                    admission: {
+                        rawSource: rawInput,
+                        sourceProvenance: "user_explicit",
+                        targetProvenance: "system_observed",
+                        authorityProvenance: "user_explicit",
+                    },
                 });
                 return {
                     kind: "success",

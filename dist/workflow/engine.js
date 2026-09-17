@@ -34,7 +34,9 @@ export class WorkflowEngine {
             throw new Error("workflow owner session is required");
         if (!/^[0-9a-f]{40}$/u.test(input.baseRevision))
             throw new Error("workflow base revision must be a full Git SHA");
-        const jobId = randomBytes(16).toString("hex");
+        if (input.jobId !== undefined && !/^[0-9a-f]{32}$/u.test(input.jobId))
+            throw new Error("workflow job id must be 32 lowercase hex characters");
+        const jobId = input.jobId ?? randomBytes(16).toString("hex");
         const thinkerAccounts = DEFAULT_TEAM_ACCOUNTS;
         const synthesizer = DEFAULT_TEAM_SYNTHESIZER;
         const promptContext = {

@@ -109,10 +109,17 @@ async function runAcceptanceTest(service, dependencies, exec) {
     }
     const repository = await resolveWorkflowRepository(cwd, exec.signal, dependencies.runGit, "internet_workflow test");
     const marker = `${new Date().toISOString()}-${Math.random().toString(16).slice(2, 10)}`;
+    const objective = workflowTestObjective(marker);
     const job = service.start(authorization, {
-        objective: workflowTestObjective(marker),
+        objective,
         repository: repository.url,
         baseRevision: repository.revision,
+        admission: {
+            rawSource: objective,
+            sourceProvenance: "local_interpreted",
+            targetProvenance: "system_observed",
+            authorityProvenance: "local_interpreted",
+        },
     });
     const timeoutMs = dependencies.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS;
     const pollMs = dependencies.pollMs ?? DEFAULT_TEST_POLL_MS;
@@ -233,6 +240,12 @@ export function defineInternetWorkflowTool(service, testDependencies = {}) {
                         objective: args.objective,
                         repository: args.repository,
                         baseRevision: args.baseRevision,
+                        admission: {
+                            rawSource: args.objective,
+                            sourceProvenance: "local_interpreted",
+                            targetProvenance: "local_interpreted",
+                            authorityProvenance: "local_interpreted",
+                        },
                     });
                     return { ok: true, operation, ...project(job) };
                 }

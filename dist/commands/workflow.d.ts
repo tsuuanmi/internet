@@ -1,15 +1,11 @@
 import type { CommandDefinition } from "@deepseek-ai/dsh-commands";
 import { type GitRunner } from "#internet/workflow/repository-context";
-import { type WorkflowAuthorizationContext } from "#internet/workflow/service";
+import { type StartAuthorizedWorkflowInput, type WorkflowAuthorizationContext } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
 export type { GitRunner } from "#internet/workflow/repository-context";
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
 export interface WorkflowCommandService {
-    start(context: WorkflowAuthorizationContext, input: {
-        readonly objective: string;
-        readonly repository: string;
-        readonly baseRevision: string;
-    }): WorkflowJob;
+    start(context: WorkflowAuthorizationContext, input: StartAuthorizedWorkflowInput): WorkflowJob;
 }
 export interface WorkflowCommandOperator {
     list(ownerSessionId: string): string;

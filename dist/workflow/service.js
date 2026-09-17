@@ -22,18 +22,93 @@ function legacyOwnerSessionId(context) {
     }
     return ownerSessionId;
 }
+function legacyActivationInput(spec, ownerSessionId) {
+    if (spec.profile.id !== "software_change") {
+        throw new WorkflowServiceError(`legacy v3 activation does not support profile ${spec.profile.id}`);
+    }
+    const repository = spec.draft.target?.repository?.value;
+    const baseRevision = spec.draft.target?.baseRevision?.value;
+    if (repository === undefined || baseRevision === undefined) {
+        throw new WorkflowServiceError("accepted software admission is missing repository identity");
+    }
+    return {
+        jobId: spec.admissionId,
+        objective: spec.draft.source.rawText,
+        repository,
+        baseRevision,
+        ownerSessionId,
+    };
+}
+function assertMatchingLegacyActivation(job, expected) {
+    if (job.jobId !== expected.jobId ||
+        job.objective !== expected.objective ||
+        job.repository !== expected.repository ||
+        job.baseRevision !== expected.baseRevision ||
+        job.ownerSessionId !== expected.ownerSessionId) {
+        throw new WorkflowServiceError(`legacy workflow ${job.jobId} conflicts with accepted admission identity`);
+    }
+}
 export class WorkflowService {
-    constructor(engine, driver, jobs, retention) {
+    constructor(engine, driver, jobs, retention, admissions) {
         this.engine = engine;
         this.driver = driver;
         this.jobs = jobs;
         this.retention = retention;
+        this.admissions = admissions;
     }
     start(context, input) {
         const ownerSessionId = legacyOwnerSessionId(context);
-        const job = this.engine.start({ ...input, ownerSessionId });
-        this.driver.enqueue(job.jobId);
-        return job;
+        if (this.admissions === undefined || input.admission === undefined) {
+            return this.startLegacy(ownerSessionId, input);
+        }
+        const created = this.admissions.create(context.principal, {
+            source: {
+                kind: input.admission.sourceProvenance === "user_explicit" ? "user" : "local_agent",
+                rawText: input.admission.rawSource,
+                provenance: input.admission.sourceProvenance,
+            },
+            profileHint: { value: "software_change", provenance: "policy_default" },
+            target: {
+                repository: { value: input.repository, provenance: input.admission.targetProvenance },
+                baseRevision: { value: input.baseRevision, provenance: input.admission.targetProvenance },
+            },
+            authority: {
+                repositoryMutation: { value: true, provenance: input.admission.authorityProvenance },
+            },
+            autonomy: { value: "autonomous_until_external_dependency", provenance: "policy_default" },
+        });
+        let current = this.admissions.preflight(created.admissionId, created.revision);
+        if (current.state === "AWAITING_CONFIRMATION") {
+            if (current.preview?.confirmation.level !== "LOCAL_CONFIRM") {
+                throw new WorkflowServiceError(`workflow admission ${current.admissionId} requires explicit User confirmation before activation`);
+            }
+            current = this.admissions.confirm(context.principal, current.admissionId, current.revision, {
+                expectedDraftHash: current.draftHash,
+                provenance: "local_interpreted",
+            });
+        }
+        if (current.state !== "ACCEPTED" || current.acceptedSpecHash === undefined) {
+            throw new WorkflowServiceError(`workflow admission ${current.admissionId} did not reach accepted state`);
+        }
+        return this.activateLegacyAdmission(context, current.admissionId, current.revision, current.acceptedSpecHash);
+    }
+    activateLegacyAdmission(context, admissionId, expectedRevision, expectedAcceptedSpecHash) {
+        const ownerSessionId = legacyOwnerSessionId(context);
+        if (this.admissions === undefined) {
+            throw new WorkflowServiceError("durable workflow admission is not configured");
+        }
+        return this.admissions.activate(context.principal, admissionId, expectedRevision, expectedAcceptedSpecHash, (spec) => {
+            const expected = legacyActivationInput(spec, ownerSessionId);
+            let job = this.jobs.get(expected.jobId);
+            if (job === undefined) {
+                job = this.engine.start(expected);
+            }
+            else {
+                assertMatchingLegacyActivation(job, expected);
+            }
+            this.driver.enqueue(job.jobId);
+            return { result: job, targetKind: "legacy_v3_job", targetId: job.jobId };
+        }).result;
     }
     list(context) {
         const ownerSessionId = legacyOwnerSessionId(context);
@@ -72,6 +147,16 @@ export class WorkflowService {
     }
     isActive(jobId) {
         return this.driver.isActive(jobId);
+    }
+    startLegacy(ownerSessionId, input) {
+        const job = this.engine.start({
+            objective: input.objective,
+            repository: input.repository,
+            baseRevision: input.baseRevision,
+            ownerSessionId,
+        });
+        this.driver.enqueue(job.jobId);
+        return job;
     }
     ownerJobs(ownerSessionId) {
         return this.jobs
