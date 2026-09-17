@@ -13,7 +13,8 @@ export class WorkflowRunStoreError extends Error {
 }
 
 function assertRunId(runId: string): void {
-	if (!/^[0-9a-f]{32}$/u.test(runId)) throw new WorkflowRunStoreError("workflow run id must be 32 lowercase hex characters");
+	if (!/^[0-9a-f]{32}$/u.test(runId))
+		throw new WorkflowRunStoreError("workflow run id must be 32 lowercase hex characters");
 }
 
 function assertPrivateFile(path: string, label: string): void {
@@ -59,13 +60,15 @@ export class WorkflowRunStore {
 
 	list(): readonly WorkflowRun[] {
 		if (!existsSync(this.runsDir)) return [];
-		if (!lstatSync(this.runsDir).isDirectory()) throw new WorkflowRunStoreError("workflow runs path is not a directory");
+		if (!lstatSync(this.runsDir).isDirectory())
+			throw new WorkflowRunStoreError("workflow runs path is not a directory");
 		return readdirSync(this.runsDir)
 			.filter((name) => /^[0-9a-f]{32}\.json$/u.test(name))
 			.sort()
 			.map((name) => {
 				const run = this.get(name.slice(0, -5));
-				if (run === undefined) throw new WorkflowRunStoreError(`workflow run ${name} disappeared during enumeration`);
+				if (run === undefined)
+					throw new WorkflowRunStoreError(`workflow run ${name} disappeared during enumeration`);
 				return run;
 			});
 	}
@@ -80,8 +83,10 @@ export class WorkflowRunStore {
 		}
 		const next = mutate(current);
 		if (next.runId !== current.runId) throw new WorkflowRunStoreError("workflow run id cannot change");
-		if (next.admissionId !== current.admissionId) throw new WorkflowRunStoreError("workflow run admission id cannot change");
-		if (next.createdAt !== current.createdAt) throw new WorkflowRunStoreError("workflow run creation timestamp cannot change");
+		if (next.admissionId !== current.admissionId)
+			throw new WorkflowRunStoreError("workflow run admission id cannot change");
+		if (next.createdAt !== current.createdAt)
+			throw new WorkflowRunStoreError("workflow run creation timestamp cannot change");
 		if (canonicalJson(next.owner) !== canonicalJson(current.owner))
 			throw new WorkflowRunStoreError("workflow run owner cannot change");
 		if (canonicalJson(next.definitions) !== canonicalJson(current.definitions))
