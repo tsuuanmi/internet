@@ -11,7 +11,9 @@ function compareText(left: string, right: string): number {
 	return left < right ? -1 : left > right ? 1 : 0;
 }
 
-export function normalizeArtifactLineage(lineage: readonly WorkflowArtifactLineage[]): readonly WorkflowArtifactLineage[] {
+export function normalizeArtifactLineage(
+	lineage: readonly WorkflowArtifactLineage[],
+): readonly WorkflowArtifactLineage[] {
 	return [...lineage].sort((left, right) =>
 		compareText(
 			`${left.relation}\0${left.artifact.runId}\0${left.artifact.artifactId}`,
