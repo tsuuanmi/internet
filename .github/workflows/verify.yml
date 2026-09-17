@@ -5,7 +5,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -17,67 +17,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Synchronize vNext TODO status
-        if: github.event_name == 'push'
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = '.internet/workspace/TODO.md';
-          let todo = fs.readFileSync(path, 'utf8');
-          const oldStatus = '**Design Gate D0 is complete. Phase 0 has landed on `main`, and Phase 1 durable admission is implemented in PR #39.**\n\nThe current production migration now has one authoritative `WorkflowService` boundary, explicit principal/authorization context, durable provenance-preserving admission, deterministic preflight, explicit Local/User confirmation, exact accepted-spec activation, and crash-safe idempotent activation of the current software `WorkflowJob` target.\n\nThe next implementation milestone is the parallel vNext kernel substrate (`WorkflowRun`, Artifact, WorkItem, InputBundle, capability registry) without mutating the existing v3 durable-job schema in place.';
-          const newStatus = '**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 semantic protocol and baseline convergence are implemented in PR #41.**\n\nThe migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, a planning capability contract, exact result promotion, assessment currentness, and deterministic baseline convergence while the v3 runtime remains supported during migration.\n\nThe next implementation milestone after Phase 3 is the deterministic vNext RunEngine / Driver / Scheduler beside the existing v3 runtime.';
-          if (todo.includes(oldStatus)) todo = todo.replace(oldStatus, newStatus);
-          const completed = [
-            'Define domain-neutral `WorkflowRun` type.',
-            'Add `WorkflowRunStore`.',
-            'Define generic immutable/superseding Artifact envelope.',
-            'Add `ArtifactStore`.',
-            'Define `WorkItem` lifecycle separately from semantic Need lifecycle.',
-            'Add `WorkItemStore`.',
-            'Define exact `InputBundle` schema and hash rules.',
-            'Define deterministic capability registry interface.',
-            'Define execution/result/receipt references without collapsing them into Artifact.',
-            'Bind profile/policy/capability/schema versions needed for long-lived recovery.',
-            'Keep provider/account/session allocation below capability identity.',
-            'Define ObjectiveArtifact.',
-            'Define AcceptanceCriteriaArtifact with provenance/authority.',
-            'Define PlanArtifact and PlanTask identity.',
-            'Define typed Need schema and request-owner binding.',
-            'Define FindingArtifact.',
-            'Define EvidenceArtifact.',
-            'Define ReportArtifact.',
-            'Define DeliveryArtifact.',
-            'Define UserFeedbackArtifact.',
-            'Define explicit execution-result-to-artifact promotion/validation path.',
-            'Keep `NodeResult` / execution result, Handoff/Receipt, and semantic Artifact separate.',
-            'Define a first-class `planning` capability contract.',
-            'Add a planning executor adapter/typed output contract; do not assume current `WorkflowTeamRunner` already provides Planner semantics.',
-            'Define Planner re-entry triggers without fixed phase assumptions.',
-            'Keep `plan_change`, `requirements_change`, and `clarification` distinct.',
-            'Define user/policy-owned acceptance-criterion authority checks.',
-            'Implement assessment identity and exact subject binding.',
-            'Implement verdicts: SATISFIED / UNSATISFIED / INCONCLUSIVE.',
-            'Implement deterministic vs Reviewer vs User assessment methods/policies.',
-            'Implement stale assessment rules when criterion/head/InputBundle/evidence changes.',
-            'Implement a minimum profile convergence predicate over current valid assessments, Findings, required deliverables, authority gates, and external state.',
-            'Distinguish WorkItem completion, PlanTask execution completion, criterion satisfaction, and WorkflowRun convergence in runtime state/tests.',
-          ];
-          for (const item of completed) todo = todo.replace(`- [ ] ${item}`, `- [x] ${item}`);
-          fs.writeFileSync(path, todo);
-          NODE
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Commit TODO synchronization
-        if: github.event_name == 'push'
-        run: |
-          if ! git diff --quiet -- .internet/workspace/TODO.md; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add .internet/workspace/TODO.md
-            git commit -m "docs: synchronize vNext implementation status"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
       - name: Verify generated dist
         run: |
           git diff --exit-code -- dist
