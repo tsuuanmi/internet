@@ -30,7 +30,15 @@ export class WorkflowRunDriver {
 		const ownerInstanceId = randomBytes(16).toString("hex");
 		const promise = this.drive(runId, ownerInstanceId, controller.signal)
 			.catch((error: unknown) => {
-				if (!isAbort(error, controller.signal)) throw error;
+				if (isAbort(error, controller.signal)) return;
+				const run = this.runs.get(runId);
+				if (run === undefined || ["COMPLETED", "CANCELLED"].includes(run.lifecycle)) return;
+				this.runs.update(runId, run.revision, (current) => ({
+					...current,
+					revision: current.revision + 1,
+					lifecycle: "BLOCKED",
+					updatedAt: new Date().toISOString(),
+				}));
 			})
 			.finally(() => {
 				const current = this.active.get(runId);
