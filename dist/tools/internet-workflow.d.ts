@@ -1,9 +1,10 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { BrowserManager } from "#internet/browser/runtime";
+import type { AdmissionConfirmationInput, WorkflowAdmissionDraftInput, WorkflowAdmissionRecord } from "#internet/workflow/admission/types";
+import { type WorkflowAuthorizationContext } from "#internet/workflow/authorization";
 import type { GitRunner } from "#internet/workflow/repository-context";
-import { type WorkflowAuthorizationContext } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
-export declare const WORKFLOW_OPERATIONS: readonly ["start", "test", "status", "cancel", "continue"];
+export declare const WORKFLOW_OPERATIONS: readonly ["admit", "confirm", "activate", "test", "status", "cancel", "continue"];
 export type WorkflowOperation = (typeof WORKFLOW_OPERATIONS)[number];
 export interface WorkflowTestDependencies {
     readonly browser?: Pick<BrowserManager, "status">;
@@ -12,11 +13,9 @@ export interface WorkflowTestDependencies {
     readonly pollMs?: number;
 }
 export interface InternetWorkflowService {
-    start(context: WorkflowAuthorizationContext, input: {
-        readonly objective: string;
-        readonly repository: string;
-        readonly baseRevision: string;
-    }): WorkflowJob;
+    admit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord;
+    confirmAdmission(context: WorkflowAuthorizationContext, admissionId: string, expectedRevision: number, input: AdmissionConfirmationInput): WorkflowAdmissionRecord;
+    activateAdmission(context: WorkflowAuthorizationContext, admissionId: string, expectedAcceptedSpecHash: string): WorkflowJob;
     status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
     cancel(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowJob>;
     continue(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;

@@ -2,11 +2,11 @@
 
 ## Current status
 
-Architecture/design only. Runtime implementation should begin only after Design Gate D0 is complete.
+**Design Gate D0 is complete. Phase 0 has landed on `main`, and Phase 1 durable admission is implemented in PR #39.**
 
-**Design Gate D0 is now complete.** The core SRS was rewritten as v0.3 and the narrower Planner, Git mutation, PR workspace, adaptive routing, WorkItem/capability, kernel, continuation, and convergence contracts were harmonized around the same Local-Agent/Orchestrator authority boundary.
+The current production migration now has one authoritative `WorkflowService` boundary, explicit principal/authorization context, durable provenance-preserving admission, deterministic preflight, explicit Local/User confirmation, exact accepted-spec activation, and crash-safe idempotent activation of the current software `WorkflowJob` target.
 
-The highest-priority implementation gap remains the lack of one authoritative application/service boundary shared by the slash command and low-level workflow tool.
+The next implementation milestone is the parallel vNext kernel substrate (`WorkflowRun`, Artifact, WorkItem, InputBundle, capability registry) without mutating the existing v3 durable-job schema in place.
 
 ## D0 — Design contract harmonization
 
@@ -28,19 +28,19 @@ The highest-priority implementation gap remains the lack of one authoritative ap
 
 ## P0 — WorkflowService / authorization boundary
 
-- [ ] Add `WorkflowService` (or equivalent application service) as the single workflow client boundary.
-- [ ] Define an explicit authorization context/principal input for service operations.
-- [ ] Preserve v3 `ownerSessionId` behavior through a legacy authorization adapter.
-- [ ] Do not make creator-session identity the permanent vNext authorization model.
-- [ ] Route `/workflow` command operations through `WorkflowService`.
-- [ ] Route `internet_workflow` tool operations through `WorkflowService`.
-- [ ] Centralize authorization for status, cancel, continue/recover, and delete.
-- [ ] Add cross-session denial tests for status.
-- [ ] Add cross-session denial tests for cancel.
-- [ ] Add cross-session denial tests for continue/recover.
-- [ ] Add cross-session denial tests for delete.
-- [ ] Preserve all current v3 workflow behavior and exact-head semantics.
-- [ ] Keep current public command/tool compatibility unless a breaking change is explicitly approved.
+- [x] Add `WorkflowService` as the single workflow client boundary.
+- [x] Define an explicit authorization context/principal input for service operations.
+- [x] Preserve v3 `ownerSessionId` behavior through a session-binding adapter.
+- [x] Do not make creator-session identity the permanent vNext authorization model.
+- [x] Route `/workflow` command operations through `WorkflowService`.
+- [x] Route `internet_workflow` tool operations through `WorkflowService`.
+- [x] Centralize authorization for status, cancel, continue/recover, and delete.
+- [x] Add cross-session denial tests for status.
+- [x] Add cross-session denial tests for cancel.
+- [x] Add cross-session denial tests for continue/recover.
+- [x] Add cross-session denial tests for delete.
+- [x] Preserve current v3 execution semantics and exact-head behavior while routing new starts through admission.
+- [x] Remove obsolete direct-start/tool compatibility paths once durable admission became the authoritative current-spec client protocol.
 
 ## P0 — Migration contract
 
@@ -53,20 +53,20 @@ The highest-priority implementation gap remains the lack of one authoritative ap
 
 ## P1 — Durable admission
 
-- [ ] Define `WorkflowAdmissionDraft`.
-- [ ] Define accepted `AdmissionSpec`.
-- [ ] Define field provenance: User explicit / Local interpretation / policy default / User confirmation / Planner derivation / system observation.
-- [ ] Add durable `AdmissionStore` or equivalent pre-run record store.
-- [ ] Define admission lifecycle: DRAFT / PREFLIGHTED / AWAITING_CONFIRMATION / ACCEPTED / ACTIVATED / EXPIRED / SUPERSEDED or equivalent.
-- [ ] Define deterministic admission validation.
-- [ ] Define deterministic preflight result/preview.
-- [ ] Define stable admission hash/version.
-- [ ] Persist confirmation provenance/receipt when confirmation is required.
-- [ ] Require `activate(expectedAdmissionHash/version)` or equivalent CAS semantics.
-- [ ] Add stale/mismatched admission activation tests.
-- [ ] Add reconnect/retry test for an outstanding User confirmation.
-- [ ] Add initial software profile admission mapping.
-- [ ] Keep existing `/workflow <objective>` as a compatibility adapter initially.
+- [x] Define `WorkflowAdmissionDraft`.
+- [x] Define immutable accepted `AdmissionSpec`.
+- [x] Define field provenance: User explicit / Local interpretation / policy default / Planner derivation / system observation, with confirmation provenance recorded separately.
+- [x] Add durable `WorkflowAdmissionStore` for pre-run records.
+- [x] Define concrete admission lifecycle: DRAFT / PREFLIGHTED / AWAITING_CONFIRMATION / ACCEPTED / ACTIVATING / ACTIVATED.
+- [x] Define deterministic admission validation.
+- [x] Define deterministic preflight result/preview.
+- [x] Define stable canonical admission hashing and schema/version identity.
+- [x] Persist confirmation provenance/receipt when confirmation is required.
+- [x] Require activation against the exact accepted-spec hash.
+- [x] Add stale/mismatched admission activation tests.
+- [x] Add reconstruction/retry coverage for outstanding confirmation and activation crash windows.
+- [x] Add initial software profile admission mapping and profile registry boundary.
+- [x] Keep `/workflow <objective>` as the User-explicit `AUTO_SUBMIT` convenience path while the low-level client uses explicit `admit -> confirm -> activate`.
 
 ## P1 — Kernel substrate
 
@@ -262,12 +262,12 @@ The highest-priority implementation gap remains the lack of one authoritative ap
 
 ## Validation checklist for every implementation PR
 
-- [ ] Run focused Vitest files while developing.
-- [ ] `npm run check`
-- [ ] `npm test`
-- [ ] `npm run build`
-- [ ] `npm run verify-package`
-- [ ] Confirm existing v3 characterization tests remain green unless the PR explicitly and intentionally changes the v3 contract.
+- [x] Run focused Vitest files while developing Phase 0/1.
+- [x] `npm run check`
+- [x] `npm test`
+- [x] `npm run build`
+- [x] `npm run verify-package`
+- [x] Confirm existing v3 characterization tests remain green; Phase 1 changes startup admission without replacing the v3 execution/state contract.
 
 ## Design-PR completion checklist
 

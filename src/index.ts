@@ -11,6 +11,8 @@ import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { defineInternetWorkflowMaintenanceTool } from "#internet/tools/internet-workflow-maintenance";
+import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
+import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
 import { WorkflowDriver } from "#internet/workflow/driver";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { DshWorkflowEventSink, type WorkflowAgentRegistry, WorkflowEventJournal } from "#internet/workflow/events";
@@ -18,6 +20,8 @@ import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import { WorkflowOperator } from "#internet/workflow/operator";
+import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
+import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowService } from "#internet/workflow/service";
 import { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
@@ -52,6 +56,7 @@ const INTERNET_TEAM_GUIDANCE = [
 
 const INTERNET_WORKFLOW_GUIDANCE = [
 	"Use /workflow <task> as the normal entry point for a durable coding workflow. Use /workflow list, /workflow status [jobId], /workflow watch [jobId], /workflow stop [jobId], /workflow continue [jobId], and /workflow delete <jobId> for operator control without reading private JSON files manually. New jobs always pin a freshly queried upstream main HEAD; deletion requires an explicit workflow ID.",
+	"New workflow starts are recorded through the durable admission protocol before the existing v3 coding runtime is activated; raw User source, Local interpretation provenance, preflight identity, and exact accepted activation remain distinct.",
 	"The workflow is a durable dependency graph. Research A/B and Review A/B become READY independently and may execute concurrently while the account scheduler remains the only same-account capacity gate. Completed exact-input nodes are never replayed merely because a later node fails.",
 	"Status/watch project the authoritative graph: phase/lifecycle, exact active or recovering node, execution attempt, provider activity, dependency blockers, recent meaningful events, required user action, and the next transition.",
 	"WorkflowDriver reconciles orphaned execution leases after restart, schedules only READY/recoverable nodes, and retries the smallest failed logical node. Exact node outputs are stored separately from diagnostics so restart recovery can reconstruct prompts without replaying completed work.",
@@ -105,6 +110,9 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 	const workflowTeamReady = DEFAULT_TEAM_ACCOUNTS.every((accountId) => thinkers.has(accountId));
 	if (workflowTeamReady && accounts.has("chatgpt-writer")) {
 		const jobs = new WorkflowJobStore(config.dataDir);
+		const admissions = new WorkflowAdmissionStore(config.dataDir);
+		const profiles = new WorkflowProfileRegistry([SOFTWARE_WORKFLOW_PROFILE], SOFTWARE_WORKFLOW_PROFILE.id);
+		const admissionService = new WorkflowAdmissionService(admissions, profiles);
 		const handoffs = new WorkflowHandoffStore(config.dataDir);
 		const results = new WorkflowNodeResultStore(config.dataDir);
 		const journal = new WorkflowEventJournal(config.dataDir);
@@ -124,7 +132,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 			journal,
 		);
 		const driver = new WorkflowDriver(engine, jobs);
-		const service = new WorkflowService(engine, driver, jobs, retention);
+		const service = new WorkflowService(engine, driver, jobs, retention, admissionService);
 		const operator = new WorkflowOperator(service, journal);
 		ctx.effect(() => () => driver.dispose());
 		driver.resumeActive();
@@ -182,6 +190,45 @@ export {
 	defineInternetWorkflowMaintenanceTool,
 	WORKFLOW_MAINTENANCE_OPERATIONS,
 } from "#internet/tools/internet-workflow-maintenance";
+export { canonicalAdmissionJson, hashAdmissionValue } from "#internet/workflow/admission/hash";
+export { preflightWorkflowAdmission } from "#internet/workflow/admission/preflight";
+export type { WorkflowAdmissionLifecycleOptions } from "#internet/workflow/admission/service";
+export { WorkflowAdmissionService, WorkflowAdmissionServiceError } from "#internet/workflow/admission/service";
+export { WorkflowAdmissionStore, WorkflowAdmissionStoreError } from "#internet/workflow/admission/store";
+export type {
+	AcceptedAdmissionSpec,
+	AdmissionActivationReceipt,
+	AdmissionConfirmationInput,
+	AdmissionConfirmationReason,
+	AdmissionConfirmationReceipt,
+	AdmissionPreview,
+	ProvenancedValue,
+	WorkflowAdmissionAuthority,
+	WorkflowAdmissionBudgetHints,
+	WorkflowAdmissionConfirmationLevel,
+	WorkflowAdmissionDraft,
+	WorkflowAdmissionDraftInput,
+	WorkflowAdmissionProvenance,
+	WorkflowAdmissionRecord,
+	WorkflowAdmissionSource,
+	WorkflowAdmissionSourceKind,
+	WorkflowAdmissionState,
+	WorkflowAdmissionTarget,
+	WorkflowAdmissionTemporalHints,
+} from "#internet/workflow/admission/types";
+export {
+	WORKFLOW_ADMISSION_CONFIRMATION_LEVELS,
+	WORKFLOW_ADMISSION_PROVENANCE,
+	WORKFLOW_ADMISSION_SOURCE_KINDS,
+	WORKFLOW_ADMISSION_STATES,
+} from "#internet/workflow/admission/types";
+export { parseWorkflowAdmissionDraft, parseWorkflowAdmissionRecord } from "#internet/workflow/admission/validation";
+export type {
+	WorkflowAuthorizationContext,
+	WorkflowPrincipal,
+	WorkflowPrincipalKind,
+} from "#internet/workflow/authorization";
+export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -234,6 +281,10 @@ export {
 	WorkflowOperator,
 	WorkflowOperatorError,
 } from "#internet/workflow/operator";
+export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
+export { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
+export { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
+export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/types";
 export type {
 	WorkflowCleanupAudit,
 	WorkflowCleanupCandidate,
@@ -247,19 +298,8 @@ export {
 } from "#internet/workflow/retention";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
-export type {
-	StartAuthorizedWorkflowInput,
-	WorkflowAuthorizationContext,
-	WorkflowPrincipal,
-	WorkflowPrincipalKind,
-	WorkflowServiceDriver,
-	WorkflowServiceEngine,
-} from "#internet/workflow/service";
-export {
-	WorkflowService,
-	WorkflowServiceError,
-	workflowSessionAuthorizationContext,
-} from "#internet/workflow/service";
+export type { WorkflowServiceDriver, WorkflowServiceEngine } from "#internet/workflow/service";
+export { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 export type {
 	WorkflowPromptContext,
 	WorkflowReviewPromptContext,

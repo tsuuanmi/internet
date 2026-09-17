@@ -1,16 +1,18 @@
 import type { CommandDefinition } from "@deepseek-ai/dsh-commands";
+import type { WorkflowAdmissionDraftInput } from "#internet/workflow/admission/types";
+import {
+	type WorkflowAuthorizationContext,
+	workflowSessionAuthorizationContext,
+} from "#internet/workflow/authorization";
 import { WorkflowOperatorError } from "#internet/workflow/operator";
+import { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 import {
 	type GitRunner,
 	resolveWorkflowRepository,
 	runGitCommand,
 	WorkflowRepositoryError,
 } from "#internet/workflow/repository-context";
-import {
-	type WorkflowAuthorizationContext,
-	WorkflowServiceError,
-	workflowSessionAuthorizationContext,
-} from "#internet/workflow/service";
+import { WorkflowServiceError } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
 
 const USAGE = "Usage: /workflow <objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>";
@@ -20,10 +22,7 @@ export type { GitRunner } from "#internet/workflow/repository-context";
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
 
 export interface WorkflowCommandService {
-	start(
-		context: WorkflowAuthorizationContext,
-		input: { readonly objective: string; readonly repository: string; readonly baseRevision: string },
-	): WorkflowJob;
+	autoSubmit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob;
 }
 
 export interface WorkflowCommandOperator {
@@ -57,15 +56,12 @@ function operationInput(rawInput: string): { operation: string; jobId?: string }
 	return { operation, ...(parts[1] === undefined ? {} : { jobId: parts[1] }) };
 }
 
-/** Define the normal user-facing durable workflow command family. */
 export function defineWorkflowCommand(dependencies: WorkflowCommandDependencies): CommandDefinition {
 	const runGit = dependencies.runGit ?? runGitCommand;
 	return {
 		name: "workflow",
 		description: "start, inspect, stop, or resume a durable reviewed implementation workflow",
-		input: {
-			hint: "<objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>",
-		},
+		input: { hint: "<objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>" },
 		async handler(invocation) {
 			const rawInput = invocation.rawInput.trim();
 			if (rawInput === "") return { kind: "error", text: `A workflow objective or operation is required. ${USAGE}` };
@@ -87,11 +83,17 @@ export function defineWorkflowCommand(dependencies: WorkflowCommandDependencies)
 				const cwd = invocation.agent.session.header.cwd;
 				if (cwd === undefined) return { kind: "error", text: "/workflow requires a session working directory." };
 				const repository = await resolveWorkflowRepository(cwd, invocation.signal, runGit, "/workflow");
-				const job = dependencies.service.start(workflowSessionAuthorizationContext(ownerSessionId), {
-					objective: rawInput,
-					repository: repository.url,
-					baseRevision: repository.revision,
-				});
+				const job = dependencies.service.autoSubmit(
+					workflowSessionAuthorizationContext(ownerSessionId),
+					createSoftwareAdmissionDraft({
+						rawSource: rawInput,
+						sourceProvenance: "user_explicit",
+						repository: repository.url,
+						baseRevision: repository.revision,
+						targetProvenance: "system_observed",
+						authorityProvenance: "user_explicit",
+					}),
+				);
 				return {
 					kind: "success",
 					text: `Workflow ${job.jobId} started for ${repository.url} at ${repository.revision.slice(0, 12)}.`,

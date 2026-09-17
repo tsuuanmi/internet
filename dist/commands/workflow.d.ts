@@ -1,15 +1,12 @@
 import type { CommandDefinition } from "@deepseek-ai/dsh-commands";
+import type { WorkflowAdmissionDraftInput } from "#internet/workflow/admission/types";
+import { type WorkflowAuthorizationContext } from "#internet/workflow/authorization";
 import { type GitRunner } from "#internet/workflow/repository-context";
-import { type WorkflowAuthorizationContext } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
 export type { GitRunner } from "#internet/workflow/repository-context";
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
 export interface WorkflowCommandService {
-    start(context: WorkflowAuthorizationContext, input: {
-        readonly objective: string;
-        readonly repository: string;
-        readonly baseRevision: string;
-    }): WorkflowJob;
+    autoSubmit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob;
 }
 export interface WorkflowCommandOperator {
     list(ownerSessionId: string): string;
@@ -23,6 +20,5 @@ export interface WorkflowCommandDependencies {
     readonly operator: WorkflowCommandOperator;
     readonly runGit?: GitRunner;
 }
-/** Define the normal user-facing durable workflow command family. */
 export declare function defineWorkflowCommand(dependencies: WorkflowCommandDependencies): CommandDefinition;
 //# sourceMappingURL=workflow.d.ts.map

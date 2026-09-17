@@ -1,19 +1,19 @@
+import type { WorkflowAdmissionService } from "#internet/workflow/admission/service";
+import type {
+	AdmissionConfirmationInput,
+	WorkflowAdmissionDraftInput,
+	WorkflowAdmissionRecord,
+} from "#internet/workflow/admission/types";
+import {
+	assertWorkflowPrincipal,
+	requireWorkflowOwnerSessionId,
+	type WorkflowAuthorizationContext,
+} from "#internet/workflow/authorization";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
+import { createSoftwareWorkflowActivator } from "#internet/workflow/profiles/software-activation";
 import type { WorkflowDeletionReceipt, WorkflowRetentionManager } from "#internet/workflow/retention";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 import { workflowJobIsTerminal } from "#internet/workflow/types";
-
-export type WorkflowPrincipalKind = "session" | "user" | "service";
-
-export interface WorkflowPrincipal {
-	readonly kind: WorkflowPrincipalKind;
-	readonly id: string;
-}
-
-export interface WorkflowAuthorizationContext {
-	readonly principal: WorkflowPrincipal;
-	readonly legacyOwnerSessionId?: string;
-}
 
 export interface WorkflowServiceEngine {
 	start(input: StartWorkflowInput): WorkflowJob;
@@ -26,8 +26,6 @@ export interface WorkflowServiceDriver {
 	isActive(jobId: string): boolean;
 }
 
-export type StartAuthorizedWorkflowInput = Omit<StartWorkflowInput, "ownerSessionId">;
-
 export class WorkflowServiceError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -35,21 +33,12 @@ export class WorkflowServiceError extends Error {
 	}
 }
 
-export function workflowSessionAuthorizationContext(sessionId: string): WorkflowAuthorizationContext {
-	if (sessionId.trim() === "") throw new WorkflowServiceError("workflow session principal id is required");
-	return {
-		principal: { kind: "session", id: sessionId },
-		legacyOwnerSessionId: sessionId,
-	};
-}
-
-function legacyOwnerSessionId(context: WorkflowAuthorizationContext): string {
-	if (context.principal.id.trim() === "") throw new WorkflowServiceError("workflow principal id is required");
-	const ownerSessionId = context.legacyOwnerSessionId;
-	if (ownerSessionId === undefined || ownerSessionId.trim() === "") {
-		throw new WorkflowServiceError("legacy workflow operation requires an owner session binding");
-	}
-	return ownerSessionId;
+function preflightFailure(record: WorkflowAdmissionRecord): WorkflowServiceError {
+	const preview = record.preview;
+	const reasons = [...(preview?.errors ?? []), ...(preview?.unresolved.map((field) => `unresolved ${field}`) ?? [])];
+	return new WorkflowServiceError(
+		`workflow admission ${record.admissionId} cannot activate: ${reasons.join("; ") || "preflight did not accept the request"}`,
+	);
 }
 
 export class WorkflowService {
@@ -57,29 +46,89 @@ export class WorkflowService {
 	private readonly driver: WorkflowServiceDriver;
 	private readonly jobs: WorkflowJobStore;
 	private readonly retention: WorkflowRetentionManager;
+	private readonly admissionService: WorkflowAdmissionService;
 
 	constructor(
 		engine: WorkflowServiceEngine,
 		driver: WorkflowServiceDriver,
 		jobs: WorkflowJobStore,
 		retention: WorkflowRetentionManager,
+		admissionService: WorkflowAdmissionService,
 	) {
 		this.engine = engine;
 		this.driver = driver;
 		this.jobs = jobs;
 		this.retention = retention;
+		this.admissionService = admissionService;
 	}
 
-	start(context: WorkflowAuthorizationContext, input: StartAuthorizedWorkflowInput): WorkflowJob {
-		const ownerSessionId = legacyOwnerSessionId(context);
-		const job = this.engine.start({ ...input, ownerSessionId });
-		this.driver.enqueue(job.jobId);
+	admit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord {
+		assertWorkflowPrincipal(context.principal);
+		const created = this.admissionService.create(context.principal, input);
+		return this.admissionService.preflight(context.principal, created.admissionId, created.revision);
+	}
+
+	admission(context: WorkflowAuthorizationContext, admissionId: string): WorkflowAdmissionRecord {
+		assertWorkflowPrincipal(context.principal);
+		const record = this.admissionService.get(context.principal, admissionId);
+		if (record === undefined) throw new WorkflowServiceError(`workflow admission ${admissionId} does not exist`);
+		return record;
+	}
+
+	admissions(context: WorkflowAuthorizationContext): readonly WorkflowAdmissionRecord[] {
+		assertWorkflowPrincipal(context.principal);
+		return this.admissionService.list(context.principal);
+	}
+
+	confirmAdmission(
+		context: WorkflowAuthorizationContext,
+		admissionId: string,
+		expectedRevision: number,
+		input: AdmissionConfirmationInput,
+	): WorkflowAdmissionRecord {
+		assertWorkflowPrincipal(context.principal);
+		return this.admissionService.confirm(context.principal, admissionId, expectedRevision, input);
+	}
+
+	autoSubmit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob {
+		const admitted = this.admit(context, input);
+		if (admitted.state === "PREFLIGHTED") throw preflightFailure(admitted);
+		if (admitted.state === "AWAITING_CONFIRMATION") {
+			throw new WorkflowServiceError(
+				`workflow admission ${admitted.admissionId} requires ${admitted.preview?.confirmation.level ?? "confirmation"} before activation`,
+			);
+		}
+		if (admitted.state !== "ACCEPTED" || admitted.acceptedSpecHash === undefined) {
+			throw new WorkflowServiceError(`workflow admission ${admitted.admissionId} did not reach accepted state`);
+		}
+		return this.activateAdmission(context, admitted.admissionId, admitted.acceptedSpecHash);
+	}
+
+	activateAdmission(
+		context: WorkflowAuthorizationContext,
+		admissionId: string,
+		expectedAcceptedSpecHash: string,
+	): WorkflowJob {
+		const ownerSessionId = requireWorkflowOwnerSessionId(context);
+		const activator = createSoftwareWorkflowActivator(this.engine, this.driver, this.jobs, ownerSessionId);
+		const record = this.admissionService.activate(
+			context.principal,
+			admissionId,
+			expectedAcceptedSpecHash,
+			activator,
+		);
+		if (record.activation?.targetKind !== "workflow_job") {
+			throw new WorkflowServiceError(`workflow admission ${admissionId} did not activate a software workflow job`);
+		}
+		const job = this.jobs.get(record.activation.targetId);
+		if (job === undefined) {
+			throw new WorkflowServiceError(`activated workflow job ${record.activation.targetId} does not exist`);
+		}
 		return job;
 	}
 
 	list(context: WorkflowAuthorizationContext): readonly WorkflowJob[] {
-		const ownerSessionId = legacyOwnerSessionId(context);
-		return this.ownerJobs(ownerSessionId);
+		return this.ownerJobs(requireWorkflowOwnerSessionId(context));
 	}
 
 	status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob {
@@ -106,7 +155,7 @@ export class WorkflowService {
 
 	async delete(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowDeletionReceipt> {
 		if (jobId === undefined) throw new WorkflowServiceError("/workflow delete requires an explicit jobId");
-		const ownerSessionId = legacyOwnerSessionId(context);
+		const ownerSessionId = requireWorkflowOwnerSessionId(context);
 		const selected = this.selectJob(context, jobId, false);
 		const terminal = workflowJobIsTerminal(selected) ? selected : await this.driver.cancel(selected.jobId);
 		return this.retention.deleteNow({
@@ -132,7 +181,7 @@ export class WorkflowService {
 		explicitJobId: string | undefined,
 		requireActive: boolean,
 	): WorkflowJob {
-		const ownerSessionId = legacyOwnerSessionId(context);
+		const ownerSessionId = requireWorkflowOwnerSessionId(context);
 		const owned = this.ownerJobs(ownerSessionId);
 		if (explicitJobId !== undefined) {
 			const job = owned.find((candidate) => candidate.jobId === explicitJobId);
