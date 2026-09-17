@@ -1,4 +1,4 @@
-import type { WorkflowProfileDescriptor } from "#internet/workflow/profiles/registry";
+import type { WorkflowProfileDescriptor } from "#internet/workflow/profiles/types";
 
 export class WorkflowProfileRegistryError extends Error {
 	constructor(message: string) {
