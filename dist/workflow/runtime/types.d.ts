@@ -33,9 +33,12 @@ export interface WorkflowCapabilityExecutionContext {
     readonly execution: WorkflowExecution;
     readonly inputBundle: WorkflowInputBundle;
 }
+export interface WorkflowCapabilityActiveExecutionContext extends WorkflowCapabilityExecutionContext {
+    readonly heartbeat: () => WorkflowExecution;
+}
 export interface WorkflowCapabilityExecutor {
     readonly kind: string;
-    execute(context: WorkflowCapabilityExecutionContext, signal?: AbortSignal): Promise<WorkflowSemanticExecutionResult>;
+    execute(context: WorkflowCapabilityActiveExecutionContext, signal?: AbortSignal): Promise<WorkflowSemanticExecutionResult>;
     reconcile?(context: WorkflowCapabilityExecutionContext, signal?: AbortSignal): Promise<WorkflowSemanticExecutionResult | undefined>;
 }
 export interface WorkflowNeedRuntimeContext {

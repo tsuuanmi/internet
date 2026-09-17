@@ -2,13 +2,11 @@ import { randomBytes } from "node:crypto";
 import { hashCanonicalJson } from "#internet/core/canonical-json";
 import { WORKFLOW_WORK_ITEM_SCHEMA, } from "#internet/workflow/kernel/types";
 import { currentWorkflowArtifactIds, staleWorkflowWorkItems } from "#internet/workflow/runtime/invalidation";
+import { routeWorkflowCapability } from "#internet/workflow/runtime/routing";
 import { WORKFLOW_EXECUTION_SCHEMA } from "#internet/workflow/runtime/types";
 import { evaluateWorkflowConvergence, parseWorkflowNeedPayload, promoteWorkflowSemanticResult, WORKFLOW_SEMANTIC_ARTIFACT_TYPES, } from "#internet/workflow/semantic/index";
 const TERMINAL_RUN_LIFECYCLES = new Set(["COMPLETED", "CANCELLED"]);
 const TERMINAL_WORK_ITEM_STATES = new Set(["SUCCEEDED", "FAILED", "CANCELLED", "FENCED"]);
-function sameRef(left, right) {
-    return left.id === right.id && left.version === right.version;
-}
 function uniqueArtifactRefs(refs) {
     const byKey = new Map();
     for (const ref of refs)
@@ -76,6 +74,24 @@ export class WorkflowRunCoordinator {
         }
         return this.advance(runId);
     }
+    heartbeat(runId, executionId, ownerInstanceId) {
+        const current = this.dependencies.executions.get(runId, executionId);
+        if (current === undefined || current.state !== "RUNNING")
+            throw new Error(`workflow execution ${executionId} is not running`);
+        if (current.ownerInstanceId !== ownerInstanceId)
+            throw new Error("workflow execution heartbeat owner mismatch");
+        if (Date.parse(current.leaseUntil) <= this.now()) {
+            this.fenceExecution(current, "LEASE_EXPIRED", "workflow execution lease expired before heartbeat");
+            throw new Error("workflow execution lease has expired");
+        }
+        const at = new Date(this.now()).toISOString();
+        return this.dependencies.executions.update(runId, executionId, current.revision, (value) => ({
+            ...value,
+            revision: value.revision + 1,
+            heartbeatAt: at,
+            leaseUntil: new Date(this.now() + this.leaseMs).toISOString(),
+        }));
+    }
     async execute(runId, workItemId, ownerInstanceId, signal) {
         const run = this.status(runId);
         if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle))
@@ -126,10 +142,20 @@ export class WorkflowRunCoordinator {
             throw error;
         }
         try {
-            const result = await executor.execute({ run, workItem: running, execution, inputBundle: bundle }, signal);
+            const result = await executor.execute({
+                run,
+                workItem: running,
+                execution,
+                inputBundle: bundle,
+                heartbeat: () => this.heartbeat(runId, executionId, ownerInstanceId),
+            }, signal);
             const current = this.dependencies.executions.get(runId, executionId);
-            if (current === undefined || current.state !== "RUNNING" || Date.parse(current.leaseUntil) <= this.now())
-                throw new Error("workflow execution lost its lease before result persistence");
+            if (current === undefined || current.state !== "RUNNING")
+                return this.advance(runId);
+            if (Date.parse(current.leaseUntil) <= this.now()) {
+                await this.reconcileExpiredExecution(current, signal);
+                return this.advance(runId);
+            }
             const stored = this.dependencies.results.create(current, result);
             this.commitResult(current, stored);
         }
@@ -161,11 +187,7 @@ export class WorkflowRunCoordinator {
                 this.dependencies.pendingActions.ensure(run, artifact, need, materialization.actionType);
                 continue;
             }
-            const capability = this.dependencies.capabilities.resolve(materialization.capability);
-            if (!run.definitions.capabilities.some((ref) => sameRef(ref, capability)))
-                throw new Error(`workflow capability ${capability.id}@${capability.version} is not pinned by run ${run.runId}`);
-            if (!capability.acceptedNeedTypes.includes(need.type))
-                throw new Error(`workflow capability ${capability.id} does not accept Need type ${need.type}`);
+            const capability = routeWorkflowCapability(run, need, this.dependencies.capabilities, materialization.capability);
             const existing = workItems.filter((item) => item.needArtifact.artifactId === artifact.artifactId);
             if (existing.some((item) => !["CANCELLED", "FENCED"].includes(item.state)))
                 continue;

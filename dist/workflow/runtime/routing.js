@@ -7,11 +7,22 @@ export class WorkflowCapabilityRoutingError extends Error {
 function sameRef(left, right) {
     return left.id === right.id && left.version === right.version;
 }
-function pinnedCapabilities(run, registry) {
-    return run.definitions.capabilities.map((ref) => registry.resolve(ref));
+function assertCandidate(run, need, registry, ref) {
+    if (!run.definitions.capabilities.some((pinned) => sameRef(pinned, ref)))
+        throw new WorkflowCapabilityRoutingError(`workflow capability ${ref.id}@${ref.version} is not pinned by the run`);
+    const capability = registry.resolve(ref);
+    if (!capability.acceptedNeedTypes.includes(need.type))
+        throw new WorkflowCapabilityRoutingError(`workflow capability ${capability.id} does not accept Need type ${need.type}`);
+    if (need.requestedCapability !== undefined && capability.id !== need.requestedCapability)
+        throw new WorkflowCapabilityRoutingError(`workflow capability ${capability.id} conflicts with requested capability ${need.requestedCapability}`);
+    return capability;
 }
-export function routeWorkflowCapability(run, need, registry) {
-    const candidates = pinnedCapabilities(run, registry).filter((capability) => capability.acceptedNeedTypes.includes(need.type));
+export function routeWorkflowCapability(run, need, registry, selected) {
+    if (selected !== undefined)
+        return assertCandidate(run, need, registry, selected);
+    const candidates = run.definitions.capabilities
+        .map((ref) => registry.resolve(ref))
+        .filter((capability) => capability.acceptedNeedTypes.includes(need.type));
     if (need.requestedCapability !== undefined) {
         const matches = candidates.filter((capability) => capability.id === need.requestedCapability);
         if (matches.length === 0)
@@ -24,9 +35,6 @@ export function routeWorkflowCapability(run, need, registry) {
         throw new WorkflowCapabilityRoutingError(`no pinned workflow capability accepts Need type ${need.type}`);
     if (candidates.length > 1)
         throw new WorkflowCapabilityRoutingError(`Need type ${need.type} maps to multiple pinned workflow capabilities; requestedCapability or profile policy is required`);
-    const capability = candidates[0];
-    if (!run.definitions.capabilities.some((ref) => sameRef(ref, capability)))
-        throw new WorkflowCapabilityRoutingError("resolved workflow capability is not pinned by the run");
-    return capability;
+    return candidates[0];
 }
 //# sourceMappingURL=routing.js.map

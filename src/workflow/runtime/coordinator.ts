@@ -14,6 +14,7 @@ import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import { currentWorkflowArtifactIds, staleWorkflowWorkItems } from "#internet/workflow/runtime/invalidation";
 import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
+import { routeWorkflowCapability } from "#internet/workflow/runtime/routing";
 import type {
 	WorkflowCapabilityExecutorRegistry,
 	WorkflowExecution,
@@ -50,10 +51,6 @@ export interface WorkflowRunCoordinatorDependencies {
 	readonly executors: WorkflowCapabilityExecutorRegistry;
 	readonly pendingActions: WorkflowPendingActionMaterializer;
 	readonly policy: WorkflowRuntimePolicy;
-}
-
-function sameRef(left: { id: string; version: string }, right: { id: string; version: string }): boolean {
-	return left.id === right.id && left.version === right.version;
 }
 
 function uniqueArtifactRefs(refs: readonly WorkflowArtifactRef[]): readonly WorkflowArtifactRef[] {
@@ -133,6 +130,24 @@ export class WorkflowRunCoordinator {
 		return this.advance(runId);
 	}
 
+	heartbeat(runId: string, executionId: string, ownerInstanceId: string): WorkflowExecution {
+		const current = this.dependencies.executions.get(runId, executionId);
+		if (current === undefined || current.state !== "RUNNING")
+			throw new Error(`workflow execution ${executionId} is not running`);
+		if (current.ownerInstanceId !== ownerInstanceId) throw new Error("workflow execution heartbeat owner mismatch");
+		if (Date.parse(current.leaseUntil) <= this.now()) {
+			this.fenceExecution(current, "LEASE_EXPIRED", "workflow execution lease expired before heartbeat");
+			throw new Error("workflow execution lease has expired");
+		}
+		const at = new Date(this.now()).toISOString();
+		return this.dependencies.executions.update(runId, executionId, current.revision, (value) => ({
+			...value,
+			revision: value.revision + 1,
+			heartbeatAt: at,
+			leaseUntil: new Date(this.now() + this.leaseMs).toISOString(),
+		}));
+	}
+
 	async execute(
 		runId: string,
 		workItemId: string,
@@ -186,10 +201,22 @@ export class WorkflowRunCoordinator {
 		}
 
 		try {
-			const result = await executor.execute({ run, workItem: running, execution, inputBundle: bundle }, signal);
+			const result = await executor.execute(
+				{
+					run,
+					workItem: running,
+					execution,
+					inputBundle: bundle,
+					heartbeat: () => this.heartbeat(runId, executionId, ownerInstanceId),
+				},
+				signal,
+			);
 			const current = this.dependencies.executions.get(runId, executionId);
-			if (current === undefined || current.state !== "RUNNING" || Date.parse(current.leaseUntil) <= this.now())
-				throw new Error("workflow execution lost its lease before result persistence");
+			if (current === undefined || current.state !== "RUNNING") return this.advance(runId);
+			if (Date.parse(current.leaseUntil) <= this.now()) {
+				await this.reconcileExpiredExecution(current, signal);
+				return this.advance(runId);
+			}
 			const stored = this.dependencies.results.create(current, result);
 			this.commitResult(current, stored);
 		} catch (error) {
@@ -224,13 +251,12 @@ export class WorkflowRunCoordinator {
 				this.dependencies.pendingActions.ensure(run, artifact, need, materialization.actionType);
 				continue;
 			}
-			const capability = this.dependencies.capabilities.resolve(materialization.capability);
-			if (!run.definitions.capabilities.some((ref) => sameRef(ref, capability)))
-				throw new Error(
-					`workflow capability ${capability.id}@${capability.version} is not pinned by run ${run.runId}`,
-				);
-			if (!capability.acceptedNeedTypes.includes(need.type))
-				throw new Error(`workflow capability ${capability.id} does not accept Need type ${need.type}`);
+			const capability = routeWorkflowCapability(
+				run,
+				need,
+				this.dependencies.capabilities,
+				materialization.capability,
+			);
 			const existing = workItems.filter((item) => item.needArtifact.artifactId === artifact.artifactId);
 			if (existing.some((item) => !["CANCELLED", "FENCED"].includes(item.state))) continue;
 			const generation = existing.length + 1;

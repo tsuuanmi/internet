@@ -23,7 +23,9 @@ function assertCandidate(
 		throw new WorkflowCapabilityRoutingError(`workflow capability ${ref.id}@${ref.version} is not pinned by the run`);
 	const capability = registry.resolve(ref);
 	if (!capability.acceptedNeedTypes.includes(need.type))
-		throw new WorkflowCapabilityRoutingError(`workflow capability ${capability.id} does not accept Need type ${need.type}`);
+		throw new WorkflowCapabilityRoutingError(
+			`workflow capability ${capability.id} does not accept Need type ${need.type}`,
+		);
 	if (need.requestedCapability !== undefined && capability.id !== need.requestedCapability)
 		throw new WorkflowCapabilityRoutingError(
 			`workflow capability ${capability.id} conflicts with requested capability ${need.requestedCapability}`,

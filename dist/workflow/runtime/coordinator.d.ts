@@ -5,7 +5,7 @@ import { type WorkflowRun } from "#internet/workflow/kernel/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
-import type { WorkflowCapabilityExecutorRegistry, WorkflowPendingActionMaterializer, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
+import type { WorkflowCapabilityExecutorRegistry, WorkflowExecution, WorkflowPendingActionMaterializer, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 export interface WorkflowRunCoordinatorOptions {
     readonly leaseMs?: number;
@@ -32,6 +32,7 @@ export declare class WorkflowRunCoordinator {
     advance(runId: string): WorkflowRun;
     runnableWorkItemIds(runId: string): readonly string[];
     reconcile(runId: string, signal?: AbortSignal): Promise<WorkflowRun>;
+    heartbeat(runId: string, executionId: string, ownerInstanceId: string): WorkflowExecution;
     execute(runId: string, workItemId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<WorkflowRun>;
     private materializeNeeds;
     private prepareReadyWork;
