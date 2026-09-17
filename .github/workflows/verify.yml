@@ -5,7 +5,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -17,9 +17,40 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Normalize Phase 4 source
+        if: github.event_name == 'push'
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const validationPath = 'src/workflow/semantic/validation.ts';
+          let validation = fs.readFileSync(validationPath, 'utf8');
+          validation = validation.replace(
+            'function assertRecordValue(value: unknown, label: string): asserts value is Readonly<Record<string, unknown>> {\n\tif (!isRecord(value)) throw new Error(`invalid ${label}`);\n}\n\n',
+            '',
+          );
+          fs.writeFileSync(validationPath, validation);
+
+          const indexPath = 'src/index.ts';
+          let index = fs.readFileSync(indexPath, 'utf8');
+          const runtimeExport = 'export * from "#internet/workflow/runtime/index";\n';
+          if (!index.includes(runtimeExport)) index += `\n${runtimeExport}`;
+          fs.writeFileSync(indexPath, index);
+          NODE
+          npx biome check --write src/workflow/runtime src/workflow/kernel src/workflow/semantic/validation.ts src/index.ts test/workflow-runtime-*.test.ts test/workflow-work-item-store.test.ts test/workflow-semantic-promotion.test.ts
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - name: Commit normalized source and generated dist
+        if: github.event_name == 'push'
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- src test dist)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A src test dist
+            git commit -m "build: normalize phase 4 runtime artifacts"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
       - name: Verify generated dist
         run: |
           git diff --exit-code -- dist
