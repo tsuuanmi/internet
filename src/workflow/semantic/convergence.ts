@@ -1,11 +1,18 @@
 import type { WorkflowCriterionAssessmentRequirement } from "#internet/workflow/semantic/assessment";
 import { criterionAssessmentIsCurrent } from "#internet/workflow/semantic/assessment";
 import type {
+	WorkflowAssessmentSubject,
 	WorkflowCriterionAssessmentPayload,
 	WorkflowFindingPayload,
 	WorkflowPlanTaskExecutionState,
 	WorkflowPlanTaskRef,
 } from "#internet/workflow/semantic/types";
+
+export interface WorkflowConvergenceAssessmentState {
+	readonly artifactId: string;
+	readonly current: boolean;
+	readonly assessment: WorkflowCriterionAssessmentPayload;
+}
 
 export interface WorkflowConvergenceArtifactState {
 	readonly artifactId: string;
@@ -18,8 +25,12 @@ export interface WorkflowConvergenceFindingState {
 	readonly resolved: boolean;
 }
 
-export interface WorkflowConvergenceGateState {
+export interface WorkflowConvergenceAuthorityRequirement {
 	readonly id: string;
+	readonly subject: WorkflowAssessmentSubject;
+}
+
+export interface WorkflowConvergenceGateState extends WorkflowConvergenceAuthorityRequirement {
 	readonly resolved: boolean;
 }
 
@@ -31,14 +42,14 @@ export interface WorkflowConvergenceDependencyState {
 export interface WorkflowConvergencePolicy {
 	readonly criteria: readonly WorkflowCriterionAssessmentRequirement[];
 	readonly requiredDeliverableTypes: readonly string[];
-	readonly requiredAuthorityGates: readonly string[];
+	readonly requiredAuthorityGates: readonly WorkflowConvergenceAuthorityRequirement[];
 	readonly requiredReceiptIds: readonly string[];
 	readonly requiredDependencyIds: readonly string[];
 	readonly requiredPlanTasks?: readonly WorkflowPlanTaskRef[];
 }
 
 export interface WorkflowConvergenceState {
-	readonly assessments: readonly WorkflowCriterionAssessmentPayload[];
+	readonly assessments: readonly WorkflowConvergenceAssessmentState[];
 	readonly findings: readonly WorkflowConvergenceFindingState[];
 	readonly deliverables: readonly WorkflowConvergenceArtifactState[];
 	readonly authorityGates: readonly WorkflowConvergenceGateState[];
@@ -73,6 +84,10 @@ function unique(values: readonly string[]): readonly string[] {
 	return [...new Set(values)];
 }
 
+function sameSubject(left: WorkflowAssessmentSubject, right: WorkflowAssessmentSubject): boolean {
+	return left.kind === right.kind && left.id === right.id && left.version === right.version;
+}
+
 function planTaskKey(task: WorkflowPlanTaskRef): string {
 	return `${task.planArtifact.runId}:${task.planArtifact.artifactId}:${task.taskId}`;
 }
@@ -81,11 +96,18 @@ function criterionKey(requirement: WorkflowCriterionAssessmentRequirement): stri
 	return `${requirement.criterion.criteriaArtifact.artifactId}:${requirement.criterion.criterionId}@${requirement.criterion.criterionVersion}`;
 }
 
+function authorityKey(requirement: WorkflowConvergenceAuthorityRequirement): string {
+	return `${requirement.id}:${requirement.subject.kind}:${requirement.subject.id}@${requirement.subject.version}`;
+}
+
 function assessCriterion(
 	requirement: WorkflowCriterionAssessmentRequirement,
-	assessments: readonly WorkflowCriterionAssessmentPayload[],
+	assessmentStates: readonly WorkflowConvergenceAssessmentState[],
 ): WorkflowConvergenceBlocker | undefined {
-	const current = assessments.filter((assessment) => criterionAssessmentIsCurrent(assessment, requirement));
+	const current = assessmentStates
+		.filter((state) => state.current)
+		.map((state) => state.assessment)
+		.filter((assessment) => criterionAssessmentIsCurrent(assessment, requirement));
 	for (const method of requirement.requiredMethods) {
 		const methodAssessments = current.filter((assessment) => assessment.method === method);
 		if (methodAssessments.length === 0) {
@@ -125,15 +147,22 @@ export function evaluateWorkflowConvergence(
 			blockers.push({ kind: "deliverable", id: type, reason: "required current deliverable is missing" });
 		}
 	}
-	for (const id of unique(policy.requiredAuthorityGates)) {
-		if (!state.authorityGates.some((gate) => gate.id === id && gate.resolved)) {
-			blockers.push({ kind: "authority", id, reason: "required authority gate is unresolved" });
+	for (const requirement of policy.requiredAuthorityGates) {
+		if (
+			!state.authorityGates.some(
+				(gate) => gate.id === requirement.id && sameSubject(gate.subject, requirement.subject) && gate.resolved,
+			)
+		) {
+			blockers.push({
+				kind: "authority",
+				id: authorityKey(requirement),
+				reason: "required authority gate is unresolved for the exact current subject",
+			});
 		}
 	}
 	const receipts = new Set(state.receiptIds);
 	for (const id of unique(policy.requiredReceiptIds)) {
-		if (!receipts.has(id))
-			blockers.push({ kind: "receipt", id, reason: "required deterministic receipt is missing" });
+		if (!receipts.has(id)) blockers.push({ kind: "receipt", id, reason: "required deterministic receipt is missing" });
 	}
 	for (const id of unique(policy.requiredDependencyIds)) {
 		if (!state.dependencies.some((dependency) => dependency.id === id && dependency.resolved)) {
