@@ -33,8 +33,8 @@ export const WORKFLOW_SEMANTIC_SCHEMA_REFS = {
 export const WORKFLOW_CRITERION_PROVENANCE = ["user", "policy", "planner_derived"] as const;
 export type WorkflowCriterionProvenance = (typeof WORKFLOW_CRITERION_PROVENANCE)[number];
 
-export const WORKFLOW_CRITERION_REVISION_AUTHORITIES = ["user", "policy", "planner"] as const;
-export type WorkflowCriterionRevisionAuthority = (typeof WORKFLOW_CRITERION_REVISION_AUTHORITIES)[number];
+export const WORKFLOW_REQUIREMENT_REVISION_AUTHORITIES = ["user", "policy", "planner"] as const;
+export type WorkflowRequirementRevisionAuthority = (typeof WORKFLOW_REQUIREMENT_REVISION_AUTHORITIES)[number];
 
 export const WORKFLOW_ASSESSMENT_METHODS = ["deterministic", "reviewer", "user"] as const;
 export type WorkflowAssessmentMethod = (typeof WORKFLOW_ASSESSMENT_METHODS)[number];
@@ -56,11 +56,6 @@ export type WorkflowFindingSeverity = (typeof WORKFLOW_FINDING_SEVERITIES)[numbe
 
 export const WORKFLOW_FEEDBACK_PROVENANCE = ["user_explicit", "local_agent", "system_observed"] as const;
 export type WorkflowFeedbackProvenance = (typeof WORKFLOW_FEEDBACK_PROVENANCE)[number];
-
-export interface WorkflowSemanticIdentity {
-	readonly id: string;
-	readonly version: string;
-}
 
 export interface WorkflowObjectiveConstraint {
 	readonly id: string;
