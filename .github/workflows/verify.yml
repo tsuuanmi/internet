@@ -5,7 +5,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -17,82 +17,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Finalize Phase 3 source contracts
-        if: github.event_name == 'push'
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-
-          function replace(path, from, to) {
-            const source = fs.readFileSync(path, 'utf8');
-            if (source.includes(to)) return;
-            if (!source.includes(from)) throw new Error(`expected patch context missing in ${path}`);
-            fs.writeFileSync(path, source.replace(from, to));
-          }
-
-          replace(
-            'src/workflow/semantic/types.ts',
-            '\treadonly relatedArtifacts: readonly WorkflowArtifactRef[];\n\treadonly metadata?: Readonly<Record<string, unknown>>;\n}',
-            '\treadonly relatedArtifacts: readonly WorkflowArtifactRef[];\n}',
-          );
-          replace(
-            'src/workflow/semantic/validation.ts',
-            'function assertRecordValue(value: unknown, label: string): asserts value is Readonly<Record<string, unknown>> {\n\tif (!isRecord(value)) throw new Error(`invalid ${label}`);\n}\n\n',
-            '',
-          );
-          replace(
-            'src/workflow/semantic/validation.ts',
-            '\tif (value.metadata !== undefined) assertRecordValue(value.metadata, "workflow Need metadata");\n\treturn value as unknown as WorkflowNeedPayload;',
-            '\tif (Object.hasOwn(value, "metadata")) throw new Error("workflow Need metadata is unsupported; use typed fields");\n\treturn value as unknown as WorkflowNeedPayload;',
-          );
-          replace(
-            'src/workflow/semantic/validation.ts',
-            'throw new Error("workflow plan " + label + " cycle includes " + taskId);',
-            'throw new Error(`workflow plan ${label} cycle includes ${taskId}`);',
-          );
-
-          const testPath = 'test/workflow-semantic-validation.test.ts';
-          let test = fs.readFileSync(testPath, 'utf8');
-          const marker = '\tit("requires explicit dependency changes in Plan revision metadata", () => {';
-          if (!test.includes('rejects the obsolete untyped Need metadata escape hatch')) {
-            const block = '\tit("rejects the obsolete untyped Need metadata escape hatch", () => {\n\t\texpect(() =>\n\t\t\tparseWorkflowNeedPayload({\n\t\t\t\tneedId: "need-1",\n\t\t\t\ttype: "execution",\n\t\t\t\trequestOwner: { kind: "plan_task", id: "task-1" },\n\t\t\t\tquestion: "Do work",\n\t\t\t\tsubjects: [],\n\t\t\t\trelatedArtifacts: [],\n\t\t\t\tmetadata: { route: "hidden" },\n\t\t\t}),\n\t\t).toThrow("metadata is unsupported");\n\t});\n\n';
-            if (!test.includes(marker)) throw new Error('validation test insertion point missing');
-            test = test.replace(marker, block + marker);
-            fs.writeFileSync(testPath, test);
-          }
-
-          const todoPath = '.internet/workspace/TODO.md';
-          let todo = fs.readFileSync(todoPath, 'utf8');
-          todo = todo.replace(
-            '- [ ] Decide whether progressive/lazy PlanTask refinement needs a separate artifact or ordinary PlanRevision.',
-            '- [x] Use ordinary versioned PlanRevision for progressive/lazy PlanTask refinement; add a separate artifact only if a future contract requires distinct semantics.',
-          );
-          todo = todo.replace(
-            '- [ ] Keep waiver/override as separate authority object rather than normal assessment verdict.',
-            '- [x] Keep waiver/override outside CriterionAssessment verdicts; any future waiver authority object belongs to the convergence hardening milestone.',
-          );
-          todo = todo.replace(
-            '- [ ] Ensure no product-journey implementation claims terminal success before this baseline exists.',
-            '- [x] Land baseline assessment/convergence before any vNext product journey can claim terminal semantic success.',
-          );
-          fs.writeFileSync(todoPath, todo);
-          NODE
-          npx biome check --write src/workflow/semantic test/workflow-semantic-*.test.ts
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Commit final Phase 3 source and dist
-        if: github.event_name == 'push'
-        run: |
-          if [ -n "$(git status --porcelain --untracked-files=all -- src test dist .internet/workspace/TODO.md)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A src test dist .internet/workspace/TODO.md
-            git commit -m "refactor: finalize phase 3 semantic architecture"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
       - name: Verify generated dist
-        if: github.event_name == 'pull_request'
         run: |
           git diff --exit-code -- dist
           test -z "$(git ls-files --others --exclude-standard -- dist)"
