@@ -5,7 +5,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -17,75 +17,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Apply Phase 3 contract corrections
-        if: github.event_name == 'push'
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-
-          function replace(path, from, to) {
-            const source = fs.readFileSync(path, 'utf8');
-            if (source.includes(to)) return;
-            if (!source.includes(from)) throw new Error(`expected patch context missing in ${path}`);
-            fs.writeFileSync(path, source.replace(from, to));
-          }
-
-          replace(
-            'src/workflow/semantic/types.ts',
-            'export interface WorkflowSemanticIdentity {\n\treadonly id: string;\n\treadonly version: string;\n}\n\n',
-            '',
-          );
-          replace(
-            'src/workflow/semantic/types.ts',
-            '\treadonly changedTaskIds: readonly string[];\n\treadonly changedAssumptionIds: readonly string[];',
-            '\treadonly changedTaskIds: readonly string[];\n\treadonly changedDependencyTaskIds: readonly string[];\n\treadonly changedAssumptionIds: readonly string[];',
-          );
-          replace(
-            'src/workflow/semantic/types.ts',
-            'export interface WorkflowNeedPayload {\n\treadonly needId: string;\n\treadonly type: string;',
-            'export interface WorkflowNeedPayload {\n\treadonly needId: string;\n\treadonly type: WorkflowNeedType;',
-          );
-          replace(
-            'src/workflow/semantic/validation.ts',
-            '\tWORKFLOW_FINDING_SEVERITIES,\n\tWORKFLOW_SEMANTIC_ARTIFACT_TYPES,',
-            '\tWORKFLOW_FINDING_SEVERITIES,\n\tWORKFLOW_NEED_TYPES,\n\tWORKFLOW_SEMANTIC_ARTIFACT_TYPES,',
-          );
-          replace(
-            'src/workflow/semantic/validation.ts',
-            '\tassertStringList(value.changedTaskIds, "workflow plan revision changed task id");\n\tassertStringList(value.changedAssumptionIds, "workflow plan revision changed assumption id");',
-            '\tassertStringList(value.changedTaskIds, "workflow plan revision changed task id");\n\tassertStringList(value.changedDependencyTaskIds, "workflow plan revision changed dependency task id");\n\tassertStringList(value.changedAssumptionIds, "workflow plan revision changed assumption id");',
-          );
-          replace(
-            'src/workflow/semantic/validation.ts',
-            '\tassertText(value.needId, "workflow Need id");\n\tassertText(value.type, "workflow Need type");',
-            '\tassertText(value.needId, "workflow Need id");\n\tif (\n\t\ttypeof value.type !== "string" ||\n\t\t!WORKFLOW_NEED_TYPES.includes(value.type as (typeof WORKFLOW_NEED_TYPES)[number])\n\t)\n\t\tthrow new Error("invalid workflow Need type");',
-          );
-          replace(
-            'test/workflow-semantic-validation.test.ts',
-            '\tparseWorkflowAcceptanceCriteriaPayload,\n\tparseWorkflowPlanPayload,',
-            '\tparseWorkflowAcceptanceCriteriaPayload,\n\tparseWorkflowNeedPayload,\n\tparseWorkflowPlanPayload,',
-          );
-          replace(
-            'test/workflow-semantic-validation.test.ts',
-            '\tit("requires the authority that owns an existing criterion before revision", () => {',
-            '\tit("rejects Need types outside the registered semantic vocabulary", () => {\n\t\texpect(() =>\n\t\t\tparseWorkflowNeedPayload({\n\t\t\t\tneedId: "need-1",\n\t\t\t\ttype: "ad_hoc",\n\t\t\t\trequestOwner: { kind: "plan_task", id: "task-1" },\n\t\t\t\tquestion: "Do work",\n\t\t\t\tsubjects: [],\n\t\t\t\trelatedArtifacts: [],\n\t\t\t}),\n\t\t).toThrow("invalid workflow Need type");\n\t});\n\n\tit("requires explicit dependency changes in Plan revision metadata", () => {\n\t\texpect(() =>\n\t\t\tparseWorkflowPlanPayload({\n\t\t\t\tplanId: "plan-1",\n\t\t\t\tversion: "2",\n\t\t\t\tobjective: objectiveArtifact,\n\t\t\t\tacceptanceCriteria: criteriaArtifact,\n\t\t\t\ttasks: [],\n\t\t\t\tassumptions: [],\n\t\t\t\trisks: [],\n\t\t\t\tsupersedes: { runId, artifactId: "c".repeat(64) },\n\t\t\t\trevision: {\n\t\t\t\t\treason: "Dependency graph changed",\n\t\t\t\t\taddedTaskIds: [],\n\t\t\t\t\tremovedTaskIds: [],\n\t\t\t\t\tchangedTaskIds: [],\n\t\t\t\t\tchangedAssumptionIds: [],\n\t\t\t\t\taffectedRefs: [],\n\t\t\t\t},\n\t\t\t}),\n\t\t).toThrow("changed dependency task id");\n\t});\n\n\tit("requires the authority that owns an existing criterion before revision", () => {',
-          );
-          NODE
-          npx biome check --write src/workflow/semantic test/workflow-semantic-validation.test.ts
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Commit generated Phase 3 source and dist
-        if: github.event_name == 'push'
-        run: |
-          if [ -n "$(git status --porcelain --untracked-files=all -- src test dist)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A src test dist
-            git commit -m "build: sync phase 3 semantic contracts"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
       - name: Verify generated dist
-        if: github.event_name == 'pull_request'
-        run: git diff --exit-code -- dist
+        run: |
+          git diff --exit-code -- dist
+          test -z "$(git ls-files --others --exclude-standard -- dist)"
       - run: npm run verify-package
