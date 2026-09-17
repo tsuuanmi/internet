@@ -31,28 +31,41 @@ jobs:
             fs.writeFileSync(path, source);
           }
 
-          const validationPath = 'src/workflow/semantic/validation.ts';
-          let validation = fs.readFileSync(validationPath, 'utf8');
-          validation = validation.replace(
-            'function assertRecordValue(value: unknown, label: string): asserts value is Readonly<Record<string, unknown>> {\n\tif (!isRecord(value)) throw new Error(`invalid ${label}`);\n}\n\n',
-            '',
-          );
-          fs.writeFileSync(validationPath, validation);
-
+          replace('src/workflow/runtime/coordinator.ts', '\ttype WorkflowNeedPayload,\n', '');
           replace(
             'src/workflow/runtime/coordinator.ts',
-            '\ttype WorkflowNeedPayload,\n',
-            '',
+            'function workItemIdFor(needArtifact: WorkflowArtifact, capabilityId: string, generation: number): string {\n\treturn hashCanonicalJson({\n\t\trunId: needArtifact.runId,\n\t\tneedArtifactId: needArtifact.artifactId,\n\t\tcapabilityId,\n\t\tgeneration,\n\t}).slice(0, 32);\n}',
+            'function workItemIdFor(\n\tneedArtifact: WorkflowArtifact,\n\tcapability: { id: string; version: string },\n\tgeneration: number,\n): string {\n\treturn hashCanonicalJson({\n\t\trunId: needArtifact.runId,\n\t\tneedArtifactId: needArtifact.artifactId,\n\t\tcapability,\n\t\tgeneration,\n\t}).slice(0, 32);\n}',
           );
           replace(
             'src/workflow/runtime/coordinator.ts',
-            'export class WorkflowRunCoordinator {\n\tprivate readonly leaseMs: number;\n\tprivate readonly now: () => number;\n\n\tconstructor(\n\t\tprivate readonly dependencies: WorkflowRunCoordinatorDependencies,\n\t\toptions: WorkflowRunCoordinatorOptions = {},\n\t) {\n\t\tthis.leaseMs = options.leaseMs ?? 5 * 60_000;',
-            'export class WorkflowRunCoordinator {\n\tprivate readonly dependencies: WorkflowRunCoordinatorDependencies;\n\tprivate readonly leaseMs: number;\n\tprivate readonly now: () => number;\n\n\tconstructor(dependencies: WorkflowRunCoordinatorDependencies, options: WorkflowRunCoordinatorOptions = {}) {\n\t\tthis.dependencies = dependencies;\n\t\tthis.leaseMs = options.leaseMs ?? 5 * 60_000;',
+            'workItemId: workItemIdFor(artifact, capability.id, generation),',
+            'workItemId: workItemIdFor(artifact, capability, generation),',
           );
           replace(
-            'src/workflow/runtime/driver.ts',
-            'export class WorkflowRunDriver {\n\tprivate readonly active = new Map<string, ActiveRun>();\n\tprivate disposed = false;\n\n\tconstructor(\n\t\tprivate readonly coordinator: WorkflowRunCoordinator,\n\t\tprivate readonly runs: WorkflowRunStore,\n\t) {}',
-            'export class WorkflowRunDriver {\n\tprivate readonly active = new Map<string, ActiveRun>();\n\tprivate readonly coordinator: WorkflowRunCoordinator;\n\tprivate readonly runs: WorkflowRunStore;\n\tprivate disposed = false;\n\n\tconstructor(coordinator: WorkflowRunCoordinator, runs: WorkflowRunStore) {\n\t\tthis.coordinator = coordinator;\n\t\tthis.runs = runs;\n\t}',
+            'src/workflow/runtime/coordinator.ts',
+            'const stored = this.dependencies.results.create(runId, result);',
+            'const stored = this.dependencies.results.create(current, result);',
+          );
+          replace(
+            'src/workflow/runtime/coordinator.ts',
+            'const stored = this.dependencies.results.create(execution.runId, result);',
+            'const stored = this.dependencies.results.create(execution, result);',
+          );
+          replace(
+            'src/workflow/runtime/coordinator.ts',
+            'const readiness = this.dependencies.policy.readiness(context, item);\n\t\t\tif (!readiness.ready) continue;',
+            'const readiness = this.dependencies.policy.readiness(context, item);\n\t\t\tif (readiness.ready && readiness.blockers.length > 0)\n\t\t\t\tthrow new Error("workflow readiness cannot be ready with blockers");\n\t\t\tif (!readiness.ready) continue;',
+          );
+          replace(
+            'src/workflow/runtime/coordinator.ts',
+            'for (const item of staleWorkflowWorkItems(items, bundles, artifacts)) {\n\t\t\tconst current = this.dependencies.workItems.get(runId, item.workItemId);',
+            'for (const item of staleWorkflowWorkItems(items, bundles, artifacts)) {\n\t\t\tfor (const execution of this.dependencies.executions.list(runId)) {\n\t\t\t\tif (execution.workItemId === item.workItemId && execution.state === "RUNNING")\n\t\t\t\t\tthis.fenceExecution(execution, "INPUT_INVALIDATED", "execution input was invalidated");\n\t\t\t}\n\t\t\tconst current = this.dependencies.workItems.get(runId, item.workItemId);',
+          );
+          replace(
+            'src/workflow/runtime/coordinator.ts',
+            'const openExternal = this.dependencies.artifacts\n\t\t\t\t.list(run.runId)\n\t\t\t\t.filter((artifact) => artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need)\n\t\t\t\t.some((artifact) => this.dependencies.pendingActions.hasOpen(run.runId, artifact.artifactId));',
+            'const artifacts = this.dependencies.artifacts.list(run.runId);\n\t\t\tconst currentArtifacts = currentWorkflowArtifactIds(artifacts);\n\t\t\tconst openExternal = artifacts\n\t\t\t\t.filter(\n\t\t\t\t\t(artifact) =>\n\t\t\t\t\t\tartifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need && currentArtifacts.has(artifact.artifactId),\n\t\t\t\t)\n\t\t\t\t.some((artifact) => this.dependencies.pendingActions.hasOpen(run.runId, artifact.artifactId));',
           );
 
           const indexPath = 'src/index.ts';
@@ -72,7 +85,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A src test dist
-            git commit -m "build: normalize phase 4 runtime artifacts"
+            git commit -m "build: finalize phase 4 runtime artifacts"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
       - name: Verify generated dist
