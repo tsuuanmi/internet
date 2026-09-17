@@ -4,11 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineInternetWorkflowTool, type WorkflowTestDependencies } from "#internet/tools/internet-workflow";
+import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
+import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
+import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
+import { WorkflowProfileRegistry } from "#internet/workflow/profiles/types";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowService } from "#internet/workflow/service";
 import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
 
 const roots: string[] = [];
+const REVISION = "0123456789abcdef0123456789abcdef01234567";
 
 function tool(testDependencies: WorkflowTestDependencies = {}) {
 	const root = mkdtempSync(join(tmpdir(), "internet-workflow-tool-"));
@@ -23,37 +28,72 @@ function tool(testDependencies: WorkflowTestDependencies = {}) {
 			return false;
 		},
 	};
-	const service = new WorkflowService(engine, driver, jobs, new WorkflowRetentionManager(root, jobs));
+	const admissions = new WorkflowAdmissionService(
+		new WorkflowAdmissionStore(root),
+		new WorkflowProfileRegistry([SOFTWARE_WORKFLOW_PROFILE], SOFTWARE_WORKFLOW_PROFILE.id),
+	);
+	const service = new WorkflowService(engine, driver, jobs, new WorkflowRetentionManager(root, jobs), admissions);
 	return defineInternetWorkflowTool(service, testDependencies);
 }
 
 const exec = { agent: { id: "agent-11" }, signal: new AbortController().signal } as never;
 const otherExec = { agent: { id: "agent-22" }, signal: new AbortController().signal } as never;
 
+async function admitAndActivate(workflow: ReturnType<typeof tool>, objective: string) {
+	const admitted = (await workflow.execute(
+		{
+			operation: "admit",
+			objective,
+			repository: "https://github.com/example/repo",
+			baseRevision: REVISION,
+		},
+		exec,
+	)) as {
+		admissionId: string;
+		admissionRevision: number;
+		admissionState: string;
+		draftHash: string;
+	};
+	expect(admitted).toMatchObject({ ok: true, operation: "admit", admissionState: "AWAITING_CONFIRMATION" });
+
+	const confirmed = (await workflow.execute(
+		{
+			operation: "confirm",
+			admissionId: admitted.admissionId,
+			admissionRevision: admitted.admissionRevision,
+			draftHash: admitted.draftHash,
+			confirmationProvenance: "local_interpreted",
+		},
+		exec,
+	)) as { admissionId: string; admissionState: string; acceptedSpecHash: string };
+	expect(confirmed).toMatchObject({ ok: true, operation: "confirm", admissionState: "ACCEPTED" });
+
+	return workflow.execute(
+		{
+			operation: "activate",
+			admissionId: confirmed.admissionId,
+			acceptedSpecHash: confirmed.acceptedSpecHash,
+		},
+		exec,
+	);
+}
+
 afterEach(async () => {
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("internet_workflow", () => {
-	it("starts and reports a durable graph workflow job", async () => {
+	it("admits, confirms, activates, and reports a durable workflow", async () => {
 		const workflow = tool();
-		const started = await workflow.execute(
-			{
-				operation: "start",
-				objective: "Fix the race",
-				repository: "https://github.com/example/repo",
-				baseRevision: "0123456789abcdef0123456789abcdef01234567",
-			},
-			exec,
-		);
-		expect(started).toMatchObject({
+		const activated = await admitAndActivate(workflow, "Fix the race");
+		expect(activated).toMatchObject({
 			ok: true,
-			operation: "start",
+			operation: "activate",
 			phase: "RESEARCH",
 			lifecycle: "RUNNING",
 			repository: "https://github.com/example/repo",
 		});
-		const jobId = (started as { jobId: string }).jobId;
+		const jobId = (activated as { jobId: string }).jobId;
 		await expect(workflow.execute({ operation: "status", jobId }, exec)).resolves.toMatchObject({
 			ok: true,
 			operation: "status",
@@ -63,18 +103,40 @@ describe("internet_workflow", () => {
 		});
 	});
 
-	it("cancels by job id without reconstructing model context", async () => {
+	it("does not let another principal confirm an admission", async () => {
 		const workflow = tool();
-		const started = await workflow.execute(
+		const admitted = (await workflow.execute(
 			{
-				operation: "start",
-				objective: "Fix it",
+				operation: "admit",
+				objective: "Keep admission ownership explicit",
 				repository: "https://github.com/example/repo",
-				baseRevision: "0123456789abcdef0123456789abcdef01234567",
+				baseRevision: REVISION,
 			},
 			exec,
-		);
-		const jobId = (started as { jobId: string }).jobId;
+		)) as { admissionId: string; admissionRevision: number; draftHash: string };
+
+		await expect(
+			workflow.execute(
+				{
+					operation: "confirm",
+					admissionId: admitted.admissionId,
+					admissionRevision: admitted.admissionRevision,
+					draftHash: admitted.draftHash,
+					confirmationProvenance: "local_interpreted",
+				},
+				otherExec,
+			),
+		).resolves.toEqual({
+			ok: false,
+			operation: "confirm",
+			message: `admission ${admitted.admissionId} does not belong to this principal`,
+		});
+	});
+
+	it("cancels by job id without reconstructing model context", async () => {
+		const workflow = tool();
+		const activated = await admitAndActivate(workflow, "Fix it");
+		const jobId = (activated as { jobId: string }).jobId;
 		await expect(workflow.execute({ operation: "cancel", jobId }, exec)).resolves.toMatchObject({
 			ok: true,
 			operation: "cancel",
@@ -85,16 +147,8 @@ describe("internet_workflow", () => {
 
 	it("denies cross-session status, cancel, and continue through the same service boundary", async () => {
 		const workflow = tool();
-		const started = await workflow.execute(
-			{
-				operation: "start",
-				objective: "Keep this private to one session",
-				repository: "https://github.com/example/repo",
-				baseRevision: "0123456789abcdef0123456789abcdef01234567",
-			},
-			exec,
-		);
-		const jobId = (started as { jobId: string }).jobId;
+		const activated = await admitAndActivate(workflow, "Keep this private to one session");
+		const jobId = (activated as { jobId: string }).jobId;
 		for (const operation of ["status", "cancel", "continue"] as const) {
 			await expect(workflow.execute({ operation, jobId }, otherExec)).resolves.toEqual({
 				ok: false,
@@ -110,6 +164,11 @@ describe("internet_workflow", () => {
 			ok: false,
 			operation: "status",
 			message: "status requires jobId",
+		});
+		await expect(workflow.execute({ operation: "confirm" }, exec)).resolves.toEqual({
+			ok: false,
+			operation: "confirm",
+			message: "confirm requires admissionId, admissionRevision, draftHash, and confirmationProvenance",
 		});
 	});
 
