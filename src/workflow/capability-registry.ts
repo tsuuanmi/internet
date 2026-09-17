@@ -47,12 +47,16 @@ function assertDescriptor(descriptor: WorkflowCapabilityDescriptor): void {
 	assertText(descriptor.id, "workflow capability id");
 	assertText(descriptor.version, "workflow capability version");
 	if (descriptor.acceptedNeedTypes.length === 0)
-		throw new WorkflowCapabilityRegistryError(`workflow capability ${descriptor.id} must accept at least one Need type`);
+		throw new WorkflowCapabilityRegistryError(
+			`workflow capability ${descriptor.id} must accept at least one Need type`,
+		);
 	assertUniqueText(descriptor.acceptedNeedTypes, "workflow capability Need type");
 	assertUniqueText(descriptor.producedArtifactTypes, "workflow capability Artifact type");
 	assertUniqueText(descriptor.producedReceiptTypes, "workflow capability Receipt type");
 	if (!WORKFLOW_SIDE_EFFECT_CLASSES.includes(descriptor.sideEffect))
-		throw new WorkflowCapabilityRegistryError(`workflow capability ${descriptor.id} has an invalid side-effect class`);
+		throw new WorkflowCapabilityRegistryError(
+			`workflow capability ${descriptor.id} has an invalid side-effect class`,
+		);
 	assertUniqueText(descriptor.requiredAuthority, "workflow capability authority");
 	if (descriptor.executorKinds.length === 0)
 		throw new WorkflowCapabilityRegistryError(`workflow capability ${descriptor.id} must declare an executor kind`);
@@ -94,6 +98,7 @@ export class WorkflowCapabilityRegistry {
 	}
 
 	has(ref: WorkflowVersionRef): boolean {
+		assertVersionRef(ref, "workflow capability reference");
 		return this.capabilities.has(key(ref));
 	}
 
