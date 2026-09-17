@@ -337,17 +337,18 @@ Add candidate surfaces:
 - `src/workflow/profiles/types.ts`
 - `src/workflow/profiles/software-profile.ts`
 
-Admission lifecycle should support states equivalent to:
+Phase 1 admission lifecycle uses only states with defined production transitions:
 
 ```text
 DRAFT
 PREFLIGHTED
 AWAITING_CONFIRMATION
 ACCEPTED
+ACTIVATING
 ACTIVATED
-EXPIRED
-SUPERSEDED
 ```
+
+`ACTIVATING` durably records exact activation intent before the execution target is ensured. Expiration or supersession shall be added only when a concrete policy defines its trigger, authority, and recovery semantics; unused terminal states are not introduced speculatively.
 
 Core invariant:
 
@@ -362,7 +363,7 @@ compile
 
 The exact accepted admission identity must be activated.
 
-Keep `/workflow <objective>` and existing tool start behavior as compatibility adapters initially.
+`/workflow <objective>` remains the User-explicit `AUTO_SUBMIT` convenience path. The low-level Local Agent client uses explicit `admit -> confirm -> activate`; no direct-start compatibility path bypasses admission.
 
 ## Phase 2 — Parallel vNext durable kernel substrate
 
