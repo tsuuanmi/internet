@@ -52,10 +52,10 @@ afterEach(async () => {
 });
 
 describe("WorkflowService", () => {
-	it("starts software execution through an explicit AUTO_SUBMIT admission", () => {
+	it("auto-submits software execution through an explicit admission", () => {
 		const { service } = runtime();
 		const owner = workflowSessionAuthorizationContext("session-a");
-		const job = service.start(owner, softwareDraft("Fix the race"));
+		const job = service.autoSubmit(owner, softwareDraft("Fix the race"));
 
 		expect(job.ownerSessionId).toBe("session-a");
 		expect(service.list(owner).map((candidate) => candidate.jobId)).toEqual([job.jobId]);
@@ -71,7 +71,7 @@ describe("WorkflowService", () => {
 		const { service, jobs } = runtime();
 		const owner = workflowSessionAuthorizationContext("session-a");
 		const other = workflowSessionAuthorizationContext("session-b");
-		const job = service.start(owner, softwareDraft("Keep workflow ownership isolated"));
+		const job = service.autoSubmit(owner, softwareDraft("Keep workflow ownership isolated"));
 		const expected = `workflow job ${job.jobId} does not belong to this session`;
 
 		expect(() => service.status(other, job.jobId)).toThrowError(new WorkflowServiceError(expected));
