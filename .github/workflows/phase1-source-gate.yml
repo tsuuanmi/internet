@@ -22,7 +22,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Remove stale public exports
+      - name: Normalize public exports and formatting
         run: |
           sed -i 's/export { preflightWorkflowAdmission, WorkflowAdmissionPreflightError } from "#internet\/workflow\/admission\/preflight";/export { preflightWorkflowAdmission } from "#internet\/workflow\/admission\/preflight";/' src/index.ts
           sed -i 's|export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/registry";|export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/types";|' src/index.ts
