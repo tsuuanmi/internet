@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as publicApi from "#internet/index";
 import {
 	WORKFLOW_ARTIFACT_SCHEMA,
 	WORKFLOW_INPUT_BUNDLE_SCHEMA,
@@ -22,5 +23,10 @@ describe("workflow kernel public API", () => {
 		expect(WorkflowWorkItemStore).toBeTypeOf("function");
 		expect(WorkflowInputBundleStore).toBeTypeOf("function");
 		expect(WorkflowCapabilityRegistry).toBeTypeOf("function");
+	});
+
+	it("keeps canonical JSON hashing internal to persistence identities", () => {
+		expect("canonicalJson" in publicApi).toBe(false);
+		expect("hashCanonicalJson" in publicApi).toBe(false);
 	});
 });
