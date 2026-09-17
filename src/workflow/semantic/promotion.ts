@@ -1,14 +1,12 @@
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
-import type {
-	WorkflowArtifact,
-	WorkflowArtifactLineage,
-	WorkflowInputBundle,
-	WorkflowVersionRef,
-	WorkflowWorkItem,
-} from "#internet/workflow/kernel/types";
 import {
 	WORKFLOW_ARTIFACT_LINEAGE_RELATIONS,
+	type WorkflowArtifact,
+	type WorkflowArtifactLineage,
+	type WorkflowInputBundle,
+	type WorkflowVersionRef,
+	type WorkflowWorkItem,
 } from "#internet/workflow/kernel/types";
 import {
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
@@ -168,11 +166,6 @@ export function promoteWorkflowSemanticResult(
 	for (const draft of result.artifacts) {
 		if (!allowedArtifacts.has(draft.type))
 			throw new Error(`workflow capability cannot produce artifact type ${draft.type}`);
-	}
-	const allowedReceipts = new Set(context.capability.producedReceiptTypes);
-	for (const receiptId of result.receiptIds) {
-		if (allowedReceipts.size === 0 || !allowedReceipts.has(receiptId))
-			throw new Error(`workflow capability cannot produce receipt ${receiptId}`);
 	}
 
 	const artifacts = result.artifacts.map((draft) =>
