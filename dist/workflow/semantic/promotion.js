@@ -1,3 +1,4 @@
+import { WORKFLOW_ARTIFACT_LINEAGE_RELATIONS, } from "#internet/workflow/kernel/types";
 import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES, WORKFLOW_SEMANTIC_SCHEMA_REFS, } from "#internet/workflow/semantic/types";
 import { parseWorkflowSemanticPayload } from "#internet/workflow/semantic/validation";
 const SEMANTIC_TYPES = new Set(Object.values(WORKFLOW_SEMANTIC_ARTIFACT_TYPES));
@@ -15,6 +16,29 @@ function isRecord(value) {
 function assertSemanticType(value) {
     if (typeof value !== "string" || !SEMANTIC_TYPES.has(value))
         throw new Error("invalid workflow semantic artifact type");
+}
+function parseLineage(value) {
+    if (value === undefined)
+        return undefined;
+    if (!Array.isArray(value))
+        throw new Error("invalid workflow semantic artifact lineage");
+    const seen = new Set();
+    return value.map((item) => {
+        if (!isRecord(item) || typeof item.relation !== "string")
+            throw new Error("invalid workflow semantic artifact lineage");
+        if (!WORKFLOW_ARTIFACT_LINEAGE_RELATIONS.includes(item.relation))
+            throw new Error("invalid workflow semantic artifact lineage relation");
+        if (!isRecord(item.artifact))
+            throw new Error("invalid workflow semantic artifact lineage reference");
+        assertHex(item.artifact.runId, 32, "workflow semantic artifact lineage run id");
+        assertHex(item.artifact.artifactId, 64, "workflow semantic artifact lineage artifact id");
+        const lineage = item;
+        const key = `${lineage.relation}:${lineage.artifact.runId}:${lineage.artifact.artifactId}`;
+        if (seen.has(key))
+            throw new Error(`duplicate workflow semantic artifact lineage ${key}`);
+        seen.add(key);
+        return lineage;
+    });
 }
 function schemaRef(type) {
     switch (type) {
@@ -68,13 +92,10 @@ export function parseWorkflowSemanticExecutionResult(value) {
         if (!isRecord(item))
             throw new Error("invalid workflow semantic artifact draft");
         assertSemanticType(item.type);
-        const payload = parseWorkflowSemanticPayload(item.type, item.payload);
-        if (item.lineage !== undefined && !Array.isArray(item.lineage))
-            throw new Error("invalid workflow semantic artifact lineage");
         return {
             type: item.type,
-            payload,
-            lineage: item.lineage,
+            payload: parseWorkflowSemanticPayload(item.type, item.payload),
+            lineage: parseLineage(item.lineage),
         };
     });
     if (!Array.isArray(value.receiptIds))
@@ -102,19 +123,20 @@ export function promoteWorkflowSemanticResult(context, resultValue) {
         throw new Error("workflow semantic result input bundle mismatch");
     if (!context.workItem.executionIds.includes(result.executionId))
         throw new Error("workflow semantic result execution mismatch");
-    const allowed = new Set(context.capability.producedArtifactTypes);
-    return result.artifacts.map((draft) => {
-        if (!allowed.has(draft.type))
+    const allowedArtifacts = new Set(context.capability.producedArtifactTypes);
+    for (const draft of result.artifacts) {
+        if (!allowedArtifacts.has(draft.type))
             throw new Error(`workflow capability cannot produce artifact type ${draft.type}`);
-        return context.artifactStore.create({
-            runId: context.workItem.runId,
-            type: draft.type,
-            schemaRef: schemaRef(draft.type),
-            producer: { kind: "work_item", id: context.workItem.workItemId },
-            inputBundleId: context.inputBundle.bundleId,
-            lineage: draft.lineage,
-            payload: draft.payload,
-        });
-    });
+    }
+    const artifacts = result.artifacts.map((draft) => context.artifactStore.create({
+        runId: context.workItem.runId,
+        type: draft.type,
+        schemaRef: schemaRef(draft.type),
+        producer: { kind: "work_item", id: context.workItem.workItemId },
+        inputBundleId: context.inputBundle.bundleId,
+        lineage: draft.lineage,
+        payload: draft.payload,
+    }));
+    return { artifacts, receiptIds: result.receiptIds };
 }
 //# sourceMappingURL=promotion.js.map

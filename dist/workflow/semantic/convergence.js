@@ -11,14 +11,23 @@ export const WORKFLOW_CONVERGENCE_BLOCKER_KINDS = [
 function unique(values) {
     return [...new Set(values)];
 }
+function sameSubject(left, right) {
+    return left.kind === right.kind && left.id === right.id && left.version === right.version;
+}
 function planTaskKey(task) {
     return `${task.planArtifact.runId}:${task.planArtifact.artifactId}:${task.taskId}`;
 }
 function criterionKey(requirement) {
     return `${requirement.criterion.criteriaArtifact.artifactId}:${requirement.criterion.criterionId}@${requirement.criterion.criterionVersion}`;
 }
-function assessCriterion(requirement, assessments) {
-    const current = assessments.filter((assessment) => criterionAssessmentIsCurrent(assessment, requirement));
+function authorityKey(requirement) {
+    return `${requirement.id}:${requirement.subject.kind}:${requirement.subject.id}@${requirement.subject.version}`;
+}
+function assessCriterion(requirement, assessmentStates) {
+    const current = assessmentStates
+        .filter((state) => state.current)
+        .map((state) => state.assessment)
+        .filter((assessment) => criterionAssessmentIsCurrent(assessment, requirement));
     for (const method of requirement.requiredMethods) {
         const methodAssessments = current.filter((assessment) => assessment.method === method);
         if (methodAssessments.length === 0) {
@@ -55,9 +64,13 @@ export function evaluateWorkflowConvergence(policy, state) {
             blockers.push({ kind: "deliverable", id: type, reason: "required current deliverable is missing" });
         }
     }
-    for (const id of unique(policy.requiredAuthorityGates)) {
-        if (!state.authorityGates.some((gate) => gate.id === id && gate.resolved)) {
-            blockers.push({ kind: "authority", id, reason: "required authority gate is unresolved" });
+    for (const requirement of policy.requiredAuthorityGates) {
+        if (!state.authorityGates.some((gate) => gate.id === requirement.id && sameSubject(gate.subject, requirement.subject) && gate.resolved)) {
+            blockers.push({
+                kind: "authority",
+                id: authorityKey(requirement),
+                reason: "required authority gate is unresolved for the exact current subject",
+            });
         }
     }
     const receipts = new Set(state.receiptIds);

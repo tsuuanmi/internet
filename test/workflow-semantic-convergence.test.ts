@@ -102,9 +102,7 @@ describe("workflow semantic convergence", () => {
 		const current = state([assessmentState("SATISFIED")]);
 		const result = evaluateWorkflowConvergence(policy, {
 			...current,
-			authorityGates: [
-				{ id: "merge-authority", subject: { ...subject, version: "head-0" }, resolved: true },
-			],
+			authorityGates: [{ id: "merge-authority", subject: { ...subject, version: "head-0" }, resolved: true }],
 		});
 		expect(result.converged).toBe(false);
 		expect(result.blockers).toContainEqual(

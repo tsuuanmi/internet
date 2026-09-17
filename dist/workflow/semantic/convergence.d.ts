@@ -1,5 +1,10 @@
 import type { WorkflowCriterionAssessmentRequirement } from "#internet/workflow/semantic/assessment";
-import type { WorkflowCriterionAssessmentPayload, WorkflowFindingPayload, WorkflowPlanTaskExecutionState, WorkflowPlanTaskRef } from "#internet/workflow/semantic/types";
+import type { WorkflowAssessmentSubject, WorkflowCriterionAssessmentPayload, WorkflowFindingPayload, WorkflowPlanTaskExecutionState, WorkflowPlanTaskRef } from "#internet/workflow/semantic/types";
+export interface WorkflowConvergenceAssessmentState {
+    readonly artifactId: string;
+    readonly current: boolean;
+    readonly assessment: WorkflowCriterionAssessmentPayload;
+}
 export interface WorkflowConvergenceArtifactState {
     readonly artifactId: string;
     readonly type: string;
@@ -9,8 +14,11 @@ export interface WorkflowConvergenceFindingState {
     readonly finding: WorkflowFindingPayload;
     readonly resolved: boolean;
 }
-export interface WorkflowConvergenceGateState {
+export interface WorkflowConvergenceAuthorityRequirement {
     readonly id: string;
+    readonly subject: WorkflowAssessmentSubject;
+}
+export interface WorkflowConvergenceGateState extends WorkflowConvergenceAuthorityRequirement {
     readonly resolved: boolean;
 }
 export interface WorkflowConvergenceDependencyState {
@@ -20,13 +28,13 @@ export interface WorkflowConvergenceDependencyState {
 export interface WorkflowConvergencePolicy {
     readonly criteria: readonly WorkflowCriterionAssessmentRequirement[];
     readonly requiredDeliverableTypes: readonly string[];
-    readonly requiredAuthorityGates: readonly string[];
+    readonly requiredAuthorityGates: readonly WorkflowConvergenceAuthorityRequirement[];
     readonly requiredReceiptIds: readonly string[];
     readonly requiredDependencyIds: readonly string[];
     readonly requiredPlanTasks?: readonly WorkflowPlanTaskRef[];
 }
 export interface WorkflowConvergenceState {
-    readonly assessments: readonly WorkflowCriterionAssessmentPayload[];
+    readonly assessments: readonly WorkflowConvergenceAssessmentState[];
     readonly findings: readonly WorkflowConvergenceFindingState[];
     readonly deliverables: readonly WorkflowConvergenceArtifactState[];
     readonly authorityGates: readonly WorkflowConvergenceGateState[];

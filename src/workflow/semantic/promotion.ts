@@ -58,7 +58,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function assertSemanticType(value: unknown): asserts value is WorkflowSemanticArtifactType {
-	if (typeof value !== "string" || !SEMANTIC_TYPES.has(value)) throw new Error("invalid workflow semantic artifact type");
+	if (typeof value !== "string" || !SEMANTIC_TYPES.has(value))
+		throw new Error("invalid workflow semantic artifact type");
 }
 
 function parseLineage(value: unknown): readonly WorkflowArtifactLineage[] | undefined {
@@ -113,8 +114,10 @@ function sameVersionRef(left: WorkflowVersionRef, right: WorkflowVersionRef): bo
 function assertPromotionContext(context: WorkflowSemanticPromotionContext): void {
 	const { workItem, inputBundle, capability } = context;
 	if (workItem.runId !== inputBundle.runId) throw new Error("workflow semantic promotion run mismatch");
-	if (workItem.workItemId !== inputBundle.workItemId) throw new Error("workflow semantic promotion work item mismatch");
-	if (workItem.inputBundleId !== inputBundle.bundleId) throw new Error("workflow semantic promotion InputBundle mismatch");
+	if (workItem.workItemId !== inputBundle.workItemId)
+		throw new Error("workflow semantic promotion work item mismatch");
+	if (workItem.inputBundleId !== inputBundle.bundleId)
+		throw new Error("workflow semantic promotion InputBundle mismatch");
 	if (!sameVersionRef(workItem.capability, capability))
 		throw new Error("workflow semantic promotion capability does not match WorkItem");
 	if (!sameVersionRef(inputBundle.capability, capability))
@@ -158,9 +161,12 @@ export function promoteWorkflowSemanticResult(
 ): WorkflowSemanticPromotionResult {
 	assertPromotionContext(context);
 	const result = parseWorkflowSemanticExecutionResult(resultValue);
-	if (result.workItemId !== context.workItem.workItemId) throw new Error("workflow semantic result work item mismatch");
-	if (result.inputBundleId !== context.inputBundle.bundleId) throw new Error("workflow semantic result input bundle mismatch");
-	if (!context.workItem.executionIds.includes(result.executionId)) throw new Error("workflow semantic result execution mismatch");
+	if (result.workItemId !== context.workItem.workItemId)
+		throw new Error("workflow semantic result work item mismatch");
+	if (result.inputBundleId !== context.inputBundle.bundleId)
+		throw new Error("workflow semantic result input bundle mismatch");
+	if (!context.workItem.executionIds.includes(result.executionId))
+		throw new Error("workflow semantic result execution mismatch");
 
 	const allowedArtifacts = new Set(context.capability.producedArtifactTypes);
 	for (const draft of result.artifacts) {

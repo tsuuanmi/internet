@@ -24,7 +24,7 @@ export const WORKFLOW_SEMANTIC_SCHEMA_REFS = {
     userFeedback: { id: "workflow.user-feedback", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
 };
 export const WORKFLOW_CRITERION_PROVENANCE = ["user", "policy", "planner_derived"];
-export const WORKFLOW_CRITERION_REVISION_AUTHORITIES = ["user", "policy", "planner"];
+export const WORKFLOW_REQUIREMENT_REVISION_AUTHORITIES = ["user", "policy", "planner"];
 export const WORKFLOW_ASSESSMENT_METHODS = ["deterministic", "reviewer", "user"];
 export const WORKFLOW_ASSESSMENT_VERDICTS = ["SATISFIED", "UNSATISFIED", "INCONCLUSIVE"];
 export const WORKFLOW_NEED_TYPES = [

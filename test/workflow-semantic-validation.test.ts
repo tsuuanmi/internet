@@ -99,6 +99,20 @@ describe("workflow semantic validation", () => {
 		).toThrow("invalid workflow Need type");
 	});
 
+	it("rejects the obsolete untyped Need metadata escape hatch", () => {
+		expect(() =>
+			parseWorkflowNeedPayload({
+				needId: "need-1",
+				type: "execution",
+				requestOwner: { kind: "plan_task", id: "task-1" },
+				question: "Do work",
+				subjects: [],
+				relatedArtifacts: [],
+				metadata: { route: "hidden" },
+			}),
+		).toThrow("metadata is unsupported");
+	});
+
 	it("requires explicit dependency changes in Plan revision metadata", () => {
 		expect(() =>
 			parseWorkflowPlanPayload({

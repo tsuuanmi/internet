@@ -183,7 +183,7 @@ function assertAcyclicTaskLinks(
 	const visited = new Set<string>();
 	const visit = (taskId: string): void => {
 		if (visited.has(taskId)) return;
-		if (visiting.has(taskId)) throw new Error("workflow plan " + label + " cycle includes " + taskId);
+		if (visiting.has(taskId)) throw new Error(`workflow plan ${label} cycle includes ${taskId}`);
 		visiting.add(taskId);
 		const task = byId.get(taskId);
 		if (task !== undefined) for (const linkedId of links(task)) visit(linkedId);
@@ -292,7 +292,7 @@ export function parseWorkflowNeedPayload(value: unknown): WorkflowNeedPayload {
 	assertText(value.question, "workflow Need question");
 	assertEntityRefs(value.subjects, "workflow Need subject");
 	assertArtifactRefs(value.relatedArtifacts, "workflow Need related artifact");
-	if (value.metadata !== undefined) assertRecordValue(value.metadata, "workflow Need metadata");
+	if (Object.hasOwn(value, "metadata")) throw new Error("workflow Need metadata is unsupported; use typed fields");
 	return value as unknown as WorkflowNeedPayload;
 }
 

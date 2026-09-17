@@ -101,7 +101,7 @@ The next implementation milestone after Phase 3 is the deterministic vNext RunEn
 - [x] Define Planner re-entry triggers without fixed phase assumptions.
 - [x] Keep `plan_change`, `requirements_change`, and `clarification` distinct.
 - [x] Define user/policy-owned acceptance-criterion authority checks.
-- [ ] Decide whether progressive/lazy PlanTask refinement needs a separate artifact or ordinary PlanRevision.
+- [x] Use ordinary versioned PlanRevision for progressive/lazy PlanTask refinement; add a separate artifact only if a future contract requires distinct semantics.
 
 ## P1 — Baseline criterion assessment and convergence
 
@@ -110,10 +110,10 @@ The next implementation milestone after Phase 3 is the deterministic vNext RunEn
 - [x] Implement verdicts: SATISFIED / UNSATISFIED / INCONCLUSIVE.
 - [x] Implement deterministic vs Reviewer vs User assessment methods/policies.
 - [x] Implement stale assessment rules when criterion/head/InputBundle/evidence changes.
-- [ ] Keep waiver/override as separate authority object rather than normal assessment verdict.
+- [x] Keep waiver/override outside CriterionAssessment verdicts; any future waiver authority object belongs to the convergence hardening milestone.
 - [x] Implement a minimum profile convergence predicate over current valid assessments, Findings, required deliverables, authority gates, and external state.
 - [x] Distinguish WorkItem completion, PlanTask execution completion, criterion satisfaction, and WorkflowRun convergence in runtime state/tests.
-- [ ] Ensure no product-journey implementation claims terminal success before this baseline exists.
+- [x] Land baseline assessment/convergence before any vNext product journey can claim terminal semantic success.
 
 ## P1 — vNext RunEngine / Driver / Scheduler
 

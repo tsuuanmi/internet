@@ -91,7 +91,8 @@ function parseList<T>(value: unknown, label: string, parse: (item: unknown) => T
 }
 
 function assertRevision(value: { readonly supersedes?: unknown; readonly revision?: unknown }, label: string): void {
-	if (value.supersedes === undefined || value.revision === undefined) throw new Error(`${label} requires an explicit revision`);
+	if (value.supersedes === undefined || value.revision === undefined)
+		throw new Error(`${label} requires an explicit revision`);
 }
 
 export function parseWorkflowPlanningOutput(value: unknown): WorkflowPlanningOutput {
@@ -110,7 +111,11 @@ export function parseWorkflowPlanningOutput(value: unknown): WorkflowPlanningOut
 		case "INITIAL":
 			if (objective === undefined || acceptanceCriteria === undefined || plan === undefined)
 				throw new Error("initial workflow planning requires Objective, AcceptanceCriteria, and Plan outputs");
-			if (objective.supersedes !== undefined || acceptanceCriteria.supersedes !== undefined || plan.supersedes !== undefined)
+			if (
+				objective.supersedes !== undefined ||
+				acceptanceCriteria.supersedes !== undefined ||
+				plan.supersedes !== undefined
+			)
 				throw new Error("initial workflow planning cannot emit revisions");
 			break;
 		case "PLAN_CHANGE":
@@ -120,7 +125,8 @@ export function parseWorkflowPlanningOutput(value: unknown): WorkflowPlanningOut
 			assertRevision(plan, "workflow plan change");
 			break;
 		case "REQUIREMENTS_CHANGE":
-			if (plan !== undefined) throw new Error("workflow requirements change cannot activate a Plan before requirements authority");
+			if (plan !== undefined)
+				throw new Error("workflow requirements change cannot activate a Plan before requirements authority");
 			if (objective === undefined && acceptanceCriteria === undefined)
 				throw new Error("workflow requirements change requires Objective or AcceptanceCriteria output");
 			if (objective !== undefined && objective.supersedes === undefined)

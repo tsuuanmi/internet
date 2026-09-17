@@ -14,7 +14,9 @@ export class WorkflowRequirementAuthorityError extends Error {
 	}
 }
 
-function requiredAuthority(provenance: WorkflowAcceptanceCriterion["provenance"]): WorkflowRequirementRevisionAuthority {
+function requiredAuthority(
+	provenance: WorkflowAcceptanceCriterion["provenance"],
+): WorkflowRequirementRevisionAuthority {
 	switch (provenance) {
 		case "user":
 			return "user";

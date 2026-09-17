@@ -1,8 +1,7 @@
-import type { WorkflowAcceptanceCriterion, WorkflowCriterionRevisionAuthority } from "#internet/workflow/semantic/types";
-export declare class WorkflowCriterionAuthorityError extends Error {
+import type { WorkflowAcceptanceCriteriaPayload, WorkflowObjectivePayload, WorkflowRequirementRevisionAuthority } from "#internet/workflow/semantic/types";
+export declare class WorkflowRequirementAuthorityError extends Error {
     constructor(message: string);
 }
-export declare function requiredCriterionRevisionAuthority(criterion: WorkflowAcceptanceCriterion): WorkflowCriterionRevisionAuthority;
-export declare function criterionChanged(current: WorkflowAcceptanceCriterion, next: WorkflowAcceptanceCriterion | undefined): boolean;
-export declare function assertCriterionRevisionAuthority(current: WorkflowAcceptanceCriterion, next: WorkflowAcceptanceCriterion | undefined, authority: WorkflowCriterionRevisionAuthority | undefined): void;
+export declare function assertObjectiveRevisionAuthority(current: WorkflowObjectivePayload, next: WorkflowObjectivePayload, authorities: readonly WorkflowRequirementRevisionAuthority[]): void;
+export declare function assertAcceptanceCriteriaRevisionAuthority(current: WorkflowAcceptanceCriteriaPayload, next: WorkflowAcceptanceCriteriaPayload, authorities: readonly WorkflowRequirementRevisionAuthority[]): void;
 //# sourceMappingURL=authority.d.ts.map

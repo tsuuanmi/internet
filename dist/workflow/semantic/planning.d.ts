@@ -34,7 +34,7 @@ export declare const WORKFLOW_PLANNING_CAPABILITY: {
         readonly id: "workflow.planning.output";
         readonly version: "1";
     };
-    readonly policyHooks: readonly ["criterion_revision_authority", "clarification"];
+    readonly policyHooks: readonly ["requirement_revision_authority", "clarification"];
 };
 export interface WorkflowPlanningRequest {
     readonly mode: WorkflowPlanningMode;
