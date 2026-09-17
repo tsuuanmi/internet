@@ -223,12 +223,16 @@ export {
 	WORKFLOW_ADMISSION_STATES,
 } from "#internet/workflow/admission/types";
 export { parseWorkflowAdmissionDraft, parseWorkflowAdmissionRecord } from "#internet/workflow/admission/validation";
+export type { CreateWorkflowArtifactInput } from "#internet/workflow/artifact-store";
+export { WorkflowArtifactStore, WorkflowArtifactStoreError } from "#internet/workflow/artifact-store";
 export type {
 	WorkflowAuthorizationContext,
 	WorkflowPrincipal,
 	WorkflowPrincipalKind,
 } from "#internet/workflow/authorization";
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
+export type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
+export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -268,7 +272,10 @@ export {
 	WorkflowHandoffStore,
 	WorkflowHandoffStoreError,
 } from "#internet/workflow/handoff-store";
+export type { CreateWorkflowInputBundleInput } from "#internet/workflow/input-bundle-store";
+export { WorkflowInputBundleStore, WorkflowInputBundleStoreError } from "#internet/workflow/input-bundle-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
+export * from "#internet/workflow/kernel/index";
 export type { WorkflowNodeResult } from "#internet/workflow/node-result-store";
 export {
 	parseWorkflowNodeResult,
@@ -298,6 +305,7 @@ export {
 } from "#internet/workflow/retention";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
+export { WorkflowRunStore, WorkflowRunStoreError } from "#internet/workflow/run-store";
 export type { WorkflowServiceDriver, WorkflowServiceEngine } from "#internet/workflow/service";
 export { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 export type {
@@ -320,6 +328,7 @@ export type {
 	WorkflowWriterConversation,
 } from "#internet/workflow/types";
 export { workflowJobIsTerminal } from "#internet/workflow/types";
+export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";
 export type {
 	WorkflowWriterControlRequest,
 	WorkflowWriterDeliveryRequest,
