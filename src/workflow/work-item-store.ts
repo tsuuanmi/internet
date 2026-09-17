@@ -51,7 +51,8 @@ export class WorkflowWorkItemStore {
 	create(item: WorkflowWorkItem): WorkflowWorkItem {
 		parseWorkflowWorkItem(item);
 		const path = this.pathFor(item.runId, item.workItemId);
-		if (existsSync(path)) throw new WorkflowWorkItemStoreError(`workflow work item ${item.workItemId} already exists`);
+		if (existsSync(path))
+			throw new WorkflowWorkItemStoreError(`workflow work item ${item.workItemId} already exists`);
 		ensurePrivateDirectory(this.runDir(item.runId));
 		writePrivateJson(path, item);
 		return item;
@@ -93,7 +94,8 @@ export class WorkflowWorkItemStore {
 		mutate: (current: WorkflowWorkItem) => WorkflowWorkItem,
 	): WorkflowWorkItem {
 		const current = this.get(runId, workItemId);
-		if (current === undefined) throw new WorkflowWorkItemStoreError(`workflow work item ${workItemId} does not exist`);
+		if (current === undefined)
+			throw new WorkflowWorkItemStoreError(`workflow work item ${workItemId} does not exist`);
 		if (current.revision !== expectedRevision) {
 			throw new WorkflowWorkItemStoreError(
 				`workflow work item ${workItemId} revision conflict: expected ${expectedRevision}, current ${current.revision}`,
@@ -101,9 +103,12 @@ export class WorkflowWorkItemStore {
 		}
 		const next = mutate(current);
 		if (next.runId !== current.runId) throw new WorkflowWorkItemStoreError("workflow work item run id cannot change");
-		if (next.workItemId !== current.workItemId) throw new WorkflowWorkItemStoreError("workflow work item id cannot change");
-		if (next.needId !== current.needId) throw new WorkflowWorkItemStoreError("workflow work item need id cannot change");
-		if (next.createdAt !== current.createdAt) throw new WorkflowWorkItemStoreError("workflow work item creation timestamp cannot change");
+		if (next.workItemId !== current.workItemId)
+			throw new WorkflowWorkItemStoreError("workflow work item id cannot change");
+		if (next.needId !== current.needId)
+			throw new WorkflowWorkItemStoreError("workflow work item need id cannot change");
+		if (next.createdAt !== current.createdAt)
+			throw new WorkflowWorkItemStoreError("workflow work item creation timestamp cannot change");
 		if (canonicalJson(next.requestOwner) !== canonicalJson(current.requestOwner))
 			throw new WorkflowWorkItemStoreError("workflow work item request owner cannot change");
 		if (canonicalJson(next.capability) !== canonicalJson(current.capability))
