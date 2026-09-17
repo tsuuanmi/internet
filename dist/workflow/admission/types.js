@@ -10,10 +10,16 @@ export const WORKFLOW_ADMISSION_STATES = [
     "PREFLIGHTED",
     "AWAITING_CONFIRMATION",
     "ACCEPTED",
+    "ACTIVATING",
     "ACTIVATED",
-    "EXPIRED",
-    "SUPERSEDED",
+];
+export const WORKFLOW_ADMISSION_PREVIEW_STATUSES = [
+    "INCOMPLETE",
+    "REJECTED",
+    "READY",
+    "CONFIRMATION_REQUIRED",
 ];
 export const WORKFLOW_ADMISSION_CONFIRMATION_LEVELS = ["AUTO_SUBMIT", "LOCAL_CONFIRM", "USER_CONFIRM"];
 export const WORKFLOW_ADMISSION_SOURCE_KINDS = ["user", "local_agent"];
+export const WORKFLOW_ADMISSION_TARGET_KINDS = ["workflow_job"];
 //# sourceMappingURL=types.js.map

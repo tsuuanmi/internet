@@ -1,4 +1,6 @@
-import { WORKFLOW_ADMISSION_CONFIRMATION_LEVELS, WORKFLOW_ADMISSION_PROVENANCE, WORKFLOW_ADMISSION_SOURCE_KINDS, WORKFLOW_ADMISSION_STATES, } from "#internet/workflow/admission/types";
+import { hashAdmissionValue } from "#internet/workflow/admission/hash";
+import { WORKFLOW_ADMISSION_CONFIRMATION_LEVELS, WORKFLOW_ADMISSION_PREVIEW_STATUSES, WORKFLOW_ADMISSION_PROVENANCE, WORKFLOW_ADMISSION_SOURCE_KINDS, WORKFLOW_ADMISSION_STATES, WORKFLOW_ADMISSION_TARGET_KINDS, } from "#internet/workflow/admission/types";
+import { WORKFLOW_PRINCIPAL_KINDS } from "#internet/workflow/authorization";
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -11,6 +13,16 @@ function isHash(value) {
 function isTimestamp(value) {
     return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
+function assertNonEmptyString(value, label) {
+    if (typeof value !== "string" || value.trim() === "")
+        throw new Error(`invalid ${label}`);
+}
+function assertStringArray(value, label) {
+    if (!Array.isArray(value))
+        throw new Error(`invalid ${label}`);
+    for (const item of value)
+        assertNonEmptyString(item, label);
+}
 function assertProvenance(value) {
     if (typeof value !== "string" || !WORKFLOW_ADMISSION_PROVENANCE.includes(value)) {
         throw new Error("invalid admission provenance");
@@ -20,9 +32,12 @@ function assertProvenancedValue(value, kind) {
     if (!isRecord(value) || typeof value.value !== kind)
         throw new Error("invalid provenanced admission value");
     assertProvenance(value.provenance);
-    if (value.uncertainty !== undefined && (typeof value.uncertainty !== "string" || value.uncertainty.trim() === "")) {
-        throw new Error("invalid admission uncertainty");
-    }
+    if (kind === "string" && value.value.trim() === "")
+        throw new Error("empty provenanced admission value");
+    if (kind === "number" && !Number.isFinite(value.value))
+        throw new Error("non-finite admission number");
+    if (value.uncertainty !== undefined)
+        assertNonEmptyString(value.uncertainty, "admission uncertainty");
 }
 function assertStringValues(value) {
     if (value === undefined)
@@ -31,6 +46,22 @@ function assertStringValues(value) {
         throw new Error("invalid admission string values");
     for (const item of value)
         assertProvenancedValue(item, "string");
+}
+function assertDefaults(value) {
+    if (!Array.isArray(value))
+        throw new Error("invalid admission defaults");
+    const fields = new Set();
+    for (const item of value) {
+        if (!isRecord(item))
+            throw new Error("invalid admission default");
+        assertNonEmptyString(item.field, "admission default field");
+        if (fields.has(item.field))
+            throw new Error(`duplicate admission default ${item.field}`);
+        fields.add(item.field);
+        if (item.provenance !== "policy_default")
+            throw new Error("invalid admission default provenance");
+        hashAdmissionValue(item.value);
+    }
 }
 export function parseWorkflowAdmissionDraft(value) {
     if (!isRecord(value) ||
@@ -45,11 +76,13 @@ export function parseWorkflowAdmissionDraft(value) {
         !WORKFLOW_ADMISSION_SOURCE_KINDS.includes(value.source.kind)) {
         throw new Error("invalid admission source kind");
     }
-    if (typeof value.source.rawText !== "string" || value.source.rawText.trim() === "") {
-        throw new Error("admission source text is required");
-    }
+    assertNonEmptyString(value.source.rawText, "admission source text");
     if (value.source.provenance !== "user_explicit" && value.source.provenance !== "local_interpreted") {
         throw new Error("invalid admission source provenance");
+    }
+    if ((value.source.kind === "user" && value.source.provenance !== "user_explicit") ||
+        (value.source.kind === "local_agent" && value.source.provenance !== "local_interpreted")) {
+        throw new Error("admission source kind and provenance disagree");
     }
     if (value.profileHint !== undefined)
         assertProvenancedValue(value.profileHint, "string");
@@ -89,25 +122,43 @@ export function parseWorkflowAdmissionDraft(value) {
     if (value.budget !== undefined) {
         if (!isRecord(value.budget))
             throw new Error("invalid admission budget hints");
-        if (value.budget.maxWallClockMs !== undefined)
+        if (value.budget.maxWallClockMs !== undefined) {
             assertProvenancedValue(value.budget.maxWallClockMs, "number");
-        if (value.budget.maxCostUsd !== undefined)
+            if (value.budget.maxWallClockMs.value < 0)
+                throw new Error("admission maxWallClockMs cannot be negative");
+        }
+        if (value.budget.maxCostUsd !== undefined) {
             assertProvenancedValue(value.budget.maxCostUsd, "number");
+            if (value.budget.maxCostUsd.value < 0)
+                throw new Error("admission maxCostUsd cannot be negative");
+        }
     }
     if (value.uncertainties !== undefined) {
         if (!Array.isArray(value.uncertainties))
             throw new Error("invalid admission uncertainties");
         for (const item of value.uncertainties) {
-            if (!isRecord(item) ||
-                typeof item.field !== "string" ||
-                item.field.trim() === "" ||
-                typeof item.description !== "string" ||
-                item.description.trim() === "") {
+            if (!isRecord(item))
                 throw new Error("invalid admission uncertainty marker");
-            }
+            assertNonEmptyString(item.field, "admission uncertainty field");
+            assertNonEmptyString(item.description, "admission uncertainty description");
         }
     }
+    hashAdmissionValue(value);
     return value;
+}
+function assertConfirmationReasons(value) {
+    if (!Array.isArray(value))
+        throw new Error("invalid admission confirmation reasons");
+    for (const reason of value) {
+        if (!isRecord(reason))
+            throw new Error("invalid admission confirmation reason");
+        assertNonEmptyString(reason.field, "admission confirmation field");
+        assertNonEmptyString(reason.reason, "admission confirmation reason");
+        if (reason.provenance !== undefined)
+            assertProvenance(reason.provenance);
+        if (reason.proposedValue !== undefined)
+            hashAdmissionValue(reason.proposedValue);
+    }
 }
 function assertPreview(value, admissionId, draftHash) {
     if (!isRecord(value))
@@ -118,18 +169,43 @@ function assertPreview(value, admissionId, draftHash) {
         value.draftHash !== draftHash) {
         throw new Error("admission preview identity mismatch");
     }
-    if (value.status !== "READY" && value.status !== "CONFIRMATION_REQUIRED")
+    if (typeof value.status !== "string" ||
+        !WORKFLOW_ADMISSION_PREVIEW_STATUSES.includes(value.status)) {
         throw new Error("invalid admission preview status");
-    if (!isRecord(value.profile) || typeof value.profile.id !== "string" || typeof value.profile.version !== "string")
+    }
+    if (!isRecord(value.profile))
         throw new Error("invalid admission preview profile");
-    if (!Array.isArray(value.defaults) || !Array.isArray(value.unresolved) || !Array.isArray(value.warnings))
-        throw new Error("invalid admission preview collections");
+    assertNonEmptyString(value.profile.id, "admission preview profile id");
+    assertNonEmptyString(value.profile.version, "admission preview profile version");
+    assertDefaults(value.defaults);
+    assertStringArray(value.unresolved, "admission unresolved field");
+    assertStringArray(value.warnings, "admission warning");
+    assertStringArray(value.errors, "admission error");
     if (!isRecord(value.confirmation))
         throw new Error("invalid admission confirmation preview");
     if (typeof value.confirmation.level !== "string" ||
-        !WORKFLOW_ADMISSION_CONFIRMATION_LEVELS.includes(value.confirmation.level) ||
-        !Array.isArray(value.confirmation.reasons)) {
+        !WORKFLOW_ADMISSION_CONFIRMATION_LEVELS.includes(value.confirmation.level)) {
         throw new Error("invalid admission confirmation policy");
+    }
+    assertConfirmationReasons(value.confirmation.reasons);
+    const expectedStatus = value.errors.length > 0
+        ? "REJECTED"
+        : value.unresolved.length > 0
+            ? "INCOMPLETE"
+            : value.confirmation.level === "AUTO_SUBMIT"
+                ? "READY"
+                : "CONFIRMATION_REQUIRED";
+    if (value.status !== expectedStatus)
+        throw new Error("admission preview status does not match preflight result");
+}
+function assertPrincipal(value) {
+    if (!isRecord(value))
+        throw new Error("invalid admission principal");
+    if (typeof value.kind !== "string" ||
+        !WORKFLOW_PRINCIPAL_KINDS.includes(value.kind) ||
+        typeof value.id !== "string" ||
+        value.id.trim() === "") {
+        throw new Error("invalid admission principal");
     }
 }
 function assertConfirmation(value, draftHash) {
@@ -145,13 +221,18 @@ function assertConfirmation(value, draftHash) {
         !WORKFLOW_ADMISSION_CONFIRMATION_LEVELS.includes(value.level)) {
         throw new Error("invalid admission confirmation level");
     }
-    if (!isRecord(value.principal) || typeof value.principal.kind !== "string" || typeof value.principal.id !== "string")
-        throw new Error("invalid admission confirmation principal");
+    assertPrincipal(value.principal);
     if (value.provenance !== "user_explicit" &&
         value.provenance !== "local_interpreted" &&
         value.provenance !== "policy_default") {
         throw new Error("invalid admission confirmation provenance");
     }
+    if (value.level === "AUTO_SUBMIT" && value.provenance !== "policy_default")
+        throw new Error("automatic admission confirmation must be policy_default");
+    if (value.level === "USER_CONFIRM" && value.provenance !== "user_explicit")
+        throw new Error("User confirmation must preserve user_explicit provenance");
+    if (value.level !== "AUTO_SUBMIT" && value.provenance === "policy_default")
+        throw new Error("explicit admission confirmation cannot be policy_default");
 }
 function assertAcceptedSpec(value, admissionId, draftHash) {
     if (!isRecord(value))
@@ -163,9 +244,33 @@ function assertAcceptedSpec(value, admissionId, draftHash) {
         !isTimestamp(value.acceptedAt)) {
         throw new Error("accepted admission spec identity mismatch");
     }
-    if (!isRecord(value.profile) || typeof value.profile.id !== "string" || typeof value.profile.version !== "string")
+    if (!isRecord(value.profile))
         throw new Error("invalid accepted admission profile");
-    parseWorkflowAdmissionDraft(value.draft);
+    assertNonEmptyString(value.profile.id, "accepted admission profile id");
+    assertNonEmptyString(value.profile.version, "accepted admission profile version");
+    assertDefaults(value.defaults);
+    const draft = parseWorkflowAdmissionDraft(value.draft);
+    if (hashAdmissionValue(draft) !== draftHash)
+        throw new Error("accepted admission draft hash mismatch");
+}
+function assertActivationTarget(value) {
+    if (typeof value.targetKind !== "string" ||
+        !WORKFLOW_ADMISSION_TARGET_KINDS.includes(value.targetKind) ||
+        typeof value.targetId !== "string" ||
+        value.targetId.trim() === "") {
+        throw new Error("invalid admission activation target");
+    }
+}
+function assertActivationIntent(value, acceptedSpecHash) {
+    if (!isRecord(value))
+        throw new Error("invalid admission activation intent");
+    if (value.schema !== "@tsuuanmi/internet-workflow-admission-activation-intent" ||
+        value.version !== 1 ||
+        value.acceptedSpecHash !== acceptedSpecHash ||
+        !isTimestamp(value.startedAt)) {
+        throw new Error("invalid admission activation intent");
+    }
+    assertActivationTarget(value);
 }
 function assertActivation(value, acceptedSpecHash) {
     if (!isRecord(value))
@@ -173,11 +278,72 @@ function assertActivation(value, acceptedSpecHash) {
     if (value.schema !== "@tsuuanmi/internet-workflow-admission-activation" ||
         value.version !== 1 ||
         value.acceptedSpecHash !== acceptedSpecHash ||
-        (value.targetKind !== "legacy_v3_job" && value.targetKind !== "workflow_run") ||
-        typeof value.targetId !== "string" ||
-        value.targetId.trim() === "" ||
         !isTimestamp(value.activatedAt)) {
         throw new Error("invalid admission activation receipt");
+    }
+    assertActivationTarget(value);
+}
+function assertAcceptedState(record) {
+    if (record.preview === undefined ||
+        record.confirmation === undefined ||
+        record.acceptedSpec === undefined ||
+        record.acceptedSpecHash === undefined) {
+        throw new Error(`admission ${record.state} state requires accepted spec and confirmation`);
+    }
+    if (record.confirmation.level !== record.preview.confirmation.level)
+        throw new Error("admission confirmation does not match preflight policy");
+    if (record.acceptedSpec.profile.id !== record.preview.profile.id ||
+        record.acceptedSpec.profile.version !== record.preview.profile.version) {
+        throw new Error("accepted admission profile does not match preflight profile");
+    }
+    if (hashAdmissionValue(record.acceptedSpec.defaults) !== hashAdmissionValue(record.preview.defaults))
+        throw new Error("accepted admission defaults do not match preflight defaults");
+}
+function assertStateShape(record) {
+    const noAccepted = () => {
+        if (record.confirmation !== undefined ||
+            record.acceptedSpec !== undefined ||
+            record.acceptedSpecHash !== undefined ||
+            record.activationIntent !== undefined ||
+            record.activation !== undefined) {
+            throw new Error(`admission ${record.state} state contains fields from a later lifecycle stage`);
+        }
+    };
+    if (record.state === "DRAFT") {
+        if (record.preview !== undefined)
+            throw new Error("draft admission cannot contain a preflight preview");
+        noAccepted();
+        return;
+    }
+    if (record.state === "PREFLIGHTED") {
+        if (record.preview === undefined ||
+            (record.preview.status !== "INCOMPLETE" && record.preview.status !== "REJECTED"))
+            throw new Error("preflighted admission requires an incomplete or rejected preview");
+        noAccepted();
+        return;
+    }
+    if (record.state === "AWAITING_CONFIRMATION") {
+        if (record.preview?.status !== "CONFIRMATION_REQUIRED")
+            throw new Error("waiting admission requires confirmation-required preview");
+        noAccepted();
+        return;
+    }
+    assertAcceptedState(record);
+    if (record.state === "ACCEPTED") {
+        if (record.activationIntent !== undefined || record.activation !== undefined)
+            throw new Error("accepted admission cannot contain activation state");
+        return;
+    }
+    if (record.state === "ACTIVATING") {
+        if (record.activationIntent === undefined || record.activation !== undefined)
+            throw new Error("activating admission requires only an activation intent");
+        return;
+    }
+    if (record.activationIntent === undefined || record.activation === undefined)
+        throw new Error("activated admission requires activation intent and receipt");
+    if (record.activationIntent.targetKind !== record.activation.targetKind ||
+        record.activationIntent.targetId !== record.activation.targetId) {
+        throw new Error("admission activation receipt does not match activation intent");
     }
 }
 export function parseWorkflowAdmissionRecord(value) {
@@ -189,15 +355,11 @@ export function parseWorkflowAdmissionRecord(value) {
         !isId(value.admissionId)) {
         throw new Error("unsupported workflow admission record schema");
     }
-    if (!isRecord(value.owner) ||
-        typeof value.owner.kind !== "string" ||
-        typeof value.owner.id !== "string" ||
-        value.owner.id.trim() === "")
-        throw new Error("invalid admission owner");
+    assertPrincipal(value.owner);
     if (typeof value.state !== "string" || !WORKFLOW_ADMISSION_STATES.includes(value.state))
         throw new Error("invalid admission state");
     const draft = parseWorkflowAdmissionDraft(value.draft);
-    if (!isHash(value.draftHash))
+    if (!isHash(value.draftHash) || value.draftHash !== hashAdmissionValue(draft))
         throw new Error("invalid admission draft hash");
     if (value.preview !== undefined)
         assertPreview(value.preview, value.admissionId, value.draftHash);
@@ -209,6 +371,16 @@ export function parseWorkflowAdmissionRecord(value) {
         throw new Error("invalid accepted admission spec hash");
     if ((value.acceptedSpec === undefined) !== (value.acceptedSpecHash === undefined))
         throw new Error("accepted admission spec and hash must coexist");
+    if (value.acceptedSpec !== undefined &&
+        value.acceptedSpecHash !== undefined &&
+        value.acceptedSpecHash !== hashAdmissionValue(value.acceptedSpec)) {
+        throw new Error("accepted admission spec hash mismatch");
+    }
+    if (value.activationIntent !== undefined) {
+        if (value.acceptedSpecHash === undefined)
+            throw new Error("activation intent requires accepted admission spec");
+        assertActivationIntent(value.activationIntent, value.acceptedSpecHash);
+    }
     if (value.activation !== undefined) {
         if (value.acceptedSpecHash === undefined)
             throw new Error("activation requires accepted admission spec");
@@ -216,6 +388,10 @@ export function parseWorkflowAdmissionRecord(value) {
     }
     if (!isTimestamp(value.createdAt) || !isTimestamp(value.updatedAt))
         throw new Error("invalid admission timestamps");
-    return { ...value, draft };
+    if (Date.parse(value.updatedAt) < Date.parse(value.createdAt))
+        throw new Error("admission updatedAt precedes createdAt");
+    const record = { ...value, draft };
+    assertStateShape(record);
+    return record;
 }
 //# sourceMappingURL=validation.js.map

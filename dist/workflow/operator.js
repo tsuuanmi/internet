@@ -1,4 +1,5 @@
-import { WorkflowService, WorkflowServiceError, workflowSessionAuthorizationContext, } from "#internet/workflow/service";
+import { WorkflowAuthorizationError, workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
+import { WorkflowServiceError } from "#internet/workflow/service";
 export class WorkflowOperatorError extends Error {
     constructor(message) {
         super(message);
@@ -6,8 +7,9 @@ export class WorkflowOperatorError extends Error {
     }
 }
 function asOperatorError(error) {
-    if (error instanceof WorkflowServiceError)
+    if (error instanceof WorkflowServiceError || error instanceof WorkflowAuthorizationError) {
         throw new WorkflowOperatorError(error.message);
+    }
     throw error;
 }
 function compact(value, max = 88) {
@@ -151,16 +153,8 @@ export function formatWorkflowStatus(job, events, driverActive) {
     return lines.join("\n");
 }
 export class WorkflowOperator {
-    constructor(serviceOrEngine, eventsOrDriver, jobs, events, retention) {
-        if (serviceOrEngine instanceof WorkflowService) {
-            this.service = serviceOrEngine;
-            this.events = eventsOrDriver;
-            return;
-        }
-        if (jobs === undefined || events === undefined || retention === undefined) {
-            throw new WorkflowOperatorError("legacy WorkflowOperator construction requires engine, driver, jobs, events, and retention");
-        }
-        this.service = new WorkflowService(serviceOrEngine, eventsOrDriver, jobs, retention);
+    constructor(service, events) {
+        this.service = service;
         this.events = events;
     }
     list(ownerSessionId) {

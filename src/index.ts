@@ -191,7 +191,7 @@ export {
 	WORKFLOW_MAINTENANCE_OPERATIONS,
 } from "#internet/tools/internet-workflow-maintenance";
 export { canonicalAdmissionJson, hashAdmissionValue } from "#internet/workflow/admission/hash";
-export { preflightWorkflowAdmission, WorkflowAdmissionPreflightError } from "#internet/workflow/admission/preflight";
+export { preflightWorkflowAdmission } from "#internet/workflow/admission/preflight";
 export type { WorkflowAdmissionLifecycleOptions } from "#internet/workflow/admission/service";
 export { WorkflowAdmissionService, WorkflowAdmissionServiceError } from "#internet/workflow/admission/service";
 export { WorkflowAdmissionStore, WorkflowAdmissionStoreError } from "#internet/workflow/admission/store";
@@ -281,10 +281,10 @@ export {
 	WorkflowOperator,
 	WorkflowOperatorError,
 } from "#internet/workflow/operator";
-export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/registry";
 export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
 export { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 export { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
+export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/types";
 export type {
 	WorkflowCleanupAudit,
 	WorkflowCleanupCandidate,

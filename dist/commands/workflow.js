@@ -1,6 +1,8 @@
+import { workflowSessionAuthorizationContext, } from "#internet/workflow/authorization";
 import { WorkflowOperatorError } from "#internet/workflow/operator";
+import { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 import { resolveWorkflowRepository, runGitCommand, WorkflowRepositoryError, } from "#internet/workflow/repository-context";
-import { WorkflowServiceError, workflowSessionAuthorizationContext, } from "#internet/workflow/service";
+import { WorkflowServiceError } from "#internet/workflow/service";
 const USAGE = "Usage: /workflow <objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>";
 const OPERATIONS = new Set(["list", "status", "stop", "continue", "delete"]);
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
@@ -23,15 +25,12 @@ function operationInput(rawInput) {
         throw new WorkflowOperatorError(`/workflow ${operation} accepts at most one jobId`);
     return { operation, ...(parts[1] === undefined ? {} : { jobId: parts[1] }) };
 }
-/** Define the normal user-facing durable workflow command family. */
 export function defineWorkflowCommand(dependencies) {
     const runGit = dependencies.runGit ?? runGitCommand;
     return {
         name: "workflow",
         description: "start, inspect, stop, or resume a durable reviewed implementation workflow",
-        input: {
-            hint: "<objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>",
-        },
+        input: { hint: "<objective> | list | status [jobId] | stop [jobId] | continue [jobId] | delete <jobId>" },
         async handler(invocation) {
             const rawInput = invocation.rawInput.trim();
             if (rawInput === "")
@@ -54,17 +53,14 @@ export function defineWorkflowCommand(dependencies) {
                 if (cwd === undefined)
                     return { kind: "error", text: "/workflow requires a session working directory." };
                 const repository = await resolveWorkflowRepository(cwd, invocation.signal, runGit, "/workflow");
-                const job = dependencies.service.start(workflowSessionAuthorizationContext(ownerSessionId), {
-                    objective: rawInput,
+                const job = dependencies.service.start(workflowSessionAuthorizationContext(ownerSessionId), createSoftwareAdmissionDraft({
+                    rawSource: rawInput,
+                    sourceProvenance: "user_explicit",
                     repository: repository.url,
                     baseRevision: repository.revision,
-                    admission: {
-                        rawSource: rawInput,
-                        sourceProvenance: "user_explicit",
-                        targetProvenance: "system_observed",
-                        authorityProvenance: "user_explicit",
-                    },
-                });
+                    targetProvenance: "system_observed",
+                    authorityProvenance: "user_explicit",
+                }));
                 return {
                     kind: "success",
                     text: `Workflow ${job.jobId} started for ${repository.url} at ${repository.revision.slice(0, 12)}.`,
