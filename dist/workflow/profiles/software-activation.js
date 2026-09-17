@@ -1,3 +1,4 @@
+import { workflowJobIsTerminal } from "#internet/workflow/types";
 function activationInput(spec, ownerSessionId) {
     if (spec.profile.id !== "software_change") {
         throw new Error(`software workflow activator does not support profile ${spec.profile.id}`);
@@ -44,7 +45,8 @@ export function createSoftwareWorkflowActivator(engine, driver, jobs, ownerSessi
             const job = existing ?? engine.start(expected);
             if (existing !== undefined)
                 assertMatchingJob(existing, expected);
-            driver.enqueue(job.jobId);
+            if (!workflowJobIsTerminal(job) && !driver.isActive(job.jobId))
+                driver.enqueue(job.jobId);
         },
     };
 }

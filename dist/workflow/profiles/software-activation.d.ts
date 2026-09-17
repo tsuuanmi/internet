@@ -6,6 +6,7 @@ export interface SoftwareWorkflowActivationEngine {
 }
 export interface SoftwareWorkflowActivationDriver {
     enqueue(jobId: string): void;
+    isActive(jobId: string): boolean;
 }
 export declare function createSoftwareWorkflowActivator(engine: SoftwareWorkflowActivationEngine, driver: SoftwareWorkflowActivationDriver, jobs: WorkflowJobStore, ownerSessionId: string): WorkflowAdmissionActivator;
 //# sourceMappingURL=software-activation.d.ts.map
