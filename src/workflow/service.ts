@@ -90,7 +90,7 @@ export class WorkflowService {
 		return this.admissionService.confirm(context.principal, admissionId, expectedRevision, input);
 	}
 
-	start(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob {
+	autoSubmit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob {
 		const admitted = this.admit(context, input);
 		if (admitted.state === "PREFLIGHTED") throw preflightFailure(admitted);
 		if (admitted.state === "AWAITING_CONFIRMATION") {
