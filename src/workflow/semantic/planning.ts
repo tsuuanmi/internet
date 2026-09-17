@@ -48,7 +48,7 @@ export const WORKFLOW_PLANNING_CAPABILITY = {
 	executorKinds: ["reasoning"],
 	inputSchema: WORKFLOW_PLANNING_INPUT_SCHEMA,
 	outputSchema: WORKFLOW_PLANNING_OUTPUT_SCHEMA,
-	policyHooks: ["criterion_revision_authority", "clarification"],
+	policyHooks: ["requirement_revision_authority", "clarification"],
 } as const satisfies WorkflowCapabilityDescriptor;
 
 export interface WorkflowPlanningRequest {
@@ -90,6 +90,10 @@ function parseList<T>(value: unknown, label: string, parse: (item: unknown) => T
 	return value.map(parse);
 }
 
+function assertRevision(value: { readonly supersedes?: unknown; readonly revision?: unknown }, label: string): void {
+	if (value.supersedes === undefined || value.revision === undefined) throw new Error(`${label} requires an explicit revision`);
+}
+
 export function parseWorkflowPlanningOutput(value: unknown): WorkflowPlanningOutput {
 	if (!isRecord(value)) throw new Error("invalid workflow planning output");
 	const mode = parseMode(value.mode);
@@ -106,21 +110,29 @@ export function parseWorkflowPlanningOutput(value: unknown): WorkflowPlanningOut
 		case "INITIAL":
 			if (objective === undefined || acceptanceCriteria === undefined || plan === undefined)
 				throw new Error("initial workflow planning requires Objective, AcceptanceCriteria, and Plan outputs");
+			if (objective.supersedes !== undefined || acceptanceCriteria.supersedes !== undefined || plan.supersedes !== undefined)
+				throw new Error("initial workflow planning cannot emit revisions");
 			break;
 		case "PLAN_CHANGE":
 			if (plan === undefined) throw new Error("workflow plan change requires a Plan output");
 			if (objective !== undefined || acceptanceCriteria !== undefined)
 				throw new Error("workflow plan change cannot revise Objective or AcceptanceCriteria");
+			assertRevision(plan, "workflow plan change");
 			break;
 		case "REQUIREMENTS_CHANGE":
+			if (plan !== undefined) throw new Error("workflow requirements change cannot activate a Plan before requirements authority");
 			if (objective === undefined && acceptanceCriteria === undefined)
 				throw new Error("workflow requirements change requires Objective or AcceptanceCriteria output");
+			if (objective !== undefined && objective.supersedes === undefined)
+				throw new Error("workflow requirements change Objective must supersede an existing Objective");
+			if (acceptanceCriteria !== undefined && acceptanceCriteria.supersedes === undefined)
+				throw new Error("workflow requirements change criteria must supersede existing criteria");
 			break;
 		case "CLARIFICATION":
 			if (objective !== undefined || acceptanceCriteria !== undefined || plan !== undefined)
-				throw new Error("workflow clarification cannot revise semantic requirements or Plan directly");
-			if (needs.length === 0 && findings.length === 0)
-				throw new Error("workflow clarification requires a typed Need or Finding");
+				throw new Error("workflow clarification cannot revise Objective, AcceptanceCriteria, or Plan");
+			if (!needs.some((need) => need.type === "clarification"))
+				throw new Error("workflow clarification requires a clarification Need");
 			break;
 	}
 
