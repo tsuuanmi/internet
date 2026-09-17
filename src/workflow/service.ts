@@ -151,12 +151,7 @@ export class WorkflowService {
 		if (current.state !== "ACCEPTED" || current.acceptedSpecHash === undefined) {
 			throw new WorkflowServiceError(`workflow admission ${current.admissionId} did not reach accepted state`);
 		}
-		return this.activateLegacyAdmission(
-			context,
-			current.admissionId,
-			current.revision,
-			current.acceptedSpecHash,
-		);
+		return this.activateLegacyAdmission(context, current.admissionId, current.revision, current.acceptedSpecHash);
 	}
 
 	activateLegacyAdmission(

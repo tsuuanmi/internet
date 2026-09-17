@@ -260,7 +260,11 @@ export class WorkflowEngine {
 				kind: "CODE_FIX_REQUIRED",
 				message: `workflow scheduler failed: ${error instanceof Error ? error.message : String(error)}`,
 			},
-			lastEvent: this.event("ACTION_REQUIRED", "SCHEDULER_FAILURE", error instanceof Error ? error.message : String(error)),
+			lastEvent: this.event(
+				"ACTION_REQUIRED",
+				"SCHEDULER_FAILURE",
+				error instanceof Error ? error.message : String(error),
+			),
 		}));
 	}
 
@@ -275,7 +279,13 @@ export class WorkflowEngine {
 				if (!executionLeaseExpired(node.execution, at)) continue;
 				const reusable = this.results.get(node.input.inputHash);
 				if (reusable !== undefined && reusable.nodeKind === node.kind) {
-					graph = completeWorkflowNode(graph, node.nodeId, reusable.outputHash, reusable.summary, reusable.completedAt);
+					graph = completeWorkflowNode(
+						graph,
+						node.nodeId,
+						reusable.outputHash,
+						reusable.summary,
+						reusable.completedAt,
+					);
 					changed = true;
 					continue;
 				}
@@ -318,7 +328,13 @@ export class WorkflowEngine {
 				payload: this.researchPayload(current, researchA, researchB),
 			});
 			const receipt = this.handoffReceipt(handoff);
-			graph = completeWorkflowNode(graph, researchGate.nodeId, handoff.payloadHash, "research handoff persisted", handoff.createdAt);
+			graph = completeWorkflowNode(
+				graph,
+				researchGate.nodeId,
+				handoff.payloadHash,
+				"research handoff persisted",
+				handoff.createdAt,
+			);
 			next = {
 				...next,
 				graph,
@@ -384,7 +400,14 @@ export class WorkflowEngine {
 				const semantic = this.mapTeamProgress(event);
 				providerState = semantic.providerState ?? providerState;
 				if (semantic.meaningful) lastMeaningfulProgressAt = semantic.at;
-				this.touchExecution(job.jobId, node.nodeId, execution.executionId, semantic.providerState, semantic.meaningful, semantic.at);
+				this.touchExecution(
+					job.jobId,
+					node.nodeId,
+					execution.executionId,
+					semantic.providerState,
+					semantic.meaningful,
+					semantic.at,
+				);
 			},
 		});
 		if (!result.ok) throw result.failure;
@@ -425,7 +448,14 @@ export class WorkflowEngine {
 			onProgress: (event) => {
 				providerState = event.providerState ?? providerState;
 				if (event.meaningful) lastMeaningfulProgressAt = event.at;
-				this.touchExecution(job.jobId, node.nodeId, execution.executionId, event.providerState, event.meaningful, event.at);
+				this.touchExecution(
+					job.jobId,
+					node.nodeId,
+					execution.executionId,
+					event.providerState,
+					event.meaningful,
+					event.at,
+				);
 			},
 		});
 		return this.writerNodeResult(job, node, result);
@@ -440,7 +470,13 @@ export class WorkflowEngine {
 		const findingsB = parseWorkflowReviewResult(reviewB.output ?? "");
 		const allPass = findingsA.verdict === "PASS" && findingsB.verdict === "PASS";
 		if (allPass) {
-			const graph = completeWorkflowNode(job.graph, node.nodeId, hashWorkflowGraphValue("PASS"), "review passed", new Date().toISOString());
+			const graph = completeWorkflowNode(
+				job.graph,
+				node.nodeId,
+				hashWorkflowGraphValue("PASS"),
+				"review passed",
+				new Date().toISOString(),
+			);
 			return {
 				...job,
 				graph: setWorkflowGraphStatus(graph, "DONE", "COMPLETED"),
@@ -464,7 +500,13 @@ export class WorkflowEngine {
 		}
 
 		const control = this.remediationControl(job, cycle, reviewA.output ?? "", reviewB.output ?? "");
-		let graph = completeWorkflowNode(job.graph, node.nodeId, hashWorkflowGraphValue("CHANGES_REQUIRED"), "review changes required", new Date().toISOString());
+		let graph = completeWorkflowNode(
+			job.graph,
+			node.nodeId,
+			hashWorkflowGraphValue("CHANGES_REQUIRED"),
+			"review changes required",
+			new Date().toISOString(),
+		);
 		const remediation = buildRemediationNode({
 			cycle,
 			control,
@@ -475,11 +517,20 @@ export class WorkflowEngine {
 		return {
 			...job,
 			graph: promoteReadyWorkflowNodes(graph),
-			lastEvent: this.event("PROGRESS", "REMEDIATION_SCHEDULED", `review cycle ${cycle} requested remediation`, remediation.nodeId),
+			lastEvent: this.event(
+				"PROGRESS",
+				"REMEDIATION_SCHEDULED",
+				`review cycle ${cycle} requested remediation`,
+				remediation.nodeId,
+			),
 		};
 	}
 
-	private writerNodeResult(job: WorkflowJob, node: WorkflowGraphNode, result: WorkflowWriterResult): WorkflowNodeResult {
+	private writerNodeResult(
+		job: WorkflowJob,
+		node: WorkflowGraphNode,
+		result: WorkflowWriterResult,
+	): WorkflowNodeResult {
 		if (result.status === "BLOCKED") throw new Error(result.message);
 		const completedAt = new Date().toISOString();
 		const output = JSON.stringify(result);
@@ -533,7 +584,16 @@ export class WorkflowEngine {
 						},
 					};
 					const nextCycle = next.reviewCycle + 1;
-					graph = appendWorkflowNodes(next.graph, buildReviewCycleNodes({ cycle: nextCycle, pullRequest: writer.pullRequest, rounds: this.teams.rounds, accounts: DEFAULT_TEAM_ACCOUNTS, synthesizer: DEFAULT_TEAM_SYNTHESIZER }));
+					graph = appendWorkflowNodes(
+						next.graph,
+						buildReviewCycleNodes({
+							cycle: nextCycle,
+							pullRequest: writer.pullRequest,
+							rounds: this.teams.rounds,
+							accounts: DEFAULT_TEAM_ACCOUNTS,
+							synthesizer: DEFAULT_TEAM_SYNTHESIZER,
+						}),
+					);
 					next = { ...next, graph: promoteReadyWorkflowNodes(graph), reviewCycle: nextCycle };
 				}
 			}
@@ -568,7 +628,11 @@ export class WorkflowEngine {
 		});
 	}
 
-	private startExecution(jobId: string, nodeId: string, ownerInstanceId: string): { job: WorkflowJob; execution: WorkflowExecutionRecord } {
+	private startExecution(
+		jobId: string,
+		nodeId: string,
+		ownerInstanceId: string,
+	): { job: WorkflowJob; execution: WorkflowExecutionRecord } {
 		const startedAt = new Date().toISOString();
 		const executionId = randomBytes(16).toString("hex");
 		let execution!: WorkflowExecutionRecord;
@@ -678,7 +742,13 @@ export class WorkflowEngine {
 
 	private teamStep(node: WorkflowGraphNode): TeamPlanStep {
 		const input = node.input.bindings;
-		if (input?.accountId === undefined || input.phase === undefined || input.lane === undefined || input.sessionId === undefined || input.round === undefined) {
+		if (
+			input?.accountId === undefined ||
+			input.phase === undefined ||
+			input.lane === undefined ||
+			input.sessionId === undefined ||
+			input.round === undefined
+		) {
 			throw new Error(`workflow node ${node.nodeId} is missing team bindings`);
 		}
 		return {
@@ -694,7 +764,10 @@ export class WorkflowEngine {
 		};
 	}
 
-	private async teamPromptContext(job: WorkflowJob, node: WorkflowGraphNode): Promise<{
+	private async teamPromptContext(
+		job: WorkflowJob,
+		node: WorkflowGraphNode,
+	): Promise<{
 		lane: WorkflowLane;
 		turns: readonly TeamTurn[];
 		other: readonly string[];
@@ -722,7 +795,8 @@ export class WorkflowEngine {
 
 	private mustNodeOutput(graph: WorkflowGraphSnapshot, nodeId: string): WorkflowGraphNode {
 		const node = graph.nodes[nodeId];
-		if (node?.state !== "COMPLETED" || node.output === undefined) throw new Error(`workflow node ${nodeId} has no completed output`);
+		if (node?.state !== "COMPLETED" || node.output === undefined)
+			throw new Error(`workflow node ${nodeId} has no completed output`);
 		return node;
 	}
 
@@ -782,8 +856,10 @@ export class WorkflowEngine {
 		failure: WorkflowFailure,
 		expectedHeadSha?: string,
 	): WorkflowPendingAction {
-		if (failure.class === "AUTHENTICATION") return { kind: "ACCOUNT_REAUTH_REQUIRED", message: failure.message, nodeId };
-		if (failure.class === "CONFIRMATION") return { kind: "UNKNOWN_CONFIRMATION", message: failure.message, nodeId, expectedHeadSha };
+		if (failure.class === "AUTHENTICATION")
+			return { kind: "ACCOUNT_REAUTH_REQUIRED", message: failure.message, nodeId };
+		if (failure.class === "CONFIRMATION")
+			return { kind: "UNKNOWN_CONFIRMATION", message: failure.message, nodeId, expectedHeadSha };
 		if (failure.class === "AUTOMATION") return { kind: "CODE_FIX_REQUIRED", message: failure.message, nodeId };
 		return { kind: "USER_ACTION_REQUIRED", message: failure.message, nodeId, expectedHeadSha };
 	}
