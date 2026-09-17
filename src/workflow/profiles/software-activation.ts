@@ -55,10 +55,10 @@ export function createSoftwareWorkflowActivator(
 			if (spec.profile.id !== "software_change") {
 				throw new Error(`software workflow activator does not support profile ${spec.profile.id}`);
 			}
-			return { targetKind: "legacy_v3_job", targetId: spec.admissionId };
+			return { targetKind: "workflow_job", targetId: spec.admissionId };
 		},
 		ensure(spec, target) {
-			if (target.targetKind !== "legacy_v3_job" || target.targetId !== spec.admissionId) {
+			if (target.targetKind !== "workflow_job" || target.targetId !== spec.admissionId) {
 				throw new Error("software workflow activation target does not match accepted admission identity");
 			}
 			const expected = activationInput(spec, ownerSessionId);

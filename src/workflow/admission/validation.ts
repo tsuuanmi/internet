@@ -350,7 +350,10 @@ function assertStateShape(record: WorkflowAdmissionRecord): void {
 		return;
 	}
 	if (record.state === "PREFLIGHTED") {
-		if (record.preview === undefined || (record.preview.status !== "INCOMPLETE" && record.preview.status !== "REJECTED"))
+		if (
+			record.preview === undefined ||
+			(record.preview.status !== "INCOMPLETE" && record.preview.status !== "REJECTED")
+		)
 			throw new Error("preflighted admission requires an incomplete or rejected preview");
 		noAccepted();
 		return;
@@ -422,7 +425,8 @@ export function parseWorkflowAdmissionRecord(value: unknown): WorkflowAdmissionR
 		assertActivation(value.activation, value.acceptedSpecHash);
 	}
 	if (!isTimestamp(value.createdAt) || !isTimestamp(value.updatedAt)) throw new Error("invalid admission timestamps");
-	if (Date.parse(value.updatedAt) < Date.parse(value.createdAt)) throw new Error("admission updatedAt precedes createdAt");
+	if (Date.parse(value.updatedAt) < Date.parse(value.createdAt))
+		throw new Error("admission updatedAt precedes createdAt");
 	const record = { ...value, draft } as unknown as WorkflowAdmissionRecord;
 	assertStateShape(record);
 	return record;

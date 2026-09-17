@@ -101,7 +101,8 @@ export const SOFTWARE_WORKFLOW_PROFILE: WorkflowProfileDescriptor = {
 
 		const userReasons = userConfirmationReasons(draft);
 		const localReasons = localConfirmationReasons(draft);
-		const confirmationLevel = userReasons.length > 0 ? "USER_CONFIRM" : localReasons.length > 0 ? "LOCAL_CONFIRM" : "AUTO_SUBMIT";
+		const confirmationLevel =
+			userReasons.length > 0 ? "USER_CONFIRM" : localReasons.length > 0 ? "LOCAL_CONFIRM" : "AUTO_SUBMIT";
 		const confirmationReasons = userReasons.length > 0 ? userReasons : localReasons;
 
 		return {

@@ -1,7 +1,7 @@
 import { WorkflowAuthorizationError, workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 import type { WorkflowEventJournal } from "#internet/workflow/events";
 import type { WorkflowGraphNode, WorkflowPhase } from "#internet/workflow/graph";
-import { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
+import { type WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
 
 export class WorkflowOperatorError extends Error {

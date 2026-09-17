@@ -1,9 +1,10 @@
 import type { WorkflowAdmissionService } from "#internet/workflow/admission/service";
-import type { WorkflowAdmissionDraftInput } from "#internet/workflow/admission/types";
-import {
-	requireWorkflowOwnerSessionId,
-	type WorkflowAuthorizationContext,
-} from "#internet/workflow/authorization";
+import type {
+	AdmissionConfirmationInput,
+	WorkflowAdmissionDraftInput,
+	WorkflowAdmissionRecord,
+} from "#internet/workflow/admission/types";
+import { requireWorkflowOwnerSessionId, type WorkflowAuthorizationContext } from "#internet/workflow/authorization";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import { createSoftwareWorkflowActivator } from "#internet/workflow/profiles/software-activation";
 import type { WorkflowDeletionReceipt, WorkflowRetentionManager } from "#internet/workflow/retention";
@@ -28,54 +29,51 @@ export class WorkflowServiceError extends Error {
 	}
 }
 
-export class WorkflowService {
-	private readonly engine: WorkflowServiceEngine;
-	private readonly driver: WorkflowServiceDriver;
-	private readonly jobs: WorkflowJobStore;
-	private readonly retention: WorkflowRetentionManager;
-	private readonly admissions: WorkflowAdmissionService;
+function preflightFailure(record: WorkflowAdmissionRecord): WorkflowServiceError {
+	const preview = record.preview;
+	const reasons = [...(preview?.errors ?? []), ...(preview?.unresolved.map((field) => `unresolved ${field}`) ?? [])];
+	return new WorkflowServiceError(
+		`workflow admission ${record.admissionId} cannot activate: ${reasons.join("; ") || "preflight did not accept the request"}`,
+	);
+}
 
+export class WorkflowService {
 	constructor(
-		engine: WorkflowServiceEngine,
-		driver: WorkflowServiceDriver,
-		jobs: WorkflowJobStore,
-		retention: WorkflowRetentionManager,
-		admissions: WorkflowAdmissionService,
-	) {
-		this.engine = engine;
-		this.driver = driver;
-		this.jobs = jobs;
-		this.retention = retention;
-		this.admissions = admissions;
+		private readonly engine: WorkflowServiceEngine,
+		private readonly driver: WorkflowServiceDriver,
+		private readonly jobs: WorkflowJobStore,
+		private readonly retention: WorkflowRetentionManager,
+		private readonly admissions: WorkflowAdmissionService,
+	) {}
+
+	admit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord {
+		requireWorkflowOwnerSessionId(context);
+		const created = this.admissions.create(context.principal, input);
+		return this.admissions.preflight(context.principal, created.admissionId, created.revision);
+	}
+
+	confirmAdmission(
+		context: WorkflowAuthorizationContext,
+		admissionId: string,
+		expectedRevision: number,
+		input: AdmissionConfirmationInput,
+	): WorkflowAdmissionRecord {
+		requireWorkflowOwnerSessionId(context);
+		return this.admissions.confirm(context.principal, admissionId, expectedRevision, input);
 	}
 
 	start(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob {
-		requireWorkflowOwnerSessionId(context);
-		const created = this.admissions.create(context.principal, input);
-		let current = this.admissions.preflight(context.principal, created.admissionId, created.revision);
-
-		if (current.state === "PREFLIGHTED") {
-			const preview = current.preview;
-			const reasons = [...(preview?.errors ?? []), ...(preview?.unresolved.map((field) => `unresolved ${field}`) ?? [])];
+		const admitted = this.admit(context, input);
+		if (admitted.state === "PREFLIGHTED") throw preflightFailure(admitted);
+		if (admitted.state === "AWAITING_CONFIRMATION") {
 			throw new WorkflowServiceError(
-				`workflow admission ${current.admissionId} cannot activate: ${reasons.join("; ") || "preflight did not accept the request"}`,
+				`workflow admission ${admitted.admissionId} requires ${admitted.preview?.confirmation.level ?? "confirmation"} before activation`,
 			);
 		}
-		if (current.state === "AWAITING_CONFIRMATION") {
-			if (current.preview?.confirmation.level !== "LOCAL_CONFIRM") {
-				throw new WorkflowServiceError(
-					`workflow admission ${current.admissionId} requires explicit User confirmation before activation`,
-				);
-			}
-			current = this.admissions.confirm(context.principal, current.admissionId, current.revision, {
-				expectedDraftHash: current.draftHash,
-				provenance: "local_interpreted",
-			});
+		if (admitted.state !== "ACCEPTED" || admitted.acceptedSpecHash === undefined) {
+			throw new WorkflowServiceError(`workflow admission ${admitted.admissionId} did not reach accepted state`);
 		}
-		if (current.state !== "ACCEPTED" || current.acceptedSpecHash === undefined) {
-			throw new WorkflowServiceError(`workflow admission ${current.admissionId} did not reach accepted state`);
-		}
-		return this.activateAdmission(context, current.admissionId, current.acceptedSpecHash);
+		return this.activateAdmission(context, admitted.admissionId, admitted.acceptedSpecHash);
 	}
 
 	activateAdmission(
@@ -85,13 +83,8 @@ export class WorkflowService {
 	): WorkflowJob {
 		const ownerSessionId = requireWorkflowOwnerSessionId(context);
 		const activator = createSoftwareWorkflowActivator(this.engine, this.driver, this.jobs, ownerSessionId);
-		const record = this.admissions.activate(
-			context.principal,
-			admissionId,
-			expectedAcceptedSpecHash,
-			activator,
-		);
-		if (record.activation?.targetKind !== "legacy_v3_job") {
+		const record = this.admissions.activate(context.principal, admissionId, expectedAcceptedSpecHash, activator);
+		if (record.activation?.targetKind !== "workflow_job") {
 			throw new WorkflowServiceError(`workflow admission ${admissionId} did not activate a software workflow job`);
 		}
 		const job = this.jobs.get(record.activation.targetId);

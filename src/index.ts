@@ -192,15 +192,11 @@ export {
 } from "#internet/tools/internet-workflow-maintenance";
 export { canonicalAdmissionJson, hashAdmissionValue } from "#internet/workflow/admission/hash";
 export { preflightWorkflowAdmission, WorkflowAdmissionPreflightError } from "#internet/workflow/admission/preflight";
-export type {
-	WorkflowAdmissionLifecycleOptions,
-	WorkflowAdmissionOwner,
-} from "#internet/workflow/admission/service";
+export type { WorkflowAdmissionLifecycleOptions } from "#internet/workflow/admission/service";
 export { WorkflowAdmissionService, WorkflowAdmissionServiceError } from "#internet/workflow/admission/service";
 export { WorkflowAdmissionStore, WorkflowAdmissionStoreError } from "#internet/workflow/admission/store";
 export type {
 	AcceptedAdmissionSpec,
-	AdmissionActivation,
 	AdmissionActivationReceipt,
 	AdmissionConfirmationInput,
 	AdmissionConfirmationReason,
@@ -227,6 +223,12 @@ export {
 	WORKFLOW_ADMISSION_STATES,
 } from "#internet/workflow/admission/types";
 export { parseWorkflowAdmissionDraft, parseWorkflowAdmissionRecord } from "#internet/workflow/admission/validation";
+export type {
+	WorkflowAuthorizationContext,
+	WorkflowPrincipal,
+	WorkflowPrincipalKind,
+} from "#internet/workflow/authorization";
+export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -279,6 +281,7 @@ export {
 	WorkflowOperator,
 	WorkflowOperatorError,
 } from "#internet/workflow/operator";
+export { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 export { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/types";
 export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/types";
@@ -295,20 +298,8 @@ export {
 } from "#internet/workflow/retention";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
-export type {
-	StartAuthorizedWorkflowInput,
-	WorkflowAuthorizationContext,
-	WorkflowPrincipal,
-	WorkflowPrincipalKind,
-	WorkflowServiceDriver,
-	WorkflowServiceEngine,
-	WorkflowStartAdmissionContext,
-} from "#internet/workflow/service";
-export {
-	WorkflowService,
-	WorkflowServiceError,
-	workflowSessionAuthorizationContext,
-} from "#internet/workflow/service";
+export type { WorkflowServiceDriver, WorkflowServiceEngine } from "#internet/workflow/service";
+export { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 export type {
 	WorkflowPromptContext,
 	WorkflowReviewPromptContext,

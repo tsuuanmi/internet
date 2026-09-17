@@ -243,7 +243,10 @@ export class WorkflowAdmissionService {
 				};
 			});
 		} else if (current.state === "ACTIVATING") {
-			if (current.activationIntent === undefined || !sameAdmissionActivationTarget(current.activationIntent, target)) {
+			if (
+				current.activationIntent === undefined ||
+				!sameAdmissionActivationTarget(current.activationIntent, target)
+			) {
 				throw new WorkflowAdmissionServiceError("persisted activation target does not match the current activator");
 			}
 		} else {
