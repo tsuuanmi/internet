@@ -2,6 +2,7 @@ import type { WorkflowAdmissionActivator } from "#internet/workflow/admission/ac
 import type { AcceptedAdmissionSpec, AdmissionActivationTarget } from "#internet/workflow/admission/types";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
+import { workflowJobIsTerminal } from "#internet/workflow/types";
 
 export interface SoftwareWorkflowActivationEngine {
 	start(input: StartWorkflowInput): WorkflowJob;
@@ -9,6 +10,7 @@ export interface SoftwareWorkflowActivationEngine {
 
 export interface SoftwareWorkflowActivationDriver {
 	enqueue(jobId: string): void;
+	isActive(jobId: string): boolean;
 }
 
 function activationInput(spec: AcceptedAdmissionSpec, ownerSessionId: string): StartWorkflowInput {
@@ -65,7 +67,7 @@ export function createSoftwareWorkflowActivator(
 			const existing = jobs.get(target.targetId);
 			const job = existing ?? engine.start(expected);
 			if (existing !== undefined) assertMatchingJob(existing, expected);
-			driver.enqueue(job.jobId);
+			if (!workflowJobIsTerminal(job) && !driver.isActive(job.jobId)) driver.enqueue(job.jobId);
 		},
 	};
 }
