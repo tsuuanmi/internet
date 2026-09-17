@@ -64,9 +64,9 @@ function fakeJob(input: WorkflowAdmissionDraftInput): WorkflowJob {
 	};
 }
 
-function service(): WorkflowCommandService & { start: ReturnType<typeof vi.fn> } {
+function service(): WorkflowCommandService & { autoSubmit: ReturnType<typeof vi.fn> } {
 	return {
-		start: vi.fn((_context, input) => fakeJob(input)),
+		autoSubmit: vi.fn((_context, input) => fakeJob(input)),
 	};
 }
 
@@ -98,7 +98,7 @@ function invocation(rawInput: string, cwd = "/repo") {
 }
 
 describe("defineWorkflowCommand", () => {
-	it("resolves Git context and starts through the canonical admission draft", async () => {
+	it("resolves Git context and auto-submits the canonical admission draft", async () => {
 		const runGit = vi.fn(createRunner());
 		const workflow = service();
 		const command = defineWorkflowCommand({ service: workflow, operator: operator(), runGit });
@@ -115,7 +115,7 @@ describe("defineWorkflowCommand", () => {
 			input.signal,
 		);
 		expect(runGit).not.toHaveBeenCalledWith("/repo", ["rev-parse", "HEAD"], input.signal);
-		expect(workflow.start).toHaveBeenCalledWith(
+		expect(workflow.autoSubmit).toHaveBeenCalledWith(
 			{ principal: { kind: "session", id: "1-1" }, ownerSessionId: "1-1" },
 			{
 				source: { kind: "user", rawText: "Correct the login redirect.", provenance: "user_explicit" },
@@ -170,7 +170,7 @@ describe("defineWorkflowCommand", () => {
 		});
 	});
 
-	it("does not inspect Git or start a job without an objective or operation", async () => {
+	it("does not inspect Git or auto-submit without an objective or operation", async () => {
 		const runGit = vi.fn(createRunner());
 		const workflow = service();
 		const command = defineWorkflowCommand({ service: workflow, operator: operator(), runGit });
@@ -179,10 +179,10 @@ describe("defineWorkflowCommand", () => {
 			text: expect.stringContaining("A workflow objective or operation is required"),
 		});
 		expect(runGit).not.toHaveBeenCalled();
-		expect(workflow.start).not.toHaveBeenCalled();
+		expect(workflow.autoSubmit).not.toHaveBeenCalled();
 	});
 
-	it("requires the session working directory only for starting a workflow", async () => {
+	it("requires the session working directory only for auto-submit", async () => {
 		const runGit = vi.fn(createRunner());
 		const workflow = service();
 		const command = defineWorkflowCommand({ service: workflow, operator: operator(), runGit });
@@ -191,10 +191,10 @@ describe("defineWorkflowCommand", () => {
 			text: "/workflow requires a session working directory.",
 		});
 		expect(runGit).not.toHaveBeenCalled();
-		expect(workflow.start).not.toHaveBeenCalled();
+		expect(workflow.autoSubmit).not.toHaveBeenCalled();
 	});
 
-	it("does not start a job when the session directory is not a Git worktree", async () => {
+	it("does not auto-submit when the session directory is not a Git worktree", async () => {
 		const workflow = service();
 		const command = defineWorkflowCommand({
 			service: workflow,
@@ -205,7 +205,7 @@ describe("defineWorkflowCommand", () => {
 			kind: "error",
 			text: "/workflow requires the current session to be inside a Git worktree.",
 		});
-		expect(workflow.start).not.toHaveBeenCalled();
+		expect(workflow.autoSubmit).not.toHaveBeenCalled();
 	});
 
 	it("rejects ambiguous remotes without a tracked branch or origin", async () => {
@@ -219,10 +219,10 @@ describe("defineWorkflowCommand", () => {
 			kind: "error",
 			text: expect.stringContaining("could not select an upstream remote"),
 		});
-		expect(workflow.start).not.toHaveBeenCalled();
+		expect(workflow.autoSubmit).not.toHaveBeenCalled();
 	});
 
-	it("rejects unusable remotes without starting a job", async () => {
+	it("rejects unusable remotes without auto-submit", async () => {
 		const workflow = service();
 		const command = defineWorkflowCommand({
 			service: workflow,
@@ -233,7 +233,7 @@ describe("defineWorkflowCommand", () => {
 			kind: "error",
 			text: expect.stringContaining("publicly addressable Git remote"),
 		});
-		expect(workflow.start).not.toHaveBeenCalled();
+		expect(workflow.autoSubmit).not.toHaveBeenCalled();
 	});
 });
 
