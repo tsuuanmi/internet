@@ -1,5 +1,6 @@
 import type {
 	AdmissionConfirmationReason,
+	AdmissionDefault,
 	WorkflowAdmissionConfirmationLevel,
 	WorkflowAdmissionDraft,
 } from "#internet/workflow/admission/types";
@@ -7,9 +8,10 @@ import type {
 export interface WorkflowProfileAdmissionResult {
 	readonly confirmationLevel: WorkflowAdmissionConfirmationLevel;
 	readonly confirmationReasons: readonly AdmissionConfirmationReason[];
-	readonly defaults: readonly { readonly field: string; readonly value: unknown }[];
+	readonly defaults: readonly AdmissionDefault[];
 	readonly unresolved: readonly string[];
 	readonly warnings: readonly string[];
+	readonly errors: readonly string[];
 }
 
 export interface WorkflowProfileDescriptor {
