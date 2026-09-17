@@ -1,0 +1,40 @@
+name: Phase1 Source Gate
+
+on:
+  push:
+    branches:
+      - workflow/phase1-durable-admission
+    paths:
+      - .github/workflows/phase1-source-gate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: workflow/phase1-durable-admission
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Remove stale public exports
+        run: |
+          sed -i 's/export { preflightWorkflowAdmission, WorkflowAdmissionPreflightError } from "#internet\/workflow\/admission\/preflight";/export { preflightWorkflowAdmission } from "#internet\/workflow\/admission\/preflight";/' src/index.ts
+          sed -i 's|export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/registry";|export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/types";|' src/index.ts
+          npx biome check --write src test
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - name: Commit validated source cleanup
+        run: |
+          git rm .github/workflows/phase1-source-gate.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'refactor: complete phase1 admission source cleanup'
+          git push origin HEAD:workflow/phase1-durable-admission
