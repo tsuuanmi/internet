@@ -134,4 +134,41 @@ describe("workflow admission activation recovery", () => {
 			},
 		});
 	});
+
+	it("does not reschedule a terminal target when an activated admission is retried", () => {
+		const path = root();
+		const runtime = createWorkflowTestRuntime(path);
+		const profiles = new WorkflowProfileRegistry([SOFTWARE_WORKFLOW_PROFILE], SOFTWARE_WORKFLOW_PROFILE.id);
+		const admissions = new WorkflowAdmissionService(new WorkflowAdmissionStore(path), profiles);
+		const authorization = workflowSessionAuthorizationContext("session-a");
+		let enqueueCount = 0;
+		const driver = {
+			enqueue() {
+				enqueueCount += 1;
+			},
+			async cancel(jobId: string) {
+				return runtime.engine.cancel(jobId);
+			},
+			isActive() {
+				return false;
+			},
+		};
+		const workflow = new WorkflowService(
+			runtime.engine,
+			driver,
+			runtime.jobs,
+			new WorkflowRetentionManager(path, runtime.jobs),
+			admissions,
+		);
+		const job = workflow.start(authorization, draft("Retry exact terminal activation"));
+		const admission = workflow.admissions(authorization)[0]!;
+		expect(enqueueCount).toBe(1);
+
+		runtime.engine.cancel(job.jobId);
+		enqueueCount = 0;
+		const retried = workflow.activateAdmission(authorization, admission.admissionId, admission.acceptedSpecHash!);
+
+		expect(retried.graph.lifecycle).toBe("CANCELLED");
+		expect(enqueueCount).toBe(0);
+	});
 });
