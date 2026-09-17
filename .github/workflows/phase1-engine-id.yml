@@ -1,0 +1,38 @@
+name: Phase1 Engine Id
+
+on:
+  push:
+    branches:
+      - workflow/phase1-durable-admission
+    paths:
+      - .github/workflows/phase1-engine-id.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: workflow/phase1-durable-admission
+      - name: Patch WorkflowEngine deterministic job id support
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'src/workflow/engine.ts';
+          let text = fs.readFileSync(path, 'utf8');
+          const before = 'const jobId = randomBytes(16).toString("hex");';
+          const after = 'if (input.jobId !== undefined && !/^[0-9a-f]{32}$/u.test(input.jobId)) throw new Error("workflow job id must be 32 lowercase hex characters");\n\t\tconst jobId = input.jobId ?? randomBytes(16).toString("hex");';
+          if (!text.includes(before)) throw new Error('expected WorkflowEngine job id line not found');
+          text = text.replace(before, after);
+          fs.writeFileSync(path, text);
+          NODE
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/workflow/engine.ts
+          git commit -m "feat: support deterministic legacy workflow ids"
+          git push origin HEAD:workflow/phase1-durable-admission
