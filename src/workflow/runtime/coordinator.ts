@@ -240,7 +240,7 @@ export class WorkflowRunCoordinator {
 	}
 
 	private materializeNeeds(run: WorkflowRun, artifacts: readonly WorkflowArtifact[]): void {
-		const current = currentWorkflowArtifactIds(artifacts);
+		const current = currentWorkflowArtifactIds(artifacts, this.dependencies.inputBundles.list(run.runId));
 		for (const artifact of artifacts) {
 			if (artifact.type !== WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need || !current.has(artifact.artifactId)) continue;
 			const need = parseWorkflowNeedPayload(artifact.payload);
@@ -355,7 +355,7 @@ export class WorkflowRunCoordinator {
 			const items = this.dependencies.workItems.list(run.runId);
 			const autonomous = items.some((item) => item.state === "READY" || item.state === "RUNNING");
 			const artifacts = this.dependencies.artifacts.list(run.runId);
-			const currentArtifacts = currentWorkflowArtifactIds(artifacts);
+			const currentArtifacts = currentWorkflowArtifactIds(artifacts, this.dependencies.inputBundles.list(run.runId));
 			const openExternal = artifacts
 				.filter(
 					(artifact) =>
