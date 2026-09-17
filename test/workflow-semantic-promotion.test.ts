@@ -47,33 +47,35 @@ const inputBundle: WorkflowInputBundle = {
 	createdAt: "2026-09-17T09:00:00.000Z",
 };
 
+const objectiveDraft = {
+	type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.objective,
+	payload: {
+		objectiveId: "objective-1",
+		version: "1",
+		admissionId: "4".repeat(32),
+		statement: "Build the feature",
+		constraints: [],
+	},
+};
+
 describe("workflow semantic result promotion", () => {
-	it("promotes validated semantic output into immutable Artifacts bound to exact execution input", () => {
+	it("promotes validated semantic output and preserves receipt references separately", () => {
 		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-workflow-semantic-")));
-		const [artifact] = promoteWorkflowSemanticResult(
+		const result = promoteWorkflowSemanticResult(
 			{ workItem, inputBundle, capability: WORKFLOW_PLANNING_CAPABILITY, artifactStore: store },
 			{
 				executionId: "execution-1",
 				workItemId,
 				inputBundleId,
 				receiptIds: ["executor-receipt-1"],
-				artifacts: [
-					{
-						type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.objective,
-						payload: {
-							objectiveId: "objective-1",
-							version: "1",
-							admissionId: "4".repeat(32),
-							statement: "Build the feature",
-							constraints: [],
-						},
-					},
-				],
+				artifacts: [objectiveDraft],
 			},
 		);
+		const [artifact] = result.artifacts;
 		expect(artifact?.type).toBe(WORKFLOW_SEMANTIC_ARTIFACT_TYPES.objective);
 		expect(artifact?.producer).toEqual({ kind: "work_item", id: workItemId });
 		expect(artifact?.inputBundleId).toBe(inputBundleId);
+		expect(result.receiptIds).toEqual(["executor-receipt-1"]);
 	});
 
 	it("rejects results from an execution that does not belong to the WorkItem", () => {
@@ -92,8 +94,8 @@ describe("workflow semantic result promotion", () => {
 		).toThrow("execution mismatch");
 	});
 
-	it("rejects semantic artifact types outside the capability contract", () => {
-		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-workflow-semantic-deny-")));
+	it("validates all artifact contracts before writing any artifact", () => {
+		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-workflow-semantic-atomic-")));
 		expect(() =>
 			promoteWorkflowSemanticResult(
 				{ workItem, inputBundle, capability: WORKFLOW_PLANNING_CAPABILITY, artifactStore: store },
@@ -103,6 +105,7 @@ describe("workflow semantic result promotion", () => {
 					inputBundleId,
 					receiptIds: [],
 					artifacts: [
+						objectiveDraft,
 						{
 							type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.report,
 							payload: { reportId: "report-1", title: "Report", body: "Body", evidence: [] },
@@ -111,5 +114,6 @@ describe("workflow semantic result promotion", () => {
 				},
 			),
 		).toThrow("cannot produce artifact type report");
+		expect(store.list(runId)).toEqual([]);
 	});
 });
