@@ -2,10 +2,13 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { BrowserManager } from "#internet/browser/runtime";
 import { ACCOUNT_IDS } from "#internet/core/accounts";
 import { sleep } from "#internet/core/sleep";
-import type { WorkflowDriver } from "#internet/workflow/driver";
-import type { WorkflowEngine } from "#internet/workflow/engine";
 import type { GitRunner } from "#internet/workflow/repository-context";
 import { resolveWorkflowRepository, WorkflowRepositoryError } from "#internet/workflow/repository-context";
+import {
+	type WorkflowAuthorizationContext,
+	WorkflowServiceError,
+	workflowSessionAuthorizationContext,
+} from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
 
 export const WORKFLOW_OPERATIONS = ["start", "test", "status", "cancel", "continue"] as const;
@@ -19,6 +22,16 @@ export interface WorkflowTestDependencies {
 	readonly runGit?: GitRunner;
 	readonly timeoutMs?: number;
 	readonly pollMs?: number;
+}
+
+export interface InternetWorkflowService {
+	start(
+		context: WorkflowAuthorizationContext,
+		input: { readonly objective: string; readonly repository: string; readonly baseRevision: string },
+	): WorkflowJob;
+	status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
+	cancel(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowJob>;
+	continue(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
 }
 
 function graphSummary(job: WorkflowJob): string {
@@ -97,8 +110,7 @@ function completedHandoffIsExact(job: WorkflowJob): boolean {
 }
 
 async function runAcceptanceTest(
-	engine: WorkflowEngine,
-	driver: Pick<WorkflowDriver, "enqueue">,
+	service: InternetWorkflowService,
 	dependencies: WorkflowTestDependencies,
 	exec: { agent?: unknown; signal: AbortSignal },
 ) {
@@ -121,6 +133,7 @@ async function runAcceptanceTest(
 			message: "workflow test requires a session working directory and owner session",
 		};
 	}
+	const authorization = workflowSessionAuthorizationContext(ownerSessionId);
 
 	const statuses = await Promise.all(ACCOUNT_IDS.map((accountId) => dependencies.browser!.status(accountId)));
 	const accountPreflight = statuses.map((status) => `${status.accountId}=${status.state}`).join(", ");
@@ -137,20 +150,18 @@ async function runAcceptanceTest(
 
 	const repository = await resolveWorkflowRepository(cwd, exec.signal, dependencies.runGit, "internet_workflow test");
 	const marker = `${new Date().toISOString()}-${Math.random().toString(16).slice(2, 10)}`;
-	const job = engine.start({
+	const job = service.start(authorization, {
 		objective: workflowTestObjective(marker),
 		repository: repository.url,
 		baseRevision: repository.revision,
-		ownerSessionId,
 	});
-	driver.enqueue(job.jobId);
 
 	const timeoutMs = dependencies.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS;
 	const pollMs = dependencies.pollMs ?? DEFAULT_TEST_POLL_MS;
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		if (exec.signal.aborted) throw exec.signal.reason ?? new Error("workflow test aborted");
-		const current = engine.status(job.jobId);
+		const current = service.status(authorization, job.jobId);
 		if (current.graph.lifecycle === "COMPLETED") {
 			if (!completedHandoffIsExact(current)) {
 				return testFailure(current, "workflow completed without an exact reviewed PR and Writer chat handoff");
@@ -172,7 +183,7 @@ async function runAcceptanceTest(
 		}
 		await sleep(pollMs, exec.signal);
 	}
-	const current = engine.status(job.jobId);
+	const current = service.status(authorization, job.jobId);
 	return {
 		ok: false,
 		operation: "test",
@@ -184,8 +195,7 @@ async function runAcceptanceTest(
 }
 
 export function defineInternetWorkflowTool(
-	engine: WorkflowEngine,
-	driver: Pick<WorkflowDriver, "enqueue" | "cancel">,
+	service: InternetWorkflowService,
 	testDependencies: WorkflowTestDependencies = {},
 ): ReturnType<typeof defineTool> {
 	return defineTool({
@@ -250,7 +260,9 @@ export function defineInternetWorkflowTool(
 		async execute(args, exec) {
 			const operation = args.operation as WorkflowOperation;
 			try {
-				if (operation === "test") return await runAcceptanceTest(engine, driver, testDependencies, exec as never);
+				if (operation === "test") return await runAcceptanceTest(service, testDependencies, exec as never);
+				const ownerSessionId = String(exec.agent?.id ?? "");
+				const authorization = workflowSessionAuthorizationContext(ownerSessionId);
 				if (operation === "start") {
 					if (
 						typeof args.objective !== "string" ||
@@ -259,26 +271,23 @@ export function defineInternetWorkflowTool(
 					) {
 						return { ok: false, operation, message: "start requires objective, repository, and baseRevision" };
 					}
-					const job = engine.start({
+					const job = service.start(authorization, {
 						objective: args.objective,
 						repository: args.repository,
 						baseRevision: args.baseRevision,
-						ownerSessionId: String(exec.agent?.id ?? ""),
 					});
-					driver.enqueue(job.jobId);
 					return { ok: true, operation, ...project(job) };
 				}
 				if (typeof args.jobId !== "string") return { ok: false, operation, message: `${operation} requires jobId` };
 				let job: WorkflowJob;
-				if (operation === "status") job = engine.status(args.jobId);
-				else if (operation === "cancel") job = await driver.cancel(args.jobId);
-				else {
-					job = engine.continue(args.jobId);
-					driver.enqueue(job.jobId);
-				}
+				if (operation === "status") job = service.status(authorization, args.jobId);
+				else if (operation === "cancel") job = await service.cancel(authorization, args.jobId);
+				else job = service.continue(authorization, args.jobId);
 				return { ok: true, operation, ...project(job) };
 			} catch (error) {
-				if (error instanceof WorkflowRepositoryError) return { ok: false, operation, message: error.message };
+				if (error instanceof WorkflowRepositoryError || error instanceof WorkflowServiceError) {
+					return { ok: false, operation, message: error.message };
+				}
 				return { ok: false, operation, message: error instanceof Error ? error.message : String(error) };
 			}
 		},

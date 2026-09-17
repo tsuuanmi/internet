@@ -2,6 +2,7 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { ACCOUNT_IDS } from "#internet/core/accounts";
 import { sleep } from "#internet/core/sleep";
 import { resolveWorkflowRepository, WorkflowRepositoryError } from "#internet/workflow/repository-context";
+import { WorkflowServiceError, workflowSessionAuthorizationContext, } from "#internet/workflow/service";
 export const WORKFLOW_OPERATIONS = ["start", "test", "status", "cancel", "continue"];
 const DEFAULT_TEST_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_TEST_POLL_MS = 1_000;
@@ -73,7 +74,7 @@ function completedHandoffIsExact(job) {
         job.writerConversation.url !== undefined &&
         job.reviewCycle > 0);
 }
-async function runAcceptanceTest(engine, driver, dependencies, exec) {
+async function runAcceptanceTest(service, dependencies, exec) {
     if (dependencies.browser === undefined) {
         return {
             ok: false,
@@ -93,6 +94,7 @@ async function runAcceptanceTest(engine, driver, dependencies, exec) {
             message: "workflow test requires a session working directory and owner session",
         };
     }
+    const authorization = workflowSessionAuthorizationContext(ownerSessionId);
     const statuses = await Promise.all(ACCOUNT_IDS.map((accountId) => dependencies.browser.status(accountId)));
     const accountPreflight = statuses.map((status) => `${status.accountId}=${status.state}`).join(", ");
     const unavailable = statuses.filter((status) => status.state !== "ready");
@@ -107,20 +109,18 @@ async function runAcceptanceTest(engine, driver, dependencies, exec) {
     }
     const repository = await resolveWorkflowRepository(cwd, exec.signal, dependencies.runGit, "internet_workflow test");
     const marker = `${new Date().toISOString()}-${Math.random().toString(16).slice(2, 10)}`;
-    const job = engine.start({
+    const job = service.start(authorization, {
         objective: workflowTestObjective(marker),
         repository: repository.url,
         baseRevision: repository.revision,
-        ownerSessionId,
     });
-    driver.enqueue(job.jobId);
     const timeoutMs = dependencies.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS;
     const pollMs = dependencies.pollMs ?? DEFAULT_TEST_POLL_MS;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         if (exec.signal.aborted)
             throw exec.signal.reason ?? new Error("workflow test aborted");
-        const current = engine.status(job.jobId);
+        const current = service.status(authorization, job.jobId);
         if (current.graph.lifecycle === "COMPLETED") {
             if (!completedHandoffIsExact(current)) {
                 return testFailure(current, "workflow completed without an exact reviewed PR and Writer chat handoff");
@@ -142,7 +142,7 @@ async function runAcceptanceTest(engine, driver, dependencies, exec) {
         }
         await sleep(pollMs, exec.signal);
     }
-    const current = engine.status(job.jobId);
+    const current = service.status(authorization, job.jobId);
     return {
         ok: false,
         operation: "test",
@@ -152,7 +152,7 @@ async function runAcceptanceTest(engine, driver, dependencies, exec) {
         message: `workflow acceptance test timed out after ${timeoutMs} ms; durable job and PR were left intact for inspection`,
     };
 }
-export function defineInternetWorkflowTool(engine, driver, testDependencies = {}) {
+export function defineInternetWorkflowTool(service, testDependencies = {}) {
     return defineTool({
         name: "internet_workflow",
         description: "Create and control graph-driven durable coding workflows. test performs a full real workflow through exact-head review and Writer chat handoff without merging.",
@@ -220,38 +220,37 @@ export function defineInternetWorkflowTool(engine, driver, testDependencies = {}
             const operation = args.operation;
             try {
                 if (operation === "test")
-                    return await runAcceptanceTest(engine, driver, testDependencies, exec);
+                    return await runAcceptanceTest(service, testDependencies, exec);
+                const ownerSessionId = String(exec.agent?.id ?? "");
+                const authorization = workflowSessionAuthorizationContext(ownerSessionId);
                 if (operation === "start") {
                     if (typeof args.objective !== "string" ||
                         typeof args.repository !== "string" ||
                         typeof args.baseRevision !== "string") {
                         return { ok: false, operation, message: "start requires objective, repository, and baseRevision" };
                     }
-                    const job = engine.start({
+                    const job = service.start(authorization, {
                         objective: args.objective,
                         repository: args.repository,
                         baseRevision: args.baseRevision,
-                        ownerSessionId: String(exec.agent?.id ?? ""),
                     });
-                    driver.enqueue(job.jobId);
                     return { ok: true, operation, ...project(job) };
                 }
                 if (typeof args.jobId !== "string")
                     return { ok: false, operation, message: `${operation} requires jobId` };
                 let job;
                 if (operation === "status")
-                    job = engine.status(args.jobId);
+                    job = service.status(authorization, args.jobId);
                 else if (operation === "cancel")
-                    job = await driver.cancel(args.jobId);
-                else {
-                    job = engine.continue(args.jobId);
-                    driver.enqueue(job.jobId);
-                }
+                    job = await service.cancel(authorization, args.jobId);
+                else
+                    job = service.continue(authorization, args.jobId);
                 return { ok: true, operation, ...project(job) };
             }
             catch (error) {
-                if (error instanceof WorkflowRepositoryError)
+                if (error instanceof WorkflowRepositoryError || error instanceof WorkflowServiceError) {
                     return { ok: false, operation, message: error.message };
+                }
                 return { ok: false, operation, message: error instanceof Error ? error.message : String(error) };
             }
         },

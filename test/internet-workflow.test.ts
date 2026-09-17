@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineInternetWorkflowTool, type WorkflowTestDependencies } from "#internet/tools/internet-workflow";
+import { WorkflowRetentionManager } from "#internet/workflow/retention";
+import { WorkflowService } from "#internet/workflow/service";
 import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
 
 const roots: string[] = [];
@@ -11,17 +13,22 @@ const roots: string[] = [];
 function tool(testDependencies: WorkflowTestDependencies = {}) {
 	const root = mkdtempSync(join(tmpdir(), "internet-workflow-tool-"));
 	roots.push(root);
-	const { engine } = createWorkflowTestRuntime(root);
+	const { engine, jobs } = createWorkflowTestRuntime(root);
 	const driver = {
 		enqueue() {},
 		async cancel(jobId: string) {
 			return engine.cancel(jobId);
 		},
+		isActive() {
+			return false;
+		},
 	};
-	return defineInternetWorkflowTool(engine, driver, testDependencies);
+	const service = new WorkflowService(engine, driver, jobs, new WorkflowRetentionManager(root, jobs));
+	return defineInternetWorkflowTool(service, testDependencies);
 }
 
 const exec = { agent: { id: "agent-11" }, signal: new AbortController().signal } as never;
+const otherExec = { agent: { id: "agent-22" }, signal: new AbortController().signal } as never;
 
 afterEach(async () => {
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -74,6 +81,27 @@ describe("internet_workflow", () => {
 			jobId,
 			lifecycle: "CANCELLED",
 		});
+	});
+
+	it("denies cross-session status, cancel, and continue through the same service boundary", async () => {
+		const workflow = tool();
+		const started = await workflow.execute(
+			{
+				operation: "start",
+				objective: "Keep this private to one session",
+				repository: "https://github.com/example/repo",
+				baseRevision: "0123456789abcdef0123456789abcdef01234567",
+			},
+			exec,
+		);
+		const jobId = (started as { jobId: string }).jobId;
+		for (const operation of ["status", "cancel", "continue"] as const) {
+			await expect(workflow.execute({ operation, jobId }, otherExec)).resolves.toEqual({
+				ok: false,
+				operation,
+				message: `workflow job ${jobId} does not belong to this session`,
+			});
+		}
 	});
 
 	it("fails closed when required operation arguments are absent", async () => {

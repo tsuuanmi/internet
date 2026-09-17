@@ -56,6 +56,8 @@ export type { WorkflowCleanupAudit, WorkflowCleanupCandidate, WorkflowRetentionP
 export { DEFAULT_WORKFLOW_RETENTION_POLICY, WORKFLOW_RETENTION_AUDIT_SCHEMA, WorkflowRetentionError, WorkflowRetentionManager, } from "#internet/workflow/retention";
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
+export type { StartAuthorizedWorkflowInput, WorkflowAuthorizationContext, WorkflowPrincipal, WorkflowPrincipalKind, WorkflowServiceDriver, WorkflowServiceEngine, } from "#internet/workflow/service";
+export { WorkflowService, WorkflowServiceError, workflowSessionAuthorizationContext, } from "#internet/workflow/service";
 export type { WorkflowPromptContext, WorkflowReviewPromptContext, WorkflowTeamLane, WorkflowTeamPhase, } from "#internet/workflow/team-prompt-builder";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export type { WorkflowTeamRunner, WorkflowTeamStepRequest } from "#internet/workflow/team-runner";

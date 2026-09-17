@@ -2,19 +2,17 @@ import type { WorkflowEventJournal } from "#internet/workflow/events";
 import type { WorkflowGraphNode, WorkflowPhase } from "#internet/workflow/graph";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowRetentionManager } from "#internet/workflow/retention";
+import {
+	WorkflowService,
+	type WorkflowServiceDriver,
+	type WorkflowServiceEngine,
+	WorkflowServiceError,
+	workflowSessionAuthorizationContext,
+} from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
-import { workflowJobIsTerminal } from "#internet/workflow/types";
 
-export interface WorkflowOperatorEngine {
-	status(jobId: string): WorkflowJob;
-	continue(jobId: string): WorkflowJob;
-}
-
-export interface WorkflowOperatorDriver {
-	enqueue(jobId: string): void;
-	cancel(jobId: string): Promise<WorkflowJob>;
-	isActive(jobId: string): boolean;
-}
+export type WorkflowOperatorEngine = WorkflowServiceEngine;
+export type WorkflowOperatorDriver = WorkflowServiceDriver;
 
 export class WorkflowOperatorError extends Error {
 	constructor(message: string) {
@@ -23,42 +21,9 @@ export class WorkflowOperatorError extends Error {
 	}
 }
 
-function ownerJobs(jobs: WorkflowJobStore, ownerSessionId: string): readonly WorkflowJob[] {
-	return jobs
-		.list()
-		.filter((job) => job.ownerSessionId === ownerSessionId)
-		.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.jobId.localeCompare(b.jobId));
-}
-
-function selectJob(
-	jobs: WorkflowJobStore,
-	ownerSessionId: string,
-	explicitJobId: string | undefined,
-	requireActive: boolean,
-): WorkflowJob {
-	const owned = ownerJobs(jobs, ownerSessionId);
-	if (explicitJobId !== undefined) {
-		const job = owned.find((candidate) => candidate.jobId === explicitJobId);
-		if (job === undefined)
-			throw new WorkflowOperatorError(`workflow job ${explicitJobId} does not belong to this session`);
-		if (requireActive && workflowJobIsTerminal(job)) {
-			throw new WorkflowOperatorError(`workflow job ${job.jobId} is already terminal (${job.graph.lifecycle})`);
-		}
-		return job;
-	}
-	const active = owned.filter((job) => !workflowJobIsTerminal(job));
-	if (active.length === 1) return active[0]!;
-	if (active.length > 1) {
-		throw new WorkflowOperatorError(
-			`multiple active workflows exist for this session; specify a jobId: ${active.map((job) => job.jobId).join(", ")}`,
-		);
-	}
-	if (requireActive) throw new WorkflowOperatorError("this session has no active workflow");
-	if (owned.length === 1) return owned[0]!;
-	if (owned.length === 0) throw new WorkflowOperatorError("this session has no workflow jobs");
-	throw new WorkflowOperatorError(
-		`no active workflow exists and multiple historical jobs are available; specify a jobId: ${owned.map((job) => job.jobId).join(", ")}`,
-	);
+function asOperatorError(error: unknown): never {
+	if (error instanceof WorkflowServiceError) throw new WorkflowOperatorError(error.message);
+	throw error;
 }
 
 function compact(value: string, max = 88): string {
@@ -235,62 +200,79 @@ export function formatWorkflowStatus(
 }
 
 export class WorkflowOperator {
-	private readonly engine: WorkflowOperatorEngine;
-	private readonly driver: WorkflowOperatorDriver;
-	private readonly jobs: WorkflowJobStore;
+	private readonly service: WorkflowService;
 	private readonly events: WorkflowEventJournal;
-	private readonly retention: WorkflowRetentionManager;
 
+	constructor(service: WorkflowService, events: WorkflowEventJournal);
 	constructor(
 		engine: WorkflowOperatorEngine,
 		driver: WorkflowOperatorDriver,
 		jobs: WorkflowJobStore,
 		events: WorkflowEventJournal,
 		retention: WorkflowRetentionManager,
+	);
+	constructor(
+		serviceOrEngine: WorkflowService | WorkflowOperatorEngine,
+		eventsOrDriver: WorkflowEventJournal | WorkflowOperatorDriver,
+		jobs?: WorkflowJobStore,
+		events?: WorkflowEventJournal,
+		retention?: WorkflowRetentionManager,
 	) {
-		this.engine = engine;
-		this.driver = driver;
-		this.jobs = jobs;
+		if (serviceOrEngine instanceof WorkflowService) {
+			this.service = serviceOrEngine;
+			this.events = eventsOrDriver as WorkflowEventJournal;
+			return;
+		}
+		if (jobs === undefined || events === undefined || retention === undefined) {
+			throw new WorkflowOperatorError(
+				"legacy WorkflowOperator construction requires engine, driver, jobs, events, and retention",
+			);
+		}
+		this.service = new WorkflowService(serviceOrEngine, eventsOrDriver as WorkflowOperatorDriver, jobs, retention);
 		this.events = events;
-		this.retention = retention;
 	}
 
 	list(ownerSessionId: string): string {
-		return formatWorkflowList(ownerJobs(this.jobs, ownerSessionId));
+		try {
+			return formatWorkflowList(this.service.list(workflowSessionAuthorizationContext(ownerSessionId)));
+		} catch (error) {
+			return asOperatorError(error);
+		}
 	}
 
 	status(ownerSessionId: string, jobId?: string): string {
-		const job = selectJob(this.jobs, ownerSessionId, jobId, false);
-		return formatWorkflowStatus(job, this.events.list(job.jobId), this.driver.isActive(job.jobId));
+		try {
+			const job = this.service.status(workflowSessionAuthorizationContext(ownerSessionId), jobId);
+			return formatWorkflowStatus(job, this.events.list(job.jobId), this.service.isActive(job.jobId));
+		} catch (error) {
+			return asOperatorError(error);
+		}
 	}
 
 	async stop(ownerSessionId: string, jobId?: string): Promise<string> {
-		const selected = selectJob(this.jobs, ownerSessionId, jobId, true);
-		const cancelled = await this.driver.cancel(selected.jobId);
-		return `Workflow ${cancelled.jobId} cancelled.\nPhase: ${cancelled.graph.phase}\nStatus: ${cancelled.graph.lifecycle}`;
+		try {
+			const cancelled = await this.service.cancel(workflowSessionAuthorizationContext(ownerSessionId), jobId);
+			return `Workflow ${cancelled.jobId} cancelled.\nPhase: ${cancelled.graph.phase}\nStatus: ${cancelled.graph.lifecycle}`;
+		} catch (error) {
+			return asOperatorError(error);
+		}
 	}
 
 	async delete(ownerSessionId: string, jobId?: string): Promise<string> {
-		if (jobId === undefined) throw new WorkflowOperatorError("/workflow delete requires an explicit jobId");
-		const selected = selectJob(this.jobs, ownerSessionId, jobId, false);
-		const terminal = workflowJobIsTerminal(selected) ? selected : await this.driver.cancel(selected.jobId);
-		const deleted = this.retention.deleteNow({
-			jobId: terminal.jobId,
-			expectedUpdatedAt: terminal.updatedAt,
-			operatorSessionId: ownerSessionId,
-		});
-		return `Workflow ${deleted.jobId} deleted. Previous status: ${deleted.lifecycle}. Removed ${deleted.deletedFiles} durable artifact file(s).`;
+		try {
+			const deleted = await this.service.delete(workflowSessionAuthorizationContext(ownerSessionId), jobId);
+			return `Workflow ${deleted.jobId} deleted. Previous status: ${deleted.lifecycle}. Removed ${deleted.deletedFiles} durable artifact file(s).`;
+		} catch (error) {
+			return asOperatorError(error);
+		}
 	}
 
 	continue(ownerSessionId: string, jobId?: string): string {
-		const selected = selectJob(this.jobs, ownerSessionId, jobId, true);
-		if (this.driver.isActive(selected.jobId))
-			throw new WorkflowOperatorError(`workflow job ${selected.jobId} already has an active driver`);
-		if (selected.graph.lifecycle !== "BLOCKED" && selected.graph.lifecycle !== "RECOVERING") {
-			throw new WorkflowOperatorError(`workflow job ${selected.jobId} has no explicit recovery path`);
+		try {
+			const resumed = this.service.continue(workflowSessionAuthorizationContext(ownerSessionId), jobId);
+			return `Workflow ${resumed.jobId} resumed.\nPhase: ${resumed.graph.phase}\nStatus: ${resumed.graph.lifecycle}`;
+		} catch (error) {
+			return asOperatorError(error);
 		}
-		const resumed = this.engine.continue(selected.jobId);
-		this.driver.enqueue(resumed.jobId);
-		return `Workflow ${resumed.jobId} resumed.\nPhase: ${resumed.graph.phase}\nStatus: ${resumed.graph.lifecycle}`;
 	}
 }
