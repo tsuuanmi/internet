@@ -8,6 +8,9 @@ import type {
 	WorkflowWorkItem,
 } from "#internet/workflow/kernel/types";
 import {
+	WORKFLOW_ARTIFACT_LINEAGE_RELATIONS,
+} from "#internet/workflow/kernel/types";
+import {
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
 	WORKFLOW_SEMANTIC_SCHEMA_REFS,
 	type WorkflowSemanticArtifactType,
@@ -38,6 +41,11 @@ export interface WorkflowSemanticPromotionContext {
 	readonly artifactStore: WorkflowArtifactStore;
 }
 
+export interface WorkflowSemanticPromotionResult {
+	readonly artifacts: readonly WorkflowArtifact[];
+	readonly receiptIds: readonly string[];
+}
+
 function assertText(value: unknown, label: string): asserts value is string {
 	if (typeof value !== "string" || value.trim() === "" || value.includes("\0")) throw new Error(`invalid ${label}`);
 }
@@ -52,8 +60,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function assertSemanticType(value: unknown): asserts value is WorkflowSemanticArtifactType {
-	if (typeof value !== "string" || !SEMANTIC_TYPES.has(value))
-		throw new Error("invalid workflow semantic artifact type");
+	if (typeof value !== "string" || !SEMANTIC_TYPES.has(value)) throw new Error("invalid workflow semantic artifact type");
+}
+
+function parseLineage(value: unknown): readonly WorkflowArtifactLineage[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) throw new Error("invalid workflow semantic artifact lineage");
+	const seen = new Set<string>();
+	return value.map((item) => {
+		if (!isRecord(item) || typeof item.relation !== "string")
+			throw new Error("invalid workflow semantic artifact lineage");
+		if (!WORKFLOW_ARTIFACT_LINEAGE_RELATIONS.includes(item.relation as WorkflowArtifactLineage["relation"]))
+			throw new Error("invalid workflow semantic artifact lineage relation");
+		if (!isRecord(item.artifact)) throw new Error("invalid workflow semantic artifact lineage reference");
+		assertHex(item.artifact.runId, 32, "workflow semantic artifact lineage run id");
+		assertHex(item.artifact.artifactId, 64, "workflow semantic artifact lineage artifact id");
+		const lineage = item as unknown as WorkflowArtifactLineage;
+		const key = `${lineage.relation}:${lineage.artifact.runId}:${lineage.artifact.artifactId}`;
+		if (seen.has(key)) throw new Error(`duplicate workflow semantic artifact lineage ${key}`);
+		seen.add(key);
+		return lineage;
+	});
 }
 
 function schemaRef(type: WorkflowSemanticArtifactType): WorkflowVersionRef {
@@ -88,10 +115,8 @@ function sameVersionRef(left: WorkflowVersionRef, right: WorkflowVersionRef): bo
 function assertPromotionContext(context: WorkflowSemanticPromotionContext): void {
 	const { workItem, inputBundle, capability } = context;
 	if (workItem.runId !== inputBundle.runId) throw new Error("workflow semantic promotion run mismatch");
-	if (workItem.workItemId !== inputBundle.workItemId)
-		throw new Error("workflow semantic promotion work item mismatch");
-	if (workItem.inputBundleId !== inputBundle.bundleId)
-		throw new Error("workflow semantic promotion InputBundle mismatch");
+	if (workItem.workItemId !== inputBundle.workItemId) throw new Error("workflow semantic promotion work item mismatch");
+	if (workItem.inputBundleId !== inputBundle.bundleId) throw new Error("workflow semantic promotion InputBundle mismatch");
 	if (!sameVersionRef(workItem.capability, capability))
 		throw new Error("workflow semantic promotion capability does not match WorkItem");
 	if (!sameVersionRef(inputBundle.capability, capability))
@@ -107,13 +132,10 @@ export function parseWorkflowSemanticExecutionResult(value: unknown): WorkflowSe
 	const artifacts = value.artifacts.map((item) => {
 		if (!isRecord(item)) throw new Error("invalid workflow semantic artifact draft");
 		assertSemanticType(item.type);
-		const payload = parseWorkflowSemanticPayload(item.type, item.payload);
-		if (item.lineage !== undefined && !Array.isArray(item.lineage))
-			throw new Error("invalid workflow semantic artifact lineage");
 		return {
 			type: item.type,
-			payload,
-			lineage: item.lineage as readonly WorkflowArtifactLineage[] | undefined,
+			payload: parseWorkflowSemanticPayload(item.type, item.payload),
+			lineage: parseLineage(item.lineage),
 		};
 	});
 	if (!Array.isArray(value.receiptIds)) throw new Error("invalid workflow semantic execution receipt ids");
@@ -135,19 +157,26 @@ export function parseWorkflowSemanticExecutionResult(value: unknown): WorkflowSe
 export function promoteWorkflowSemanticResult(
 	context: WorkflowSemanticPromotionContext,
 	resultValue: unknown,
-): readonly WorkflowArtifact[] {
+): WorkflowSemanticPromotionResult {
 	assertPromotionContext(context);
 	const result = parseWorkflowSemanticExecutionResult(resultValue);
-	if (result.workItemId !== context.workItem.workItemId)
-		throw new Error("workflow semantic result work item mismatch");
-	if (result.inputBundleId !== context.inputBundle.bundleId)
-		throw new Error("workflow semantic result input bundle mismatch");
-	if (!context.workItem.executionIds.includes(result.executionId))
-		throw new Error("workflow semantic result execution mismatch");
-	const allowed = new Set(context.capability.producedArtifactTypes);
-	return result.artifacts.map((draft) => {
-		if (!allowed.has(draft.type)) throw new Error(`workflow capability cannot produce artifact type ${draft.type}`);
-		return context.artifactStore.create({
+	if (result.workItemId !== context.workItem.workItemId) throw new Error("workflow semantic result work item mismatch");
+	if (result.inputBundleId !== context.inputBundle.bundleId) throw new Error("workflow semantic result input bundle mismatch");
+	if (!context.workItem.executionIds.includes(result.executionId)) throw new Error("workflow semantic result execution mismatch");
+
+	const allowedArtifacts = new Set(context.capability.producedArtifactTypes);
+	for (const draft of result.artifacts) {
+		if (!allowedArtifacts.has(draft.type))
+			throw new Error(`workflow capability cannot produce artifact type ${draft.type}`);
+	}
+	const allowedReceipts = new Set(context.capability.producedReceiptTypes);
+	for (const receiptId of result.receiptIds) {
+		if (allowedReceipts.size === 0 || !allowedReceipts.has(receiptId))
+			throw new Error(`workflow capability cannot produce receipt ${receiptId}`);
+	}
+
+	const artifacts = result.artifacts.map((draft) =>
+		context.artifactStore.create({
 			runId: context.workItem.runId,
 			type: draft.type,
 			schemaRef: schemaRef(draft.type),
@@ -155,6 +184,7 @@ export function promoteWorkflowSemanticResult(
 			inputBundleId: context.inputBundle.bundleId,
 			lineage: draft.lineage,
 			payload: draft.payload,
-		});
-	});
+		}),
+	);
+	return { artifacts, receiptIds: result.receiptIds };
 }
