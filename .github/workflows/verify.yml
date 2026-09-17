@@ -30,10 +30,33 @@ jobs:
             fs.writeFileSync(path, source.replace(from, to));
           }
 
+          const acyclicHelper = [
+            'function assertAcyclicTaskLinks(',
+            '\ttasks: readonly WorkflowPlanTask[],',
+            '\tlinks: (task: WorkflowPlanTask) => readonly string[],',
+            '\tlabel: string,',
+            '): void {',
+            '\tconst byId = new Map(tasks.map((task) => [task.taskId, task]));',
+            '\tconst visiting = new Set<string>();',
+            '\tconst visited = new Set<string>();',
+            '\tconst visit = (taskId: string): void => {',
+            '\t\tif (visited.has(taskId)) return;',
+            '\t\tif (visiting.has(taskId)) throw new Error("workflow plan " + label + " cycle includes " + taskId);',
+            '\t\tvisiting.add(taskId);',
+            '\t\tconst task = byId.get(taskId);',
+            '\t\tif (task !== undefined) for (const linkedId of links(task)) visit(linkedId);',
+            '\t\tvisiting.delete(taskId);',
+            '\t\tvisited.add(taskId);',
+            '\t};',
+            '\tfor (const task of tasks) visit(task.taskId);',
+            '}',
+            '',
+            'function assertCriterionRef(value: unknown): asserts value is WorkflowCriterionRef {',
+          ].join('\n');
           replace(
             'src/workflow/semantic/validation.ts',
             'function assertCriterionRef(value: unknown): asserts value is WorkflowCriterionRef {',
-            `function assertAcyclicTaskLinks(\n\ttasks: readonly WorkflowPlanTask[],\n\tlinks: (task: WorkflowPlanTask) => readonly string[],\n\tlabel: string,\n): void {\n\tconst byId = new Map(tasks.map((task) => [task.taskId, task]));\n\tconst visiting = new Set<string>();\n\tconst visited = new Set<string>();\n\tconst visit = (taskId: string): void => {\n\t\tif (visited.has(taskId)) return;\n\t\tif (visiting.has(taskId)) throw new Error(\`workflow plan ${label} cycle includes \${taskId}\`);\n\t\tvisiting.add(taskId);\n\t\tconst task = byId.get(taskId);\n\t\tif (task !== undefined) for (const linkedId of links(task)) visit(linkedId);\n\t\tvisiting.delete(taskId);\n\t\tvisited.add(taskId);\n\t};\n\tfor (const task of tasks) visit(task.taskId);\n}\n\nfunction assertCriterionRef(value: unknown): asserts value is WorkflowCriterionRef {`,
+            acyclicHelper,
           );
           replace(
             'src/workflow/semantic/validation.ts',
@@ -66,6 +89,7 @@ jobs:
             '\treturn parseWorkflowPlanningOutput(await executor.execute(request));\n}',
             '\tconst output = parseWorkflowPlanningOutput(await executor.execute(request));\n\tif (output.mode !== request.mode) throw new Error("workflow planning output mode does not match request");\n\treturn output;\n}',
           );
+
           replace(
             'src/workflow/semantic/index.ts',
             '\tparseWorkflowPlanningOutput,\n\tWORKFLOW_PLANNING_CAPABILITY,',
@@ -100,53 +124,8 @@ jobs:
           replace(
             'test/workflow-semantic-validation.test.ts',
             '\tit("rejects Need types outside the registered semantic vocabulary", () => {',
-            '\tit("rejects cyclic PlanTask dependencies", () => {\n\t\texpect(() =>\n\t\t\tparseWorkflowPlanPayload({\n\t\t\t\tplanId: "plan-cycle",\n\t\t\t\tversion: "1",\n\t\t\t\tobjective: objectiveArtifact,\n\t\t\t\tacceptanceCriteria: criteriaArtifact,\n\t\t\t\ttasks: [\n\t\t\t\t\t{\n\t\t\t\t\t\ttaskId: "task-1",\n\t\t\t\t\t\ttitle: "One",\n\t\t\t\t\t\tdescription: "First task",\n\t\t\t\t\t\tdependsOn: ["task-2"],\n\t\t\t\t\t\tcriterionIds: [],\n\t\t\t\t\t\tneedIds: [],\n\t\t\t\t\t},\n\t\t\t\t\t{\n\t\t\t\t\t\ttaskId: "task-2",\n\t\t\t\t\t\ttitle: "Two",\n\t\t\t\t\t\tdescription: "Second task",\n\t\t\t\t\t\tdependsOn: ["task-1"],\n\t\t\t\t\t\tcriterionIds: [],\n\t\t\t\t\t\tneedIds: [],\n\t\t\t\t\t},\n\t\t\t\t],\n\t\t\t\tassumptions: [],\n\t\t\t\trisks: [],\n\t\t\t}),\n\t\t).toThrow("dependency cycle");\n\t});\n\n\tit("rejects Need types outside the registered semantic vocabulary", () => {',
+            '\tit("rejects cyclic PlanTask dependencies", () => {\n\t\texpect(() =>\n\t\t\tparseWorkflowPlanPayload({\n\t\t\t\tplanId: "plan-cycle",\n\t\t\t\tversion: "1",\n\t\t\t\tobjective: objectiveArtifact,\n\t\t\t\tacceptanceCriteria: criteriaArtifact,\n\t\t\t\ttasks: [\n\t\t\t\t\t{ taskId: "task-1", title: "One", description: "First task", dependsOn: ["task-2"], criterionIds: [], needIds: [] },\n\t\t\t\t\t{ taskId: "task-2", title: "Two", description: "Second task", dependsOn: ["task-1"], criterionIds: [], needIds: [] },\n\t\t\t\t],\n\t\t\t\tassumptions: [],\n\t\t\t\trisks: [],\n\t\t\t}),\n\t\t).toThrow("dependency cycle");\n\t});\n\n\tit("rejects Need types outside the registered semantic vocabulary", () => {',
           );
-
-          replace(
-            '.internet/workspace/TODO.md',
-            '**Design Gate D0 is complete. Phase 0 has landed on `main`, and Phase 1 durable admission is implemented in PR #39.**\n\nThe current production migration now has one authoritative `WorkflowService` boundary, explicit principal/authorization context, durable provenance-preserving admission, deterministic preflight, explicit Local/User confirmation, exact accepted-spec activation, and crash-safe idempotent activation of the current software `WorkflowJob` target.\n\nThe next implementation milestone is the parallel vNext kernel substrate (`WorkflowRun`, Artifact, WorkItem, InputBundle, capability registry) without mutating the existing v3 durable-job schema in place.',
-            '**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 semantic protocol and baseline convergence are implemented in PR #41.**\n\nThe migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, a planning capability contract, exact result promotion, assessment currentness, and deterministic baseline convergence while the v3 runtime remains supported during migration.\n\nThe next implementation milestone after Phase 3 is the deterministic vNext RunEngine / Driver / Scheduler beside the existing v3 runtime.',
-          );
-          const todoPath = '.internet/workspace/TODO.md';
-          let todo = fs.readFileSync(todoPath, 'utf8');
-          const completed = [
-            'Define domain-neutral `WorkflowRun` type.',
-            'Add `WorkflowRunStore`.',
-            'Define generic immutable/superseding Artifact envelope.',
-            'Add `ArtifactStore`.',
-            'Define `WorkItem` lifecycle separately from semantic Need lifecycle.',
-            'Add `WorkItemStore`.',
-            'Define exact `InputBundle` schema and hash rules.',
-            'Define deterministic capability registry interface.',
-            'Define execution/result/receipt references without collapsing them into Artifact.',
-            'Bind profile/policy/capability/schema versions needed for long-lived recovery.',
-            'Keep provider/account/session allocation below capability identity.',
-            'Define ObjectiveArtifact.',
-            'Define AcceptanceCriteriaArtifact with provenance/authority.',
-            'Define PlanArtifact and PlanTask identity.',
-            'Define typed Need schema and request-owner binding.',
-            'Define FindingArtifact.',
-            'Define EvidenceArtifact.',
-            'Define ReportArtifact.',
-            'Define DeliveryArtifact.',
-            'Define UserFeedbackArtifact.',
-            'Define explicit execution-result-to-artifact promotion/validation path.',
-            'Keep `NodeResult` / execution result, Handoff/Receipt, and semantic Artifact separate.',
-            'Define a first-class `planning` capability contract.',
-            'Add a planning executor adapter/typed output contract; do not assume current `WorkflowTeamRunner` already provides Planner semantics.',
-            'Define Planner re-entry triggers without fixed phase assumptions.',
-            'Keep `plan_change`, `requirements_change`, and `clarification` distinct.',
-            'Define user/policy-owned acceptance-criterion authority checks.',
-            'Implement assessment identity and exact subject binding.',
-            'Implement verdicts: SATISFIED / UNSATISFIED / INCONCLUSIVE.',
-            'Implement deterministic vs Reviewer vs User assessment methods/policies.',
-            'Implement stale assessment rules when criterion/head/InputBundle/evidence changes.',
-            'Implement a minimum profile convergence predicate over current valid assessments, Findings, required deliverables, authority gates, and external state.',
-            'Distinguish WorkItem completion, PlanTask execution completion, criterion satisfaction, and WorkflowRun convergence in runtime state/tests.',
-          ];
-          for (const item of completed) todo = todo.replace(`- [ ] ${item}`, `- [x] ${item}`);
-          fs.writeFileSync(todoPath, todo);
           NODE
           npx biome check --write src/workflow/semantic test/workflow-semantic-planning.test.ts test/workflow-semantic-validation.test.ts
       - run: npm run check
@@ -155,10 +134,10 @@ jobs:
       - name: Commit final Phase 3 source and dist
         if: github.event_name == 'push'
         run: |
-          if [ -n "$(git status --porcelain --untracked-files=all -- src test dist .internet/workspace/TODO.md)" ]; then
+          if [ -n "$(git status --porcelain --untracked-files=all -- src test dist)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A src test dist .internet/workspace/TODO.md
+            git add -A src test dist
             git commit -m "refactor: complete phase 3 semantic contracts"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
