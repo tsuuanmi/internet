@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+	type WorkflowCapabilityDescriptor,
 	WorkflowCapabilityRegistry,
 	WorkflowCapabilityRegistryError,
-	type WorkflowCapabilityDescriptor,
 } from "#internet/workflow/capability-registry";
 
 function descriptor(version = "1"): WorkflowCapabilityDescriptor {
