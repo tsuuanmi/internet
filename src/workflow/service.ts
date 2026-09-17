@@ -35,7 +35,7 @@ export interface WorkflowStartAdmissionContext {
 	readonly authorityProvenance: Extract<WorkflowAdmissionProvenance, "user_explicit" | "local_interpreted">;
 }
 
-export type StartAuthorizedWorkflowInput = Omit<StartWorkflowInput, "ownerSessionId"> & {
+export type StartAuthorizedWorkflowInput = Omit<StartWorkflowInput, "ownerSessionId" | "jobId"> & {
 	readonly admission?: WorkflowStartAdmissionContext;
 };
 
@@ -61,6 +61,20 @@ function legacyOwnerSessionId(context: WorkflowAuthorizationContext): string {
 		throw new WorkflowServiceError("legacy workflow operation requires an owner session binding");
 	}
 	return ownerSessionId;
+}
+
+function assertMatchingLegacyActivation(
+	job: WorkflowJob,
+	expected: { objective: string; repository: string; baseRevision: string; ownerSessionId: string },
+): void {
+	if (
+		job.objective !== expected.objective ||
+		job.repository !== expected.repository ||
+		job.baseRevision !== expected.baseRevision ||
+		job.ownerSessionId !== expected.ownerSessionId
+	) {
+		throw new WorkflowServiceError(`legacy workflow ${job.jobId} conflicts with accepted admission identity`);
+	}
 }
 
 export class WorkflowService {
@@ -135,12 +149,19 @@ export class WorkflowService {
 				if (repository === undefined || baseRevision === undefined) {
 					throw new WorkflowServiceError("accepted software admission is missing repository identity");
 				}
-				const job = this.engine.start({
+				const targetId = spec.admissionId;
+				const expected = {
 					objective: spec.draft.source.rawText,
 					repository,
 					baseRevision,
 					ownerSessionId,
-				});
+				};
+				let job = this.jobs.get(targetId);
+				if (job === undefined) {
+					job = this.engine.start({ ...expected, jobId: targetId });
+				} else {
+					assertMatchingLegacyActivation(job, expected);
+				}
 				this.driver.enqueue(job.jobId);
 				return { result: job, targetKind: "legacy_v3_job", targetId: job.jobId };
 			},
