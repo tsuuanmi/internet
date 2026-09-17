@@ -1,6 +1,6 @@
 import type { AdmissionPreview, WorkflowAdmissionDraft } from "#internet/workflow/admission/types";
 import { parseWorkflowAdmissionDraft } from "#internet/workflow/admission/validation";
-import type { WorkflowProfileRegistry } from "#internet/workflow/profiles/types";
+import type { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
 
 export function preflightWorkflowAdmission(
 	admissionId: string,
