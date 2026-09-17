@@ -1,5 +1,5 @@
 import type { WorkflowAdmissionService } from "#internet/workflow/admission/service";
-import type { WorkflowAdmissionProvenance } from "#internet/workflow/admission/types";
+import type { AcceptedAdmissionSpec, WorkflowAdmissionProvenance } from "#internet/workflow/admission/types";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowDeletionReceipt, WorkflowRetentionManager } from "#internet/workflow/retention";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
@@ -63,11 +63,27 @@ function legacyOwnerSessionId(context: WorkflowAuthorizationContext): string {
 	return ownerSessionId;
 }
 
-function assertMatchingLegacyActivation(
-	job: WorkflowJob,
-	expected: { objective: string; repository: string; baseRevision: string; ownerSessionId: string },
-): void {
+function legacyActivationInput(spec: AcceptedAdmissionSpec, ownerSessionId: string) {
+	if (spec.profile.id !== "software_change") {
+		throw new WorkflowServiceError(`legacy v3 activation does not support profile ${spec.profile.id}`);
+	}
+	const repository = spec.draft.target?.repository?.value;
+	const baseRevision = spec.draft.target?.baseRevision?.value;
+	if (repository === undefined || baseRevision === undefined) {
+		throw new WorkflowServiceError("accepted software admission is missing repository identity");
+	}
+	return {
+		jobId: spec.admissionId,
+		objective: spec.draft.source.rawText,
+		repository,
+		baseRevision,
+		ownerSessionId,
+	};
+}
+
+function assertMatchingLegacyActivation(job: WorkflowJob, expected: StartWorkflowInput): void {
 	if (
+		job.jobId !== expected.jobId ||
 		job.objective !== expected.objective ||
 		job.repository !== expected.repository ||
 		job.baseRevision !== expected.baseRevision ||
@@ -135,30 +151,34 @@ export class WorkflowService {
 		if (current.state !== "ACCEPTED" || current.acceptedSpecHash === undefined) {
 			throw new WorkflowServiceError(`workflow admission ${current.admissionId} did not reach accepted state`);
 		}
-		return this.admissions.activate(
-			context.principal,
+		return this.activateLegacyAdmission(
+			context,
 			current.admissionId,
 			current.revision,
 			current.acceptedSpecHash,
+		);
+	}
+
+	activateLegacyAdmission(
+		context: WorkflowAuthorizationContext,
+		admissionId: string,
+		expectedRevision: number,
+		expectedAcceptedSpecHash: string,
+	): WorkflowJob {
+		const ownerSessionId = legacyOwnerSessionId(context);
+		if (this.admissions === undefined) {
+			throw new WorkflowServiceError("durable workflow admission is not configured");
+		}
+		return this.admissions.activate(
+			context.principal,
+			admissionId,
+			expectedRevision,
+			expectedAcceptedSpecHash,
 			(spec) => {
-				if (spec.profile.id !== "software_change") {
-					throw new WorkflowServiceError(`legacy v3 activation does not support profile ${spec.profile.id}`);
-				}
-				const repository = spec.draft.target?.repository?.value;
-				const baseRevision = spec.draft.target?.baseRevision?.value;
-				if (repository === undefined || baseRevision === undefined) {
-					throw new WorkflowServiceError("accepted software admission is missing repository identity");
-				}
-				const targetId = spec.admissionId;
-				const expected = {
-					objective: spec.draft.source.rawText,
-					repository,
-					baseRevision,
-					ownerSessionId,
-				};
-				let job = this.jobs.get(targetId);
+				const expected = legacyActivationInput(spec, ownerSessionId);
+				let job = this.jobs.get(expected.jobId!);
 				if (job === undefined) {
-					job = this.engine.start({ ...expected, jobId: targetId });
+					job = this.engine.start(expected);
 				} else {
 					assertMatchingLegacyActivation(job, expected);
 				}
