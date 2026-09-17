@@ -42,13 +42,25 @@ function preflightFailure(record: WorkflowAdmissionRecord): WorkflowServiceError
 }
 
 export class WorkflowService {
+	private readonly engine: WorkflowServiceEngine;
+	private readonly driver: WorkflowServiceDriver;
+	private readonly jobs: WorkflowJobStore;
+	private readonly retention: WorkflowRetentionManager;
+	private readonly admissionService: WorkflowAdmissionService;
+
 	constructor(
-		private readonly engine: WorkflowServiceEngine,
-		private readonly driver: WorkflowServiceDriver,
-		private readonly jobs: WorkflowJobStore,
-		private readonly retention: WorkflowRetentionManager,
-		private readonly admissionService: WorkflowAdmissionService,
-	) {}
+		engine: WorkflowServiceEngine,
+		driver: WorkflowServiceDriver,
+		jobs: WorkflowJobStore,
+		retention: WorkflowRetentionManager,
+		admissionService: WorkflowAdmissionService,
+	) {
+		this.engine = engine;
+		this.driver = driver;
+		this.jobs = jobs;
+		this.retention = retention;
+		this.admissionService = admissionService;
+	}
 
 	admit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord {
 		assertWorkflowPrincipal(context.principal);
