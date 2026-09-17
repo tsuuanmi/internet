@@ -138,7 +138,6 @@ export interface WorkflowNeedPayload {
 	readonly question: string;
 	readonly subjects: readonly WorkflowEntityRef[];
 	readonly relatedArtifacts: readonly WorkflowArtifactRef[];
-	readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
 export interface WorkflowFindingPayload {
