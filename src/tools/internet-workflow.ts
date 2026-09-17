@@ -143,7 +143,7 @@ async function runAcceptanceTest(
 			result: "FAIL" as const,
 			accountPreflight,
 			message: `workflow test not started; required accounts are not ready: ${unavailable.map((status) => `${status.accountId}=${status.state}`).join(", ")}`,
-			};
+		};
 	}
 
 	const repository = await resolveWorkflowRepository(cwd, exec.signal, dependencies.runGit, "internet_workflow test");

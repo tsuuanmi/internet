@@ -1,13 +1,13 @@
 import {
-	WORKFLOW_ADMISSION_CONFIRMATION_LEVELS,
-	WORKFLOW_ADMISSION_PROVENANCE,
-	WORKFLOW_ADMISSION_SOURCE_KINDS,
-	WORKFLOW_ADMISSION_STATES,
 	type AcceptedAdmissionSpec,
 	type AdmissionActivationReceipt,
 	type AdmissionConfirmationReceipt,
 	type AdmissionPreview,
 	type ProvenancedValue,
+	WORKFLOW_ADMISSION_CONFIRMATION_LEVELS,
+	WORKFLOW_ADMISSION_PROVENANCE,
+	WORKFLOW_ADMISSION_SOURCE_KINDS,
+	WORKFLOW_ADMISSION_STATES,
 	type WorkflowAdmissionDraft,
 	type WorkflowAdmissionRecord,
 } from "#internet/workflow/admission/types";
@@ -145,10 +145,7 @@ function assertPreview(value: unknown, admissionId: string, draftHash: string): 
 	}
 }
 
-function assertConfirmation(
-	value: unknown,
-	draftHash: string,
-): asserts value is AdmissionConfirmationReceipt {
+function assertConfirmation(value: unknown, draftHash: string): asserts value is AdmissionConfirmationReceipt {
 	if (!isRecord(value)) throw new Error("invalid admission confirmation receipt");
 	if (
 		value.schema !== "@tsuuanmi/internet-workflow-admission-confirmation" ||
@@ -221,7 +218,12 @@ export function parseWorkflowAdmissionRecord(value: unknown): WorkflowAdmissionR
 	) {
 		throw new Error("unsupported workflow admission record schema");
 	}
-	if (!isRecord(value.owner) || typeof value.owner.kind !== "string" || typeof value.owner.id !== "string" || value.owner.id.trim() === "")
+	if (
+		!isRecord(value.owner) ||
+		typeof value.owner.kind !== "string" ||
+		typeof value.owner.id !== "string" ||
+		value.owner.id.trim() === ""
+	)
 		throw new Error("invalid admission owner");
 	if (typeof value.state !== "string" || !(WORKFLOW_ADMISSION_STATES as readonly string[]).includes(value.state))
 		throw new Error("invalid admission state");

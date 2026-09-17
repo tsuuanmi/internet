@@ -27,7 +27,10 @@ function materialUserConfirmationReasons(draft: WorkflowAdmissionDraft) {
 			});
 		}
 	}
-	if (draft.authority?.externalPublication?.value === true && draft.authority.externalPublication.provenance !== "user_explicit") {
+	if (
+		draft.authority?.externalPublication?.value === true &&
+		draft.authority.externalPublication.provenance !== "user_explicit"
+	) {
 		reasons.push({
 			field: "authority.externalPublication",
 			reason: "external publication authority requires explicit User confirmation",
@@ -73,7 +76,8 @@ export const SOFTWARE_WORKFLOW_PROFILE: WorkflowProfileDescriptor = {
 				confirmationReasons: [
 					{
 						field: "source.rawText",
-						reason: "workflow objective was supplied by the Local Agent rather than captured directly from User input",
+						reason:
+							"workflow objective was supplied by the Local Agent rather than captured directly from User input",
 						proposedValue: draft.source.rawText,
 						provenance: "local_interpreted",
 					},

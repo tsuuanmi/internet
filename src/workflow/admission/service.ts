@@ -35,11 +35,13 @@ function defaultId(): string {
 }
 
 function assertOwner(owner: WorkflowAdmissionOwner): void {
-	if (owner.kind.trim() === "" || owner.id.trim() === "") throw new WorkflowAdmissionServiceError("admission owner is required");
+	if (owner.kind.trim() === "" || owner.id.trim() === "")
+		throw new WorkflowAdmissionServiceError("admission owner is required");
 }
 
 function acceptedSpec(record: WorkflowAdmissionRecord, acceptedAt: string): AcceptedAdmissionSpec {
-	if (record.preview === undefined) throw new WorkflowAdmissionServiceError("admission must be preflighted before acceptance");
+	if (record.preview === undefined)
+		throw new WorkflowAdmissionServiceError("admission must be preflighted before acceptance");
 	return {
 		schema: "@tsuuanmi/internet-workflow-admission-spec",
 		version: 1,
@@ -156,7 +158,9 @@ export class WorkflowAdmissionService {
 				throw new WorkflowAdmissionServiceError(`admission ${admissionId} is not awaiting confirmation`);
 			}
 			if (input.expectedDraftHash !== current.draftHash) {
-				throw new WorkflowAdmissionServiceError("admission draft changed before confirmation; re-preflight is required");
+				throw new WorkflowAdmissionServiceError(
+					"admission draft changed before confirmation; re-preflight is required",
+				);
 			}
 			const required = current.preview.confirmation.level;
 			if (required === "USER_CONFIRM" && input.provenance !== "user_explicit") {
@@ -197,7 +201,11 @@ export class WorkflowAdmissionService {
 			if (current.owner.kind !== owner.kind || current.owner.id !== owner.id) {
 				throw new WorkflowAdmissionServiceError(`admission ${admissionId} does not belong to this principal`);
 			}
-			if (current.state !== "ACCEPTED" || current.acceptedSpec === undefined || current.acceptedSpecHash === undefined) {
+			if (
+				current.state !== "ACCEPTED" ||
+				current.acceptedSpec === undefined ||
+				current.acceptedSpecHash === undefined
+			) {
 				throw new WorkflowAdmissionServiceError(`admission ${admissionId} is not accepted`);
 			}
 			if (current.acceptedSpecHash !== expectedAcceptedSpecHash) {

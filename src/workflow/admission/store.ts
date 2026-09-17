@@ -40,7 +40,8 @@ export class WorkflowAdmissionStore {
 	create(record: WorkflowAdmissionRecord): WorkflowAdmissionRecord {
 		parseWorkflowAdmissionRecord(record);
 		const path = this.pathFor(record.admissionId);
-		if (existsSync(path)) throw new WorkflowAdmissionStoreError(`workflow admission ${record.admissionId} already exists`);
+		if (existsSync(path))
+			throw new WorkflowAdmissionStoreError(`workflow admission ${record.admissionId} already exists`);
 		ensurePrivateDirectory(this.admissionsDir);
 		writePrivateJson(path, record);
 		return record;
@@ -82,14 +83,16 @@ export class WorkflowAdmissionStore {
 		mutate: (current: WorkflowAdmissionRecord) => WorkflowAdmissionRecord,
 	): WorkflowAdmissionRecord {
 		const current = this.get(admissionId);
-		if (current === undefined) throw new WorkflowAdmissionStoreError(`workflow admission ${admissionId} does not exist`);
+		if (current === undefined)
+			throw new WorkflowAdmissionStoreError(`workflow admission ${admissionId} does not exist`);
 		if (current.revision !== expectedRevision) {
 			throw new WorkflowAdmissionStoreError(
 				`workflow admission ${admissionId} revision conflict: expected ${expectedRevision}, current ${current.revision}`,
 			);
 		}
 		const next = mutate(current);
-		if (next.admissionId !== current.admissionId) throw new WorkflowAdmissionStoreError("workflow admission id cannot change");
+		if (next.admissionId !== current.admissionId)
+			throw new WorkflowAdmissionStoreError("workflow admission id cannot change");
 		if (next.revision !== current.revision + 1) {
 			throw new WorkflowAdmissionStoreError("workflow admission revision must increment by one");
 		}
