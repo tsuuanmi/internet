@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { WorkflowRunStore, WorkflowRunStoreError } from "#internet/workflow/run-store";
-import { createWorkflowTestRuntime } from "./workflow-test-fixture";
+import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
 
 const runId = "11111111111111111111111111111111";
 const admissionId = "22222222222222222222222222222222";
