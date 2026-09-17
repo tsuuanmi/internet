@@ -1,0 +1,40 @@
+name: Phase1 Import Cleanup
+
+on:
+  push:
+    branches:
+      - workflow/phase1-durable-admission
+    paths:
+      - .github/workflows/phase1-import-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: workflow/phase1-durable-admission
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Apply reviewed import and naming cleanup
+        run: |
+          files=$(grep -rl 'WorkflowProfileRegistry' src test)
+          for file in $files; do
+            sed -i 's|from "#internet/workflow/profiles/types";|from "#internet/workflow/profiles/registry";|' "$file"
+          done
+          sed -i 's/admissionsStore/admissionService/g' src/workflow/service.ts
+          npx biome check --write src test
+          git rm .github/workflows/phase1-import-cleanup.yml
+      - name: Commit cleanup
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src test .github/workflows/phase1-import-cleanup.yml
+          git commit -m 'refactor: finalize phase1 module boundaries'
+          git push origin HEAD:workflow/phase1-durable-admission
