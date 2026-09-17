@@ -40,7 +40,7 @@ export class WorkflowService {
         assertWorkflowPrincipal(context.principal);
         return this.admissionService.confirm(context.principal, admissionId, expectedRevision, input);
     }
-    start(context, input) {
+    autoSubmit(context, input) {
         const admitted = this.admit(context, input);
         if (admitted.state === "PREFLIGHTED")
             throw preflightFailure(admitted);

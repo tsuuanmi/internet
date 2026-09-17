@@ -6,7 +6,7 @@ import type { WorkflowJob } from "#internet/workflow/types";
 export type { GitRunner } from "#internet/workflow/repository-context";
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
 export interface WorkflowCommandService {
-    start(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob;
+    autoSubmit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob;
 }
 export interface WorkflowCommandOperator {
     list(ownerSessionId: string): string;

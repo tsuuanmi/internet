@@ -53,7 +53,7 @@ export function defineWorkflowCommand(dependencies) {
                 if (cwd === undefined)
                     return { kind: "error", text: "/workflow requires a session working directory." };
                 const repository = await resolveWorkflowRepository(cwd, invocation.signal, runGit, "/workflow");
-                const job = dependencies.service.start(workflowSessionAuthorizationContext(ownerSessionId), createSoftwareAdmissionDraft({
+                const job = dependencies.service.autoSubmit(workflowSessionAuthorizationContext(ownerSessionId), createSoftwareAdmissionDraft({
                     rawSource: rawInput,
                     sourceProvenance: "user_explicit",
                     repository: repository.url,

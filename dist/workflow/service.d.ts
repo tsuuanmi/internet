@@ -27,7 +27,7 @@ export declare class WorkflowService {
     admission(context: WorkflowAuthorizationContext, admissionId: string): WorkflowAdmissionRecord;
     admissions(context: WorkflowAuthorizationContext): readonly WorkflowAdmissionRecord[];
     confirmAdmission(context: WorkflowAuthorizationContext, admissionId: string, expectedRevision: number, input: AdmissionConfirmationInput): WorkflowAdmissionRecord;
-    start(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob;
+    autoSubmit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowJob;
     activateAdmission(context: WorkflowAuthorizationContext, admissionId: string, expectedAcceptedSpecHash: string): WorkflowJob;
     list(context: WorkflowAuthorizationContext): readonly WorkflowJob[];
     status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
