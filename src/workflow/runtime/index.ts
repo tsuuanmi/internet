@@ -20,6 +20,7 @@ export {
 } from "#internet/workflow/runtime/result-store";
 export { routeWorkflowCapability, WorkflowCapabilityRoutingError } from "#internet/workflow/runtime/routing";
 export type {
+	WorkflowCapabilityActiveExecutionContext,
 	WorkflowCapabilityExecutionContext,
 	WorkflowCapabilityExecutor,
 	WorkflowCapabilityExecutorRegistry,
