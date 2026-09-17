@@ -34,41 +34,30 @@ jobs:
             fs.writeFileSync(path, source);
           }
 
-          replace('src/workflow/runtime/coordinator.ts', '\ttype WorkflowNeedPayload,\n', '');
           replace(
             'src/workflow/runtime/coordinator.ts',
-            'function workItemIdFor(needArtifact: WorkflowArtifact, capabilityId: string, generation: number): string {\n\treturn hashCanonicalJson({\n\t\trunId: needArtifact.runId,\n\t\tneedArtifactId: needArtifact.artifactId,\n\t\tcapabilityId,\n\t\tgeneration,\n\t}).slice(0, 32);\n}',
-            'function workItemIdFor(\n\tneedArtifact: WorkflowArtifact,\n\tcapability: { id: string; version: string },\n\tgeneration: number,\n): string {\n\treturn hashCanonicalJson({\n\t\trunId: needArtifact.runId,\n\t\tneedArtifactId: needArtifact.artifactId,\n\t\tcapability,\n\t\tgeneration,\n\t}).slice(0, 32);\n}',
+            'import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";\n',
+            'import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";\nimport { routeWorkflowCapability } from "#internet/workflow/runtime/routing";\n',
           );
           replace(
             'src/workflow/runtime/coordinator.ts',
-            'workItemId: workItemIdFor(artifact, capability.id, generation),',
-            'workItemId: workItemIdFor(artifact, capability, generation),',
+            'function sameRef(left: { id: string; version: string }, right: { id: string; version: string }): boolean {\n\treturn left.id === right.id && left.version === right.version;\n}\n\n',
+            '',
           );
           replace(
             'src/workflow/runtime/coordinator.ts',
-            'const stored = this.dependencies.results.create(runId, result);',
-            'const stored = this.dependencies.results.create(current, result);',
+            'const capability = this.dependencies.capabilities.resolve(materialization.capability);\n\t\t\tif (!run.definitions.capabilities.some((ref) => sameRef(ref, capability)))\n\t\t\t\tthrow new Error(\n\t\t\t\t\t`workflow capability ${capability.id}@${capability.version} is not pinned by run ${run.runId}`,\n\t\t\t\t);\n\t\t\tif (!capability.acceptedNeedTypes.includes(need.type))\n\t\t\t\tthrow new Error(`workflow capability ${capability.id} does not accept Need type ${need.type}`);',
+            'const capability = routeWorkflowCapability(\n\t\t\t\trun,\n\t\t\t\tneed,\n\t\t\t\tthis.dependencies.capabilities,\n\t\t\t\tmaterialization.capability,\n\t\t\t);',
           );
           replace(
             'src/workflow/runtime/coordinator.ts',
-            'const stored = this.dependencies.results.create(execution.runId, result);',
-            'const stored = this.dependencies.results.create(execution, result);',
+            '\tasync execute(\n',
+            '\theartbeat(runId: string, executionId: string, ownerInstanceId: string): WorkflowExecution {\n\t\tconst current = this.dependencies.executions.get(runId, executionId);\n\t\tif (current === undefined || current.state !== "RUNNING")\n\t\t\tthrow new Error(`workflow execution ${executionId} is not running`);\n\t\tif (current.ownerInstanceId !== ownerInstanceId) throw new Error("workflow execution heartbeat owner mismatch");\n\t\tif (Date.parse(current.leaseUntil) <= this.now()) {\n\t\t\tthis.fenceExecution(current, "LEASE_EXPIRED", "workflow execution lease expired before heartbeat");\n\t\t\tthrow new Error("workflow execution lease has expired");\n\t\t}\n\t\tconst at = new Date(this.now()).toISOString();\n\t\treturn this.dependencies.executions.update(runId, executionId, current.revision, (value) => ({\n\t\t\t...value,\n\t\t\trevision: value.revision + 1,\n\t\t\theartbeatAt: at,\n\t\t\tleaseUntil: new Date(this.now() + this.leaseMs).toISOString(),\n\t\t}));\n\t}\n\n\tasync execute(\n',
           );
           replace(
             'src/workflow/runtime/coordinator.ts',
-            'const readiness = this.dependencies.policy.readiness(context, item);\n\t\t\tif (!readiness.ready) continue;',
-            'const readiness = this.dependencies.policy.readiness(context, item);\n\t\t\tif (readiness.ready && readiness.blockers.length > 0)\n\t\t\t\tthrow new Error("workflow readiness cannot be ready with blockers");\n\t\t\tif (!readiness.ready) continue;',
-          );
-          replace(
-            'src/workflow/runtime/coordinator.ts',
-            'for (const item of staleWorkflowWorkItems(items, bundles, artifacts)) {\n\t\t\tconst current = this.dependencies.workItems.get(runId, item.workItemId);',
-            'for (const item of staleWorkflowWorkItems(items, bundles, artifacts)) {\n\t\t\tfor (const execution of this.dependencies.executions.list(runId)) {\n\t\t\t\tif (execution.workItemId === item.workItemId && execution.state === "RUNNING")\n\t\t\t\t\tthis.fenceExecution(execution, "INPUT_INVALIDATED", "execution input was invalidated");\n\t\t\t}\n\t\t\tconst current = this.dependencies.workItems.get(runId, item.workItemId);',
-          );
-          replace(
-            'src/workflow/runtime/coordinator.ts',
-            'const openExternal = this.dependencies.artifacts\n\t\t\t\t.list(run.runId)\n\t\t\t\t.filter((artifact) => artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need)\n\t\t\t\t.some((artifact) => this.dependencies.pendingActions.hasOpen(run.runId, artifact.artifactId));',
-            'const artifacts = this.dependencies.artifacts.list(run.runId);\n\t\t\tconst currentArtifacts = currentWorkflowArtifactIds(artifacts);\n\t\t\tconst openExternal = artifacts\n\t\t\t\t.filter(\n\t\t\t\t\t(artifact) =>\n\t\t\t\t\t\tartifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need && currentArtifacts.has(artifact.artifactId),\n\t\t\t\t)\n\t\t\t\t.some((artifact) => this.dependencies.pendingActions.hasOpen(run.runId, artifact.artifactId));',
+            'const result = await executor.execute({ run, workItem: running, execution, inputBundle: bundle }, signal);\n\t\t\tconst current = this.dependencies.executions.get(runId, executionId);\n\t\t\tif (current === undefined || current.state !== "RUNNING" || Date.parse(current.leaseUntil) <= this.now())\n\t\t\t\tthrow new Error("workflow execution lost its lease before result persistence");\n\t\t\tconst stored = this.dependencies.results.create(current, result);',
+            'const result = await executor.execute(\n\t\t\t\t{\n\t\t\t\t\trun,\n\t\t\t\t\tworkItem: running,\n\t\t\t\t\texecution,\n\t\t\t\t\tinputBundle: bundle,\n\t\t\t\t\theartbeat: () => this.heartbeat(runId, executionId, ownerInstanceId),\n\t\t\t\t},\n\t\t\t\tsignal,\n\t\t\t);\n\t\t\tconst current = this.dependencies.executions.get(runId, executionId);\n\t\t\tif (current === undefined || current.state !== "RUNNING") return this.advance(runId);\n\t\t\tif (Date.parse(current.leaseUntil) <= this.now()) {\n\t\t\t\tawait this.reconcileExpiredExecution(current, signal);\n\t\t\t\treturn this.advance(runId);\n\t\t\t}\n\t\t\tconst stored = this.dependencies.results.create(current, result);',
           );
 
           const indexPath = 'src/index.ts';
@@ -77,7 +66,7 @@ jobs:
           if (!index.includes(runtimeExport)) index += `\n${runtimeExport}`;
           fs.writeFileSync(indexPath, index);
           NODE
-          npx biome check --write src/workflow/runtime src/workflow/kernel src/workflow/semantic/validation.ts src/index.ts test/workflow-runtime-*.test.ts test/workflow-work-item-store.test.ts test/workflow-semantic-promotion.test.ts
+          npx biome check --write src/workflow/runtime src/workflow/kernel src/workflow/semantic/validation.ts src/index.ts test/workflow-runtime-*.test.ts test/workflow-work-item-store.test.ts test/workflow-semantic-promotion.test.ts test/workflow-kernel-public-api.test.ts
       - run: npm run check
       - run: npm test
       - run: npm run build
