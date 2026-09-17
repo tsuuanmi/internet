@@ -147,6 +147,7 @@ export { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-
 export { DEFAULT_WORKFLOW_RETENTION_POLICY, WORKFLOW_RETENTION_AUDIT_SCHEMA, WorkflowRetentionError, WorkflowRetentionManager, } from "#internet/workflow/retention";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
 export { WorkflowRunStore, WorkflowRunStoreError } from "#internet/workflow/run-store";
+export * from "#internet/workflow/semantic/index";
 export { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";

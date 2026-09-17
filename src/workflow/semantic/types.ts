@@ -118,6 +118,7 @@ export interface WorkflowPlanRevision {
 	readonly addedTaskIds: readonly string[];
 	readonly removedTaskIds: readonly string[];
 	readonly changedTaskIds: readonly string[];
+	readonly changedDependencyTaskIds: readonly string[];
 	readonly changedAssumptionIds: readonly string[];
 	readonly affectedRefs: readonly WorkflowEntityRef[];
 }
@@ -136,7 +137,7 @@ export interface WorkflowPlanPayload {
 
 export interface WorkflowNeedPayload {
 	readonly needId: string;
-	readonly type: string;
+	readonly type: WorkflowNeedType;
 	readonly requestOwner: WorkflowEntityRef;
 	readonly requestedCapability?: string;
 	readonly question: string;

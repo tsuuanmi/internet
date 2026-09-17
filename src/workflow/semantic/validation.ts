@@ -5,6 +5,7 @@ import {
 	WORKFLOW_CRITERION_PROVENANCE,
 	WORKFLOW_FEEDBACK_PROVENANCE,
 	WORKFLOW_FINDING_SEVERITIES,
+	WORKFLOW_NEED_TYPES,
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
 	type WorkflowAcceptanceCriteriaPayload,
 	type WorkflowAcceptanceCriterion,
@@ -167,6 +168,7 @@ function assertPlanRevision(value: unknown): asserts value is WorkflowPlanRevisi
 	assertStringList(value.addedTaskIds, "workflow plan revision added task id");
 	assertStringList(value.removedTaskIds, "workflow plan revision removed task id");
 	assertStringList(value.changedTaskIds, "workflow plan revision changed task id");
+	assertStringList(value.changedDependencyTaskIds, "workflow plan revision changed dependency task id");
 	assertStringList(value.changedAssumptionIds, "workflow plan revision changed assumption id");
 	assertEntityRefs(value.affectedRefs, "workflow plan revision affected reference");
 }
@@ -256,7 +258,11 @@ export function parseWorkflowPlanPayload(value: unknown): WorkflowPlanPayload {
 export function parseWorkflowNeedPayload(value: unknown): WorkflowNeedPayload {
 	if (!isRecord(value)) throw new Error("invalid workflow Need payload");
 	assertText(value.needId, "workflow Need id");
-	assertText(value.type, "workflow Need type");
+	if (
+		typeof value.type !== "string" ||
+		!WORKFLOW_NEED_TYPES.includes(value.type as (typeof WORKFLOW_NEED_TYPES)[number])
+	)
+		throw new Error("invalid workflow Need type");
 	assertEntityRef(value.requestOwner, "workflow Need request owner");
 	if (value.requestedCapability !== undefined)
 		assertText(value.requestedCapability, "workflow Need requested capability");

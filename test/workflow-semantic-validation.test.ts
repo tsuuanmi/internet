@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	assertCriterionRevisionAuthority,
 	parseWorkflowAcceptanceCriteriaPayload,
+	parseWorkflowNeedPayload,
 	parseWorkflowPlanPayload,
 	requiredCriterionRevisionAuthority,
 } from "#internet/workflow/semantic/index";
@@ -52,6 +53,42 @@ describe("workflow semantic validation", () => {
 				risks: [],
 			}),
 		).toThrow("unknown dependency");
+	});
+
+	it("rejects Need types outside the registered semantic vocabulary", () => {
+		expect(() =>
+			parseWorkflowNeedPayload({
+				needId: "need-1",
+				type: "ad_hoc",
+				requestOwner: { kind: "plan_task", id: "task-1" },
+				question: "Do work",
+				subjects: [],
+				relatedArtifacts: [],
+			}),
+		).toThrow("invalid workflow Need type");
+	});
+
+	it("requires explicit dependency changes in Plan revision metadata", () => {
+		expect(() =>
+			parseWorkflowPlanPayload({
+				planId: "plan-1",
+				version: "2",
+				objective: objectiveArtifact,
+				acceptanceCriteria: criteriaArtifact,
+				tasks: [],
+				assumptions: [],
+				risks: [],
+				supersedes: { runId, artifactId: "c".repeat(64) },
+				revision: {
+					reason: "Dependency graph changed",
+					addedTaskIds: [],
+					removedTaskIds: [],
+					changedTaskIds: [],
+					changedAssumptionIds: [],
+					affectedRefs: [],
+				},
+			}),
+		).toThrow("changed dependency task id");
 	});
 
 	it("requires the authority that owns an existing criterion before revision", () => {
