@@ -98,10 +98,6 @@ function assertOptionalArtifactRef(value: unknown, label: string): void {
 	if (value !== undefined) assertArtifactRef(value, label);
 }
 
-function assertRecordValue(value: unknown, label: string): asserts value is Readonly<Record<string, unknown>> {
-	if (!isRecord(value)) throw new Error(`invalid ${label}`);
-}
-
 function assertObjectiveConstraints(value: unknown): void {
 	if (!Array.isArray(value)) throw new Error("invalid workflow objective constraints");
 	const ids = new Set<string>();

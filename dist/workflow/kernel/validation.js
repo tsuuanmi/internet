@@ -176,6 +176,9 @@ export function parseWorkflowWorkItem(value) {
     assertRevision(value.revision, "workflow work item revision");
     assertHex(value.workItemId, 32, "workflow work item id");
     assertHex(value.runId, 32, "workflow work item run id");
+    assertArtifactRef(value.needArtifact);
+    if (value.needArtifact.runId !== value.runId)
+        throw new Error("workflow work item Need artifact must belong to the same run");
     assertText(value.needId, "workflow work item need id");
     assertEntityRef(value.requestOwner, "workflow work item request owner");
     assertVersionRef(value.capability, "workflow work item capability");

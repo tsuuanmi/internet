@@ -78,6 +78,7 @@ export { DEFAULT_WORKFLOW_RETENTION_POLICY, WORKFLOW_RETENTION_AUDIT_SCHEMA, Wor
 export type { WorkflowReviewResult, WorkflowReviewVerdict } from "#internet/workflow/review-result";
 export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/workflow/review-result";
 export { WorkflowRunStore, WorkflowRunStoreError } from "#internet/workflow/run-store";
+export * from "#internet/workflow/runtime/index";
 export * from "#internet/workflow/semantic/index";
 export type { WorkflowServiceDriver, WorkflowServiceEngine } from "#internet/workflow/service";
 export { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";

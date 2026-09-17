@@ -1,7 +1,4 @@
-import type {
-	WorkflowCapabilityDescriptor,
-	WorkflowCapabilityRegistry,
-} from "#internet/workflow/capability-registry";
+import type { WorkflowCapabilityDescriptor, WorkflowCapabilityRegistry } from "#internet/workflow/capability-registry";
 import type { WorkflowRun, WorkflowVersionRef } from "#internet/workflow/kernel/types";
 import type { WorkflowNeedPayload } from "#internet/workflow/semantic/index";
 
@@ -16,7 +13,10 @@ function sameRef(left: WorkflowVersionRef, right: WorkflowVersionRef): boolean {
 	return left.id === right.id && left.version === right.version;
 }
 
-function pinnedCapabilities(run: WorkflowRun, registry: WorkflowCapabilityRegistry): readonly WorkflowCapabilityDescriptor[] {
+function pinnedCapabilities(
+	run: WorkflowRun,
+	registry: WorkflowCapabilityRegistry,
+): readonly WorkflowCapabilityDescriptor[] {
 	return run.definitions.capabilities.map((ref) => registry.resolve(ref));
 }
 

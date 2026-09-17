@@ -87,6 +87,8 @@ export class WorkflowWorkItemStore {
             throw new WorkflowWorkItemStoreError("workflow work item run id cannot change");
         if (next.workItemId !== current.workItemId)
             throw new WorkflowWorkItemStoreError("workflow work item id cannot change");
+        if (canonicalJson(next.needArtifact) !== canonicalJson(current.needArtifact))
+            throw new WorkflowWorkItemStoreError("workflow work item Need artifact cannot change");
         if (next.needId !== current.needId)
             throw new WorkflowWorkItemStoreError("workflow work item need id cannot change");
         if (next.createdAt !== current.createdAt)

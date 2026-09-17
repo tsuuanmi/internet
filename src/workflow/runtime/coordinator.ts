@@ -11,6 +11,17 @@ import {
 	type WorkflowWorkItem,
 } from "#internet/workflow/kernel/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
+import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
+import { currentWorkflowArtifactIds, staleWorkflowWorkItems } from "#internet/workflow/runtime/invalidation";
+import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
+import type {
+	WorkflowCapabilityExecutorRegistry,
+	WorkflowExecution,
+	WorkflowNeedRuntimeContext,
+	WorkflowPendingActionMaterializer,
+	WorkflowRuntimePolicy,
+} from "#internet/workflow/runtime/types";
+import { WORKFLOW_EXECUTION_SCHEMA } from "#internet/workflow/runtime/types";
 import {
 	evaluateWorkflowConvergence,
 	parseWorkflowNeedPayload,
@@ -20,17 +31,6 @@ import {
 	type WorkflowSemanticExecutionResult,
 } from "#internet/workflow/semantic/index";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
-import { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
-import { currentWorkflowArtifactIds, staleWorkflowWorkItems } from "#internet/workflow/runtime/invalidation";
-import { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
-import type {
-	WorkflowCapabilityExecutorRegistry,
-	WorkflowExecution,
-	WorkflowNeedRuntimeContext,
-	WorkflowPendingActionMaterializer,
-	WorkflowRuntimePolicy,
-} from "#internet/workflow/runtime/types";
-import { WORKFLOW_EXECUTION_SCHEMA } from "#internet/workflow/runtime/types";
 
 const TERMINAL_RUN_LIFECYCLES = new Set(["COMPLETED", "CANCELLED"]);
 const TERMINAL_WORK_ITEM_STATES = new Set(["SUCCEEDED", "FAILED", "CANCELLED", "FENCED"]);
@@ -77,15 +77,15 @@ function isAbort(error: unknown, signal?: AbortSignal): boolean {
 }
 
 export class WorkflowRunCoordinator {
+	private readonly dependencies: WorkflowRunCoordinatorDependencies;
 	private readonly leaseMs: number;
 	private readonly now: () => number;
 
-	constructor(
-		private readonly dependencies: WorkflowRunCoordinatorDependencies,
-		options: WorkflowRunCoordinatorOptions = {},
-	) {
+	constructor(dependencies: WorkflowRunCoordinatorDependencies, options: WorkflowRunCoordinatorOptions = {}) {
+		this.dependencies = dependencies;
 		this.leaseMs = options.leaseMs ?? 5 * 60_000;
-		if (!Number.isSafeInteger(this.leaseMs) || this.leaseMs < 1) throw new Error("workflow execution lease must be positive");
+		if (!Number.isSafeInteger(this.leaseMs) || this.leaseMs < 1)
+			throw new Error("workflow execution lease must be positive");
 		this.now = options.now ?? Date.now;
 	}
 
@@ -130,7 +130,12 @@ export class WorkflowRunCoordinator {
 		return this.advance(runId);
 	}
 
-	async execute(runId: string, workItemId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<WorkflowRun> {
+	async execute(
+		runId: string,
+		workItemId: string,
+		ownerInstanceId: string,
+		signal?: AbortSignal,
+	): Promise<WorkflowRun> {
 		const run = this.status(runId);
 		if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle)) throw new Error("terminal workflow run cannot execute work");
 		const item = this.dependencies.workItems.get(runId, workItemId);
@@ -191,7 +196,12 @@ export class WorkflowRunCoordinator {
 					this.fenceExecution(current, "EXECUTION_ABORTED", "read-only execution was aborted");
 					this.setWorkItemReady(runId, workItemId);
 				} else {
-					this.failExecution(current, "EXECUTOR_FAILURE", error instanceof Error ? error.message : String(error), false);
+					this.failExecution(
+						current,
+						"EXECUTOR_FAILURE",
+						error instanceof Error ? error.message : String(error),
+						false,
+					);
 					this.setWorkItemFailed(runId, workItemId);
 				}
 			}
@@ -213,7 +223,9 @@ export class WorkflowRunCoordinator {
 			}
 			const capability = this.dependencies.capabilities.resolve(materialization.capability);
 			if (!run.definitions.capabilities.some((ref) => sameRef(ref, capability)))
-				throw new Error(`workflow capability ${capability.id}@${capability.version} is not pinned by run ${run.runId}`);
+				throw new Error(
+					`workflow capability ${capability.id}@${capability.version} is not pinned by run ${run.runId}`,
+				);
 			if (!capability.acceptedNeedTypes.includes(need.type))
 				throw new Error(`workflow capability ${capability.id} does not accept Need type ${need.type}`);
 			const existing = workItems.filter((item) => item.needArtifact.artifactId === artifact.artifactId);
@@ -247,7 +259,8 @@ export class WorkflowRunCoordinator {
 		for (const item of this.dependencies.workItems.list(run.runId)) {
 			if (item.state !== "PENDING") continue;
 			const needArtifact = this.dependencies.artifacts.get(item.needArtifact.runId, item.needArtifact.artifactId);
-			if (needArtifact === undefined) throw new Error(`workflow Need artifact ${item.needArtifact.artifactId} does not exist`);
+			if (needArtifact === undefined)
+				throw new Error(`workflow Need artifact ${item.needArtifact.artifactId} does not exist`);
 			const need = parseWorkflowNeedPayload(needArtifact.payload);
 			const context: WorkflowNeedRuntimeContext = {
 				run,
@@ -343,9 +356,14 @@ export class WorkflowRunCoordinator {
 				state: "SUCCEEDED",
 				resultArtifactIds: [
 					...current.resultArtifactIds,
-					...promoted.artifacts.map((artifact) => artifact.artifactId).filter((id) => !current.resultArtifactIds.includes(id)),
+					...promoted.artifacts
+						.map((artifact) => artifact.artifactId)
+						.filter((id) => !current.resultArtifactIds.includes(id)),
 				],
-				receiptIds: [...current.receiptIds, ...promoted.receiptIds.filter((id) => !current.receiptIds.includes(id))],
+				receiptIds: [
+					...current.receiptIds,
+					...promoted.receiptIds.filter((id) => !current.receiptIds.includes(id)),
+				],
 				updatedAt: new Date(this.now()).toISOString(),
 			}));
 		}
@@ -385,9 +403,16 @@ export class WorkflowRunCoordinator {
 			this.setWorkItemFailed(execution.runId, execution.workItemId);
 			return;
 		}
-		const result = await executor.reconcile({ run: this.status(execution.runId), workItem: item, execution, inputBundle: bundle }, signal);
+		const result = await executor.reconcile(
+			{ run: this.status(execution.runId), workItem: item, execution, inputBundle: bundle },
+			signal,
+		);
 		if (result === undefined) {
-			this.fenceExecution(execution, "RECONCILED_ABSENT", "external mutation was not observed during reconciliation");
+			this.fenceExecution(
+				execution,
+				"RECONCILED_ABSENT",
+				"external mutation was not observed during reconciliation",
+			);
 			this.setWorkItemReady(execution.runId, execution.workItemId);
 			return;
 		}

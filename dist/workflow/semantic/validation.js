@@ -72,10 +72,6 @@ function assertOptionalArtifactRef(value, label) {
     if (value !== undefined)
         assertArtifactRef(value, label);
 }
-function assertRecordValue(value, label) {
-    if (!isRecord(value))
-        throw new Error(`invalid ${label}`);
-}
 function assertObjectiveConstraints(value) {
     if (!Array.isArray(value))
         throw new Error("invalid workflow objective constraints");

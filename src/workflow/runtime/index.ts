@@ -14,7 +14,10 @@ export {
 	staleWorkflowWorkItems,
 	workflowInputBundleIsCurrent,
 } from "#internet/workflow/runtime/invalidation";
-export { WorkflowExecutionResultStore, WorkflowExecutionResultStoreError } from "#internet/workflow/runtime/result-store";
+export {
+	WorkflowExecutionResultStore,
+	WorkflowExecutionResultStoreError,
+} from "#internet/workflow/runtime/result-store";
 export { routeWorkflowCapability, WorkflowCapabilityRoutingError } from "#internet/workflow/runtime/routing";
 export type {
 	WorkflowCapabilityExecutionContext,

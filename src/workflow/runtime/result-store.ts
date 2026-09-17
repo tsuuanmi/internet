@@ -49,9 +49,12 @@ export class WorkflowExecutionResultStore {
 		const path = this.pathFor(runId, result.executionId);
 		if (existsSync(path)) {
 			const current = this.get(runId, result.executionId);
-			if (current === undefined) throw new WorkflowExecutionResultStoreError(`workflow result ${result.executionId} disappeared`);
+			if (current === undefined)
+				throw new WorkflowExecutionResultStoreError(`workflow result ${result.executionId} disappeared`);
 			if (canonicalJson(current) !== canonicalJson(result))
-				throw new WorkflowExecutionResultStoreError(`workflow result ${result.executionId} conflicts with persisted result`);
+				throw new WorkflowExecutionResultStoreError(
+					`workflow result ${result.executionId} conflicts with persisted result`,
+				);
 			return current;
 		}
 		ensurePrivateDirectory(this.runDir(runId));
@@ -76,7 +79,9 @@ export class WorkflowExecutionResultStore {
 		const directory = this.runDir(runId);
 		if (!existsSync(directory)) return [];
 		if (!lstatSync(directory).isDirectory())
-			throw new WorkflowExecutionResultStoreError(`workflow execution results path for run ${runId} is not a directory`);
+			throw new WorkflowExecutionResultStoreError(
+				`workflow execution results path for run ${runId} is not a directory`,
+			);
 		return readdirSync(directory)
 			.filter((name) => /^[0-9a-f]{32}\.json$/u.test(name))
 			.sort()

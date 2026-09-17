@@ -13,12 +13,14 @@ function isAbort(error: unknown, signal: AbortSignal): boolean {
 
 export class WorkflowRunDriver {
 	private readonly active = new Map<string, ActiveRun>();
+	private readonly coordinator: WorkflowRunCoordinator;
+	private readonly runs: WorkflowRunStore;
 	private disposed = false;
 
-	constructor(
-		private readonly coordinator: WorkflowRunCoordinator,
-		private readonly runs: WorkflowRunStore,
-	) {}
+	constructor(coordinator: WorkflowRunCoordinator, runs: WorkflowRunStore) {
+		this.coordinator = coordinator;
+		this.runs = runs;
+	}
 
 	isActive(runId: string): boolean {
 		return this.active.has(runId);
@@ -77,7 +79,9 @@ export class WorkflowRunDriver {
 					throw new Error(`workflow run ${runId} is active without runnable or recoverable work`);
 				continue;
 			}
-			await Promise.all(runnable.map((workItemId) => this.coordinator.execute(runId, workItemId, ownerInstanceId, signal)));
+			await Promise.all(
+				runnable.map((workItemId) => this.coordinator.execute(runId, workItemId, ownerInstanceId, signal)),
+			);
 		}
 	}
 }

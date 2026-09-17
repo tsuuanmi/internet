@@ -70,6 +70,7 @@ export interface WorkflowWorkItem {
     readonly revision: number;
     readonly workItemId: string;
     readonly runId: string;
+    readonly needArtifact: WorkflowArtifactRef;
     readonly needId: string;
     readonly requestOwner: WorkflowEntityRef;
     readonly capability: WorkflowVersionRef;

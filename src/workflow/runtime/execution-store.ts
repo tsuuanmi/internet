@@ -61,7 +61,10 @@ export function parseWorkflowExecution(value: unknown): WorkflowExecution {
 	if (typeof execution.attempt !== "number" || !Number.isSafeInteger(execution.attempt) || execution.attempt < 1)
 		throw new WorkflowExecutionStoreError("invalid workflow execution attempt");
 	assertText(execution.ownerInstanceId, "workflow execution owner");
-	if (typeof execution.state !== "string" || !WORKFLOW_EXECUTION_STATES.includes(execution.state as WorkflowExecution["state"]))
+	if (
+		typeof execution.state !== "string" ||
+		!WORKFLOW_EXECUTION_STATES.includes(execution.state as WorkflowExecution["state"])
+	)
 		throw new WorkflowExecutionStoreError("invalid workflow execution state");
 	assertTimestamp(execution.startedAt, "workflow execution startedAt");
 	assertTimestamp(execution.heartbeatAt, "workflow execution heartbeatAt");
@@ -102,7 +105,8 @@ export class WorkflowExecutionStore {
 	create(execution: WorkflowExecution): WorkflowExecution {
 		parseWorkflowExecution(execution);
 		const path = this.pathFor(execution.runId, execution.executionId);
-		if (existsSync(path)) throw new WorkflowExecutionStoreError(`workflow execution ${execution.executionId} already exists`);
+		if (existsSync(path))
+			throw new WorkflowExecutionStoreError(`workflow execution ${execution.executionId} already exists`);
 		ensurePrivateDirectory(this.runDir(execution.runId));
 		writePrivateJson(path, execution);
 		return execution;
@@ -144,7 +148,8 @@ export class WorkflowExecutionStore {
 		mutate: (current: WorkflowExecution) => WorkflowExecution,
 	): WorkflowExecution {
 		const current = this.get(runId, executionId);
-		if (current === undefined) throw new WorkflowExecutionStoreError(`workflow execution ${executionId} does not exist`);
+		if (current === undefined)
+			throw new WorkflowExecutionStoreError(`workflow execution ${executionId} does not exist`);
 		if (current.revision !== expectedRevision)
 			throw new WorkflowExecutionStoreError(
 				`workflow execution ${executionId} revision conflict: expected ${expectedRevision}, current ${current.revision}`,
@@ -162,7 +167,8 @@ export class WorkflowExecutionStore {
 		}
 		if (canonicalJson(current.capability) !== canonicalJson(next.capability))
 			throw new WorkflowExecutionStoreError("workflow execution capability cannot change");
-		if (current.attempt !== next.attempt) throw new WorkflowExecutionStoreError("workflow execution attempt cannot change");
+		if (current.attempt !== next.attempt)
+			throw new WorkflowExecutionStoreError("workflow execution attempt cannot change");
 		if (next.revision !== current.revision + 1)
 			throw new WorkflowExecutionStoreError("workflow execution revision must increment by one");
 		if (current.state !== "RUNNING")

@@ -10,7 +10,9 @@ export function currentWorkflowArtifactIds(artifacts: readonly WorkflowArtifact[
 				stale.add(lineage.artifact.artifactId);
 		}
 	}
-	return new Set(artifacts.filter((artifact) => !stale.has(artifact.artifactId)).map((artifact) => artifact.artifactId));
+	return new Set(
+		artifacts.filter((artifact) => !stale.has(artifact.artifactId)).map((artifact) => artifact.artifactId),
+	);
 }
 
 export function workflowInputBundleIsCurrent(

@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	WORKFLOW_EXECUTION_SCHEMA,
-	WorkflowExecutionStore,
 	type WorkflowExecution,
+	WorkflowExecutionStore,
 } from "#internet/workflow/runtime/index";
 
 const runId = "1".repeat(32);
@@ -45,15 +45,15 @@ describe("workflow vNext execution store", () => {
 		}));
 		expect(succeeded.state).toBe("SUCCEEDED");
 		expect(() => store.update(runId, executionId, 1, (current) => current)).toThrow("revision conflict");
-		expect(() =>
-			store.update(runId, executionId, 2, (current) => ({ ...current, revision: 3 })),
-		).toThrow("terminal workflow execution cannot change");
+		expect(() => store.update(runId, executionId, 2, (current) => ({ ...current, revision: 3 }))).toThrow(
+			"terminal workflow execution cannot change",
+		);
 	});
 
 	it("requires failure details for failed executions", () => {
 		const store = new WorkflowExecutionStore(mkdtempSync(join(tmpdir(), "internet-workflow-execution-failure-")));
-		expect(() =>
-			store.create({ ...execution(), state: "FAILED", finishedAt: "2026-09-17T10:01:00.000Z" }),
-		).toThrow("requires failure details");
+		expect(() => store.create({ ...execution(), state: "FAILED", finishedAt: "2026-09-17T10:01:00.000Z" })).toThrow(
+			"requires failure details",
+		);
 	});
 });

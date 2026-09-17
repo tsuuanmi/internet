@@ -53,10 +53,7 @@ export interface WorkflowCapabilityExecutionContext {
 
 export interface WorkflowCapabilityExecutor {
 	readonly kind: string;
-	execute(
-		context: WorkflowCapabilityExecutionContext,
-		signal?: AbortSignal,
-	): Promise<WorkflowSemanticExecutionResult>;
+	execute(context: WorkflowCapabilityExecutionContext, signal?: AbortSignal): Promise<WorkflowSemanticExecutionResult>;
 	reconcile?(
 		context: WorkflowCapabilityExecutionContext,
 		signal?: AbortSignal,
@@ -86,12 +83,7 @@ export interface WorkflowPendingActionMaterialization {
 export type WorkflowNeedMaterialization = WorkflowWorkItemMaterialization | WorkflowPendingActionMaterialization;
 
 export interface WorkflowPendingActionMaterializer {
-	ensure(
-		run: WorkflowRun,
-		needArtifact: WorkflowArtifact,
-		need: WorkflowNeedPayload,
-		actionType: string,
-	): void;
+	ensure(run: WorkflowRun, needArtifact: WorkflowArtifact, need: WorkflowNeedPayload, actionType: string): void;
 	hasOpen(runId: string, needArtifactId: string): boolean;
 }
 
