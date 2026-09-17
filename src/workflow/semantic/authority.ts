@@ -65,10 +65,16 @@ export function assertObjectiveRevisionAuthority(
 	authorities: readonly WorkflowRequirementRevisionAuthority[],
 ): void {
 	const granted = new Set(authorities);
+	const currentConstraints = new Map(current.constraints.map((constraint) => [constraint.id, constraint]));
 	const nextConstraints = new Map(next.constraints.map((constraint) => [constraint.id, constraint]));
 	for (const constraint of current.constraints) {
 		const nextConstraint = nextConstraints.get(constraint.id);
 		if (changed(constraint, nextConstraint, constraintDefinition)) {
+			assertAuthority(`objective constraint ${constraint.id}`, constraint.provenance, granted);
+		}
+	}
+	for (const constraint of next.constraints) {
+		if (!currentConstraints.has(constraint.id)) {
 			assertAuthority(`objective constraint ${constraint.id}`, constraint.provenance, granted);
 		}
 	}
@@ -83,10 +89,16 @@ export function assertAcceptanceCriteriaRevisionAuthority(
 	authorities: readonly WorkflowRequirementRevisionAuthority[],
 ): void {
 	const granted = new Set(authorities);
+	const currentCriteria = new Map(current.criteria.map((criterion) => [criterion.criterionId, criterion]));
 	const nextCriteria = new Map(next.criteria.map((criterion) => [criterion.criterionId, criterion]));
 	for (const criterion of current.criteria) {
 		const nextCriterion = nextCriteria.get(criterion.criterionId);
 		if (changed(criterion, nextCriterion, criterionDefinition)) {
+			assertAuthority(`criterion ${criterion.criterionId}`, criterion.provenance, granted);
+		}
+	}
+	for (const criterion of next.criteria) {
+		if (!currentCriteria.has(criterion.criterionId)) {
 			assertAuthority(`criterion ${criterion.criterionId}`, criterion.provenance, granted);
 		}
 	}
