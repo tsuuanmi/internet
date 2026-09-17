@@ -9,7 +9,9 @@ import {
 const runId = "1".repeat(32);
 const sourceId = "a".repeat(64);
 const replacementId = "b".repeat(64);
+const derivedId = "d".repeat(64);
 const bundleId = "c".repeat(64);
+const derivedBundleId = "e".repeat(64);
 
 const source = {
 	runId,
@@ -26,6 +28,17 @@ const bundle = {
 	bundleId,
 	artifacts: [{ runId, artifactId: sourceId }],
 } as unknown as WorkflowInputBundle;
+const derivedBundle = {
+	runId,
+	bundleId: derivedBundleId,
+	artifacts: [{ runId, artifactId: sourceId }],
+} as unknown as WorkflowInputBundle;
+const derived = {
+	runId,
+	artifactId: derivedId,
+	inputBundleId: derivedBundleId,
+	lineage: [],
+} as unknown as WorkflowArtifact;
 const item = {
 	state: "SUCCEEDED",
 	inputBundleId: bundleId,
@@ -36,6 +49,12 @@ describe("workflow vNext causal invalidation", () => {
 		expect(currentWorkflowArtifactIds([source, replacement])).toEqual(new Set([replacementId]));
 		expect(workflowInputBundleIsCurrent(bundle, [source, replacement])).toBe(false);
 		expect(staleWorkflowWorkItems([item], [bundle], [source, replacement])).toEqual([item]);
+	});
+
+	it("propagates staleness through artifacts produced from stale InputBundles", () => {
+		expect(currentWorkflowArtifactIds([source, replacement, derived], [bundle, derivedBundle])).toEqual(
+			new Set([replacementId]),
+		);
 	});
 
 	it("keeps an exact input current until an invalidating lineage edge exists", () => {
