@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { canonicalJson } from "#internet/core/canonical-json";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
 import type { WorkflowRun } from "#internet/workflow/kernel/types";
 import { parseWorkflowRun } from "#internet/workflow/kernel/validation";
@@ -80,6 +81,11 @@ export class WorkflowRunStore {
 		const next = mutate(current);
 		if (next.runId !== current.runId) throw new WorkflowRunStoreError("workflow run id cannot change");
 		if (next.admissionId !== current.admissionId) throw new WorkflowRunStoreError("workflow run admission id cannot change");
+		if (next.createdAt !== current.createdAt) throw new WorkflowRunStoreError("workflow run creation timestamp cannot change");
+		if (canonicalJson(next.owner) !== canonicalJson(current.owner))
+			throw new WorkflowRunStoreError("workflow run owner cannot change");
+		if (canonicalJson(next.definitions) !== canonicalJson(current.definitions))
+			throw new WorkflowRunStoreError("workflow run definition bindings cannot change without explicit migration");
 		if (next.revision !== current.revision + 1)
 			throw new WorkflowRunStoreError("workflow run revision must increment by one");
 		parseWorkflowRun(next);
