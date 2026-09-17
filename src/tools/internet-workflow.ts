@@ -377,15 +377,10 @@ export function defineInternetWorkflowTool(
 							message: "confirm requires admissionId, admissionRevision, draftHash, and confirmationProvenance",
 						};
 					}
-					const confirmed = service.confirmAdmission(
-						authorization,
-						args.admissionId,
-						args.admissionRevision,
-						{
-							expectedDraftHash: args.draftHash,
-							provenance: args.confirmationProvenance as AdmissionConfirmationInput["provenance"],
-						},
-					);
+					const confirmed = service.confirmAdmission(authorization, args.admissionId, args.admissionRevision, {
+						expectedDraftHash: args.draftHash,
+						provenance: args.confirmationProvenance as AdmissionConfirmationInput["provenance"],
+					});
 					return { ok: true, operation, ...admissionProject(confirmed) };
 				}
 				if (operation === "activate") {

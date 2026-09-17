@@ -99,12 +99,7 @@ export class WorkflowService {
 	): WorkflowJob {
 		const ownerSessionId = requireWorkflowOwnerSessionId(context);
 		const activator = createSoftwareWorkflowActivator(this.engine, this.driver, this.jobs, ownerSessionId);
-		const record = this.admissionsStore.activate(
-			context.principal,
-			admissionId,
-			expectedAcceptedSpecHash,
-			activator,
-		);
+		const record = this.admissionsStore.activate(context.principal, admissionId, expectedAcceptedSpecHash, activator);
 		if (record.activation?.targetKind !== "workflow_job") {
 			throw new WorkflowServiceError(`workflow admission ${admissionId} did not activate a software workflow job`);
 		}
