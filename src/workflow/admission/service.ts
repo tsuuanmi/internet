@@ -1,22 +1,23 @@
 import { randomBytes } from "node:crypto";
+import type { WorkflowAdmissionActivator } from "#internet/workflow/admission/activation";
+import { sameAdmissionActivationTarget } from "#internet/workflow/admission/activation";
 import { hashAdmissionValue } from "#internet/workflow/admission/hash";
 import { preflightWorkflowAdmission } from "#internet/workflow/admission/preflight";
 import type { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
 import type {
 	AcceptedAdmissionSpec,
-	AdmissionActivation,
 	AdmissionConfirmationInput,
 	WorkflowAdmissionDraft,
 	WorkflowAdmissionDraftInput,
 	WorkflowAdmissionRecord,
 } from "#internet/workflow/admission/types";
 import { parseWorkflowAdmissionDraft } from "#internet/workflow/admission/validation";
+import {
+	assertWorkflowPrincipal,
+	type WorkflowPrincipal,
+	workflowPrincipalEquals,
+} from "#internet/workflow/authorization";
 import type { WorkflowProfileRegistry } from "#internet/workflow/profiles/types";
-
-export interface WorkflowAdmissionOwner {
-	readonly kind: string;
-	readonly id: string;
-}
 
 export interface WorkflowAdmissionLifecycleOptions {
 	readonly now?: () => Date;
@@ -34,20 +35,17 @@ function defaultId(): string {
 	return randomBytes(16).toString("hex");
 }
 
-function assertOwner(owner: WorkflowAdmissionOwner): void {
-	if (owner.kind.trim() === "" || owner.id.trim() === "")
-		throw new WorkflowAdmissionServiceError("admission owner is required");
-}
-
 function acceptedSpec(record: WorkflowAdmissionRecord, acceptedAt: string): AcceptedAdmissionSpec {
-	if (record.preview === undefined)
+	if (record.preview === undefined) {
 		throw new WorkflowAdmissionServiceError("admission must be preflighted before acceptance");
+	}
 	return {
 		schema: "@tsuuanmi/internet-workflow-admission-spec",
 		version: 1,
 		admissionId: record.admissionId,
 		draftHash: record.draftHash,
 		profile: record.preview.profile,
+		defaults: record.preview.defaults,
 		draft: record.draft,
 		acceptedAt,
 	};
@@ -70,8 +68,8 @@ export class WorkflowAdmissionService {
 		this.createId = options.createId ?? defaultId;
 	}
 
-	create(owner: WorkflowAdmissionOwner, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord {
-		assertOwner(owner);
+	create(owner: WorkflowPrincipal, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord {
+		assertWorkflowPrincipal(owner);
 		const requestId = this.createId();
 		const admissionId = this.createId();
 		const draft: WorkflowAdmissionDraft = {
@@ -97,22 +95,38 @@ export class WorkflowAdmissionService {
 		});
 	}
 
-	get(admissionId: string): WorkflowAdmissionRecord | undefined {
-		return this.store.get(admissionId);
+	get(owner: WorkflowPrincipal, admissionId: string): WorkflowAdmissionRecord | undefined {
+		assertWorkflowPrincipal(owner);
+		const record = this.store.get(admissionId);
+		if (record === undefined) return undefined;
+		this.assertOwner(record, owner);
+		return record;
 	}
 
-	list(): readonly WorkflowAdmissionRecord[] {
-		return this.store.list();
+	list(owner: WorkflowPrincipal): readonly WorkflowAdmissionRecord[] {
+		assertWorkflowPrincipal(owner);
+		return this.store.list().filter((record) => workflowPrincipalEquals(record.owner, owner));
 	}
 
-	preflight(admissionId: string, expectedRevision: number): WorkflowAdmissionRecord {
+	preflight(owner: WorkflowPrincipal, admissionId: string, expectedRevision: number): WorkflowAdmissionRecord {
+		assertWorkflowPrincipal(owner);
 		return this.store.update(admissionId, expectedRevision, (current) => {
+			this.assertOwner(current, owner);
 			if (current.state !== "DRAFT") {
 				throw new WorkflowAdmissionServiceError(`admission ${admissionId} cannot preflight from ${current.state}`);
 			}
 			const preview = preflightWorkflowAdmission(admissionId, current.draft, current.draftHash, this.profiles);
 			const at = this.now().toISOString();
-			if (preview.confirmation.level !== "AUTO_SUBMIT") {
+			if (preview.status === "INCOMPLETE" || preview.status === "REJECTED") {
+				return {
+					...current,
+					revision: current.revision + 1,
+					state: "PREFLIGHTED",
+					preview,
+					updatedAt: at,
+				};
+			}
+			if (preview.status === "CONFIRMATION_REQUIRED") {
 				return {
 					...current,
 					revision: current.revision + 1,
@@ -144,16 +158,14 @@ export class WorkflowAdmissionService {
 	}
 
 	confirm(
-		owner: WorkflowAdmissionOwner,
+		owner: WorkflowPrincipal,
 		admissionId: string,
 		expectedRevision: number,
 		input: AdmissionConfirmationInput,
 	): WorkflowAdmissionRecord {
-		assertOwner(owner);
+		assertWorkflowPrincipal(owner);
 		return this.store.update(admissionId, expectedRevision, (current) => {
-			if (current.owner.kind !== owner.kind || current.owner.id !== owner.id) {
-				throw new WorkflowAdmissionServiceError(`admission ${admissionId} does not belong to this principal`);
-			}
+			this.assertOwner(current, owner);
 			if (current.state !== "AWAITING_CONFIRMATION" || current.preview === undefined) {
 				throw new WorkflowAdmissionServiceError(`admission ${admissionId} is not awaiting confirmation`);
 			}
@@ -188,48 +200,103 @@ export class WorkflowAdmissionService {
 		});
 	}
 
-	activate<T>(
-		owner: WorkflowAdmissionOwner,
+	activate(
+		owner: WorkflowPrincipal,
 		admissionId: string,
-		expectedRevision: number,
 		expectedAcceptedSpecHash: string,
-		activator: (spec: AcceptedAdmissionSpec) => AdmissionActivation<T>,
-	): { readonly record: WorkflowAdmissionRecord; readonly result: T } {
-		assertOwner(owner);
-		let result: T | undefined;
-		const record = this.store.update(admissionId, expectedRevision, (current) => {
-			if (current.owner.kind !== owner.kind || current.owner.id !== owner.id) {
-				throw new WorkflowAdmissionServiceError(`admission ${admissionId} does not belong to this principal`);
+		activator: WorkflowAdmissionActivator,
+	): WorkflowAdmissionRecord {
+		assertWorkflowPrincipal(owner);
+		let current = this.requireOwned(owner, admissionId);
+		this.assertAcceptedIdentity(current, expectedAcceptedSpecHash);
+		if (current.acceptedSpec === undefined || current.acceptedSpecHash === undefined) {
+			throw new WorkflowAdmissionServiceError(`admission ${admissionId} has no accepted specification`);
+		}
+		const spec = current.acceptedSpec;
+		const target = activator.target(spec);
+
+		if (current.state === "ACTIVATED") {
+			if (current.activation === undefined || !sameAdmissionActivationTarget(current.activation, target)) {
+				throw new WorkflowAdmissionServiceError("activated admission target does not match the current activator");
 			}
-			if (
-				current.state !== "ACCEPTED" ||
-				current.acceptedSpec === undefined ||
-				current.acceptedSpecHash === undefined
-			) {
-				throw new WorkflowAdmissionServiceError(`admission ${admissionId} is not accepted`);
-			}
-			if (current.acceptedSpecHash !== expectedAcceptedSpecHash) {
-				throw new WorkflowAdmissionServiceError("accepted admission identity changed before activation");
-			}
-			const activation = activator(current.acceptedSpec);
-			result = activation.result;
+			activator.ensure(spec, target);
+			return current;
+		}
+
+		if (current.state === "ACCEPTED") {
 			const at = this.now().toISOString();
-			return {
-				...current,
-				revision: current.revision + 1,
-				state: "ACTIVATED",
-				activation: {
-					schema: "@tsuuanmi/internet-workflow-admission-activation",
-					version: 1,
-					acceptedSpecHash: current.acceptedSpecHash,
-					targetKind: activation.targetKind,
-					targetId: activation.targetId,
-					activatedAt: at,
-				},
-				updatedAt: at,
-			};
-		});
-		if (result === undefined) throw new WorkflowAdmissionServiceError("admission activator did not return a result");
-		return { record, result };
+			current = this.store.update(admissionId, current.revision, (record) => {
+				this.assertOwner(record, owner);
+				this.assertAcceptedIdentity(record, expectedAcceptedSpecHash);
+				return {
+					...record,
+					revision: record.revision + 1,
+					state: "ACTIVATING",
+					activationIntent: {
+						schema: "@tsuuanmi/internet-workflow-admission-activation-intent",
+						version: 1,
+						acceptedSpecHash: expectedAcceptedSpecHash,
+						...target,
+						startedAt: at,
+					},
+					updatedAt: at,
+				};
+			});
+		} else if (current.state === "ACTIVATING") {
+			if (current.activationIntent === undefined || !sameAdmissionActivationTarget(current.activationIntent, target)) {
+				throw new WorkflowAdmissionServiceError("persisted activation target does not match the current activator");
+			}
+		} else {
+			throw new WorkflowAdmissionServiceError(`admission ${admissionId} cannot activate from ${current.state}`);
+		}
+
+		activator.ensure(spec, target);
+		const afterEnsure = this.requireOwned(owner, admissionId);
+		this.assertAcceptedIdentity(afterEnsure, expectedAcceptedSpecHash);
+		if (afterEnsure.state === "ACTIVATED") {
+			if (afterEnsure.activation === undefined || !sameAdmissionActivationTarget(afterEnsure.activation, target)) {
+				throw new WorkflowAdmissionServiceError("activated admission target changed during activation");
+			}
+			return afterEnsure;
+		}
+		if (afterEnsure.state !== "ACTIVATING" || afterEnsure.activationIntent === undefined) {
+			throw new WorkflowAdmissionServiceError(`admission ${admissionId} changed during activation`);
+		}
+		if (!sameAdmissionActivationTarget(afterEnsure.activationIntent, target)) {
+			throw new WorkflowAdmissionServiceError("activation target changed during activation");
+		}
+		const at = this.now().toISOString();
+		return this.store.update(admissionId, afterEnsure.revision, (record) => ({
+			...record,
+			revision: record.revision + 1,
+			state: "ACTIVATED",
+			activation: {
+				schema: "@tsuuanmi/internet-workflow-admission-activation",
+				version: 1,
+				acceptedSpecHash: expectedAcceptedSpecHash,
+				...target,
+				activatedAt: at,
+			},
+			updatedAt: at,
+		}));
+	}
+
+	private requireOwned(owner: WorkflowPrincipal, admissionId: string): WorkflowAdmissionRecord {
+		const record = this.store.get(admissionId);
+		if (record === undefined) throw new WorkflowAdmissionServiceError(`admission ${admissionId} does not exist`);
+		this.assertOwner(record, owner);
+		return record;
+	}
+
+	private assertOwner(record: WorkflowAdmissionRecord, owner: WorkflowPrincipal): void {
+		if (!workflowPrincipalEquals(record.owner, owner)) {
+			throw new WorkflowAdmissionServiceError(`admission ${record.admissionId} does not belong to this principal`);
+		}
+	}
+
+	private assertAcceptedIdentity(record: WorkflowAdmissionRecord, expectedAcceptedSpecHash: string): void {
+		if (record.acceptedSpecHash === undefined || record.acceptedSpecHash !== expectedAcceptedSpecHash) {
+			throw new WorkflowAdmissionServiceError("accepted admission identity changed before activation");
+		}
 	}
 }
