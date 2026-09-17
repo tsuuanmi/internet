@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-	assertCriterionRevisionAuthority,
+	assertAcceptanceCriteriaRevisionAuthority,
+	assertObjectiveRevisionAuthority,
 	parseWorkflowAcceptanceCriteriaPayload,
 	parseWorkflowNeedPayload,
 	parseWorkflowPlanPayload,
-	requiredCriterionRevisionAuthority,
 } from "#internet/workflow/semantic/index";
 
 const runId = "1".repeat(32);
@@ -122,12 +122,38 @@ describe("workflow semantic validation", () => {
 		).toThrow("changed dependency task id");
 	});
 
-	it("requires the authority that owns an existing criterion before revision", () => {
-		expect(requiredCriterionRevisionAuthority(userCriterion)).toBe("user");
-		const revised = { ...userCriterion, version: "2", statement: "Changed constraint" };
-		expect(() => assertCriterionRevisionAuthority(userCriterion, revised, "planner")).toThrow(
+	it("requires User authority to revise or remove User-owned criteria", () => {
+		const current = {
+			criteriaSetId: "criteria-1",
+			version: "1",
+			objective: objectiveArtifact,
+			criteria: [userCriterion],
+		};
+		const revised = {
+			...current,
+			version: "2",
+			criteria: [{ ...userCriterion, version: "2", statement: "Changed constraint" }],
+		};
+		expect(() => assertAcceptanceCriteriaRevisionAuthority(current, revised, ["planner"])).toThrow(
 			"requires user authority",
 		);
-		expect(() => assertCriterionRevisionAuthority(userCriterion, revised, "user")).not.toThrow();
+		expect(() => assertAcceptanceCriteriaRevisionAuthority(current, revised, ["user"])).not.toThrow();
+	});
+
+	it("does not allow Planner to mint User-owned objective constraints without User authority", () => {
+		const current = {
+			objectiveId: "objective-1",
+			version: "1",
+			admissionId: "3".repeat(32),
+			statement: "Build the feature",
+			constraints: [],
+		};
+		const revised = {
+			...current,
+			version: "2",
+			constraints: [{ id: "constraint-1", statement: "Must remain local", provenance: "user" as const }],
+		};
+		expect(() => assertObjectiveRevisionAuthority(current, revised, ["planner"])).toThrow("requires user authority");
+		expect(() => assertObjectiveRevisionAuthority(current, revised, ["planner", "user"])).not.toThrow();
 	});
 });
