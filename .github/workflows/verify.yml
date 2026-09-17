@@ -23,6 +23,14 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
 
+          function replace(path, from, to) {
+            let source = fs.readFileSync(path, 'utf8');
+            if (source.includes(to)) return;
+            if (!source.includes(from)) throw new Error(`expected patch context missing in ${path}`);
+            source = source.replace(from, to);
+            fs.writeFileSync(path, source);
+          }
+
           const validationPath = 'src/workflow/semantic/validation.ts';
           let validation = fs.readFileSync(validationPath, 'utf8');
           validation = validation.replace(
@@ -30,6 +38,22 @@ jobs:
             '',
           );
           fs.writeFileSync(validationPath, validation);
+
+          replace(
+            'src/workflow/runtime/coordinator.ts',
+            '\ttype WorkflowNeedPayload,\n',
+            '',
+          );
+          replace(
+            'src/workflow/runtime/coordinator.ts',
+            'export class WorkflowRunCoordinator {\n\tprivate readonly leaseMs: number;\n\tprivate readonly now: () => number;\n\n\tconstructor(\n\t\tprivate readonly dependencies: WorkflowRunCoordinatorDependencies,\n\t\toptions: WorkflowRunCoordinatorOptions = {},\n\t) {\n\t\tthis.leaseMs = options.leaseMs ?? 5 * 60_000;',
+            'export class WorkflowRunCoordinator {\n\tprivate readonly dependencies: WorkflowRunCoordinatorDependencies;\n\tprivate readonly leaseMs: number;\n\tprivate readonly now: () => number;\n\n\tconstructor(dependencies: WorkflowRunCoordinatorDependencies, options: WorkflowRunCoordinatorOptions = {}) {\n\t\tthis.dependencies = dependencies;\n\t\tthis.leaseMs = options.leaseMs ?? 5 * 60_000;',
+          );
+          replace(
+            'src/workflow/runtime/driver.ts',
+            'export class WorkflowRunDriver {\n\tprivate readonly active = new Map<string, ActiveRun>();\n\tprivate disposed = false;\n\n\tconstructor(\n\t\tprivate readonly coordinator: WorkflowRunCoordinator,\n\t\tprivate readonly runs: WorkflowRunStore,\n\t) {}',
+            'export class WorkflowRunDriver {\n\tprivate readonly active = new Map<string, ActiveRun>();\n\tprivate readonly coordinator: WorkflowRunCoordinator;\n\tprivate readonly runs: WorkflowRunStore;\n\tprivate disposed = false;\n\n\tconstructor(coordinator: WorkflowRunCoordinator, runs: WorkflowRunStore) {\n\t\tthis.coordinator = coordinator;\n\t\tthis.runs = runs;\n\t}',
+          );
 
           const indexPath = 'src/index.ts';
           let index = fs.readFileSync(indexPath, 'utf8');
