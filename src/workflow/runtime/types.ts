@@ -49,6 +49,7 @@ export interface WorkflowCapabilityExecutionContext {
 	readonly workItem: WorkflowWorkItem;
 	readonly execution: WorkflowExecution;
 	readonly inputBundle: WorkflowInputBundle;
+	readonly heartbeat: () => WorkflowExecution;
 }
 
 export interface WorkflowCapabilityExecutor {
