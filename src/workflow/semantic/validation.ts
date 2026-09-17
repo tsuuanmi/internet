@@ -173,6 +173,26 @@ function assertPlanRevision(value: unknown): asserts value is WorkflowPlanRevisi
 	assertEntityRefs(value.affectedRefs, "workflow plan revision affected reference");
 }
 
+function assertAcyclicTaskLinks(
+	tasks: readonly WorkflowPlanTask[],
+	links: (task: WorkflowPlanTask) => readonly string[],
+	label: string,
+): void {
+	const byId = new Map(tasks.map((task) => [task.taskId, task]));
+	const visiting = new Set<string>();
+	const visited = new Set<string>();
+	const visit = (taskId: string): void => {
+		if (visited.has(taskId)) return;
+		if (visiting.has(taskId)) throw new Error("workflow plan " + label + " cycle includes " + taskId);
+		visiting.add(taskId);
+		const task = byId.get(taskId);
+		if (task !== undefined) for (const linkedId of links(task)) visit(linkedId);
+		visiting.delete(taskId);
+		visited.add(taskId);
+	};
+	for (const task of tasks) visit(task.taskId);
+}
+
 function assertCriterionRef(value: unknown): asserts value is WorkflowCriterionRef {
 	if (!isRecord(value)) throw new Error("invalid workflow criterion reference");
 	assertArtifactRef(value.criteriaArtifact, "workflow criterion reference criteria artifact");
@@ -229,7 +249,8 @@ export function parseWorkflowPlanPayload(value: unknown): WorkflowPlanPayload {
 		if (taskIds.has(task.taskId)) throw new Error(`duplicate workflow plan task ${task.taskId}`);
 		taskIds.add(task.taskId);
 	}
-	for (const task of value.tasks as readonly WorkflowPlanTask[]) {
+	const tasks = value.tasks as readonly WorkflowPlanTask[];
+	for (const task of tasks) {
 		for (const dependency of task.dependsOn) {
 			if (!taskIds.has(dependency))
 				throw new Error(`workflow plan task ${task.taskId} has unknown dependency ${dependency}`);
@@ -237,6 +258,8 @@ export function parseWorkflowPlanPayload(value: unknown): WorkflowPlanPayload {
 		if (task.parentTaskId !== undefined && !taskIds.has(task.parentTaskId))
 			throw new Error(`workflow plan task ${task.taskId} has unknown parent ${task.parentTaskId}`);
 	}
+	assertAcyclicTaskLinks(tasks, (task) => task.dependsOn, "dependency");
+	assertAcyclicTaskLinks(tasks, (task) => (task.parentTaskId === undefined ? [] : [task.parentTaskId]), "parent");
 	if (!Array.isArray(value.assumptions)) throw new Error("invalid workflow plan assumptions");
 	const assumptionIds = new Set<string>();
 	for (const assumption of value.assumptions) {

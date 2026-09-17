@@ -5,6 +5,7 @@ import {
 	type WorkflowAcceptanceCriteriaPayload,
 	type WorkflowFindingPayload,
 	type WorkflowNeedPayload,
+	type WorkflowNeedType,
 	type WorkflowObjectivePayload,
 	type WorkflowPlanPayload,
 } from "#internet/workflow/semantic/types";
@@ -18,6 +19,14 @@ import {
 
 export const WORKFLOW_PLANNING_MODES = ["INITIAL", "PLAN_CHANGE", "REQUIREMENTS_CHANGE", "CLARIFICATION"] as const;
 export type WorkflowPlanningMode = (typeof WORKFLOW_PLANNING_MODES)[number];
+export type WorkflowPlanningNeedType = Exclude<WorkflowNeedType, "execution">;
+
+export const WORKFLOW_PLANNING_MODE_BY_NEED_TYPE = {
+	planning: "INITIAL",
+	plan_change: "PLAN_CHANGE",
+	requirements_change: "REQUIREMENTS_CHANGE",
+	clarification: "CLARIFICATION",
+} as const satisfies Readonly<Record<WorkflowPlanningNeedType, WorkflowPlanningMode>>;
 
 export const WORKFLOW_PLANNING_INPUT_SCHEMA = { id: "workflow.planning.input", version: "1" } as const;
 export const WORKFLOW_PLANNING_OUTPUT_SCHEMA = { id: "workflow.planning.output", version: "1" } as const;
@@ -25,7 +34,7 @@ export const WORKFLOW_PLANNING_OUTPUT_SCHEMA = { id: "workflow.planning.output",
 export const WORKFLOW_PLANNING_CAPABILITY = {
 	id: "planning",
 	version: "1",
-	acceptedNeedTypes: ["planning", "plan_change", "requirements_change", "clarification"],
+	acceptedNeedTypes: Object.keys(WORKFLOW_PLANNING_MODE_BY_NEED_TYPE),
 	producedArtifactTypes: [
 		WORKFLOW_SEMANTIC_ARTIFACT_TYPES.objective,
 		WORKFLOW_SEMANTIC_ARTIFACT_TYPES.acceptanceCriteria,
@@ -62,6 +71,11 @@ export interface WorkflowPlanningExecutor {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function workflowPlanningModeForNeedType(needType: WorkflowNeedType): WorkflowPlanningMode | undefined {
+	if (needType === "execution") return undefined;
+	return WORKFLOW_PLANNING_MODE_BY_NEED_TYPE[needType];
 }
 
 function parseMode(value: unknown): WorkflowPlanningMode {
@@ -122,5 +136,7 @@ export async function executeWorkflowPlanning(
 		request.inputBundle.capability.version !== WORKFLOW_PLANNING_CAPABILITY.version
 	)
 		throw new Error("workflow planning requires an InputBundle bound to the planning capability");
-	return parseWorkflowPlanningOutput(await executor.execute(request));
+	const output = parseWorkflowPlanningOutput(await executor.execute(request));
+	if (output.mode !== request.mode) throw new Error("workflow planning output mode does not match request");
+	return output;
 }

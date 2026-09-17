@@ -147,6 +147,26 @@ function assertPlanRevision(value) {
     assertStringList(value.changedAssumptionIds, "workflow plan revision changed assumption id");
     assertEntityRefs(value.affectedRefs, "workflow plan revision affected reference");
 }
+function assertAcyclicTaskLinks(tasks, links, label) {
+    const byId = new Map(tasks.map((task) => [task.taskId, task]));
+    const visiting = new Set();
+    const visited = new Set();
+    const visit = (taskId) => {
+        if (visited.has(taskId))
+            return;
+        if (visiting.has(taskId))
+            throw new Error("workflow plan " + label + " cycle includes " + taskId);
+        visiting.add(taskId);
+        const task = byId.get(taskId);
+        if (task !== undefined)
+            for (const linkedId of links(task))
+                visit(linkedId);
+        visiting.delete(taskId);
+        visited.add(taskId);
+    };
+    for (const task of tasks)
+        visit(task.taskId);
+}
 function assertCriterionRef(value) {
     if (!isRecord(value))
         throw new Error("invalid workflow criterion reference");
@@ -206,7 +226,8 @@ export function parseWorkflowPlanPayload(value) {
             throw new Error(`duplicate workflow plan task ${task.taskId}`);
         taskIds.add(task.taskId);
     }
-    for (const task of value.tasks) {
+    const tasks = value.tasks;
+    for (const task of tasks) {
         for (const dependency of task.dependsOn) {
             if (!taskIds.has(dependency))
                 throw new Error(`workflow plan task ${task.taskId} has unknown dependency ${dependency}`);
@@ -214,6 +235,8 @@ export function parseWorkflowPlanPayload(value) {
         if (task.parentTaskId !== undefined && !taskIds.has(task.parentTaskId))
             throw new Error(`workflow plan task ${task.taskId} has unknown parent ${task.parentTaskId}`);
     }
+    assertAcyclicTaskLinks(tasks, (task) => task.dependsOn, "dependency");
+    assertAcyclicTaskLinks(tasks, (task) => (task.parentTaskId === undefined ? [] : [task.parentTaskId]), "parent");
     if (!Array.isArray(value.assumptions))
         throw new Error("invalid workflow plan assumptions");
     const assumptionIds = new Set();

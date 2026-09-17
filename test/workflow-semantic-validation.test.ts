@@ -55,6 +55,37 @@ describe("workflow semantic validation", () => {
 		).toThrow("unknown dependency");
 	});
 
+	it("rejects cyclic PlanTask dependencies", () => {
+		expect(() =>
+			parseWorkflowPlanPayload({
+				planId: "plan-cycle",
+				version: "1",
+				objective: objectiveArtifact,
+				acceptanceCriteria: criteriaArtifact,
+				tasks: [
+					{
+						taskId: "task-1",
+						title: "One",
+						description: "First task",
+						dependsOn: ["task-2"],
+						criterionIds: [],
+						needIds: [],
+					},
+					{
+						taskId: "task-2",
+						title: "Two",
+						description: "Second task",
+						dependsOn: ["task-1"],
+						criterionIds: [],
+						needIds: [],
+					},
+				],
+				assumptions: [],
+				risks: [],
+			}),
+		).toThrow("dependency cycle");
+	});
+
 	it("rejects Need types outside the registered semantic vocabulary", () => {
 		expect(() =>
 			parseWorkflowNeedPayload({

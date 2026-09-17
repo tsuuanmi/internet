@@ -1,12 +1,18 @@
 import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES, } from "#internet/workflow/semantic/types";
 import { parseWorkflowAcceptanceCriteriaPayload, parseWorkflowFindingPayload, parseWorkflowNeedPayload, parseWorkflowObjectivePayload, parseWorkflowPlanPayload, } from "#internet/workflow/semantic/validation";
 export const WORKFLOW_PLANNING_MODES = ["INITIAL", "PLAN_CHANGE", "REQUIREMENTS_CHANGE", "CLARIFICATION"];
+export const WORKFLOW_PLANNING_MODE_BY_NEED_TYPE = {
+    planning: "INITIAL",
+    plan_change: "PLAN_CHANGE",
+    requirements_change: "REQUIREMENTS_CHANGE",
+    clarification: "CLARIFICATION",
+};
 export const WORKFLOW_PLANNING_INPUT_SCHEMA = { id: "workflow.planning.input", version: "1" };
 export const WORKFLOW_PLANNING_OUTPUT_SCHEMA = { id: "workflow.planning.output", version: "1" };
 export const WORKFLOW_PLANNING_CAPABILITY = {
     id: "planning",
     version: "1",
-    acceptedNeedTypes: ["planning", "plan_change", "requirements_change", "clarification"],
+    acceptedNeedTypes: Object.keys(WORKFLOW_PLANNING_MODE_BY_NEED_TYPE),
     producedArtifactTypes: [
         WORKFLOW_SEMANTIC_ARTIFACT_TYPES.objective,
         WORKFLOW_SEMANTIC_ARTIFACT_TYPES.acceptanceCriteria,
@@ -24,6 +30,11 @@ export const WORKFLOW_PLANNING_CAPABILITY = {
 };
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+export function workflowPlanningModeForNeedType(needType) {
+    if (needType === "execution")
+        return undefined;
+    return WORKFLOW_PLANNING_MODE_BY_NEED_TYPE[needType];
 }
 function parseMode(value) {
     if (typeof value !== "string" || !WORKFLOW_PLANNING_MODES.includes(value)) {
@@ -75,6 +86,9 @@ export async function executeWorkflowPlanning(executor, request) {
     if (request.inputBundle.capability.id !== WORKFLOW_PLANNING_CAPABILITY.id ||
         request.inputBundle.capability.version !== WORKFLOW_PLANNING_CAPABILITY.version)
         throw new Error("workflow planning requires an InputBundle bound to the planning capability");
-    return parseWorkflowPlanningOutput(await executor.execute(request));
+    const output = parseWorkflowPlanningOutput(await executor.execute(request));
+    if (output.mode !== request.mode)
+        throw new Error("workflow planning output mode does not match request");
+    return output;
 }
 //# sourceMappingURL=planning.js.map

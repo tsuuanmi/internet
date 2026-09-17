@@ -4,6 +4,7 @@ import {
 	executeWorkflowPlanning,
 	parseWorkflowPlanningOutput,
 	WORKFLOW_PLANNING_CAPABILITY,
+	workflowPlanningModeForNeedType,
 } from "#internet/workflow/semantic/index";
 
 const runId = "1".repeat(32);
@@ -66,12 +67,29 @@ describe("workflow planning contract", () => {
 		expect(WORKFLOW_PLANNING_CAPABILITY.acceptedNeedTypes).toContain("requirements_change");
 	});
 
+	it("derives Planner re-entry mode from typed Need semantics", () => {
+		expect(workflowPlanningModeForNeedType("planning")).toBe("INITIAL");
+		expect(workflowPlanningModeForNeedType("plan_change")).toBe("PLAN_CHANGE");
+		expect(workflowPlanningModeForNeedType("requirements_change")).toBe("REQUIREMENTS_CHANGE");
+		expect(workflowPlanningModeForNeedType("clarification")).toBe("CLARIFICATION");
+		expect(workflowPlanningModeForNeedType("execution")).toBeUndefined();
+	});
+
 	it("validates executor output at the planning boundary", async () => {
 		const output = await executeWorkflowPlanning(
 			{ execute: async () => initialOutput },
 			{ mode: "INITIAL", inputBundle },
 		);
 		expect(output.objective?.objectiveId).toBe("objective-1");
+	});
+
+	it("rejects executor output for a different planning mode", async () => {
+		await expect(
+			executeWorkflowPlanning(
+				{ execute: async () => ({ ...initialOutput, mode: "REQUIREMENTS_CHANGE" }) },
+				{ mode: "INITIAL", inputBundle },
+			),
+		).rejects.toThrow("output mode does not match request");
 	});
 
 	it("keeps plan changes distinct from requirements changes", () => {

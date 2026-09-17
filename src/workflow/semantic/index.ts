@@ -26,12 +26,15 @@ export {
 	parseWorkflowPlanningOutput,
 	WORKFLOW_PLANNING_CAPABILITY,
 	WORKFLOW_PLANNING_INPUT_SCHEMA,
+	WORKFLOW_PLANNING_MODE_BY_NEED_TYPE,
 	WORKFLOW_PLANNING_MODES,
 	WORKFLOW_PLANNING_OUTPUT_SCHEMA,
 	type WorkflowPlanningExecutor,
 	type WorkflowPlanningMode,
+	type WorkflowPlanningNeedType,
 	type WorkflowPlanningOutput,
 	type WorkflowPlanningRequest,
+	workflowPlanningModeForNeedType,
 } from "#internet/workflow/semantic/planning";
 export {
 	parseWorkflowSemanticExecutionResult,
