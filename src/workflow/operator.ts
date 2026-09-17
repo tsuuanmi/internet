@@ -1,18 +1,8 @@
+import { WorkflowAuthorizationError, workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 import type { WorkflowEventJournal } from "#internet/workflow/events";
 import type { WorkflowGraphNode, WorkflowPhase } from "#internet/workflow/graph";
-import type { WorkflowJobStore } from "#internet/workflow/job-store";
-import type { WorkflowRetentionManager } from "#internet/workflow/retention";
-import {
-	WorkflowService,
-	type WorkflowServiceDriver,
-	type WorkflowServiceEngine,
-	WorkflowServiceError,
-	workflowSessionAuthorizationContext,
-} from "#internet/workflow/service";
+import { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 import type { WorkflowJob } from "#internet/workflow/types";
-
-export type WorkflowOperatorEngine = WorkflowServiceEngine;
-export type WorkflowOperatorDriver = WorkflowServiceDriver;
 
 export class WorkflowOperatorError extends Error {
 	constructor(message: string) {
@@ -22,7 +12,9 @@ export class WorkflowOperatorError extends Error {
 }
 
 function asOperatorError(error: unknown): never {
-	if (error instanceof WorkflowServiceError) throw new WorkflowOperatorError(error.message);
+	if (error instanceof WorkflowServiceError || error instanceof WorkflowAuthorizationError) {
+		throw new WorkflowOperatorError(error.message);
+	}
 	throw error;
 }
 
@@ -203,32 +195,8 @@ export class WorkflowOperator {
 	private readonly service: WorkflowService;
 	private readonly events: WorkflowEventJournal;
 
-	constructor(service: WorkflowService, events: WorkflowEventJournal);
-	constructor(
-		engine: WorkflowOperatorEngine,
-		driver: WorkflowOperatorDriver,
-		jobs: WorkflowJobStore,
-		events: WorkflowEventJournal,
-		retention: WorkflowRetentionManager,
-	);
-	constructor(
-		serviceOrEngine: WorkflowService | WorkflowOperatorEngine,
-		eventsOrDriver: WorkflowEventJournal | WorkflowOperatorDriver,
-		jobs?: WorkflowJobStore,
-		events?: WorkflowEventJournal,
-		retention?: WorkflowRetentionManager,
-	) {
-		if (serviceOrEngine instanceof WorkflowService) {
-			this.service = serviceOrEngine;
-			this.events = eventsOrDriver as WorkflowEventJournal;
-			return;
-		}
-		if (jobs === undefined || events === undefined || retention === undefined) {
-			throw new WorkflowOperatorError(
-				"legacy WorkflowOperator construction requires engine, driver, jobs, events, and retention",
-			);
-		}
-		this.service = new WorkflowService(serviceOrEngine, eventsOrDriver as WorkflowOperatorDriver, jobs, retention);
+	constructor(service: WorkflowService, events: WorkflowEventJournal) {
+		this.service = service;
 		this.events = events;
 	}
 
