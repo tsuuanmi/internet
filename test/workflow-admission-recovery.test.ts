@@ -160,7 +160,7 @@ describe("workflow admission activation recovery", () => {
 			new WorkflowRetentionManager(path, runtime.jobs),
 			admissions,
 		);
-		const job = workflow.start(authorization, draft("Retry exact terminal activation"));
+		const job = workflow.autoSubmit(authorization, draft("Retry exact terminal activation"));
 		const admission = workflow.admissions(authorization)[0]!;
 		expect(enqueueCount).toBe(1);
 
