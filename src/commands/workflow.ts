@@ -7,6 +7,7 @@ import {
 	WorkflowRepositoryError,
 } from "#internet/workflow/repository-context";
 import {
+	type StartAuthorizedWorkflowInput,
 	type WorkflowAuthorizationContext,
 	WorkflowServiceError,
 	workflowSessionAuthorizationContext,
@@ -20,10 +21,7 @@ export type { GitRunner } from "#internet/workflow/repository-context";
 export { normalizeRepositoryUrl } from "#internet/workflow/repository-context";
 
 export interface WorkflowCommandService {
-	start(
-		context: WorkflowAuthorizationContext,
-		input: { readonly objective: string; readonly repository: string; readonly baseRevision: string },
-	): WorkflowJob;
+	start(context: WorkflowAuthorizationContext, input: StartAuthorizedWorkflowInput): WorkflowJob;
 }
 
 export interface WorkflowCommandOperator {
@@ -91,6 +89,12 @@ export function defineWorkflowCommand(dependencies: WorkflowCommandDependencies)
 					objective: rawInput,
 					repository: repository.url,
 					baseRevision: repository.revision,
+					admission: {
+						rawSource: rawInput,
+						sourceProvenance: "user_explicit",
+						targetProvenance: "system_observed",
+						authorityProvenance: "user_explicit",
+					},
 				});
 				return {
 					kind: "success",
