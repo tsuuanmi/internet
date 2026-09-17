@@ -1,20 +1,21 @@
 import { canonicalJson } from "#internet/core/canonical-json";
 import type {
+	WorkflowAcceptanceCriteriaPayload,
 	WorkflowAcceptanceCriterion,
-	WorkflowCriterionRevisionAuthority,
+	WorkflowObjectiveConstraint,
+	WorkflowObjectivePayload,
+	WorkflowRequirementRevisionAuthority,
 } from "#internet/workflow/semantic/types";
 
-export class WorkflowCriterionAuthorityError extends Error {
+export class WorkflowRequirementAuthorityError extends Error {
 	constructor(message: string) {
 		super(message);
-		this.name = "WorkflowCriterionAuthorityError";
+		this.name = "WorkflowRequirementAuthorityError";
 	}
 }
 
-export function requiredCriterionRevisionAuthority(
-	criterion: WorkflowAcceptanceCriterion,
-): WorkflowCriterionRevisionAuthority {
-	switch (criterion.provenance) {
+function requiredAuthority(provenance: WorkflowAcceptanceCriterion["provenance"]): WorkflowRequirementRevisionAuthority {
+	switch (provenance) {
 		case "user":
 			return "user";
 		case "policy":
@@ -35,24 +36,58 @@ function criterionDefinition(criterion: WorkflowAcceptanceCriterion): unknown {
 	};
 }
 
-export function criterionChanged(
-	current: WorkflowAcceptanceCriterion,
-	next: WorkflowAcceptanceCriterion | undefined,
-): boolean {
-	if (next === undefined) return true;
-	return canonicalJson(criterionDefinition(current)) !== canonicalJson(criterionDefinition(next));
+function constraintDefinition(constraint: WorkflowObjectiveConstraint): unknown {
+	return {
+		id: constraint.id,
+		statement: constraint.statement,
+		provenance: constraint.provenance,
+	};
 }
 
-export function assertCriterionRevisionAuthority(
-	current: WorkflowAcceptanceCriterion,
-	next: WorkflowAcceptanceCriterion | undefined,
-	authority: WorkflowCriterionRevisionAuthority | undefined,
+function assertAuthority(
+	label: string,
+	provenance: WorkflowAcceptanceCriterion["provenance"],
+	authorities: ReadonlySet<WorkflowRequirementRevisionAuthority>,
 ): void {
-	if (!criterionChanged(current, next)) return;
-	const required = requiredCriterionRevisionAuthority(current);
-	if (authority !== required) {
-		throw new WorkflowCriterionAuthorityError(
-			`criterion ${current.criterionId} requires ${required} authority for revision`,
-		);
+	const required = requiredAuthority(provenance);
+	if (!authorities.has(required)) {
+		throw new WorkflowRequirementAuthorityError(`${label} requires ${required} authority for revision`);
+	}
+}
+
+function changed<T>(current: T, next: T | undefined, definition: (value: T) => unknown): boolean {
+	return next === undefined || canonicalJson(definition(current)) !== canonicalJson(definition(next));
+}
+
+export function assertObjectiveRevisionAuthority(
+	current: WorkflowObjectivePayload,
+	next: WorkflowObjectivePayload,
+	authorities: readonly WorkflowRequirementRevisionAuthority[],
+): void {
+	const granted = new Set(authorities);
+	const nextConstraints = new Map(next.constraints.map((constraint) => [constraint.id, constraint]));
+	for (const constraint of current.constraints) {
+		const nextConstraint = nextConstraints.get(constraint.id);
+		if (changed(constraint, nextConstraint, constraintDefinition)) {
+			assertAuthority(`objective constraint ${constraint.id}`, constraint.provenance, granted);
+		}
+	}
+	if (current.statement !== next.statement && !granted.has("planner")) {
+		throw new WorkflowRequirementAuthorityError("objective statement revision requires planner authority");
+	}
+}
+
+export function assertAcceptanceCriteriaRevisionAuthority(
+	current: WorkflowAcceptanceCriteriaPayload,
+	next: WorkflowAcceptanceCriteriaPayload,
+	authorities: readonly WorkflowRequirementRevisionAuthority[],
+): void {
+	const granted = new Set(authorities);
+	const nextCriteria = new Map(next.criteria.map((criterion) => [criterion.criterionId, criterion]));
+	for (const criterion of current.criteria) {
+		const nextCriterion = nextCriteria.get(criterion.criterionId);
+		if (changed(criterion, nextCriterion, criterionDefinition)) {
+			assertAuthority(`criterion ${criterion.criterionId}`, criterion.provenance, granted);
+		}
 	}
 }
