@@ -83,6 +83,7 @@ export interface StartWorkflowInput {
 	readonly repository: string;
 	readonly baseRevision: string;
 	readonly ownerSessionId: string;
+	readonly jobId?: string;
 }
 
 export const TERMINAL_WORKFLOW_LIFECYCLES: ReadonlySet<WorkflowLifecycle> = new Set(["COMPLETED", "CANCELLED"]);
