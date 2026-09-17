@@ -15,6 +15,7 @@ import {
 	WORKFLOW_WORK_ITEM_STATES,
 	type WorkflowArtifact,
 	type WorkflowArtifactLineage,
+	type WorkflowArtifactProducer,
 	type WorkflowArtifactRef,
 	type WorkflowDefinitionBindings,
 	type WorkflowInputBundle,
@@ -85,6 +86,13 @@ function assertEntityRef(value: unknown, label: string): void {
 	if (!isRecord(value)) throw new Error(`invalid ${label}`);
 	assertText(value.kind, `${label} kind`);
 	assertText(value.id, `${label} id`);
+}
+
+function assertArtifactProducer(value: unknown): asserts value is WorkflowArtifactProducer {
+	if (!isRecord(value) || typeof value.kind !== "string") throw new Error("invalid workflow artifact producer");
+	if (!["work_item", "runtime", "external_import"].includes(value.kind))
+		throw new Error("invalid workflow artifact producer");
+	assertText(value.id, "workflow artifact producer id");
 }
 
 function assertArtifactRef(value: unknown): asserts value is WorkflowArtifactRef {
@@ -165,9 +173,7 @@ export function parseWorkflowArtifact(value: unknown): WorkflowArtifact {
 	assertHex(value.runId, 32, "workflow artifact run id");
 	assertText(value.type, "workflow artifact type");
 	assertVersionRef(value.schemaRef, "workflow artifact schema reference");
-	if (!isRecord(value.producer) || !["work_item", "runtime", "external_import"].includes(String(value.producer.kind)))
-		throw new Error("invalid workflow artifact producer");
-	assertEntityRef(value.producer, "workflow artifact producer");
+	assertArtifactProducer(value.producer);
 	if (value.inputBundleId !== undefined) assertHex(value.inputBundleId, 64, "workflow artifact input bundle id");
 	assertLineage(value.lineage);
 	assertHex(value.payloadHash, 64, "workflow artifact payload hash");
@@ -178,7 +184,7 @@ export function parseWorkflowArtifact(value: unknown): WorkflowArtifact {
 		runId: value.runId,
 		type: value.type,
 		schemaRef: value.schemaRef,
-		producer: value.producer as WorkflowArtifact["producer"],
+		producer: value.producer,
 		inputBundleId: value.inputBundleId as string | undefined,
 		lineage: value.lineage,
 		payloadHash: value.payloadHash,
