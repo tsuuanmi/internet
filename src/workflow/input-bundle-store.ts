@@ -1,11 +1,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
-import {
-	normalizeArtifactRefs,
-	normalizeInputFacts,
-	workflowInputBundleId,
-} from "#internet/workflow/kernel/identity";
+import { normalizeArtifactRefs, normalizeInputFacts, workflowInputBundleId } from "#internet/workflow/kernel/identity";
 import {
 	WORKFLOW_INPUT_BUNDLE_SCHEMA,
 	type WorkflowArtifactRef,
@@ -75,7 +71,8 @@ export class WorkflowInputBundleStore {
 		const path = this.pathFor(input.runId, bundleId);
 		if (existsSync(path)) {
 			const current = this.get(input.runId, bundleId);
-			if (current === undefined) throw new WorkflowInputBundleStoreError(`workflow input bundle ${bundleId} disappeared`);
+			if (current === undefined)
+				throw new WorkflowInputBundleStoreError(`workflow input bundle ${bundleId} disappeared`);
 			return current;
 		}
 		const bundle: WorkflowInputBundle = {
