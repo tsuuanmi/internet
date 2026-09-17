@@ -120,6 +120,12 @@ describe("defineWorkflowCommand", () => {
 				objective: "Correct the login redirect.",
 				repository: "https://github.com/example/signal",
 				baseRevision: REVISION,
+				admission: {
+					rawSource: "Correct the login redirect.",
+					sourceProvenance: "user_explicit",
+					targetProvenance: "system_observed",
+					authorityProvenance: "user_explicit",
+				},
 			},
 		);
 	});
