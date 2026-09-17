@@ -194,7 +194,7 @@ describe("workflow admission", () => {
 		);
 	});
 
-	it("starts software execution only through an activated durable admission", () => {
+	it("auto-submits software execution only through an activated durable admission", () => {
 		const path = root();
 		const runtime = createWorkflowTestRuntime(path);
 		const driver = {
@@ -215,7 +215,7 @@ describe("workflow admission", () => {
 			admissions,
 		);
 		const authorization = workflowSessionAuthorizationContext("session-a");
-		const job = workflow.start(authorization, softwareDraft());
+		const job = workflow.autoSubmit(authorization, softwareDraft());
 
 		expect(job).toMatchObject({
 			jobId: expect.any(String),
