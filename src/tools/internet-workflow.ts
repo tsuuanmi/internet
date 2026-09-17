@@ -5,6 +5,7 @@ import { sleep } from "#internet/core/sleep";
 import type { GitRunner } from "#internet/workflow/repository-context";
 import { resolveWorkflowRepository, WorkflowRepositoryError } from "#internet/workflow/repository-context";
 import {
+	type StartAuthorizedWorkflowInput,
 	type WorkflowAuthorizationContext,
 	WorkflowServiceError,
 	workflowSessionAuthorizationContext,
@@ -25,10 +26,7 @@ export interface WorkflowTestDependencies {
 }
 
 export interface InternetWorkflowService {
-	start(
-		context: WorkflowAuthorizationContext,
-		input: { readonly objective: string; readonly repository: string; readonly baseRevision: string },
-	): WorkflowJob;
+	start(context: WorkflowAuthorizationContext, input: StartAuthorizedWorkflowInput): WorkflowJob;
 	status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
 	cancel(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowJob>;
 	continue(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
@@ -145,15 +143,22 @@ async function runAcceptanceTest(
 			result: "FAIL" as const,
 			accountPreflight,
 			message: `workflow test not started; required accounts are not ready: ${unavailable.map((status) => `${status.accountId}=${status.state}`).join(", ")}`,
-		};
+			};
 	}
 
 	const repository = await resolveWorkflowRepository(cwd, exec.signal, dependencies.runGit, "internet_workflow test");
 	const marker = `${new Date().toISOString()}-${Math.random().toString(16).slice(2, 10)}`;
+	const objective = workflowTestObjective(marker);
 	const job = service.start(authorization, {
-		objective: workflowTestObjective(marker),
+		objective,
 		repository: repository.url,
 		baseRevision: repository.revision,
+		admission: {
+			rawSource: objective,
+			sourceProvenance: "local_interpreted",
+			targetProvenance: "system_observed",
+			authorityProvenance: "local_interpreted",
+		},
 	});
 
 	const timeoutMs = dependencies.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS;
@@ -275,6 +280,12 @@ export function defineInternetWorkflowTool(
 						objective: args.objective,
 						repository: args.repository,
 						baseRevision: args.baseRevision,
+						admission: {
+							rawSource: args.objective,
+							sourceProvenance: "local_interpreted",
+							targetProvenance: "local_interpreted",
+							authorityProvenance: "local_interpreted",
+						},
 					});
 					return { ok: true, operation, ...project(job) };
 				}
