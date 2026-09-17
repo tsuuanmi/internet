@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	WorkflowCapabilityRegistry,
-	type WorkflowCapabilityDescriptor,
-} from "#internet/workflow/capability-registry";
+import { type WorkflowCapabilityDescriptor, WorkflowCapabilityRegistry } from "#internet/workflow/capability-registry";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { routeWorkflowCapability } from "#internet/workflow/runtime/index";
 import type { WorkflowNeedPayload } from "#internet/workflow/semantic/index";

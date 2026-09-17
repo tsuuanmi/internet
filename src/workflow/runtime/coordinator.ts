@@ -27,7 +27,6 @@ import {
 	parseWorkflowNeedPayload,
 	promoteWorkflowSemanticResult,
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
-	type WorkflowNeedPayload,
 	type WorkflowSemanticExecutionResult,
 } from "#internet/workflow/semantic/index";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
@@ -63,11 +62,15 @@ function uniqueArtifactRefs(refs: readonly WorkflowArtifactRef[]): readonly Work
 	return [...byKey.values()];
 }
 
-function workItemIdFor(needArtifact: WorkflowArtifact, capabilityId: string, generation: number): string {
+function workItemIdFor(
+	needArtifact: WorkflowArtifact,
+	capability: { id: string; version: string },
+	generation: number,
+): string {
 	return hashCanonicalJson({
 		runId: needArtifact.runId,
 		needArtifactId: needArtifact.artifactId,
-		capabilityId,
+		capability,
 		generation,
 	}).slice(0, 32);
 }
@@ -187,7 +190,7 @@ export class WorkflowRunCoordinator {
 			const current = this.dependencies.executions.get(runId, executionId);
 			if (current === undefined || current.state !== "RUNNING" || Date.parse(current.leaseUntil) <= this.now())
 				throw new Error("workflow execution lost its lease before result persistence");
-			const stored = this.dependencies.results.create(runId, result);
+			const stored = this.dependencies.results.create(current, result);
 			this.commitResult(current, stored);
 		} catch (error) {
 			const current = this.dependencies.executions.get(runId, executionId);
@@ -236,7 +239,7 @@ export class WorkflowRunCoordinator {
 				schema: WORKFLOW_WORK_ITEM_SCHEMA,
 				version: 1,
 				revision: 1,
-				workItemId: workItemIdFor(artifact, capability.id, generation),
+				workItemId: workItemIdFor(artifact, capability, generation),
 				runId: run.runId,
 				needArtifact: { runId: run.runId, artifactId: artifact.artifactId },
 				needId: need.needId,
@@ -270,6 +273,8 @@ export class WorkflowRunCoordinator {
 				workItems: this.dependencies.workItems.list(run.runId),
 			};
 			const readiness = this.dependencies.policy.readiness(context, item);
+			if (readiness.ready && readiness.blockers.length > 0)
+				throw new Error("workflow readiness cannot be ready with blockers");
 			if (!readiness.ready) continue;
 			const refs = uniqueArtifactRefs([item.needArtifact, ...readiness.artifacts]);
 			for (const ref of refs) {
@@ -299,6 +304,10 @@ export class WorkflowRunCoordinator {
 		const items = this.dependencies.workItems.list(runId);
 		const bundles = this.dependencies.inputBundles.list(runId);
 		for (const item of staleWorkflowWorkItems(items, bundles, artifacts)) {
+			for (const execution of this.dependencies.executions.list(runId)) {
+				if (execution.workItemId === item.workItemId && execution.state === "RUNNING")
+					this.fenceExecution(execution, "INPUT_INVALIDATED", "execution input was invalidated");
+			}
 			const current = this.dependencies.workItems.get(runId, item.workItemId);
 			if (current === undefined || ["CANCELLED", "FENCED"].includes(current.state)) continue;
 			this.dependencies.workItems.update(runId, item.workItemId, current.revision, (value) => ({
@@ -319,9 +328,13 @@ export class WorkflowRunCoordinator {
 		else {
 			const items = this.dependencies.workItems.list(run.runId);
 			const autonomous = items.some((item) => item.state === "READY" || item.state === "RUNNING");
-			const openExternal = this.dependencies.artifacts
-				.list(run.runId)
-				.filter((artifact) => artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need)
+			const artifacts = this.dependencies.artifacts.list(run.runId);
+			const currentArtifacts = currentWorkflowArtifactIds(artifacts);
+			const openExternal = artifacts
+				.filter(
+					(artifact) =>
+						artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need && currentArtifacts.has(artifact.artifactId),
+				)
 				.some((artifact) => this.dependencies.pendingActions.hasOpen(run.runId, artifact.artifactId));
 			lifecycle = autonomous ? "ACTIVE" : openExternal ? "WAITING_EXTERNAL" : "BLOCKED";
 		}
@@ -416,7 +429,7 @@ export class WorkflowRunCoordinator {
 			this.setWorkItemReady(execution.runId, execution.workItemId);
 			return;
 		}
-		const stored = this.dependencies.results.create(execution.runId, result);
+		const stored = this.dependencies.results.create(execution, result);
 		this.commitResult(execution, stored);
 	}
 

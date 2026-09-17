@@ -20,6 +20,14 @@ function assertPrivateFile(path, label) {
     if (process.platform !== "win32" && (stat.mode & 0o077) !== 0)
         throw new WorkflowExecutionResultStoreError(`${label} permissions must be 0600`);
 }
+function assertExecutionBinding(execution, result) {
+    if (result.executionId !== execution.executionId)
+        throw new WorkflowExecutionResultStoreError("workflow execution result execution id does not match execution");
+    if (result.workItemId !== execution.workItemId)
+        throw new WorkflowExecutionResultStoreError("workflow execution result WorkItem id does not match execution");
+    if (result.inputBundleId !== execution.inputBundleId)
+        throw new WorkflowExecutionResultStoreError("workflow execution result InputBundle id does not match execution");
+}
 export class WorkflowExecutionResultStore {
     constructor(dataDir) {
         this.root = join(dataDir, "workflows", "execution-results");
@@ -32,19 +40,19 @@ export class WorkflowExecutionResultStore {
         assertHex(executionId, 32, "workflow execution result execution id");
         return join(this.runDir(runId), `${executionId}.json`);
     }
-    create(runId, resultValue) {
+    create(execution, resultValue) {
         const result = parseWorkflowSemanticExecutionResult(resultValue);
-        assertHex(result.executionId, 32, "workflow execution result execution id");
-        const path = this.pathFor(runId, result.executionId);
+        assertExecutionBinding(execution, result);
+        const path = this.pathFor(execution.runId, execution.executionId);
         if (existsSync(path)) {
-            const current = this.get(runId, result.executionId);
+            const current = this.get(execution.runId, execution.executionId);
             if (current === undefined)
-                throw new WorkflowExecutionResultStoreError(`workflow result ${result.executionId} disappeared`);
+                throw new WorkflowExecutionResultStoreError(`workflow result ${execution.executionId} disappeared`);
             if (canonicalJson(current) !== canonicalJson(result))
-                throw new WorkflowExecutionResultStoreError(`workflow result ${result.executionId} conflicts with persisted result`);
+                throw new WorkflowExecutionResultStoreError(`workflow result ${execution.executionId} conflicts with persisted result`);
             return current;
         }
-        ensurePrivateDirectory(this.runDir(runId));
+        ensurePrivateDirectory(this.runDir(execution.runId));
         writePrivateJson(path, result);
         return result;
     }

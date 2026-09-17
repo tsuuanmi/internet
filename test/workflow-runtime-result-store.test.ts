@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	WORKFLOW_EXECUTION_SCHEMA,
-	WorkflowExecutionResultStore,
 	type WorkflowExecution,
+	WorkflowExecutionResultStore,
 } from "#internet/workflow/runtime/index";
 
 const execution: WorkflowExecution = {
@@ -49,6 +49,8 @@ describe("workflow vNext execution result store", () => {
 	it("rejects conflicting data for an already persisted execution", () => {
 		const store = new WorkflowExecutionResultStore(mkdtempSync(join(tmpdir(), "internet-workflow-result-conflict-")));
 		store.create(execution, result());
-		expect(() => store.create(execution, result({ receiptIds: ["different"] }))).toThrow("conflicts with persisted result");
+		expect(() => store.create(execution, result({ receiptIds: ["different"] }))).toThrow(
+			"conflicts with persisted result",
+		);
 	});
 });
