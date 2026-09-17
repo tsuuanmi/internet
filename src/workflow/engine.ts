@@ -157,7 +157,7 @@ export class WorkflowEngine {
 			},
 			handoffReceipts: [],
 			writerConversation: {
-				sessionId: this.writerSession(input.ownerSessionId, jobId),
+				sessionId: `${input.ownerSessionId}:workflow:${jobId}:writer`,
 				accountId: "chatgpt-writer",
 			},
 			reviewCycle: 0,
@@ -167,64 +167,90 @@ export class WorkflowEngine {
 	}
 
 	status(jobId: string): WorkflowJob {
-		return this.mustJob(jobId);
-	}
-
-	continue(jobId: string): WorkflowJob {
-		return this.update(jobId, (current) => {
-			if (workflowJobIsTerminal(current)) throw new Error(`workflow job ${jobId} is already terminal`);
-			if (current.graph.lifecycle !== "BLOCKED" && current.graph.lifecycle !== "RECOVERING") {
-				throw new Error(`workflow job ${jobId} has no explicit recovery path`);
-			}
-			const blocked = Object.values(current.graph.nodes).filter((node) => node.state === "FAILED");
-			if (blocked.length === 0 && current.graph.lifecycle === "BLOCKED") {
-				throw new Error(`workflow job ${jobId} is blocked without a recoverable failed node`);
-			}
-			let graph = current.graph;
-			for (const node of blocked) {
-				const recovery = recoveryPlanForFailure(node.failure, node.recovery?.attempt ?? 0, this.recoveryPolicy);
-				if (recovery === undefined) throw new Error(`workflow node ${node.nodeId} has no configured recovery path`);
-				graph = recoverWorkflowNode(graph, node.nodeId, recovery);
-			}
-			return {
-				...current,
-				graph: promoteReadyWorkflowNodes(graph),
-				pendingAction: undefined,
-				lastEvent: this.event("INTERNAL", "WORKFLOW_CONTINUED", "workflow recovery resumed"),
-			};
-		});
-	}
-
-	cancel(jobId: string): WorkflowJob {
-		return this.update(jobId, (current) => {
-			if (workflowJobIsTerminal(current)) return current;
-			return {
-				...current,
-				graph: cancelWorkflowGraph(current.graph),
-				pendingAction: undefined,
-				lastEvent: this.event("INTERNAL", "WORKFLOW_CANCELLED", "workflow cancelled"),
-			};
-		});
+		const job = this.jobs.get(jobId);
+		if (job === undefined) throw new Error(`workflow job ${jobId} does not exist`);
+		return job;
 	}
 
 	advance(jobId: string): WorkflowJob {
-		return this.update(jobId, (current) => this.advanceCurrent(current));
+		const current = this.status(jobId);
+		if (workflowJobIsTerminal(current) || current.graph.lifecycle === "BLOCKED") return current;
+		const graph = promoteReadyWorkflowNodes(current.graph, (node, candidate) =>
+			this.inputForNode(current, node, candidate),
+		);
+		if (graph === current.graph) return current;
+		return this.commit(jobId, { type: "NODES_READY", class: "INTERNAL", at: new Date().toISOString() }, (job) => ({
+			...job,
+			graph: this.project(graph, job.pendingAction),
+		}));
 	}
 
-	runnableNodeIds(jobId: string, at: number = Date.now()): readonly string[] {
-		const job = this.mustJob(jobId);
+	runnableNodeIds(jobId: string, at = Date.now()): readonly string[] {
+		const job = this.status(jobId);
 		return Object.values(job.graph.nodes)
-			.filter((node) => node.state === "READY" || (node.state === "RECOVERING" && this.recoveryReady(node, at)))
+			.filter((node) => {
+				if (node.state === "READY") return true;
+				if (node.state !== "RECOVERING" || node.recovery === undefined) return false;
+				if (node.recovery.action === "USER_ACTION" || node.recovery.action === "CODE_FIX") return false;
+				return node.recovery.notBefore === undefined || Date.parse(node.recovery.notBefore) <= at;
+			})
 			.map((node) => node.nodeId)
 			.sort();
 	}
 
 	nextRecoveryAt(jobId: string): string | undefined {
-		const job = this.mustJob(jobId);
-		return Object.values(job.graph.nodes)
+		const times = Object.values(this.status(jobId).graph.nodes)
 			.filter((node) => node.state === "RECOVERING" && node.recovery?.notBefore !== undefined)
 			.map((node) => node.recovery!.notBefore!)
-			.sort()[0];
+			.sort();
+		return times[0];
+	}
+
+	reconcile(jobId: string, ownerInstanceId: string, at = Date.now()): WorkflowJob {
+		let current = this.status(jobId);
+		if (workflowJobIsTerminal(current)) return current;
+		for (const node of Object.values(current.graph.nodes)) {
+			if (node.state !== "RUNNING" || node.execution === undefined) continue;
+			if (node.execution.ownerInstanceId === ownerInstanceId && !executionLeaseExpired(node.execution, at)) continue;
+			const failure: WorkflowFailure = {
+				class: "TRANSPORT",
+				code: "EXECUTION_ORPHANED",
+				message: "durable execution no longer has a valid owner lease",
+				retry: "IMMEDIATE",
+				at: new Date(at).toISOString(),
+			};
+			const recovery = recoveryPlanForFailure(failure, node.execution.attempt, this.recoveryPolicy, at);
+			if (recovery === undefined) {
+				current = this.failNode(current.jobId, node.nodeId, failure, {
+					kind: "USER_ACTION_REQUIRED",
+					message: "orphan recovery exhausted the node retry budget",
+					nodeId: node.nodeId,
+				});
+				continue;
+			}
+			current = this.commit(
+				current.jobId,
+				{
+					type: "EXECUTION_ORPHANED",
+					class: "PROGRESS",
+					at: failure.at,
+					nodeId: node.nodeId,
+					executionId: node.execution.executionId,
+				},
+				(job) => ({
+					...job,
+					graph: this.project(
+						recoverWorkflowNode(job.graph, node.nodeId, node.execution!.executionId, "ORPHANED", failure, {
+							...recovery,
+							action: "RECONCILE",
+						}),
+						undefined,
+					),
+					pendingAction: undefined,
+				}),
+			);
+		}
+		return current;
 	}
 
 	async executeNode(
@@ -233,593 +259,773 @@ export class WorkflowEngine {
 		ownerInstanceId: string,
 		signal?: AbortSignal,
 	): Promise<WorkflowJob> {
-		let job = this.mustJob(jobId);
+		let job = this.status(jobId);
 		const node = job.graph.nodes[nodeId];
 		if (node === undefined) throw new Error(`workflow node ${nodeId} does not exist`);
 		if (node.state !== "READY" && node.state !== "RECOVERING") return job;
-		const reusable = this.results.get(node.input.inputHash);
-		if (reusable !== undefined && reusable.nodeKind === node.kind) {
-			return this.completeFromStoredResult(jobId, nodeId, reusable, "reused exact stored node result");
-		}
+		if (node.input === undefined) throw new Error(`workflow node ${nodeId} has no exact input receipt`);
 
-		const execution = this.startExecution(jobId, nodeId, ownerInstanceId);
-		job = execution.job;
+		const persisted = this.results.getForInput(jobId, nodeId, node.input.inputHash);
+		if (persisted !== undefined) return this.commitReconciledResult(job, node, persisted);
+
+		const execution = this.newExecution(node, ownerInstanceId);
+		job = this.commit(
+			jobId,
+			{
+				type: "EXECUTION_STARTED",
+				class: "PROGRESS",
+				at: execution.startedAt,
+				nodeId,
+				executionId: execution.executionId,
+			},
+			(current) => ({
+				...current,
+				graph: this.project(startWorkflowNode(current.graph, nodeId, execution), undefined),
+				pendingAction: undefined,
+			}),
+		);
+		const heartbeat = setInterval(
+			() => this.heartbeat(jobId, nodeId, execution.executionId),
+			Math.max(5_000, Math.floor(this.executionLeaseMs / 3)),
+		);
 		try {
-			const result = await this.executeNodeWork(job, job.graph.nodes[nodeId]!, execution.execution, signal);
-			return this.commitNodeResult(jobId, nodeId, result);
+			const payload = await this.runNode(job, nodeId, execution.executionId, signal);
+			if (payload === undefined) return this.status(jobId);
+			const result = this.results.create({ jobId, nodeId, inputHash: node.input.inputHash, payload });
+			return this.commitNodeResult(jobId, nodeId, execution.executionId, result);
 		} catch (error) {
-			return this.failNode(jobId, nodeId, error);
+			if (signal?.aborted) throw error;
+			return this.handleExecutionFailure(jobId, nodeId, execution.executionId, error);
+		} finally {
+			clearInterval(heartbeat);
 		}
+	}
+
+	continue(jobId: string): WorkflowJob {
+		const job = this.status(jobId);
+		if (workflowJobIsTerminal(job)) throw new Error(`workflow job ${jobId} is terminal`);
+		const failed = Object.values(job.graph.nodes).filter((node) => node.state === "FAILED");
+		if (failed.length === 0) return job;
+		if (failed.length !== 1)
+			throw new Error("workflow has multiple terminal failed nodes; code intervention is required");
+		const node = failed[0]!;
+		const attempt = (node.execution?.attempt ?? 0) + 1;
+		if (attempt > this.recoveryPolicy.maxAttempts)
+			throw new Error(`workflow node ${node.nodeId} exhausted retry budget`);
+		const graph: WorkflowGraphSnapshot = {
+			...job.graph,
+			graphRevision: job.graph.graphRevision + 1,
+			lifecycle: "RECOVERING",
+			nodes: {
+				...job.graph.nodes,
+				[node.nodeId]: {
+					...node,
+					state: "RECOVERING",
+					recovery: { action: "RECONCILE", attempt, maxAttempts: this.recoveryPolicy.maxAttempts },
+				},
+			},
+		};
+		return this.commit(
+			jobId,
+			{ type: "RECOVERY_REQUESTED", class: "PROGRESS", at: new Date().toISOString(), nodeId: node.nodeId },
+			(current) => ({ ...current, graph, pendingAction: undefined }),
+		);
 	}
 
 	blockSchedulerFailure(jobId: string, error: unknown): WorkflowJob {
-		return this.update(jobId, (current) => ({
+		const job = this.status(jobId);
+		if (workflowJobIsTerminal(job) || job.graph.lifecycle === "BLOCKED") return job;
+		const at = new Date().toISOString();
+		const message = `workflow scheduler failed: ${error instanceof Error ? error.message : String(error)}`;
+		return this.commit(jobId, { type: "SCHEDULER_FAILED", class: "ACTION_REQUIRED", at, message }, (current) => ({
 			...current,
-			graph: setWorkflowGraphStatus(current.graph, current.graph.phase, "BLOCKED"),
-			pendingAction: {
-				kind: "CODE_FIX_REQUIRED",
-				message: `workflow scheduler failed: ${error instanceof Error ? error.message : String(error)}`,
-			},
-			lastEvent: this.event(
-				"ACTION_REQUIRED",
-				"SCHEDULER_FAILURE",
-				error instanceof Error ? error.message : String(error),
-			),
+			graph: { ...current.graph, graphRevision: current.graph.graphRevision + 1, lifecycle: "BLOCKED" },
+			pendingAction: { kind: "CODE_FIX_REQUIRED", message },
 		}));
 	}
 
-	/** Reconcile orphaned execution ownership after process restart. */
-	reconcile(jobId: string, ownerInstanceId: string, at: number = Date.now()): WorkflowJob {
-		return this.update(jobId, (current) => {
-			let graph = current.graph;
-			let changed = false;
-			for (const node of Object.values(graph.nodes)) {
-				if (node.state !== "RUNNING" || node.execution === undefined) continue;
-				if (node.execution.ownerInstanceId === ownerInstanceId) continue;
-				if (!executionLeaseExpired(node.execution, at)) continue;
-				const reusable = this.results.get(node.input.inputHash);
-				if (reusable !== undefined && reusable.nodeKind === node.kind) {
-					graph = completeWorkflowNode(
-						graph,
-						node.nodeId,
-						reusable.outputHash,
-						reusable.summary,
-						reusable.completedAt,
-					);
-					changed = true;
-					continue;
-				}
-				const failure: WorkflowFailure = {
-					class: "ORCHESTRATION",
-					code: "ORPHANED_EXECUTION",
-					message: `execution ${node.execution.executionId} lost its owner before completion`,
-					retry: "retry_same_input",
-				};
-				const recovery = recoveryPlanForFailure(failure, node.recovery?.attempt ?? 0, this.recoveryPolicy);
-				graph =
-					recovery === undefined
-						? failWorkflowNode(graph, node.nodeId, failure)
-						: recoverWorkflowNode(failWorkflowNode(graph, node.nodeId, failure), node.nodeId, recovery);
-				changed = true;
-			}
-			if (!changed) return current;
-			return {
-				...current,
-				graph: promoteReadyWorkflowNodes(graph),
-				lastEvent: this.event("INTERNAL", "EXECUTION_RECONCILED", "orphaned workflow execution reconciled"),
-			};
-		});
-	}
-
-	private advanceCurrent(current: WorkflowJob): WorkflowJob {
-		if (workflowJobIsTerminal(current) || current.graph.lifecycle === "BLOCKED") return current;
-		let graph = promoteReadyWorkflowNodes(current.graph);
-		let next: WorkflowJob = graph === current.graph ? current : { ...current, graph };
-
-		const researchGate = graph.nodes[workflowNodeId.researchHandoff()];
-		if (researchGate?.state === "READY") {
-			const researchA = this.mustNodeOutput(graph, workflowNodeId.researchSynthesis("A"));
-			const researchB = this.mustNodeOutput(graph, workflowNodeId.researchSynthesis("B"));
-			const handoff = this.handoffs.create({
-				jobId: current.jobId,
-				sourceNodeIds: [researchA.nodeId, researchB.nodeId],
-				recipient: "chatgpt-writer",
-				sequence: current.handoffReceipts.length + 1,
-				payload: this.researchPayload(current, researchA, researchB),
-			});
-			const receipt = this.handoffReceipt(handoff);
-			graph = completeWorkflowNode(
-				graph,
-				researchGate.nodeId,
-				handoff.payloadHash,
-				"research handoff persisted",
-				handoff.createdAt,
-			);
-			next = {
-				...next,
-				graph,
-				handoffReceipts: [...next.handoffReceipts, receipt],
-				lastEvent: this.event("INTERNAL", "RESEARCH_HANDOFF_CREATED", `research handoff ${handoff.handoffId}`),
-			};
-		}
-
-		const reviewGate = Object.values(graph.nodes).find(
-			(node) => node.kind === "REVIEW_HANDOFF_GATE" && node.state === "READY",
+	cancel(jobId: string): WorkflowJob {
+		const job = this.status(jobId);
+		if (workflowJobIsTerminal(job)) return job;
+		return this.commit(
+			jobId,
+			{ type: "WORKFLOW_CANCELLED", class: "PROGRESS", at: new Date().toISOString() },
+			(current) => ({ ...current, graph: cancelWorkflowGraph(current.graph), pendingAction: undefined }),
 		);
-		if (reviewGate !== undefined) return this.resolveReviewGate(next, reviewGate);
-
-		return next;
 	}
 
-	private async executeNodeWork(
+	private async runNode(
 		job: WorkflowJob,
-		node: WorkflowGraphNode,
-		execution: WorkflowExecutionRecord,
+		nodeId: string,
+		executionId: string,
 		signal?: AbortSignal,
-	): Promise<WorkflowNodeResult> {
-		if (node.kind === "TEAM_MEMBER" || node.kind === "TEAM_SYNTHESIS") {
-			return this.executeTeamNode(job, node, execution, signal);
+	): Promise<string | undefined> {
+		const node = job.graph.nodes[nodeId]!;
+		switch (node.kind) {
+			case "TEAM_MEMBER":
+			case "TEAM_SYNTHESIS":
+				return this.runTeamNode(job, node, executionId, signal);
+			case "RESEARCH_HANDOFF_GATE":
+				return this.runResearchHandoffGate(job, node, executionId, signal);
+			case "WRITER_IMPLEMENTATION":
+				return this.runWriterImplementation(job, node, executionId, signal);
+			case "REVIEW_HANDOFF_GATE":
+				return this.runReviewGate(job, node, executionId, signal);
+			case "WRITER_REMEDIATION":
+				return this.runWriterRemediation(job, node, executionId, signal);
 		}
-		if (node.kind === "WRITER_IMPLEMENTATION" || node.kind === "WRITER_REMEDIATION") {
-			return this.executeWriterNode(job, node, execution, signal);
-		}
-		throw new Error(`workflow node ${node.nodeId} is not directly executable`);
 	}
 
-	private async executeTeamNode(
+	private async runTeamNode(
 		job: WorkflowJob,
 		node: WorkflowGraphNode,
-		execution: WorkflowExecutionRecord,
+		executionId: string,
 		signal?: AbortSignal,
-	): Promise<WorkflowNodeResult> {
-		const step = this.teamStep(node);
-		const context = await this.teamPromptContext(job, node);
-		const finalSystem = this.prompts.system(step.phase, context.lane);
-		const finalPrompt = this.prompts.prompt(step, context);
-		if (node.input.bindings?.prompt !== undefined) {
-			const expected = createTeamStepInputReceipt({
-				nodeId: node.nodeId,
-				bindings: node.input.bindings,
-				dependencyOutputHashes: node.input.dependencyOutputHashes,
-				finalSystem,
-				finalPrompt,
-			});
-			if (expected.inputHash !== node.input.inputHash) {
-				throw new Error(`workflow node ${node.nodeId} exact input receipt is stale`);
-			}
-		}
-		let providerState: string | undefined;
-		let lastMeaningfulProgressAt: string | undefined;
+	): Promise<string> {
+		const context = this.teamNodeContext(job, node);
 		const result = await this.teams.runStep({
-			jobId: job.jobId,
-			step,
-			system: finalSystem,
-			prompt: finalPrompt,
+			plan: context.plan,
+			step: context.step,
+			task: context.task,
+			transcript: context.transcript,
+			promptStrategy: context.promptStrategy,
+			sessionId: context.sessionId,
+			requestKey: this.nodeRequestKey(job, node),
 			signal,
-			onProgress: (event) => {
-				const semantic = this.mapTeamProgress(event);
-				providerState = semantic.providerState ?? providerState;
-				if (semantic.meaningful) lastMeaningfulProgressAt = semantic.at;
-				this.touchExecution(
-					job.jobId,
-					node.nodeId,
-					execution.executionId,
-					semantic.providerState,
-					semantic.meaningful,
-					semantic.at,
-				);
-			},
+			onProgress: (event) => this.recordTeamProgress(job.jobId, node.nodeId, executionId, event),
+			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
 		});
-		if (!result.ok) throw result.failure;
-		const completedAt = new Date().toISOString();
-		const summary = result.finalAnswer ?? result.turn?.text ?? "team step completed";
-		const output = result.finalAnswer ?? result.turn?.text ?? "";
-		return {
-			schema: "@tsuuanmi/internet-workflow-node-result",
-			version: 1,
-			resultId: this.results.idFor(node.input.inputHash),
-			jobId: job.jobId,
-			nodeId: node.nodeId,
-			nodeKind: node.kind,
-			inputHash: node.input.inputHash,
-			outputHash: hashWorkflowGraphValue(output),
-			summary,
-			output,
-			completedAt,
-		};
+		if (!result.ok) throw new TeamStepError(result.error);
+		if (result.turn !== undefined) return result.turn.text;
+		if (result.finalAnswer !== undefined) return result.finalAnswer;
+		throw new Error(`team node ${node.nodeId} completed without output`);
 	}
 
-	private async executeWriterNode(
+	private async runResearchHandoffGate(
 		job: WorkflowJob,
 		node: WorkflowGraphNode,
-		execution: WorkflowExecutionRecord,
+		executionId: string,
 		signal?: AbortSignal,
-	): Promise<WorkflowNodeResult> {
-		const control = node.input.bindings?.control;
-		if (control === undefined) throw new Error(`workflow writer node ${node.nodeId} is missing trusted control`);
-		let providerState: string | undefined;
-		let lastMeaningfulProgressAt: string | undefined;
-		const result = await this.writer.runControl({
-			jobId: job.jobId,
-			conversationSessionId: job.writerConversation.sessionId,
-			control,
-			...(node.input.bindings?.handoffId === undefined ? {} : { handoffId: node.input.bindings.handoffId }),
-			signal,
-			onProgress: (event) => {
-				providerState = event.providerState ?? providerState;
-				if (event.meaningful) lastMeaningfulProgressAt = event.at;
-				this.touchExecution(
-					job.jobId,
-					node.nodeId,
-					execution.executionId,
-					event.providerState,
-					event.meaningful,
-					event.at,
-				);
-			},
-		});
-		return this.writerNodeResult(job, node, result);
-	}
-
-	private resolveReviewGate(job: WorkflowJob, node: WorkflowGraphNode): WorkflowJob {
-		const cycle = node.reviewCycle;
-		if (cycle === undefined) throw new Error(`review gate ${node.nodeId} is missing review cycle`);
-		const reviewA = this.mustNodeOutput(job.graph, workflowNodeId.reviewSynthesis(cycle, "A"));
-		const reviewB = this.mustNodeOutput(job.graph, workflowNodeId.reviewSynthesis(cycle, "B"));
-		const findingsA = parseWorkflowReviewResult(reviewA.output ?? "");
-		const findingsB = parseWorkflowReviewResult(reviewB.output ?? "");
-		const allPass = findingsA.verdict === "PASS" && findingsB.verdict === "PASS";
-		if (allPass) {
-			const graph = completeWorkflowNode(
-				job.graph,
-				node.nodeId,
-				hashWorkflowGraphValue("PASS"),
-				"review passed",
-				new Date().toISOString(),
-			);
-			return {
-				...job,
-				graph: setWorkflowGraphStatus(graph, "DONE", "COMPLETED"),
-				pendingAction: undefined,
-				lastEvent: this.event("PROGRESS", "WORKFLOW_COMPLETED", "exact PR head passed all review lanes"),
-			};
-		}
-
-		if (cycle >= this.maxReviewCycles) {
-			return {
-				...job,
-				graph: setWorkflowGraphStatus(job.graph, "REVIEW", "BLOCKED"),
-				pendingAction: {
-					kind: "REVIEW_LIMIT_REACHED",
-					message: `review cycle limit ${this.maxReviewCycles} reached; inspect the latest exact-head findings before continuing`,
-					nodeId: node.nodeId,
-					expectedHeadSha: job.pullRequest?.headSha,
-				},
-				lastEvent: this.event("ACTION_REQUIRED", "REVIEW_LIMIT_REACHED", "review cycle limit reached", node.nodeId),
-			};
-		}
-
-		const control = this.remediationControl(job, cycle, reviewA.output ?? "", reviewB.output ?? "");
-		let graph = completeWorkflowNode(
-			job.graph,
-			node.nodeId,
-			hashWorkflowGraphValue("CHANGES_REQUIRED"),
-			"review changes required",
-			new Date().toISOString(),
+	): Promise<string> {
+		const payloads = (["A", "B"] as const).map((lane) =>
+			this.nodePayload(job, workflowNodeId.researchSynthesis(lane)),
 		);
-		const remediation = buildRemediationNode({
-			cycle,
-			control,
-			expectedHeadSha: job.pullRequest?.headSha ?? "",
-			reviewOutputHashes: [reviewA.outputHash, reviewB.outputHash],
-		});
-		graph = appendWorkflowNodes(graph, [remediation]);
-		return {
-			...job,
-			graph: promoteReadyWorkflowNodes(graph),
-			lastEvent: this.event(
-				"PROGRESS",
-				"REMEDIATION_SCHEDULED",
-				`review cycle ${cycle} requested remediation`,
-				remediation.nodeId,
-			),
-		};
+		const receipts: WorkflowHandoffReceipt[] = [];
+		for (let index = 0; index < payloads.length; index += 1) {
+			const lane = index === 0 ? "A" : "B";
+			const handoff = this.handoffs.create({
+				jobId: job.jobId,
+				source: `research:${lane}`,
+				recipient: "chatgpt-writer",
+				sequence: index + 1,
+				payload: payloads[index]!,
+			});
+			if (handoff.status !== "delivered") {
+				const delivery = await this.writer.deliverExact({
+					sessionId: job.writerConversation.sessionId,
+					requestKey: `${job.jobId}:handoff:${handoff.handoffId}`,
+					payload: handoff.payload,
+					signal,
+					onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
+				});
+				this.updateWriterConversationUrl(job.jobId, delivery.conversationUrl);
+			}
+			const delivered = this.handoffs.markDelivered(job.jobId, handoff.handoffId, handoff.payloadHash);
+			receipts.push(this.handoffReceipt(delivered));
+		}
+		this.updateHandoffReceipts(job.jobId, receipts);
+		return JSON.stringify(receipts);
 	}
 
-	private writerNodeResult(
+	private async runWriterImplementation(
 		job: WorkflowJob,
 		node: WorkflowGraphNode,
-		result: WorkflowWriterResult,
-	): WorkflowNodeResult {
-		if (result.status === "BLOCKED") throw new Error(result.message);
-		const completedAt = new Date().toISOString();
-		const output = JSON.stringify(result);
-		return {
-			schema: "@tsuuanmi/internet-workflow-node-result",
-			version: 1,
-			resultId: this.results.idFor(node.input.inputHash),
-			jobId: job.jobId,
-			nodeId: node.nodeId,
-			nodeKind: node.kind,
-			inputHash: node.input.inputHash,
-			outputHash: hashWorkflowGraphValue(output),
-			summary: result.message ?? result.status,
-			output,
-			completedAt,
-		};
+		executionId: string,
+		signal?: AbortSignal,
+	): Promise<string | undefined> {
+		const result = await this.writer.runControl({
+			sessionId: job.writerConversation.sessionId,
+			requestKey: this.nodeRequestKey(job, node),
+			job,
+			control: createWorkflowControlMessage("START_IMPLEMENTATION", job.jobId),
+			signal,
+			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
+		});
+		this.captureWriterConversation(job.jobId, result);
+		if (result.status !== "PR_OPEN") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
+		this.assertImplementationPr(job, result.pullRequest);
+		return JSON.stringify(result.pullRequest);
 	}
 
-	private completeFromStoredResult(
+	private async runReviewGate(
+		job: WorkflowJob,
+		node: WorkflowGraphNode,
+		executionId: string,
+		signal?: AbortSignal,
+	): Promise<string | undefined> {
+		const pr = this.requirePr(job);
+		const cycle = this.cycleFromNode(node.nodeId);
+		const payloads = (["A", "B"] as const).map((lane) =>
+			this.nodePayload(job, workflowNodeId.reviewSynthesis(cycle, lane)),
+		);
+		const reviews = payloads.map(parseWorkflowReviewResult);
+		for (const review of reviews) {
+			if (review.reviewedHeadSha !== pr.headSha) throw new Error("review result is bound to a stale PR head");
+		}
+		const changesRequired = reviews.some((review) => review.verdict === "CHANGES_REQUIRED");
+		if (!changesRequired) return JSON.stringify({ verdict: "PASS", reviewedHeadSha: pr.headSha });
+		if (cycle >= this.maxReviewCycles) {
+			this.block(job.jobId, node.nodeId, {
+				kind: "REVIEW_LIMIT_REACHED",
+				message: `review cycle limit ${this.maxReviewCycles} reached`,
+				nodeId: node.nodeId,
+				expectedHeadSha: pr.headSha,
+			});
+			return undefined;
+		}
+		const receipts: WorkflowHandoffReceipt[] = [];
+		for (let index = 0; index < payloads.length; index += 1) {
+			const lane = index === 0 ? "A" : "B";
+			const handoff = this.handoffs.create({
+				jobId: job.jobId,
+				source: `review:${cycle}:${lane}`,
+				recipient: "chatgpt-writer",
+				sequence: index + 1,
+				payload: payloads[index]!,
+			});
+			if (handoff.status !== "delivered") {
+				const delivery = await this.writer.deliverExact({
+					sessionId: job.writerConversation.sessionId,
+					requestKey: `${job.jobId}:handoff:${handoff.handoffId}`,
+					payload: handoff.payload,
+					signal,
+					onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
+				});
+				this.updateWriterConversationUrl(job.jobId, delivery.conversationUrl);
+			}
+			const delivered = this.handoffs.markDelivered(job.jobId, handoff.handoffId, handoff.payloadHash);
+			receipts.push(this.handoffReceipt(delivered));
+		}
+		this.updateHandoffReceipts(job.jobId, receipts);
+		return JSON.stringify({ verdict: "CHANGES_REQUIRED", reviewedHeadSha: pr.headSha });
+	}
+
+	private async runWriterRemediation(
+		job: WorkflowJob,
+		node: WorkflowGraphNode,
+		executionId: string,
+		signal?: AbortSignal,
+	): Promise<string | undefined> {
+		const pr = this.requirePr(job);
+		const result = await this.writer.runControl({
+			sessionId: job.writerConversation.sessionId,
+			requestKey: this.nodeRequestKey(job, node),
+			job,
+			control: createWorkflowControlMessage("APPLY_REVIEWS", job.jobId, pr.headSha),
+			signal,
+			onProviderProgress: (event) => this.recordProviderProgress(job.jobId, node.nodeId, executionId, event),
+		});
+		this.captureWriterConversation(job.jobId, result);
+		if (result.status !== "PR_OPEN") return this.handleWriterNonSuccess(job.jobId, node.nodeId, result);
+		this.assertRemediationPr(pr, result.pullRequest);
+		return JSON.stringify(result.pullRequest);
+	}
+
+	private commitNodeResult(
 		jobId: string,
 		nodeId: string,
+		executionId: string,
 		result: WorkflowNodeResult,
-		summary: string,
 	): WorkflowJob {
-		return this.update(jobId, (current) => ({
-			...current,
-			graph: completeWorkflowNode(current.graph, nodeId, result.outputHash, summary, result.completedAt),
-			lastEvent: this.event("INTERNAL", "NODE_RESULT_REUSED", summary, nodeId),
-		}));
-	}
-
-	private commitNodeResult(jobId: string, nodeId: string, result: WorkflowNodeResult): WorkflowJob {
-		this.results.put(result);
-		return this.update(jobId, (current) => {
-			let graph = completeWorkflowNode(current.graph, nodeId, result.outputHash, result.summary, result.completedAt);
-			let next: WorkflowJob = {
-				...current,
-				graph,
-				lastEvent: this.event("PROGRESS", "NODE_COMPLETED", result.summary, nodeId),
-			};
-			const node = graph.nodes[nodeId]!;
-			if (node.kind === "WRITER_IMPLEMENTATION" || node.kind === "WRITER_REMEDIATION") {
-				const writer = this.writerResult(result.output ?? "");
-				if (writer.status === "PR_OPEN") {
-					next = {
-						...next,
-						pullRequest: writer.pullRequest,
-						writerConversation: {
-							...next.writerConversation,
-							...(writer.conversationUrl === undefined ? {} : { url: writer.conversationUrl }),
-						},
-					};
-					const nextCycle = next.reviewCycle + 1;
+		return this.commit(
+			jobId,
+			{ type: "NODE_COMPLETED", class: "PROGRESS", at: result.completedAt, nodeId, executionId },
+			(job) => {
+				let graph = completeWorkflowNode(job.graph, nodeId, executionId, this.outputReceipt(result));
+				const node = graph.nodes[nodeId]!;
+				let next: WorkflowJob = { ...job, graph };
+				if (node.kind === "WRITER_IMPLEMENTATION" || node.kind === "WRITER_REMEDIATION") {
+					const pr = JSON.parse(result.payload) as WorkflowPullRequestReceipt;
+					const cycle = node.kind === "WRITER_IMPLEMENTATION" ? 1 : job.reviewCycle + 1;
 					graph = appendWorkflowNodes(
-						next.graph,
+						graph,
 						buildReviewCycleNodes({
-							cycle: nextCycle,
-							pullRequest: writer.pullRequest,
+							cycle,
+							sourceNodeId: nodeId,
 							rounds: this.teams.rounds,
-							accounts: DEFAULT_TEAM_ACCOUNTS,
-							synthesizer: DEFAULT_TEAM_SYNTHESIZER,
+							accounts: job.accountRouting.thinkerAccounts,
+							synthesizer: job.accountRouting.synthesizerAccount,
 						}),
 					);
-					next = { ...next, graph: promoteReadyWorkflowNodes(graph), reviewCycle: nextCycle };
+					next = {
+						...next,
+						graph: setWorkflowGraphStatus(graph, "REVIEW", "RUNNING"),
+						pullRequest: pr,
+						reviewCycle: cycle,
+					};
+				} else if (node.kind === "REVIEW_HANDOFF_GATE") {
+					const decision = JSON.parse(result.payload) as { verdict: "PASS" | "CHANGES_REQUIRED" };
+					const cycle = this.cycleFromNode(nodeId);
+					if (decision.verdict === "PASS") {
+						next = {
+							...next,
+							graph: setWorkflowGraphStatus(graph, "DONE", "COMPLETED"),
+							pendingAction: undefined,
+						};
+					} else {
+						const remediation = buildRemediationNode(cycle);
+						if (graph.nodes[remediation.nodeId] === undefined) graph = appendWorkflowNodes(graph, [remediation]);
+						next = { ...next, graph: setWorkflowGraphStatus(graph, "WRITER", "RUNNING") };
+					}
 				}
-			}
-			return this.advanceCurrent(next);
-		});
+				return { ...next, graph: this.project(next.graph, next.pendingAction) };
+			},
+		);
 	}
 
-	private failNode(jobId: string, nodeId: string, error: unknown): WorkflowJob {
-		return this.update(jobId, (current) => {
-			const node = current.graph.nodes[nodeId];
-			if (node === undefined) return current;
-			const failure = classifyWorkflowFailure(error);
-			const retry = recoveryPlanForFailure(failure, node.recovery?.attempt ?? 0, this.recoveryPolicy);
-			let graph = failWorkflowNode(current.graph, nodeId, failure);
-			let pendingAction: WorkflowPendingAction | undefined;
-			if (retry !== undefined) graph = recoverWorkflowNode(graph, nodeId, retry);
-			else {
-				graph = setWorkflowGraphStatus(graph, graph.phase, "BLOCKED");
-				pendingAction = this.pendingActionForFailure(nodeId, failure, current.pullRequest?.headSha);
-			}
-			return {
-				...current,
-				graph,
-				pendingAction,
-				lastEvent: this.event(
-					pendingAction === undefined ? "PROGRESS" : "ACTION_REQUIRED",
-					pendingAction === undefined ? "NODE_RECOVERY_SCHEDULED" : "NODE_BLOCKED",
-					failure.message,
+	private commitReconciledResult(job: WorkflowJob, node: WorkflowGraphNode, result: WorkflowNodeResult): WorkflowJob {
+		if (node.state === "COMPLETED") return job;
+		if (node.state === "RUNNING" && node.execution !== undefined) {
+			return this.commitNodeResult(job.jobId, node.nodeId, node.execution.executionId, result);
+		}
+		if (node.state !== "READY" && node.state !== "RECOVERING") return job;
+		const execution = this.newExecution(node, "reconciliation");
+		const started = this.commit(
+			job.jobId,
+			{
+				type: "RESULT_RECONCILED",
+				class: "INTERNAL",
+				at: new Date().toISOString(),
+				nodeId: node.nodeId,
+				executionId: execution.executionId,
+			},
+			(current) => ({ ...current, graph: startWorkflowNode(current.graph, node.nodeId, execution) }),
+		);
+		return this.commitNodeResult(started.jobId, node.nodeId, execution.executionId, result);
+	}
+
+	private handleExecutionFailure(jobId: string, nodeId: string, executionId: string, error: unknown): WorkflowJob {
+		const job = this.status(jobId);
+		const node = job.graph.nodes[nodeId];
+		if (node?.execution?.executionId !== executionId) return job;
+		const failure =
+			error instanceof TeamStepError ? classifyTeamFailure(error.detail) : classifyWorkflowFailure(error);
+		const recovery = recoveryPlanForFailure(failure, node.execution.attempt, this.recoveryPolicy);
+		if (recovery !== undefined && recovery.action !== "USER_ACTION" && recovery.action !== "CODE_FIX") {
+			return this.commit(
+				jobId,
+				{
+					type: "RECOVERY_SCHEDULED",
+					class: "PROGRESS",
+					at: failure.at,
 					nodeId,
+					executionId,
+					message: failure.message,
+				},
+				(current) => ({
+					...current,
+					graph: this.project(
+						recoverWorkflowNode(current.graph, nodeId, executionId, "FAILED", failure, recovery),
+						undefined,
+					),
+					pendingAction: undefined,
+				}),
+			);
+		}
+		const pending: WorkflowPendingAction =
+			failure.retry === "CODE_FIX"
+				? { kind: "CODE_FIX_REQUIRED", message: failure.message, nodeId }
+				: failure.class === "AUTH"
+					? { kind: "ACCOUNT_REAUTH_REQUIRED", message: failure.message, nodeId }
+					: { kind: "USER_ACTION_REQUIRED", message: failure.message, nodeId };
+		return this.failNode(jobId, nodeId, failure, pending);
+	}
+
+	private failNode(
+		jobId: string,
+		nodeId: string,
+		failure: WorkflowFailure,
+		pendingAction: WorkflowPendingAction,
+	): WorkflowJob {
+		return this.commit(
+			jobId,
+			{ type: "NODE_FAILED", class: "ACTION_REQUIRED", at: failure.at, nodeId, message: failure.message },
+			(job) => ({
+				...job,
+				graph: setWorkflowGraphStatus(
+					failWorkflowNode(job.graph, nodeId, failure),
+					job.graph.nodes[nodeId]?.phase ?? job.graph.phase,
+					"BLOCKED",
+				),
+				pendingAction,
+			}),
+		);
+	}
+
+	private block(jobId: string, nodeId: string, pendingAction: WorkflowPendingAction): WorkflowJob {
+		const failure: WorkflowFailure = {
+			class: "USER",
+			code: pendingAction.kind,
+			message: pendingAction.message,
+			retry: "USER_ACTION",
+			at: new Date().toISOString(),
+		};
+		return this.commit(
+			jobId,
+			{ type: pendingAction.kind, class: "ACTION_REQUIRED", at: failure.at, nodeId, message: failure.message },
+			(job) => ({
+				...job,
+				graph: setWorkflowGraphStatus(
+					failWorkflowNode(job.graph, nodeId, failure),
+					job.graph.nodes[nodeId]?.phase ?? job.graph.phase,
+					"BLOCKED",
+				),
+				pendingAction,
+			}),
+		);
+	}
+
+	private handleWriterNonSuccess(jobId: string, nodeId: string, result: WorkflowWriterResult): undefined {
+		if (result.status === "UNKNOWN_CONFIRMATION") {
+			this.block(jobId, nodeId, { kind: "UNKNOWN_CONFIRMATION", message: result.message, nodeId });
+			return undefined;
+		}
+		if (result.status === "BLOCKED") {
+			this.block(jobId, nodeId, { kind: "WRITER_BLOCKED", message: result.message, nodeId });
+			return undefined;
+		}
+		throw new Error(`unexpected writer result ${result.status}`);
+	}
+
+	private captureWriterConversation(jobId: string, result: WorkflowWriterResult): void {
+		if (result.conversationUrl !== undefined) this.updateWriterConversationUrl(jobId, result.conversationUrl);
+	}
+
+	private updateWriterConversationUrl(jobId: string, url: string): void {
+		const current = this.status(jobId);
+		if (current.writerConversation.url === url) return;
+		this.commit(
+			jobId,
+			{ type: "WRITER_CONVERSATION_BOUND", class: "INTERNAL", at: new Date().toISOString() },
+			(job) => ({
+				...job,
+				writerConversation: { ...job.writerConversation, url },
+			}),
+		);
+	}
+
+	private updateHandoffReceipts(jobId: string, receipts: readonly WorkflowHandoffReceipt[]): void {
+		this.commit(jobId, { type: "HANDOFFS_DELIVERED", class: "INTERNAL", at: new Date().toISOString() }, (job) => {
+			const byId = new Map(job.handoffReceipts.map((receipt) => [receipt.handoffId, receipt]));
+			for (const receipt of receipts) byId.set(receipt.handoffId, receipt);
+			return {
+				...job,
+				handoffReceipts: [...byId.values()].sort(
+					(a, b) => a.source.localeCompare(b.source) || a.sequence - b.sequence,
 				),
 			};
 		});
 	}
 
-	private startExecution(
-		jobId: string,
-		nodeId: string,
-		ownerInstanceId: string,
-	): { job: WorkflowJob; execution: WorkflowExecutionRecord } {
-		const startedAt = new Date().toISOString();
-		const executionId = randomBytes(16).toString("hex");
-		let execution!: WorkflowExecutionRecord;
-		const job = this.update(jobId, (current) => {
+	private heartbeat(jobId: string, nodeId: string, executionId: string): void {
+		try {
+			const current = this.status(jobId);
 			const node = current.graph.nodes[nodeId];
-			if (node === undefined) throw new Error(`workflow node ${nodeId} does not exist`);
-			const attempt = (node.execution?.attempt ?? 0) + 1;
-			execution = {
-				executionId,
-				attempt,
-				ownerInstanceId,
-				startedAt,
-				heartbeatAt: startedAt,
-				leaseUntil: new Date(Date.parse(startedAt) + this.executionLeaseMs).toISOString(),
-				state: "ACTIVE",
-			};
-			return {
-				...current,
-				graph: startWorkflowNode(current.graph, nodeId, execution),
-				lastEvent: this.event("PROGRESS", "NODE_STARTED", `execution ${executionId} started`, nodeId, executionId),
-			};
-		});
-		return { job, execution };
+			if (node?.execution?.executionId !== executionId || node.state !== "RUNNING") return;
+			const now = new Date();
+			this.jobs.update(jobId, current.revision, (job) => ({
+				...job,
+				revision: job.revision + 1,
+				updatedAt: now.toISOString(),
+				graph: updateWorkflowExecution(job.graph, nodeId, executionId, (execution) => ({
+					...execution,
+					heartbeatAt: now.toISOString(),
+					leaseUntil: new Date(now.getTime() + this.executionLeaseMs).toISOString(),
+				})),
+			}));
+		} catch {
+			// A newer durable completion or recovery transition wins the race.
+		}
 	}
 
-	private touchExecution(
+	private recordTeamProgress(jobId: string, nodeId: string, executionId: string, event: TeamProgressEvent): void {
+		try {
+			const current = this.status(jobId);
+			if (current.graph.nodes[nodeId]?.execution?.executionId !== executionId) return;
+			this.jobs.update(jobId, current.revision, (job) => ({
+				...job,
+				revision: job.revision + 1,
+				updatedAt: event.at,
+				graph: updateWorkflowExecution(job.graph, nodeId, executionId, (execution) => ({
+					...execution,
+					providerState: event.status === "completed" ? "STREAMING" : "THINKING",
+					lastProviderEventAt: event.at,
+					...(event.status === "completed" ? { lastMeaningfulProgressAt: event.at } : {}),
+				})),
+			}));
+		} catch {
+			// Progress is diagnostic; durable completion or recovery wins races.
+		}
+	}
+
+	private recordProviderProgress(
 		jobId: string,
 		nodeId: string,
 		executionId: string,
-		providerState: string | undefined,
-		meaningful: boolean,
-		at: string,
+		event: ProviderProgressEvent,
 	): void {
-		this.update(jobId, (current) => {
-			const node = current.graph.nodes[nodeId];
-			if (node?.execution?.executionId !== executionId) return current;
-			const execution: WorkflowExecutionRecord = {
-				...node.execution,
-				heartbeatAt: at,
-				leaseUntil: new Date(Date.parse(at) + this.executionLeaseMs).toISOString(),
-				...(providerState === undefined ? {} : { providerState }),
-				...(meaningful ? { lastMeaningfulProgressAt: at } : {}),
-			};
-			return { ...current, graph: updateWorkflowExecution(current.graph, nodeId, execution) };
-		});
-	}
-
-	private recoveryReady(node: WorkflowGraphNode, at: number): boolean {
-		const notBefore = node.recovery?.notBefore;
-		return notBefore === undefined || Date.parse(notBefore) <= at;
-	}
-
-	private mustJob(jobId: string): WorkflowJob {
-		const job = this.jobs.get(jobId);
-		if (job === undefined) throw new Error(`workflow job ${jobId} does not exist`);
-		return job;
-	}
-
-	private update(jobId: string, mutate: (current: WorkflowJob) => WorkflowJob): WorkflowJob {
-		const current = this.mustJob(jobId);
-		const candidate = mutate(current);
-		if (candidate === current) return current;
-		return this.jobs.update(jobId, current.revision, (fresh) => ({
-			...candidate,
-			revision: fresh.revision + 1,
-			updatedAt: new Date().toISOString(),
-		}));
-	}
-
-	private event(
-		className: WorkflowEventRecord["class"],
-		type: string,
-		message?: string,
-		nodeId?: string,
-		executionId?: string,
-	): WorkflowEventRecord {
-		return {
-			type,
-			class: className,
-			at: new Date().toISOString(),
-			...(message === undefined ? {} : { message }),
-			...(nodeId === undefined ? {} : { nodeId }),
-			...(executionId === undefined ? {} : { executionId }),
-		};
-	}
-
-	private emit(job: WorkflowJob): void {
-		const event = job.lastEvent;
-		if (event === undefined) return;
-		this.journal?.append(job.jobId, event);
-		this.events?.emit({
-			jobId: job.jobId,
-			ownerSessionId: job.ownerSessionId,
-			phase: job.graph.phase,
-			lifecycle: job.graph.lifecycle,
-			event,
-		});
-	}
-
-	private writerSession(ownerSessionId: string, jobId: string): string {
-		return `${ownerSessionId}:workflow:${jobId}:writer`;
-	}
-
-	private teamSession(ownerSessionId: string, jobId: string, phase: string, lane: string): string {
-		return `${ownerSessionId}:workflow:${jobId}:${phase}:${lane}`;
-	}
-
-	private teamStep(node: WorkflowGraphNode): TeamPlanStep {
-		const input = node.input.bindings;
-		if (
-			input?.accountId === undefined ||
-			input.phase === undefined ||
-			input.lane === undefined ||
-			input.sessionId === undefined ||
-			input.round === undefined
-		) {
-			throw new Error(`workflow node ${node.nodeId} is missing team bindings`);
+		try {
+			const current = this.status(jobId);
+			if (current.graph.nodes[nodeId]?.execution?.executionId !== executionId) return;
+			this.jobs.update(jobId, current.revision, (job) => ({
+				...job,
+				revision: job.revision + 1,
+				updatedAt: event.at,
+				graph: updateWorkflowExecution(job.graph, nodeId, executionId, (execution) => ({
+					...execution,
+					providerState: event.kind === "generation_started" ? "THINKING" : "STREAMING",
+					lastProviderEventAt: event.at,
+					lastMeaningfulProgressAt: event.at,
+				})),
+			}));
+		} catch {
+			// Semantic progress is diagnostic; durable completion/recovery wins races.
 		}
-		return {
-			stepId: node.nodeId,
-			kind: node.kind === "TEAM_SYNTHESIS" ? "synthesis" : "turn",
-			phase: input.phase,
-			lane: input.lane,
-			accountId: input.accountId,
-			sessionId: input.sessionId,
-			round: input.round,
-			memberIndex: input.memberIndex,
-			strategy: input.strategy,
-		};
 	}
 
-	private async teamPromptContext(
+	private inputForNode(
 		job: WorkflowJob,
 		node: WorkflowGraphNode,
-	): Promise<{
-		lane: WorkflowLane;
-		turns: readonly TeamTurn[];
-		other: readonly string[];
-	}> {
-		const lane = node.input.bindings?.lane;
-		if (lane === undefined) throw new Error(`workflow node ${node.nodeId} is missing lane`);
-		const turns: TeamTurn[] = [];
-		const other: string[] = [];
-		for (const dependency of node.dependencies) {
-			const previous = job.graph.nodes[dependency];
-			if (previous?.output === undefined) continue;
-			const stored = this.results.get(previous.input.inputHash);
-			if (stored?.output === undefined) continue;
-			if (previous.kind === "TEAM_MEMBER") {
-				turns.push({
-					round: previous.input.bindings?.round ?? 0,
-					accountId: previous.input.bindings?.accountId ?? DEFAULT_TEAM_ACCOUNTS[0],
-					provider: getAccountDefinition(previous.input.bindings?.accountId ?? DEFAULT_TEAM_ACCOUNTS[0]).provider,
-					text: stored.output,
-				});
-			} else other.push(stored.output);
+		graph: WorkflowGraphSnapshot,
+	): WorkflowNodeInputReceipt {
+		const dependencies = this.dependencyHashes(node, graph);
+		if (node.kind === "TEAM_MEMBER" || node.kind === "TEAM_SYNTHESIS") {
+			const context = this.teamNodeContext({ ...job, graph }, node);
+			return createTeamStepInputReceipt({
+				nodeId: node.nodeId,
+				plan: context.plan,
+				step: context.step,
+				task: context.task,
+				transcript: context.transcript,
+				promptStrategy: context.promptStrategy,
+				dependencyOutputHashes: dependencies,
+				bindings: {
+					repository: job.repository,
+					baseRevision: job.baseRevision,
+					sessionId: context.sessionId,
+					taskHash: hashWorkflowGraphValue(context.task),
+					stepId: context.step.stepId,
+					accountId: context.step.accountId,
+					...(job.pullRequest === undefined
+						? {}
+						: { headSha: job.pullRequest.headSha, reviewCycle: job.reviewCycle }),
+				},
+			});
 		}
-		return { lane, turns, other };
+		const bindings: Record<string, string | number | boolean> = {
+			repository: job.repository,
+			baseRevision: job.baseRevision,
+			objectiveHash: hashWorkflowGraphValue(job.objective),
+			writerSessionId: job.writerConversation.sessionId,
+		};
+		if (job.pullRequest !== undefined) {
+			Object.assign(bindings, {
+				prNumber: job.pullRequest.number,
+				headSha: job.pullRequest.headSha,
+				reviewCycle: job.reviewCycle,
+			});
+		}
+		return createWorkflowNodeInputReceipt(node.nodeId, dependencies, bindings);
 	}
 
-	private mustNodeOutput(graph: WorkflowGraphSnapshot, nodeId: string): WorkflowGraphNode {
-		const node = graph.nodes[nodeId];
-		if (node?.state !== "COMPLETED" || node.output === undefined)
-			throw new Error(`workflow node ${nodeId} has no completed output`);
-		return node;
+	private teamNodeContext(
+		job: WorkflowJob,
+		node: WorkflowGraphNode,
+	): {
+		plan: ReturnType<typeof buildTeamPlan>;
+		step: TeamPlanStep;
+		task: string;
+		transcript: readonly TeamTurn[];
+		promptStrategy: TeamPromptStrategyId;
+		sessionId: string;
+	} {
+		const parsed = this.parseTeamNode(node.nodeId);
+		const plan = buildTeamPlan({
+			accounts: job.accountRouting.thinkerAccounts,
+			rounds: this.teams.rounds,
+			synthesize: true,
+			synthesizer: job.accountRouting.synthesizerAccount,
+		});
+		const step =
+			parsed.kind === "synthesis"
+				? plan.steps.find((candidate) => candidate.kind === "synthesis")
+				: plan.steps.find(
+						(candidate) =>
+							candidate.kind === "member" &&
+							candidate.round === parsed.round &&
+							candidate.member === parsed.member,
+					);
+		if (step === undefined) throw new Error(`workflow node ${node.nodeId} does not map to the current team plan`);
+		const task =
+			parsed.phase === "research"
+				? this.prompts.research(job, parsed.lane)
+				: this.prompts.review({ ...job, pullRequest: this.requirePr(job) }, parsed.lane);
+		const sessionId = this.teamSession(job.ownerSessionId, job.jobId, parsed.phase, parsed.lane);
+		const transcript: TeamTurn[] = [];
+		for (const planStep of plan.steps) {
+			if (planStep.stepId === step.stepId) break;
+			if (planStep.kind !== "member") continue;
+			const priorNodeId =
+				parsed.phase === "research"
+					? workflowNodeId.researchMember(parsed.lane, planStep.round, planStep.member)
+					: workflowNodeId.reviewMember(parsed.cycle!, parsed.lane, planStep.round, planStep.member);
+			const prior = job.graph.nodes[priorNodeId];
+			if (prior?.state !== "COMPLETED" || prior.output === undefined) continue;
+			const payload = this.results.get(job.jobId, prior.output.resultId)?.payload;
+			if (payload === undefined) throw new Error(`workflow node result ${prior.output.resultId} is missing`);
+			transcript.push({
+				round: planStep.round,
+				accountId: planStep.accountId,
+				provider: getAccountDefinition(planStep.accountId).provider,
+				text: payload,
+			});
+		}
+		return {
+			plan,
+			step,
+			task,
+			transcript,
+			promptStrategy: parsed.phase === "research" ? "workflow-research" : "workflow-review",
+			sessionId,
+		};
 	}
 
-	private researchPayload(job: WorkflowJob, researchA: WorkflowGraphNode, researchB: WorkflowGraphNode): string {
-		const a = this.results.get(researchA.input.inputHash)?.output ?? "";
-		const b = this.results.get(researchB.input.inputHash)?.output ?? "";
-		return [
-			`Repository: ${job.repository}`,
-			`Base revision: ${job.baseRevision}`,
-			`Objective: ${job.objective}`,
-			"",
-			"Research A",
-			a,
-			"",
-			"Research B",
-			b,
-		].join("\n");
+	private parseTeamNode(nodeId: string): {
+		phase: "research" | "review";
+		lane: WorkflowLane;
+		cycle?: number;
+		kind: "member" | "synthesis";
+		round?: number;
+		member?: number;
+	} {
+		const research = nodeId.match(/^research:([AB]):(?:(?:round:(\d+):member:(\d+))|(synthesis))$/u);
+		if (research) {
+			return {
+				phase: "research",
+				lane: research[1] as WorkflowLane,
+				kind: research[4] ? "synthesis" : "member",
+				...(research[2] ? { round: Number(research[2]), member: Number(research[3]) } : {}),
+			};
+		}
+		const review = nodeId.match(/^review:cycle:(\d+):([AB]):(?:(?:round:(\d+):member:(\d+))|(synthesis))$/u);
+		if (review) {
+			return {
+				phase: "review",
+				cycle: Number(review[1]),
+				lane: review[2] as WorkflowLane,
+				kind: review[5] ? "synthesis" : "member",
+				...(review[3] ? { round: Number(review[3]), member: Number(review[4]) } : {}),
+			};
+		}
+		throw new Error(`workflow node ${nodeId} is not a team node`);
+	}
+
+	private nodeRequestKey(job: WorkflowJob, node: WorkflowGraphNode): string {
+		if (node.input === undefined) throw new Error(`workflow node ${node.nodeId} has no exact input receipt`);
+		return `${job.jobId}:${node.nodeId}:${node.input.inputHash}`;
+	}
+
+	private newExecution(node: WorkflowGraphNode, ownerInstanceId: string): WorkflowExecutionRecord {
+		const now = new Date();
+		return {
+			executionId: randomBytes(16).toString("hex"),
+			attempt: node.state === "RECOVERING" ? (node.recovery?.attempt ?? (node.execution?.attempt ?? 0) + 1) : 1,
+			state: "ACTIVE",
+			ownerInstanceId,
+			startedAt: now.toISOString(),
+			heartbeatAt: now.toISOString(),
+			leaseUntil: new Date(now.getTime() + this.executionLeaseMs).toISOString(),
+			providerState: "NAVIGATING",
+			lastProviderEventAt: now.toISOString(),
+			lastMeaningfulProgressAt: now.toISOString(),
+		};
+	}
+
+	private commit(
+		jobId: string,
+		event: WorkflowEventRecord,
+		mutate: (current: WorkflowJob) => WorkflowJob,
+	): WorkflowJob {
+		const current = this.status(jobId);
+		const mutated = mutate(current);
+		const graph = { ...mutated.graph, eventSeq: current.graph.eventSeq + 1 };
+		const next: WorkflowJob = {
+			...mutated,
+			graph,
+			revision: current.revision + 1,
+			lastEvent: event,
+			updatedAt: event.at,
+		};
+		const saved = this.jobs.update(jobId, current.revision, () => next);
+		try {
+			this.journal?.append(saved, event);
+		} catch {
+			// Snapshot is authoritative. A diagnostic journal gap never rolls correctness back.
+		}
+		this.events?.publish(saved, event);
+		return saved;
+	}
+
+	private project(
+		graph: WorkflowGraphSnapshot,
+		pendingAction: WorkflowPendingAction | undefined,
+	): WorkflowGraphSnapshot {
+		if (graph.lifecycle === "CANCELLED" || graph.lifecycle === "COMPLETED") return graph;
+		if (pendingAction !== undefined || Object.values(graph.nodes).some((node) => node.state === "FAILED")) {
+			return { ...graph, lifecycle: "BLOCKED" };
+		}
+		const recovering = Object.values(graph.nodes).find((node) => node.state === "RECOVERING");
+		if (recovering !== undefined) return { ...graph, phase: recovering.phase, lifecycle: "RECOVERING" };
+		const phaseOrder = ["RESEARCH", "WRITER", "REVIEW"] as const;
+		for (const phase of phaseOrder) {
+			if (
+				Object.values(graph.nodes).some(
+					(node) => node.phase === phase && node.state !== "COMPLETED" && node.state !== "CANCELLED",
+				)
+			) {
+				return { ...graph, phase, lifecycle: "RUNNING" };
+			}
+		}
+		return { ...graph, phase: "DONE", lifecycle: "COMPLETED" };
+	}
+
+	private dependencyHashes(node: WorkflowGraphNode, graph: WorkflowGraphSnapshot): Record<string, string> {
+		return Object.fromEntries(
+			node.dependencies.map((dependencyId) => {
+				const output = graph.nodes[dependencyId]?.output;
+				if (output === undefined) throw new Error(`workflow dependency ${dependencyId} has no output receipt`);
+				return [dependencyId, output.outputHash];
+			}),
+		);
+	}
+
+	private nodePayload(job: WorkflowJob, nodeId: string): string {
+		const output = job.graph.nodes[nodeId]?.output;
+		if (output === undefined) throw new Error(`workflow node ${nodeId} has no output`);
+		const result = this.results.get(job.jobId, output.resultId);
+		if (result === undefined || result.outputHash !== output.outputHash)
+			throw new Error(`workflow node ${nodeId} exact result is unavailable`);
+		return result.payload;
+	}
+
+	private outputReceipt(result: WorkflowNodeResult) {
+		return { resultId: result.resultId, outputHash: result.outputHash, completedAt: result.completedAt };
 	}
 
 	private handoffReceipt(handoff: WorkflowHandoff): WorkflowHandoffReceipt {
 		return {
 			handoffId: handoff.handoffId,
-			source: handoff.sourceNodeIds.join("+"),
+			source: handoff.source,
 			recipient: handoff.recipient,
 			sequence: handoff.sequence,
 			payloadHash: handoff.payloadHash,
@@ -827,51 +1033,55 @@ export class WorkflowEngine {
 		};
 	}
 
-	private writerResult(output: string): WorkflowWriterResult {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(output);
-		} catch {
-			throw new Error("writer node result is not valid JSON");
+	private assertImplementationPr(job: WorkflowJob, pr: WorkflowPullRequestReceipt): void {
+		if (
+			normalizeGitHubRepository(pr.repository) !== normalizeGitHubRepository(job.repository) ||
+			pr.base !== WORKFLOW_BASE_BRANCH ||
+			pr.head !== `internet-workflow/${job.jobId}`
+		) {
+			throw new Error("writer PR receipt violates workflow repository/base/branch authority");
 		}
-		if (typeof parsed !== "object" || parsed === null) throw new Error("writer node result is not an object");
-		return parsed as WorkflowWriterResult;
 	}
 
-	private remediationControl(job: WorkflowJob, cycle: number, reviewA: string, reviewB: string) {
-		const expectedHeadSha = job.pullRequest?.headSha;
-		if (expectedHeadSha === undefined) throw new Error("review remediation requires an exact PR head");
-		return createWorkflowControlMessage("START_REMEDIATION", {
-			jobId: job.jobId,
-			repository: job.repository,
-			expectedHeadSha,
-			cycle,
-			reviewA,
-			reviewB,
-		});
+	private assertRemediationPr(current: WorkflowPullRequestReceipt, next: WorkflowPullRequestReceipt): void {
+		if (
+			normalizeGitHubRepository(next.repository) !== normalizeGitHubRepository(current.repository) ||
+			next.number !== current.number ||
+			next.url !== current.url ||
+			next.base !== current.base ||
+			next.head !== current.head
+		) {
+			throw new Error("writer remediation must update exactly the existing workflow PR");
+		}
 	}
 
-	private pendingActionForFailure(
-		nodeId: string,
-		failure: WorkflowFailure,
-		expectedHeadSha?: string,
-	): WorkflowPendingAction {
-		if (failure.class === "AUTHENTICATION")
-			return { kind: "ACCOUNT_REAUTH_REQUIRED", message: failure.message, nodeId };
-		if (failure.class === "CONFIRMATION")
-			return { kind: "UNKNOWN_CONFIRMATION", message: failure.message, nodeId, expectedHeadSha };
-		if (failure.class === "AUTOMATION") return { kind: "CODE_FIX_REQUIRED", message: failure.message, nodeId };
-		return { kind: "USER_ACTION_REQUIRED", message: failure.message, nodeId, expectedHeadSha };
+	private requirePr(job: WorkflowJob): WorkflowPullRequestReceipt {
+		if (job.pullRequest === undefined) throw new Error("workflow operation requires a persisted PR");
+		return job.pullRequest;
 	}
 
-	private mapTeamProgress(event: TeamProgressEvent): {
-		providerState?: string;
-		meaningful: boolean;
-		at: string;
-	} {
-		const at = new Date().toISOString();
-		if (event.type === "step_progress") return { providerState: event.message, meaningful: true, at };
-		if (event.type === "step_started") return { providerState: "started", meaningful: true, at };
-		return { providerState: event.type, meaningful: false, at };
+	private cycleFromNode(nodeId: string): number {
+		const match = nodeId.match(/:cycle:(\d+):/u);
+		if (!match) throw new Error(`workflow node ${nodeId} has no review cycle`);
+		return Number(match[1]);
+	}
+
+	private teamSession(
+		ownerSessionId: string,
+		jobId: string,
+		phase: "research" | "review",
+		lane: WorkflowLane,
+	): string {
+		return `${ownerSessionId}:workflow:${jobId}:${phase}:${lane}`;
+	}
+}
+
+class TeamStepError extends Error {
+	readonly detail: TeamFailureDetail;
+
+	constructor(detail: TeamFailureDetail) {
+		super(detail.message);
+		this.name = "TeamStepError";
+		this.detail = detail;
 	}
 }
