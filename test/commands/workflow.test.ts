@@ -6,6 +6,7 @@ import {
 	type WorkflowCommandOperator,
 	type WorkflowCommandService,
 } from "#internet/commands/workflow";
+import type { WorkflowAdmissionDraftInput } from "#internet/workflow/admission/types";
 import type { WorkflowJob } from "#internet/workflow/types";
 
 const REVISION = "0123456789abcdef0123456789abcdef01234567";
@@ -30,7 +31,7 @@ function createRunner(overrides: Record<string, string | Error> = {}): GitRunner
 	};
 }
 
-function fakeJob(input: { objective: string; repository: string; baseRevision: string }): WorkflowJob {
+function fakeJob(input: WorkflowAdmissionDraftInput): WorkflowJob {
 	const at = "2026-09-08T00:00:00.000Z";
 	return {
 		schema: "@tsuuanmi/internet-workflow-job",
@@ -38,9 +39,9 @@ function fakeJob(input: { objective: string; repository: string; baseRevision: s
 		revision: 1,
 		jobId: JOB_ID,
 		ownerSessionId: "1-1",
-		objective: input.objective,
-		repository: input.repository,
-		baseRevision: input.baseRevision,
+		objective: input.source.rawText,
+		repository: input.target?.repository?.value ?? "",
+		baseRevision: input.target?.baseRevision?.value ?? "",
 		graph: {
 			schema: "@tsuuanmi/internet-workflow-graph",
 			version: 1,
@@ -97,7 +98,7 @@ function invocation(rawInput: string, cwd = "/repo") {
 }
 
 describe("defineWorkflowCommand", () => {
-	it("resolves Git context and starts through the workflow service", async () => {
+	it("resolves Git context and starts through the canonical admission draft", async () => {
 		const runGit = vi.fn(createRunner());
 		const workflow = service();
 		const command = defineWorkflowCommand({ service: workflow, operator: operator(), runGit });
@@ -115,17 +116,16 @@ describe("defineWorkflowCommand", () => {
 		);
 		expect(runGit).not.toHaveBeenCalledWith("/repo", ["rev-parse", "HEAD"], input.signal);
 		expect(workflow.start).toHaveBeenCalledWith(
-			{ principal: { kind: "session", id: "1-1" }, legacyOwnerSessionId: "1-1" },
+			{ principal: { kind: "session", id: "1-1" }, ownerSessionId: "1-1" },
 			{
-				objective: "Correct the login redirect.",
-				repository: "https://github.com/example/signal",
-				baseRevision: REVISION,
-				admission: {
-					rawSource: "Correct the login redirect.",
-					sourceProvenance: "user_explicit",
-					targetProvenance: "system_observed",
-					authorityProvenance: "user_explicit",
+				source: { kind: "user", rawText: "Correct the login redirect.", provenance: "user_explicit" },
+				profileHint: { value: "software_change", provenance: "policy_default" },
+				target: {
+					repository: { value: "https://github.com/example/signal", provenance: "system_observed" },
+					baseRevision: { value: REVISION, provenance: "system_observed" },
 				},
+				authority: { repositoryMutation: { value: true, provenance: "user_explicit" } },
+				autonomy: { value: "autonomous_until_external_dependency", provenance: "policy_default" },
 			},
 		);
 	});
