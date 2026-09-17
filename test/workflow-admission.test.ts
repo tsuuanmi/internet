@@ -3,13 +3,17 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { WorkflowAdmissionActivator } from "#internet/workflow/admission/activation";
 import { canonicalAdmissionJson, hashAdmissionValue } from "#internet/workflow/admission/hash";
 import { WorkflowAdmissionService, WorkflowAdmissionServiceError } from "#internet/workflow/admission/service";
 import { WorkflowAdmissionStore, WorkflowAdmissionStoreError } from "#internet/workflow/admission/store";
+import type { AcceptedAdmissionSpec } from "#internet/workflow/admission/types";
+import { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
+import { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 import { WorkflowProfileRegistry } from "#internet/workflow/profiles/types";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
-import { WorkflowService, workflowSessionAuthorizationContext } from "#internet/workflow/service";
+import { WorkflowService } from "#internet/workflow/service";
 import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
 
 const roots: string[] = [];
@@ -40,19 +44,32 @@ function admissionService(path: string, start = 0): WorkflowAdmissionService {
 }
 
 function softwareDraft(sourceProvenance: "user_explicit" | "local_interpreted" = "user_explicit") {
+	return createSoftwareAdmissionDraft({
+		rawSource: "Add deterministic admission",
+		sourceProvenance,
+		repository: "https://github.com/example/repo",
+		baseRevision: REVISION,
+		targetProvenance: "system_observed",
+		authorityProvenance: sourceProvenance,
+	});
+}
+
+function recordingActivator(expectedHash: string): {
+	readonly activator: WorkflowAdmissionActivator;
+	readonly seen: AcceptedAdmissionSpec[];
+} {
+	const seen: AcceptedAdmissionSpec[] = [];
 	return {
-		source: {
-			kind: sourceProvenance === "user_explicit" ? ("user" as const) : ("local_agent" as const),
-			rawText: "Add deterministic admission",
-			provenance: sourceProvenance,
-		},
-		profileHint: { value: "software_change", provenance: "policy_default" as const },
-		target: {
-			repository: { value: "https://github.com/example/repo", provenance: "system_observed" as const },
-			baseRevision: { value: REVISION, provenance: "system_observed" as const },
-		},
-		authority: {
-			repositoryMutation: { value: true, provenance: "user_explicit" as const },
+		seen,
+		activator: {
+			target(spec) {
+				return { targetKind: "workflow_job", targetId: spec.admissionId };
+			},
+			ensure(spec, target) {
+				expect(hashAdmissionValue(spec)).toBe(expectedHash);
+				expect(target).toEqual({ targetKind: "workflow_job", targetId: spec.admissionId });
+				seen.push(spec);
+			},
 		},
 	};
 }
@@ -70,12 +87,12 @@ describe("workflow admission", () => {
 		expect(hashAdmissionValue(left)).toBe(hashAdmissionValue(right));
 	});
 
-	it("auto-accepts an explicit software admission and activates only the exact accepted spec", () => {
+	it("auto-accepts explicit software input and activates only the exact accepted spec", () => {
 		const path = root();
 		const service = admissionService(path);
-		const owner = { kind: "session", id: "session-a" };
+		const owner = { kind: "session", id: "session-a" } as const;
 		const created = service.create(owner, softwareDraft());
-		const accepted = service.preflight(created.admissionId, created.revision);
+		const accepted = service.preflight(owner, created.admissionId, created.revision);
 
 		expect(accepted.state).toBe("ACCEPTED");
 		expect(accepted.preview?.confirmation.level).toBe("AUTO_SUBMIT");
@@ -83,37 +100,35 @@ describe("workflow admission", () => {
 		expect(accepted.acceptedSpec?.draft.source.provenance).toBe("user_explicit");
 		expect(accepted.acceptedSpecHash).toMatch(/^[0-9a-f]{64}$/u);
 
-		expect(() =>
-			service.activate(owner, accepted.admissionId, accepted.revision, "0".repeat(64), () => ({
-				result: "wrong",
-				targetKind: "workflow_run",
-				targetId: "run-wrong",
-			})),
-		).toThrow("accepted admission identity changed before activation");
-
 		const exactHash = accepted.acceptedSpecHash!;
-		const activated = service.activate(owner, accepted.admissionId, accepted.revision, exactHash, (spec) => {
-			expect(hashAdmissionValue(spec)).toBe(exactHash);
-			expect(spec.draft.source.rawText).toBe("Add deterministic admission");
-			return { result: "ok", targetKind: "workflow_run", targetId: "run-1" };
+		const { activator, seen } = recordingActivator(exactHash);
+		expect(() => service.activate(owner, accepted.admissionId, "0".repeat(64), activator)).toThrow(
+			"accepted admission identity changed before activation",
+		);
+
+		const activated = service.activate(owner, accepted.admissionId, exactHash, activator);
+		expect(activated.state).toBe("ACTIVATED");
+		expect(activated.activation).toMatchObject({
+			targetKind: "workflow_job",
+			targetId: accepted.admissionId,
+			acceptedSpecHash: exactHash,
 		});
-		expect(activated.result).toBe("ok");
-		expect(activated.record.state).toBe("ACTIVATED");
-		expect(activated.record.activation).toMatchObject({ targetKind: "workflow_run", targetId: "run-1" });
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.draft.source.rawText).toBe("Add deterministic admission");
 	});
 
 	it("persists Local confirmation across service reconstruction", () => {
 		const path = root();
-		const owner = { kind: "session", id: "session-a" };
+		const owner = { kind: "session", id: "session-a" } as const;
 		const first = admissionService(path);
 		const created = first.create(owner, softwareDraft("local_interpreted"));
-		const waiting = first.preflight(created.admissionId, created.revision);
+		const waiting = first.preflight(owner, created.admissionId, created.revision);
 
 		expect(waiting.state).toBe("AWAITING_CONFIRMATION");
 		expect(waiting.preview?.confirmation.level).toBe("LOCAL_CONFIRM");
 
 		const reconstructed = admissionService(path, 2);
-		const loaded = reconstructed.get(waiting.admissionId);
+		const loaded = reconstructed.get(owner, waiting.admissionId);
 		expect(loaded).toMatchObject({ state: "AWAITING_CONFIRMATION", draftHash: waiting.draftHash });
 		const accepted = reconstructed.confirm(owner, waiting.admissionId, waiting.revision, {
 			expectedDraftHash: waiting.draftHash,
@@ -125,7 +140,7 @@ describe("workflow admission", () => {
 
 	it("requires explicit User provenance for policy-required User confirmation", () => {
 		const path = root();
-		const owner = { kind: "session", id: "session-a" };
+		const owner = { kind: "session", id: "session-a" } as const;
 		const service = admissionService(path);
 		const created = service.create(owner, {
 			...softwareDraft(),
@@ -133,7 +148,7 @@ describe("workflow admission", () => {
 				duration: { value: "P3D", provenance: "local_interpreted" },
 			},
 		});
-		const waiting = service.preflight(created.admissionId, created.revision);
+		const waiting = service.preflight(owner, created.admissionId, created.revision);
 
 		expect(waiting.preview?.confirmation.level).toBe("USER_CONFIRM");
 		expect(() =>
@@ -153,10 +168,10 @@ describe("workflow admission", () => {
 
 	it("fails closed when the confirmation draft identity is stale", () => {
 		const path = root();
-		const owner = { kind: "session", id: "session-a" };
+		const owner = { kind: "session", id: "session-a" } as const;
 		const service = admissionService(path);
 		const created = service.create(owner, softwareDraft("local_interpreted"));
-		const waiting = service.preflight(created.admissionId, created.revision);
+		const waiting = service.preflight(owner, created.admissionId, created.revision);
 
 		expect(() =>
 			service.confirm(owner, waiting.admissionId, waiting.revision, {
@@ -164,19 +179,22 @@ describe("workflow admission", () => {
 				provenance: "local_interpreted",
 			}),
 		).toThrow("admission draft changed before confirmation; re-preflight is required");
-		expect(service.get(waiting.admissionId)?.state).toBe("AWAITING_CONFIRMATION");
+		expect(service.get(owner, waiting.admissionId)?.state).toBe("AWAITING_CONFIRMATION");
 	});
 
 	it("uses optimistic revision control for durable admission updates", () => {
 		const path = root();
+		const owner = { kind: "session", id: "session-a" } as const;
 		const service = admissionService(path);
-		const created = service.create({ kind: "session", id: "session-a" }, softwareDraft());
-		service.preflight(created.admissionId, created.revision);
+		const created = service.create(owner, softwareDraft());
+		service.preflight(owner, created.admissionId, created.revision);
 
-		expect(() => service.preflight(created.admissionId, created.revision)).toThrowError(WorkflowAdmissionStoreError);
+		expect(() => service.preflight(owner, created.admissionId, created.revision)).toThrowError(
+			WorkflowAdmissionStoreError,
+		);
 	});
 
-	it("routes a compatibility software start through an activated durable admission without changing v3 job semantics", () => {
+	it("starts software execution only through an activated durable admission", () => {
 		const path = root();
 		const runtime = createWorkflowTestRuntime(path);
 		const driver = {
@@ -197,29 +215,20 @@ describe("workflow admission", () => {
 			admissions,
 		);
 		const authorization = workflowSessionAuthorizationContext("session-a");
-		const job = workflow.start(authorization, {
-			objective: "Add deterministic admission",
-			repository: "https://github.com/example/repo",
-			baseRevision: REVISION,
-			admission: {
-				rawSource: "Add deterministic admission",
-				sourceProvenance: "user_explicit",
-				targetProvenance: "system_observed",
-				authorityProvenance: "user_explicit",
-			},
-		});
+		const job = workflow.start(authorization, softwareDraft());
 
 		expect(job).toMatchObject({
+			jobId: expect.any(String),
 			ownerSessionId: "session-a",
 			objective: "Add deterministic admission",
 			repository: "https://github.com/example/repo",
 			baseRevision: REVISION,
 		});
-		const records = admissions.list();
+		const records = admissions.list(authorization.principal);
 		expect(records).toHaveLength(1);
 		expect(records[0]).toMatchObject({
 			state: "ACTIVATED",
-			activation: { targetKind: "legacy_v3_job", targetId: job.jobId },
+			activation: { targetKind: "workflow_job", targetId: job.jobId },
 		});
 		expect(records[0]?.acceptedSpec?.draft.source.provenance).toBe("user_explicit");
 	});
