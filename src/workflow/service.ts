@@ -1,3 +1,7 @@
+import type {
+	WorkflowActivationResource,
+	WorkflowAdmissionActivationRegistry,
+} from "#internet/workflow/admission/activation-registry";
 import type { WorkflowAdmissionService } from "#internet/workflow/admission/service";
 import type {
 	AdmissionConfirmationInput,
@@ -10,7 +14,6 @@ import {
 	type WorkflowAuthorizationContext,
 } from "#internet/workflow/authorization";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
-import { createSoftwareWorkflowActivator } from "#internet/workflow/profiles/software-activation";
 import type { WorkflowDeletionReceipt, WorkflowRetentionManager } from "#internet/workflow/retention";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 import { workflowJobIsTerminal } from "#internet/workflow/types";
@@ -47,6 +50,7 @@ export class WorkflowService {
 	private readonly jobs: WorkflowJobStore;
 	private readonly retention: WorkflowRetentionManager;
 	private readonly admissionService: WorkflowAdmissionService;
+	private readonly activationRegistry: WorkflowAdmissionActivationRegistry;
 
 	constructor(
 		engine: WorkflowServiceEngine,
@@ -54,12 +58,14 @@ export class WorkflowService {
 		jobs: WorkflowJobStore,
 		retention: WorkflowRetentionManager,
 		admissionService: WorkflowAdmissionService,
+		activationRegistry: WorkflowAdmissionActivationRegistry,
 	) {
 		this.engine = engine;
 		this.driver = driver;
 		this.jobs = jobs;
 		this.retention = retention;
 		this.admissionService = admissionService;
+		this.activationRegistry = activationRegistry;
 	}
 
 	admit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord {
@@ -104,27 +110,39 @@ export class WorkflowService {
 		return this.activateAdmission(context, admitted.admissionId, admitted.acceptedSpecHash);
 	}
 
+	activateAdmissionTarget(
+		context: WorkflowAuthorizationContext,
+		admissionId: string,
+		expectedAcceptedSpecHash: string,
+	): WorkflowActivationResource {
+		assertWorkflowPrincipal(context.principal);
+		const admitted = this.admission(context, admissionId);
+		if (admitted.acceptedSpec === undefined) {
+			throw new WorkflowServiceError(`workflow admission ${admissionId} has no accepted specification`);
+		}
+		const handler = this.activationRegistry.resolve(admitted.acceptedSpec.profile.id);
+		const record = this.admissionService.activate(
+			context.principal,
+			admissionId,
+			expectedAcceptedSpecHash,
+			handler.activator(context),
+		);
+		if (record.activation === undefined) {
+			throw new WorkflowServiceError(`workflow admission ${admissionId} did not produce an activation target`);
+		}
+		return handler.resolve(record.activation);
+	}
+
 	activateAdmission(
 		context: WorkflowAuthorizationContext,
 		admissionId: string,
 		expectedAcceptedSpecHash: string,
 	): WorkflowJob {
-		const ownerSessionId = requireWorkflowOwnerSessionId(context);
-		const activator = createSoftwareWorkflowActivator(this.engine, this.driver, this.jobs, ownerSessionId);
-		const record = this.admissionService.activate(
-			context.principal,
-			admissionId,
-			expectedAcceptedSpecHash,
-			activator,
-		);
-		if (record.activation?.targetKind !== "workflow_job") {
-			throw new WorkflowServiceError(`workflow admission ${admissionId} did not activate a software workflow job`);
+		const resource = this.activateAdmissionTarget(context, admissionId, expectedAcceptedSpecHash);
+		if (resource.kind !== "workflow_job") {
+			throw new WorkflowServiceError(`workflow admission ${admissionId} activated a vNext WorkflowRun, not a v3 WorkflowJob`);
 		}
-		const job = this.jobs.get(record.activation.targetId);
-		if (job === undefined) {
-			throw new WorkflowServiceError(`activated workflow job ${record.activation.targetId} does not exist`);
-		}
-		return job;
+		return resource.job;
 	}
 
 	list(context: WorkflowAuthorizationContext): readonly WorkflowJob[] {
