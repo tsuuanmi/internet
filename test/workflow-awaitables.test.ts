@@ -95,6 +95,42 @@ describe("workflow durable Timer and ExternalEvent", () => {
 		expect(wait.matchedEventId).toBe(event.eventId);
 	});
 
+	it("wakes a persisted matched ExternalEvent wait after process reconstruction", () => {
+		const root = mkdtempSync(join(tmpdir(), "internet-event-restart-"));
+		const runs = new WorkflowRunStore(root);
+		runs.create(run());
+		const timers = new WorkflowTimerStore(root);
+		const events = new WorkflowExternalEventStore(root);
+		events.ensureWait(runId, need, {
+			eventType: "research.updated",
+			correlationKey: "topic:restart",
+			payloadSchema: { id: "research.updated", version: "1" },
+		});
+		events.ingest({
+			runId,
+			source: "provider",
+			sourceEventId: "event-before-crash",
+			eventType: "research.updated",
+			correlationKey: "topic:restart",
+			payloadSchema: { id: "research.updated", version: "1" },
+			payload: { ready: true },
+			occurredAt: "2026-09-18T01:00:00.000Z",
+		});
+		events.reconcile(runId);
+		expect(events.listWaits(runId)[0]?.state).toBe("MATCHED");
+
+		const woken: string[] = [];
+		const scheduler = new WorkflowWakeupScheduler(
+			new WorkflowTimerStore(root),
+			new WorkflowExternalEventStore(root),
+			new WorkflowRunStore(root),
+			{ enqueue: (id) => woken.push(id) },
+		);
+		scheduler.start();
+		expect(woken).toEqual([runId]);
+		scheduler.dispose();
+	});
+
 	it("reconciles overdue Timers on scheduler start and wakes only the owning run", () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-wakeup-"));
 		const runs = new WorkflowRunStore(root);
@@ -109,6 +145,7 @@ describe("workflow durable Timer and ExternalEvent", () => {
 		const woken: string[] = [];
 		const scheduler = new WorkflowWakeupScheduler(
 			timers,
+			new WorkflowExternalEventStore(root),
 			runs,
 			{ enqueue: (id) => woken.push(id) },
 			{ now: () => Date.parse("2026-09-18T02:00:00.000Z") },
