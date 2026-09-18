@@ -1,5 +1,6 @@
 import { canonicalJson } from "#internet/core/canonical-json";
 import type { WorkflowAdmissionActivator } from "#internet/workflow/admission/activation";
+import type { WorkflowAdmissionActivationHandler } from "#internet/workflow/admission/activation-registry";
 import type {
 	AcceptedAdmissionSpec,
 	AdmissionActivationTarget,
@@ -145,6 +146,28 @@ export function createResearchWorkflowActivator(
 			if (latest !== undefined && !["COMPLETED", "CANCELLED"].includes(latest.lifecycle) && !driver.isActive(latest.runId)) {
 				driver.enqueue(latest.runId);
 			}
+		},
+	};
+}
+
+
+export function createResearchWorkflowActivationHandler(
+	runs: WorkflowRunStore,
+	artifacts: WorkflowArtifactStore,
+	driver: ResearchWorkflowActivationDriver,
+): WorkflowAdmissionActivationHandler {
+	return {
+		profileId: RESEARCH_WORKFLOW_PROFILE_ID,
+		activator(context) {
+			return createResearchWorkflowActivator(runs, artifacts, driver, context.principal);
+		},
+		resolve(target) {
+			if (target.targetKind !== "workflow_run") {
+				throw new Error("research workflow activation target is not a WorkflowRun");
+			}
+			const run = runs.get(target.targetId);
+			if (run === undefined) throw new Error(`activated workflow run ${target.targetId} does not exist`);
+			return { kind: "workflow_run", run };
 		},
 	};
 }
