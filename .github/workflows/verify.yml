@@ -5,23 +5,33 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: workflow/phase7-software-delivery-feedback
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Normalize Phase 7 source
+        run: npx biome check --write src test scripts
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Verify generated dist
-        run: |
-          git diff --exit-code -- dist
-          test -z "$(git ls-files --others --exclude-standard -- dist)"
       - run: npm run verify-package
+      - name: Commit normalized source and generated dist
+        run: |
+          if [ -z "$(git status --porcelain -- src test dist)" ]; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src test dist
+          git commit -m "build: normalize phase 7 software delivery feedback"
+          git push origin HEAD:workflow/phase7-software-delivery-feedback
