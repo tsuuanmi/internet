@@ -4,7 +4,7 @@
 
 **Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 is implemented in PR #41, Phase 4 deterministic vNext runtime control is implemented in PR #42, Phase 5 capability adapters are implemented in PR #43, and Phase 6 durable external interactions are implemented in PR #44.**
 
-The migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, deterministic baseline convergence, a deterministic vNext coordinator/driver with exact-input scheduling and recovery, and profile adapters that execute planning, software repository research, implementation, exact-state review, and external deep research through existing specialized runners while preserving exact result promotion and keeping provider/account/session selection below capability identity. The v3 runtime remains supported during migration.
+The migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, deterministic baseline convergence, a deterministic vNext coordinator/driver with exact-input scheduling and recovery, profile adapters for planning/software/research execution, and durable external interaction primitives with multi-action PendingAction state, responder authority/provenance, exact-state fencing, idempotent responses, and separately persisted typed unsolicited signals. The v3 runtime remains supported during migration.
 
 The next implementation milestone after Phase 6 is the vNext software Delivery/feedback loop.
 
