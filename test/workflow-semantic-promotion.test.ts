@@ -27,7 +27,7 @@ const workItem: WorkflowWorkItem = {
 	requestOwner: { kind: "run", id: runId },
 	capability,
 	sideEffect: "READ_ONLY",
-	state: "SUCCEEDED",
+	state: "COMPLETED",
 	inputBundleId,
 	executionIds: ["execution-1"],
 	resultArtifactIds: [],
