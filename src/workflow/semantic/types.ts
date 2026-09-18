@@ -9,6 +9,7 @@ export const WORKFLOW_SEMANTIC_ARTIFACT_TYPES = {
 	evidence: "evidence",
 	criterionAssessment: "criterion_assessment",
 	report: "report",
+	implementationOutput: "implementation_output",
 	delivery: "delivery",
 	userFeedback: "user_feedback",
 } as const;
@@ -26,6 +27,7 @@ export const WORKFLOW_SEMANTIC_SCHEMA_REFS = {
 	evidence: { id: "workflow.evidence", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
 	criterionAssessment: { id: "workflow.criterion-assessment", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
 	report: { id: "workflow.report", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
+	implementationOutput: { id: "workflow.implementation-output", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
 	delivery: { id: "workflow.delivery", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
 	userFeedback: { id: "workflow.user-feedback", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
 } as const satisfies Readonly<Record<keyof typeof WORKFLOW_SEMANTIC_ARTIFACT_TYPES, WorkflowVersionRef>>;
@@ -186,6 +188,14 @@ export interface WorkflowReportPayload {
 	readonly evidence: readonly WorkflowArtifactRef[];
 }
 
+export interface WorkflowImplementationOutputPayload {
+	readonly outputId: string;
+	readonly kind: string;
+	readonly subject: WorkflowAssessmentSubject;
+	readonly artifacts: readonly WorkflowArtifactRef[];
+	readonly instructions?: string;
+}
+
 export interface WorkflowDeliveryPayload {
 	readonly deliveryId: string;
 	readonly kind: string;
@@ -213,6 +223,7 @@ export type WorkflowSemanticPayload =
 	| WorkflowEvidencePayload
 	| WorkflowCriterionAssessmentPayload
 	| WorkflowReportPayload
+	| WorkflowImplementationOutputPayload
 	| WorkflowDeliveryPayload
 	| WorkflowUserFeedbackPayload;
 
