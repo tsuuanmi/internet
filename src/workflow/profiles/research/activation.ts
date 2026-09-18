@@ -63,7 +63,13 @@ function runFor(spec: AcceptedAdmissionSpec, owner: WorkflowPrincipal): Workflow
 }
 
 function assertExactRun(current: WorkflowRun, expected: WorkflowRun): void {
-	if (canonicalJson(current) !== canonicalJson(expected)) {
+	if (
+		current.runId !== expected.runId ||
+		current.admissionId !== expected.admissionId ||
+		canonicalJson(current.owner) !== canonicalJson(expected.owner) ||
+		canonicalJson(current.definitions) !== canonicalJson(expected.definitions) ||
+		current.createdAt !== expected.createdAt
+	) {
 		throw new Error(`workflow run ${current.runId} conflicts with accepted research admission identity`);
 	}
 }
