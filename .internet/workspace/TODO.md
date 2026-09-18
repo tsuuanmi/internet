@@ -4,7 +4,7 @@
 
 **Design Gate D0 and Phases 0-6 have landed on `main`; Phase 7 software Delivery/User-feedback lifecycle is implemented in PR #45, and Phase 8 Workstream/continuation is implemented in PR #46.**
 
-The migration now has one authoritative `WorkflowService` boundary, durable admission, the parallel vNext kernel/runtime, typed semantic artifacts, deterministic convergence, capability adapters, durable external interactions, and a software Delivery/User-feedback loop where implementation produces an exact reviewable output, review PASS creates an exact-head Delivery checkpoint, User/local feedback is persisted against that checkpoint, and reasoning capabilities—not the deterministic Orchestrator—derive typed consequences. The v3 runtime remains supported during migration.
+The migration now has one authoritative `WorkflowService` boundary, durable admission, the parallel vNext kernel/runtime, typed semantic artifacts, deterministic convergence, capability adapters, durable external interactions, a software Delivery/User-feedback loop, and durable Workstream continuity with admission-pinned parent/child lineage plus child-owned exact Artifact imports that remain reproducible after parent retention. Workstream remains metadata only; WorkflowRun stays the bounded execution authority. The v3 runtime remains supported during migration.
 
 The next implementation milestone after Phase 8 is Timer/ExternalEvent.
 
