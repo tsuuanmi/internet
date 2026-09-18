@@ -276,7 +276,6 @@ export type { CreateWorkflowInputBundleInput } from "#internet/workflow/input-bu
 export { WorkflowInputBundleStore, WorkflowInputBundleStoreError } from "#internet/workflow/input-bundle-store";
 export * from "#internet/workflow/interactions/index";
 export { WorkflowDurablePendingActionRuntime } from "#internet/workflow/interactions/runtime";
-export { WorkflowPendingActionStore, WorkflowPendingActionStoreError } from "#internet/workflow/pending-action-store";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
 export * from "#internet/workflow/kernel/index";
 export type { WorkflowNodeResult } from "#internet/workflow/node-result-store";
@@ -291,6 +290,7 @@ export {
 	WorkflowOperator,
 	WorkflowOperatorError,
 } from "#internet/workflow/operator";
+export { WorkflowPendingActionStore, WorkflowPendingActionStoreError } from "#internet/workflow/pending-action-store";
 export {
 	WorkflowPlanningCapabilityAdapter,
 	WorkflowTeamPlanningExecutor,

@@ -1,21 +1,21 @@
 import { hashCanonicalJson } from "#internet/core/canonical-json";
+import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowAuthorizationContext, WorkflowPrincipal } from "#internet/workflow/authorization";
 import { assertWorkflowPrincipal } from "#internet/workflow/authorization";
-import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import { workflowResponseProvenanceAllowed } from "#internet/workflow/interactions/response-policy";
+import type { WorkflowExternalSignalStore } from "#internet/workflow/interactions/signal-store";
+import type { WorkflowExternalSignal, WorkflowExternalSignalInput } from "#internet/workflow/interactions/types";
 import {
 	WORKFLOW_PENDING_ACTION_RESPONSE_SCHEMA,
 	type WorkflowPendingAction,
 	type WorkflowPendingActionResponseInput,
 	type WorkflowResponseProvenance,
 } from "#internet/workflow/interactions/types";
+import type { WorkflowVersionRef } from "#internet/workflow/kernel/types";
 import type { WorkflowPendingActionStore } from "#internet/workflow/pending-action-store";
-import type { WorkflowExternalSignalStore } from "#internet/workflow/interactions/signal-store";
-import type { WorkflowExternalSignal, WorkflowExternalSignalInput } from "#internet/workflow/interactions/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import { currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidation";
-import type { WorkflowVersionRef } from "#internet/workflow/kernel/types";
 
 export interface WorkflowResponseSchemaRegistry {
 	validate(schema: WorkflowVersionRef, payload: unknown): void;
@@ -130,14 +130,12 @@ export class WorkflowInteractionService {
 	get(context: WorkflowAuthorizationContext, runId: string, actionId: string): WorkflowPendingAction {
 		const run = this.requireAuthorizedRun(context, runId);
 		const action = this.dependencies.actions.get(run.runId, actionId);
-		if (action === undefined) throw new WorkflowInteractionServiceError(`workflow PendingAction ${actionId} does not exist`);
+		if (action === undefined)
+			throw new WorkflowInteractionServiceError(`workflow PendingAction ${actionId} does not exist`);
 		return action;
 	}
 
-	respond(
-		context: WorkflowAuthorizationContext,
-		input: WorkflowPendingActionResponseInput,
-	): WorkflowPendingAction {
+	respond(context: WorkflowAuthorizationContext, input: WorkflowPendingActionResponseInput): WorkflowPendingAction {
 		const run = this.requireAuthorizedRun(context, input.runId);
 		const action = this.dependencies.actions.get(input.runId, input.actionId);
 		if (action === undefined) {
@@ -160,7 +158,9 @@ export class WorkflowInteractionService {
 			);
 		}
 		if (!sameSchema(action.responseSchema, input.responseSchema)) {
-			throw new WorkflowInteractionServiceError("workflow PendingAction response schema does not match action contract");
+			throw new WorkflowInteractionServiceError(
+				"workflow PendingAction response schema does not match action contract",
+			);
 		}
 		if (!workflowResponseProvenanceAllowed(action.responderPolicy, input.provenance)) {
 			throw new WorkflowInteractionServiceError(
@@ -178,9 +178,7 @@ export class WorkflowInteractionService {
 				state: "SUPERSEDED",
 				updatedAt: new Date(this.now()).toISOString(),
 			}));
-			throw new WorkflowInteractionServiceError(
-				`workflow PendingAction ${input.actionId} exact context is stale`,
-			);
+			throw new WorkflowInteractionServiceError(`workflow PendingAction ${input.actionId} exact context is stale`);
 		}
 		const at = new Date(this.now()).toISOString();
 		const resolved = this.dependencies.actions.update(run.runId, action.actionId, action.revision, (current) => ({
@@ -223,20 +221,11 @@ export class WorkflowInteractionService {
 	private actionContextIsCurrent(action: WorkflowPendingAction): boolean {
 		const artifacts = this.dependencies.artifacts.list(action.runId);
 		const current = currentWorkflowArtifactIds(artifacts, this.dependencies.inputBundles.list(action.runId));
-		if (
-			action.artifactBindings.some(
-				(ref) => ref.runId !== action.runId || !current.has(ref.artifactId),
-			)
-		) {
+		if (action.artifactBindings.some((ref) => ref.runId !== action.runId || !current.has(ref.artifactId))) {
 			return false;
 		}
 		return action.subjectBindings.every((binding) =>
-			this.dependencies.subjects.isCurrent(
-				action.runId,
-				binding.subject.kind,
-				binding.subject.id,
-				binding.version,
-			),
+			this.dependencies.subjects.isCurrent(action.runId, binding.subject.kind, binding.subject.id, binding.version),
 		);
 	}
 

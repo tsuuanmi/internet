@@ -6,7 +6,7 @@ import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import { type WorkflowExecutionManagerDependencies } from "#internet/workflow/runtime/execution-manager";
 import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
-import type { WorkflowCapabilityExecutorRegistry, WorkflowExecution, WorkflowPendingActionMaterializer, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
+import type { WorkflowCapabilityExecutorRegistry, WorkflowExecution, WorkflowPendingActionRuntime, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 export interface WorkflowRunCoordinatorOptions {
     readonly leaseMs?: number;
@@ -21,7 +21,7 @@ export interface WorkflowRunCoordinatorDependencies extends WorkflowExecutionMan
     readonly results: WorkflowExecutionResultStore;
     readonly capabilities: WorkflowCapabilityRegistry;
     readonly executors: WorkflowCapabilityExecutorRegistry;
-    readonly pendingActions: WorkflowPendingActionMaterializer;
+    readonly pendingActions: WorkflowPendingActionRuntime;
     readonly policy: WorkflowRuntimePolicy;
 }
 export declare class WorkflowRunCoordinator {

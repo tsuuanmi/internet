@@ -1,8 +1,5 @@
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
-import type {
-	WorkflowPendingAction,
-	WorkflowPendingActionContract,
-} from "#internet/workflow/interactions/types";
+import type { WorkflowPendingAction, WorkflowPendingActionContract } from "#internet/workflow/interactions/types";
 import type {
 	WorkflowArtifact,
 	WorkflowArtifactRef,

@@ -18,12 +18,7 @@ export type WorkflowPendingActionState = (typeof WORKFLOW_PENDING_ACTION_STATES)
 export const WORKFLOW_RESPONDER_POLICIES = ["USER_AUTHORITY", "LOCAL_AGENT_INPUT", "USER_OR_LOCAL"] as const;
 export type WorkflowResponderPolicy = (typeof WORKFLOW_RESPONDER_POLICIES)[number];
 
-export const WORKFLOW_RESPONSE_PROVENANCE = [
-	"user_explicit",
-	"local_agent",
-	"operator",
-	"system_policy",
-] as const;
+export const WORKFLOW_RESPONSE_PROVENANCE = ["user_explicit", "local_agent", "operator", "system_policy"] as const;
 export type WorkflowResponseProvenance = (typeof WORKFLOW_RESPONSE_PROVENANCE)[number];
 
 export const WORKFLOW_PENDING_ACTION_TIMEOUT_POLICIES = [
@@ -97,7 +92,6 @@ export interface WorkflowPendingActionResponseInput {
 	readonly responseSchema: WorkflowVersionRef;
 	readonly payload: unknown;
 }
-
 
 export interface WorkflowExternalSignal {
 	readonly schema: typeof WORKFLOW_EXTERNAL_SIGNAL_SCHEMA;

@@ -1,21 +1,23 @@
+export { workflowResponseProvenanceAllowed } from "#internet/workflow/interactions/response-policy";
 export {
-	workflowResponseProvenanceAllowed,
-} from "#internet/workflow/interactions/response-policy";
-export {
-	WorkflowInteractionService,
-	WorkflowInteractionServiceError,
 	type WorkflowInteractionAuthorityPolicy,
+	WorkflowInteractionService,
 	type WorkflowInteractionServiceDependencies,
+	WorkflowInteractionServiceError,
 	type WorkflowPendingActionSubjectResolver,
 	type WorkflowResponseSchemaRegistry,
 } from "#internet/workflow/interactions/service";
+export {
+	WorkflowExternalSignalStore,
+	WorkflowExternalSignalStoreError,
+} from "#internet/workflow/interactions/signal-store";
 export type {
 	WorkflowExternalSignal,
 	WorkflowExternalSignalInput,
 	WorkflowPendingAction,
 	WorkflowPendingActionContract,
-	WorkflowPendingActionResponseInput,
 	WorkflowPendingActionResolution,
+	WorkflowPendingActionResponseInput,
 	WorkflowPendingActionState,
 	WorkflowPendingActionSubjectBinding,
 	WorkflowPendingActionTimeoutPolicy,
@@ -32,5 +34,3 @@ export {
 	WORKFLOW_RESPONSE_PROVENANCE,
 } from "#internet/workflow/interactions/types";
 export { parseWorkflowPendingAction } from "#internet/workflow/interactions/validation";
-
-export { WorkflowExternalSignalStore, WorkflowExternalSignalStoreError } from "#internet/workflow/interactions/signal-store";

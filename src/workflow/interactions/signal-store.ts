@@ -2,12 +2,12 @@ import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalJson, hashCanonicalJson } from "#internet/core/canonical-json";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
+import type { WorkflowPrincipal } from "#internet/workflow/authorization";
 import {
 	WORKFLOW_EXTERNAL_SIGNAL_SCHEMA,
 	type WorkflowExternalSignal,
 	type WorkflowExternalSignalInput,
 } from "#internet/workflow/interactions/types";
-import type { WorkflowPrincipal } from "#internet/workflow/authorization";
 
 export class WorkflowExternalSignalStoreError extends Error {
 	constructor(message: string) {
@@ -138,7 +138,9 @@ export class WorkflowExternalSignalStore {
 		const directory = this.runDir(runId);
 		if (!existsSync(directory)) return [];
 		if (!lstatSync(directory).isDirectory()) {
-			throw new WorkflowExternalSignalStoreError(`workflow external signals path for run ${runId} is not a directory`);
+			throw new WorkflowExternalSignalStoreError(
+				`workflow external signals path for run ${runId} is not a directory`,
+			);
 		}
 		return readdirSync(directory)
 			.filter((name) => /^[0-9a-f]{32}\.json$/u.test(name))
@@ -146,7 +148,9 @@ export class WorkflowExternalSignalStore {
 			.map((name) => {
 				const signal = this.get(runId, name.slice(0, -5));
 				if (signal === undefined) {
-					throw new WorkflowExternalSignalStoreError(`workflow external signal ${name} disappeared during enumeration`);
+					throw new WorkflowExternalSignalStoreError(
+						`workflow external signal ${name} disappeared during enumeration`,
+					);
 				}
 				return signal;
 			});

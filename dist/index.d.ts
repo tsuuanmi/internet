@@ -64,11 +64,14 @@ export type { CreateWorkflowHandoffInput, WorkflowHandoff, WorkflowHandoffStatus
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export type { CreateWorkflowInputBundleInput } from "#internet/workflow/input-bundle-store";
 export { WorkflowInputBundleStore, WorkflowInputBundleStoreError } from "#internet/workflow/input-bundle-store";
+export * from "#internet/workflow/interactions/index";
+export { WorkflowDurablePendingActionRuntime } from "#internet/workflow/interactions/runtime";
 export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#internet/workflow/job-store";
 export * from "#internet/workflow/kernel/index";
 export type { WorkflowNodeResult } from "#internet/workflow/node-result-store";
 export { parseWorkflowNodeResult, WorkflowNodeResultStore, workflowNodeResultId, } from "#internet/workflow/node-result-store";
 export { formatWorkflowList, formatWorkflowStatus, WorkflowOperator, WorkflowOperatorError, } from "#internet/workflow/operator";
+export { WorkflowPendingActionStore, WorkflowPendingActionStoreError } from "#internet/workflow/pending-action-store";
 export { WorkflowPlanningCapabilityAdapter, WorkflowTeamPlanningExecutor, } from "#internet/workflow/profiles/common/planning-capability";
 export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
 export { EXTERNAL_DEEP_RESEARCH_CAPABILITY, WorkflowExternalDeepResearchAdapter, } from "#internet/workflow/profiles/research/deep-research-capability";

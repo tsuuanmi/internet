@@ -124,7 +124,10 @@ export class WorkflowPendingActionStore {
 				action.actionType === input.contract.actionType,
 		);
 		const current = matching.at(-1);
-		if (current !== undefined && (current.state === "PENDING" || current.state === "RESOLVED" || current.state === "REJECTED")) {
+		if (
+			current !== undefined &&
+			(current.state === "PENDING" || current.state === "RESOLVED" || current.state === "REJECTED")
+		) {
 			if (canonicalJson(contractOf(current)) !== canonicalJson(contract)) {
 				throw new WorkflowPendingActionStoreError(
 					`workflow PendingAction contract changed for ${current.actionId} without superseding its cause`,
@@ -202,7 +205,9 @@ export class WorkflowPendingActionStore {
 			.map((name) => {
 				const action = this.get(runId, name.slice(0, -5));
 				if (action === undefined) {
-					throw new WorkflowPendingActionStoreError(`workflow PendingAction ${name} disappeared during enumeration`);
+					throw new WorkflowPendingActionStoreError(
+						`workflow PendingAction ${name} disappeared during enumeration`,
+					);
 				}
 				return action;
 			});
@@ -215,7 +220,8 @@ export class WorkflowPendingActionStore {
 		mutate: (current: WorkflowPendingAction) => WorkflowPendingAction,
 	): WorkflowPendingAction {
 		const current = this.get(runId, actionId);
-		if (current === undefined) throw new WorkflowPendingActionStoreError(`workflow PendingAction ${actionId} does not exist`);
+		if (current === undefined)
+			throw new WorkflowPendingActionStoreError(`workflow PendingAction ${actionId} does not exist`);
 		if (current.revision !== expectedRevision) {
 			throw new WorkflowPendingActionStoreError(
 				`workflow PendingAction ${actionId} revision conflict: expected ${expectedRevision}, current ${current.revision}`,
@@ -227,7 +233,8 @@ export class WorkflowPendingActionStore {
 			["action id", current.actionId, next.actionId],
 			["creation timestamp", current.createdAt, next.createdAt],
 		] as const) {
-			if (before !== after) throw new WorkflowPendingActionStoreError(`workflow PendingAction ${label} cannot change`);
+			if (before !== after)
+				throw new WorkflowPendingActionStoreError(`workflow PendingAction ${label} cannot change`);
 		}
 		for (const [label, before, after] of [
 			["cause", current.causedBy, next.causedBy],

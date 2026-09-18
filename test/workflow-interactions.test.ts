@@ -3,16 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
-import { workflowPrincipalEquals, type WorkflowAuthorizationContext } from "#internet/workflow/authorization";
+import { type WorkflowAuthorizationContext, workflowPrincipalEquals } from "#internet/workflow/authorization";
+import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import {
+	type WorkflowInteractionAuthorityPolicy,
 	WorkflowInteractionService,
 	WorkflowInteractionServiceError,
-	type WorkflowInteractionAuthorityPolicy,
 	type WorkflowResponseSchemaRegistry,
 } from "#internet/workflow/interactions/service";
-import type { WorkflowPendingActionContract } from "#internet/workflow/interactions/types";
-import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import { WorkflowExternalSignalStore } from "#internet/workflow/interactions/signal-store";
+import type { WorkflowPendingActionContract } from "#internet/workflow/interactions/types";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { WorkflowPendingActionStore } from "#internet/workflow/pending-action-store";
 import { WorkflowRunStore } from "#internet/workflow/run-store";

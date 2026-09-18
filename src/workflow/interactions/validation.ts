@@ -91,11 +91,7 @@ function assertSubjectBindings(value: unknown): asserts value is readonly Workfl
 }
 
 function parseResolution(value: unknown): WorkflowPendingActionResolution {
-	if (
-		!isRecord(value) ||
-		value.schema !== WORKFLOW_PENDING_ACTION_RESPONSE_SCHEMA ||
-		value.version !== 1
-	) {
+	if (!isRecord(value) || value.schema !== WORKFLOW_PENDING_ACTION_RESPONSE_SCHEMA || value.version !== 1) {
 		throw new Error("unsupported workflow PendingAction response schema");
 	}
 	assertText(value.requestId, "workflow PendingAction response request id");
@@ -147,9 +143,7 @@ export function parseWorkflowPendingAction(value: unknown): WorkflowPendingActio
 	if (value.deadline !== undefined) assertTimestamp(value.deadline, "workflow PendingAction deadline");
 	if (
 		typeof value.timeoutPolicy !== "string" ||
-		!WORKFLOW_PENDING_ACTION_TIMEOUT_POLICIES.includes(
-			value.timeoutPolicy as WorkflowPendingAction["timeoutPolicy"],
-		)
+		!WORKFLOW_PENDING_ACTION_TIMEOUT_POLICIES.includes(value.timeoutPolicy as WorkflowPendingAction["timeoutPolicy"])
 	) {
 		throw new Error("invalid workflow PendingAction timeout policy");
 	}

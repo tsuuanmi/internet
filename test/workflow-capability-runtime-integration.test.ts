@@ -142,7 +142,12 @@ describe("workflow vNext capability runtime integration", () => {
 			results: new WorkflowExecutionResultStore(root),
 			capabilities: new WorkflowCapabilityRegistry([SOFTWARE_REPOSITORY_RESEARCH_CAPABILITY]),
 			executors: { resolve: () => adapter },
-			pendingActions: { ensure: () => ({}) as never, list: () => [], hasOpen: () => false, reconcile: () => undefined },
+			pendingActions: {
+				ensure: () => ({}) as never,
+				list: () => [],
+				hasOpen: () => false,
+				reconcile: () => undefined,
+			},
 			policy,
 		});
 
