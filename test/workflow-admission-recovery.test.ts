@@ -118,13 +118,15 @@ describe("workflow admission activation recovery", () => {
 			repository: "https://github.com/example/repo",
 			baseRevision: REVISION,
 		});
-		const workflow = new WorkflowService(
-			runtime.engine,
-			driverFor(runtime),
-			runtime.jobs,
-			new WorkflowRetentionManager(path, runtime.jobs),
-			admissions,
-		);
+		const runtimeDriver = driverFor(runtime);
+		const retention = new WorkflowRetentionManager(path, runtime.jobs);
+		const workflow = new WorkflowService({
+			admissionService: admissions,
+			activationRegistry: new WorkflowAdmissionActivationRegistry([
+				createSoftwareWorkflowActivationHandler(runtime.engine, runtimeDriver, runtime.jobs),
+			]),
+			legacy: { engine: runtime.engine, driver: runtimeDriver, jobs: runtime.jobs, retention },
+		});
 
 		expect(() => workflow.activateAdmission(authorization, accepted.admissionId, accepted.acceptedSpecHash!)).toThrow(
 			"conflicts with accepted admission identity",
