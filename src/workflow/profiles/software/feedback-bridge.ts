@@ -50,6 +50,14 @@ export class WorkflowSoftwareFeedbackBridge {
 		);
 		const payload = parseWorkflowDeliveryPayload(delivery.payload);
 		if (
+			input.targetDelivery !== undefined &&
+			(input.targetDelivery.runId !== delivery.runId ||
+				input.targetDelivery.artifactId !== delivery.artifactId ||
+				input.targetVersion !== payload.subject.version)
+		) {
+			throw new Error("software User validation response conflicts with its exact Delivery binding");
+		}
+		if (
 			!action.subjectBindings.some(
 				(binding) =>
 					binding.subject.kind === payload.subject.kind &&
@@ -133,6 +141,7 @@ export class WorkflowSoftwareFeedbackBridge {
 				feedbackId,
 				provenance,
 				raw: input.raw,
+				disposition: input.verdict === "ACCEPTED" ? "accepted" : "changes_requested",
 				targetDelivery,
 				targetVersion,
 				attachments: [],
@@ -150,7 +159,7 @@ export class WorkflowSoftwareFeedbackBridge {
 				requestedCapability: SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY.id,
 				question: input.raw,
 				subjects: [{ kind: "delivery", id: `${targetDelivery.artifactId}@${targetVersion}` }],
-				relatedArtifacts: [{ runId: feedback.runId, artifactId: feedback.artifactId }, targetDelivery],
+				relatedArtifacts: [{ runId: feedback.runId, artifactId: feedback.artifactId }],
 			},
 		});
 	}
