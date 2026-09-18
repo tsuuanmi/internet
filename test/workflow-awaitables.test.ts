@@ -52,7 +52,6 @@ describe("workflow durable Timer and ExternalEvent", () => {
 		expect(reconstructed.get(runId, timer.timerId)?.deadline).toBe("2026-09-18T01:00:00.000Z");
 	});
 
-
 	it("cancels stale Timer and ExternalEvent waits before they can wake a run", () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-awaitable-invalidation-"));
 		const timers = new WorkflowTimerStore(root);
