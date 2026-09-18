@@ -184,6 +184,12 @@ export class WorkflowPendingActionStore {
 		}
 	}
 
+	hasOpen(runId: string, causedByArtifactId: string): boolean {
+		return this.list(runId).some(
+			(action) => action.causedBy.artifactId === causedByArtifactId && action.state === "PENDING",
+		);
+	}
+
 	list(runId: string): readonly WorkflowPendingAction[] {
 		const directory = this.runDir(runId);
 		if (!existsSync(directory)) return [];
