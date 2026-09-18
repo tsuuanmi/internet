@@ -11,10 +11,7 @@ import type { WorkflowExecutionStore } from "#internet/workflow/runtime/executio
 import { applyWorkflowInvalidation } from "#internet/workflow/runtime/invalidation";
 import { projectWorkflowRunLifecycle } from "#internet/workflow/runtime/lifecycle";
 import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
-import {
-	materializeWorkflowNeeds,
-	prepareWorkflowReadyWork,
-} from "#internet/workflow/runtime/scheduler";
+import { materializeWorkflowNeeds, prepareWorkflowReadyWork } from "#internet/workflow/runtime/scheduler";
 import type {
 	WorkflowCapabilityExecutorRegistry,
 	WorkflowExecution,
@@ -50,8 +47,7 @@ export class WorkflowRunCoordinator {
 
 	constructor(dependencies: WorkflowRunCoordinatorDependencies, options: WorkflowRunCoordinatorOptions = {}) {
 		const leaseMs = options.leaseMs ?? 5 * 60_000;
-		if (!Number.isSafeInteger(leaseMs) || leaseMs < 1)
-			throw new Error("workflow execution lease must be positive");
+		if (!Number.isSafeInteger(leaseMs) || leaseMs < 1) throw new Error("workflow execution lease must be positive");
 		this.dependencies = dependencies;
 		this.now = options.now ?? Date.now;
 		this.execution = new WorkflowExecutionManager(dependencies, { leaseMs, now: this.now });
@@ -100,8 +96,7 @@ export class WorkflowRunCoordinator {
 		signal?: AbortSignal,
 	): Promise<WorkflowRun> {
 		const run = this.status(runId);
-		if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle))
-			throw new Error("terminal workflow run cannot execute work");
+		if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle)) throw new Error("terminal workflow run cannot execute work");
 		await this.execution.execute(run, workItemId, ownerInstanceId, signal);
 		return this.advance(runId);
 	}

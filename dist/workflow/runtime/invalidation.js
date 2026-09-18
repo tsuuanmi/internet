@@ -1,3 +1,4 @@
+import { fenceWorkflowExecution, fenceWorkflowWorkItem } from "#internet/workflow/runtime/execution-state";
 const INVALIDATING_RELATIONS = new Set(["supersedes", "invalidates"]);
 export function currentWorkflowArtifactIds(artifacts, bundles) {
     const stale = new Set();
@@ -39,5 +40,17 @@ export function staleWorkflowWorkItems(workItems, bundles, artifacts) {
         const bundle = byId.get(item.inputBundleId);
         return bundle === undefined || !workflowInputBundleIsCurrent(bundle, artifacts, bundles);
     });
+}
+export function applyWorkflowInvalidation(dependencies, runId, artifacts, now) {
+    const items = dependencies.workItems.list(runId);
+    const bundles = dependencies.inputBundles.list(runId);
+    const executions = dependencies.executions.list(runId);
+    for (const item of staleWorkflowWorkItems(items, bundles, artifacts)) {
+        for (const execution of executions) {
+            if (execution.workItemId === item.workItemId && execution.state === "RUNNING")
+                fenceWorkflowExecution(dependencies.executions, execution, now, "INPUT_INVALIDATED", "execution input was invalidated");
+        }
+        fenceWorkflowWorkItem(dependencies.workItems, runId, item.workItemId, now);
+    }
 }
 //# sourceMappingURL=invalidation.js.map

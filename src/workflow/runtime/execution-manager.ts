@@ -4,23 +4,17 @@ import type { WorkflowCapabilityRegistry } from "#internet/workflow/capability-r
 import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import type { WorkflowRun, WorkflowWorkItem } from "#internet/workflow/kernel/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
-import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import {
 	failWorkflowExecution,
 	fenceWorkflowExecution,
 	setWorkflowWorkItemFailed,
 	setWorkflowWorkItemReady,
 } from "#internet/workflow/runtime/execution-state";
+import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
-import type {
-	WorkflowCapabilityExecutorRegistry,
-	WorkflowExecution,
-} from "#internet/workflow/runtime/types";
+import type { WorkflowCapabilityExecutorRegistry, WorkflowExecution } from "#internet/workflow/runtime/types";
 import { WORKFLOW_EXECUTION_SCHEMA } from "#internet/workflow/runtime/types";
-import {
-	promoteWorkflowSemanticResult,
-	type WorkflowSemanticExecutionResult,
-} from "#internet/workflow/semantic/index";
+import { promoteWorkflowSemanticResult, type WorkflowSemanticExecutionResult } from "#internet/workflow/semantic/index";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 
 export interface WorkflowExecutionManagerDependencies {
@@ -48,10 +42,7 @@ export class WorkflowExecutionManager {
 	private readonly leaseMs: number;
 	private readonly now: () => number;
 
-	constructor(
-		dependencies: WorkflowExecutionManagerDependencies,
-		options: WorkflowExecutionManagerOptions,
-	) {
+	constructor(dependencies: WorkflowExecutionManagerDependencies, options: WorkflowExecutionManagerOptions) {
 		this.dependencies = dependencies;
 		this.leaseMs = options.leaseMs;
 		this.now = options.now;
@@ -61,8 +52,7 @@ export class WorkflowExecutionManager {
 		const current = this.dependencies.executions.get(runId, executionId);
 		if (current === undefined || current.state !== "RUNNING")
 			throw new Error(`workflow execution ${executionId} is not running`);
-		if (current.ownerInstanceId !== ownerInstanceId)
-			throw new Error("workflow execution heartbeat owner mismatch");
+		if (current.ownerInstanceId !== ownerInstanceId) throw new Error("workflow execution heartbeat owner mismatch");
 		if (Date.parse(current.leaseUntil) <= this.now()) {
 			fenceWorkflowExecution(
 				this.dependencies.executions,
@@ -95,12 +85,7 @@ export class WorkflowExecutionManager {
 		}
 	}
 
-	async execute(
-		run: WorkflowRun,
-		workItemId: string,
-		ownerInstanceId: string,
-		signal?: AbortSignal,
-	): Promise<void> {
+	async execute(run: WorkflowRun, workItemId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<void> {
 		const item = this.dependencies.workItems.get(run.runId, workItemId);
 		if (item === undefined) throw new Error(`workflow work item ${workItemId} does not exist`);
 		if (item.state !== "READY" || item.inputBundleId === undefined)
@@ -203,8 +188,7 @@ export class WorkflowExecutionManager {
 		if (item.state === "FENCED" || item.state === "CANCELLED")
 			throw new Error("fenced workflow execution cannot commit results");
 		const bundle = this.dependencies.inputBundles.get(execution.runId, execution.inputBundleId);
-		if (bundle === undefined)
-			throw new Error(`workflow InputBundle ${execution.inputBundleId} does not exist`);
+		if (bundle === undefined) throw new Error(`workflow InputBundle ${execution.inputBundleId} does not exist`);
 		const capability = this.dependencies.capabilities.resolve(execution.capability);
 		const promoted = promoteWorkflowSemanticResult(
 			{
@@ -218,27 +202,22 @@ export class WorkflowExecutionManager {
 		const currentItem = this.dependencies.workItems.get(execution.runId, execution.workItemId);
 		if (currentItem === undefined) throw new Error("workflow WorkItem disappeared during result commit");
 		if (currentItem.state !== "SUCCEEDED") {
-			this.dependencies.workItems.update(
-				execution.runId,
-				execution.workItemId,
-				currentItem.revision,
-				(current) => ({
-					...current,
-					revision: current.revision + 1,
-					state: "SUCCEEDED",
-					resultArtifactIds: [
-						...current.resultArtifactIds,
-						...promoted.artifacts
-							.map((artifact) => artifact.artifactId)
-							.filter((id) => !current.resultArtifactIds.includes(id)),
-					],
-					receiptIds: [
-						...current.receiptIds,
-						...promoted.receiptIds.filter((id) => !current.receiptIds.includes(id)),
-					],
-					updatedAt: new Date(this.now()).toISOString(),
-				}),
-			);
+			this.dependencies.workItems.update(execution.runId, execution.workItemId, currentItem.revision, (current) => ({
+				...current,
+				revision: current.revision + 1,
+				state: "SUCCEEDED",
+				resultArtifactIds: [
+					...current.resultArtifactIds,
+					...promoted.artifacts
+						.map((artifact) => artifact.artifactId)
+						.filter((id) => !current.resultArtifactIds.includes(id)),
+				],
+				receiptIds: [
+					...current.receiptIds,
+					...promoted.receiptIds.filter((id) => !current.receiptIds.includes(id)),
+				],
+				updatedAt: new Date(this.now()).toISOString(),
+			}));
 		}
 		const currentExecution = this.dependencies.executions.get(execution.runId, execution.executionId);
 		if (currentExecution?.state !== "RUNNING") return;
@@ -256,10 +235,7 @@ export class WorkflowExecutionManager {
 		);
 	}
 
-	private async reconcileExpiredExecution(
-		execution: WorkflowExecution,
-		signal?: AbortSignal,
-	): Promise<void> {
+	private async reconcileExpiredExecution(execution: WorkflowExecution, signal?: AbortSignal): Promise<void> {
 		const item = this.dependencies.workItems.get(execution.runId, execution.workItemId);
 		const bundle = this.dependencies.inputBundles.get(execution.runId, execution.inputBundleId);
 		if (item === undefined || bundle === undefined) {
@@ -282,12 +258,7 @@ export class WorkflowExecutionManager {
 				"LEASE_EXPIRED",
 				"read-only execution lease expired",
 			);
-			setWorkflowWorkItemReady(
-				this.dependencies.workItems,
-				execution.runId,
-				execution.workItemId,
-				this.now,
-			);
+			setWorkflowWorkItemReady(this.dependencies.workItems, execution.runId, execution.workItemId, this.now);
 			return;
 		}
 		const executor = this.dependencies.executors.resolve(capability);
@@ -300,12 +271,7 @@ export class WorkflowExecutionManager {
 				"mutation execution lease expired without a reconciliation contract",
 				false,
 			);
-			setWorkflowWorkItemFailed(
-				this.dependencies.workItems,
-				execution.runId,
-				execution.workItemId,
-				this.now,
-			);
+			setWorkflowWorkItemFailed(this.dependencies.workItems, execution.runId, execution.workItemId, this.now);
 			return;
 		}
 		const run = this.dependencies.runs.get(execution.runId);
@@ -319,12 +285,7 @@ export class WorkflowExecutionManager {
 				"RECONCILED_ABSENT",
 				"external mutation was not observed during reconciliation",
 			);
-			setWorkflowWorkItemReady(
-				this.dependencies.workItems,
-				execution.runId,
-				execution.workItemId,
-				this.now,
-			);
+			setWorkflowWorkItemReady(this.dependencies.workItems, execution.runId, execution.workItemId, this.now);
 			return;
 		}
 		const stored = this.dependencies.results.create(execution, result);

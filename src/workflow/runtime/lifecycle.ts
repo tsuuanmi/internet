@@ -3,14 +3,8 @@ import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-s
 import type { WorkflowRun } from "#internet/workflow/kernel/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import { currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidation";
-import type {
-	WorkflowPendingActionMaterializer,
-	WorkflowRuntimePolicy,
-} from "#internet/workflow/runtime/types";
-import {
-	evaluateWorkflowConvergence,
-	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
-} from "#internet/workflow/semantic/index";
+import type { WorkflowPendingActionMaterializer, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
+import { evaluateWorkflowConvergence, WORKFLOW_SEMANTIC_ARTIFACT_TYPES } from "#internet/workflow/semantic/index";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 
 export interface WorkflowLifecycleDependencies {
@@ -40,15 +34,11 @@ export function projectWorkflowRunLifecycle(
 			.list(run.runId)
 			.some((item) => item.state === "READY" || item.state === "RUNNING");
 		const artifacts = dependencies.artifacts.list(run.runId);
-		const currentArtifacts = currentWorkflowArtifactIds(
-			artifacts,
-			dependencies.inputBundles.list(run.runId),
-		);
+		const currentArtifacts = currentWorkflowArtifactIds(artifacts, dependencies.inputBundles.list(run.runId));
 		const openExternal = artifacts
 			.filter(
 				(artifact) =>
-					artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need &&
-					currentArtifacts.has(artifact.artifactId),
+					artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need && currentArtifacts.has(artifact.artifactId),
 			)
 			.some((artifact) => dependencies.pendingActions.hasOpen(run.runId, artifact.artifactId));
 		lifecycle = autonomous ? "ACTIVE" : openExternal ? "WAITING_EXTERNAL" : "BLOCKED";

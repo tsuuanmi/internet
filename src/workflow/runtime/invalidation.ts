@@ -1,10 +1,7 @@
-import type { WorkflowArtifact, WorkflowInputBundle, WorkflowWorkItem } from "#internet/workflow/kernel/types";
-import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
-import {
-	fenceWorkflowExecution,
-	fenceWorkflowWorkItem,
-} from "#internet/workflow/runtime/execution-state";
 import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
+import type { WorkflowArtifact, WorkflowInputBundle, WorkflowWorkItem } from "#internet/workflow/kernel/types";
+import { fenceWorkflowExecution, fenceWorkflowWorkItem } from "#internet/workflow/runtime/execution-state";
+import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 
 const INVALIDATING_RELATIONS = new Set(["supersedes", "invalidates"]);

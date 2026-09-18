@@ -15,10 +15,7 @@ import type {
 	WorkflowPendingActionMaterializer,
 	WorkflowRuntimePolicy,
 } from "#internet/workflow/runtime/types";
-import {
-	parseWorkflowNeedPayload,
-	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
-} from "#internet/workflow/semantic/index";
+import { parseWorkflowNeedPayload, WORKFLOW_SEMANTIC_ARTIFACT_TYPES } from "#internet/workflow/semantic/index";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 
 export interface WorkflowSchedulerDependencies {

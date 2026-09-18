@@ -3,16 +3,11 @@ import type { WorkflowCapabilityRegistry } from "#internet/workflow/capability-r
 import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import type { WorkflowRun } from "#internet/workflow/kernel/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
-import { type WorkflowExecutionManagerDependencies } from "#internet/workflow/runtime/execution-manager";
 import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
-import type { WorkflowCapabilityExecutorRegistry, WorkflowExecution, WorkflowPendingActionMaterializer, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
+import type { WorkflowCapabilityExecutorRegistry, WorkflowExecution } from "#internet/workflow/runtime/types";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
-export interface WorkflowRunCoordinatorOptions {
-    readonly leaseMs?: number;
-    readonly now?: () => number;
-}
-export interface WorkflowRunCoordinatorDependencies extends WorkflowExecutionManagerDependencies {
+export interface WorkflowExecutionManagerDependencies {
     readonly runs: WorkflowRunStore;
     readonly artifacts: WorkflowArtifactStore;
     readonly workItems: WorkflowWorkItemStore;
@@ -21,19 +16,20 @@ export interface WorkflowRunCoordinatorDependencies extends WorkflowExecutionMan
     readonly results: WorkflowExecutionResultStore;
     readonly capabilities: WorkflowCapabilityRegistry;
     readonly executors: WorkflowCapabilityExecutorRegistry;
-    readonly pendingActions: WorkflowPendingActionMaterializer;
-    readonly policy: WorkflowRuntimePolicy;
 }
-export declare class WorkflowRunCoordinator {
+export interface WorkflowExecutionManagerOptions {
+    readonly leaseMs: number;
+    readonly now: () => number;
+}
+export declare class WorkflowExecutionManager {
     private readonly dependencies;
-    private readonly execution;
+    private readonly leaseMs;
     private readonly now;
-    constructor(dependencies: WorkflowRunCoordinatorDependencies, options?: WorkflowRunCoordinatorOptions);
-    status(runId: string): WorkflowRun;
-    advance(runId: string): WorkflowRun;
-    runnableWorkItemIds(runId: string): readonly string[];
-    reconcile(runId: string, signal?: AbortSignal): Promise<WorkflowRun>;
+    constructor(dependencies: WorkflowExecutionManagerDependencies, options: WorkflowExecutionManagerOptions);
     heartbeat(runId: string, executionId: string, ownerInstanceId: string): WorkflowExecution;
-    execute(runId: string, workItemId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<WorkflowRun>;
+    reconcile(runId: string, signal?: AbortSignal): Promise<void>;
+    execute(run: WorkflowRun, workItemId: string, ownerInstanceId: string, signal?: AbortSignal): Promise<void>;
+    private commitResult;
+    private reconcileExpiredExecution;
 }
-//# sourceMappingURL=coordinator.d.ts.map
+//# sourceMappingURL=execution-manager.d.ts.map

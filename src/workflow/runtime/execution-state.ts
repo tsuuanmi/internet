@@ -1,6 +1,6 @@
-import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import type { WorkflowExecution } from "#internet/workflow/runtime/types";
+import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 
 export function fenceWorkflowExecution(
 	executions: WorkflowExecutionStore,
