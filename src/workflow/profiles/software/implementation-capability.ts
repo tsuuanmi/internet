@@ -58,10 +58,7 @@ function relatedDeliveryRefs(
 		if (feedback.targetVersion !== delivery.subject.version) {
 			throw new Error("software implementation feedback targets an obsolete Delivery version");
 		}
-		refs.set(
-			`${feedback.targetDelivery.runId}:${feedback.targetDelivery.artifactId}`,
-			feedback.targetDelivery,
-		);
+		refs.set(`${feedback.targetDelivery.runId}:${feedback.targetDelivery.artifactId}`, feedback.targetDelivery);
 	}
 	return [...refs.values()];
 }
