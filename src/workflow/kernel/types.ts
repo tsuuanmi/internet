@@ -19,7 +19,7 @@ export const WORKFLOW_WORK_ITEM_STATES = [
 	"PENDING",
 	"READY",
 	"RUNNING",
-	"SUCCEEDED",
+	"COMPLETED",
 	"FAILED",
 	"CANCELLED",
 	"FENCED",
@@ -28,7 +28,7 @@ export type WorkflowWorkItemState = (typeof WORKFLOW_WORK_ITEM_STATES)[number];
 
 export const WORKFLOW_SIDE_EFFECT_CLASSES = [
 	"READ_ONLY",
-	"REPOSITORY_MUTATION",
+	"CONTROLLED_MUTATION",
 	"EXTERNAL_MUTATION",
 	"HUMAN_AUTHORITY",
 ] as const;
