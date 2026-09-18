@@ -1,4 +1,6 @@
 import type { WorkflowAdmissionActivator } from "#internet/workflow/admission/activation";
+import type { WorkflowAdmissionActivationHandler } from "#internet/workflow/admission/activation-registry";
+import { requireWorkflowOwnerSessionId } from "#internet/workflow/authorization";
 import type { AcceptedAdmissionSpec, AdmissionActivationTarget } from "#internet/workflow/admission/types";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
@@ -68,6 +70,28 @@ export function createSoftwareWorkflowActivator(
 			const job = existing ?? engine.start(expected);
 			if (existing !== undefined) assertMatchingJob(existing, expected);
 			if (!workflowJobIsTerminal(job) && !driver.isActive(job.jobId)) driver.enqueue(job.jobId);
+		},
+	};
+}
+
+
+export function createSoftwareWorkflowActivationHandler(
+	engine: SoftwareWorkflowActivationEngine,
+	driver: SoftwareWorkflowActivationDriver,
+	jobs: WorkflowJobStore,
+): WorkflowAdmissionActivationHandler {
+	return {
+		profileId: "software_change",
+		activator(context) {
+			return createSoftwareWorkflowActivator(engine, driver, jobs, requireWorkflowOwnerSessionId(context));
+		},
+		resolve(target) {
+			if (target.targetKind !== "workflow_job") {
+				throw new Error("software workflow activation target is not a WorkflowJob");
+			}
+			const job = jobs.get(target.targetId);
+			if (job === undefined) throw new Error(`activated workflow job ${target.targetId} does not exist`);
+			return { kind: "workflow_job", job };
 		},
 	};
 }
