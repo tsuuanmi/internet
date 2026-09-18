@@ -119,7 +119,7 @@ export function createWorkflowResearchRuntime(
 		policy,
 	});
 	driver = new WorkflowRunDriver(coordinator, runs);
-	wakeups = new WorkflowWakeupScheduler(timers, runs, driver);
+	wakeups = new WorkflowWakeupScheduler(timers, events, runs, driver);
 	const activationHandler = createResearchWorkflowActivationHandler(runs, artifacts, driver);
 	return {
 		runs,
