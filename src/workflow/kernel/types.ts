@@ -44,6 +44,7 @@ export const WORKFLOW_ARTIFACT_LINEAGE_RELATIONS = [
 	"consumes",
 	"continues_from",
 	"validates",
+	"imports_from",
 ] as const;
 export type WorkflowArtifactLineageRelation = (typeof WORKFLOW_ARTIFACT_LINEAGE_RELATIONS)[number];
 
@@ -89,9 +90,20 @@ export interface WorkflowArtifactLineage {
 	readonly artifact: WorkflowArtifactRef;
 }
 
-export interface WorkflowArtifactProducer extends WorkflowEntityRef {
-	readonly kind: "work_item" | "runtime" | "external_import";
+export interface WorkflowArtifactProducerSource {
+	readonly runId: string;
+	readonly artifactId: string;
+	readonly payloadHash: string;
+	readonly schemaRef: WorkflowVersionRef;
 }
+
+export type WorkflowArtifactProducer =
+	| { readonly kind: "work_item" | "runtime"; readonly id: string }
+	| {
+			readonly kind: "external_import";
+			readonly id: string;
+			readonly source: WorkflowArtifactProducerSource;
+	  };
 
 export interface WorkflowArtifact {
 	readonly schema: typeof WORKFLOW_ARTIFACT_SCHEMA;
