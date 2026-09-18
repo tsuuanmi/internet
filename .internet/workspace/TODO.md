@@ -119,7 +119,7 @@ The next implementation milestone after Phase 4 is capability adapters and the f
 
 - [x] Add a vNext deterministic run coordinator beside legacy `WorkflowEngine`.
 - [x] Define optimistic run revision/CAS behavior.
-- [x] Implement Need -> WorkItem/PendingAction materialization from typed fields/policy only.
+- [x] Implement the typed Need -> WorkItem/PendingAction materialization boundary from typed fields/policy only; durable multi-action lifecycle remains P2.
 - [x] Implement deterministic capability routing.
 - [x] Implement readiness/dependency evaluation.
 - [x] Implement exact InputBundle construction.
