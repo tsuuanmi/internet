@@ -15,6 +15,7 @@ import {
 	type WorkflowDeliveryPayload,
 	type WorkflowEvidencePayload,
 	type WorkflowFindingPayload,
+	type WorkflowImplementationOutputPayload,
 	type WorkflowNeedPayload,
 	type WorkflowObjectivePayload,
 	type WorkflowPlanPayload,
@@ -349,6 +350,16 @@ export function parseWorkflowReportPayload(value: unknown): WorkflowReportPayloa
 	return value as unknown as WorkflowReportPayload;
 }
 
+export function parseWorkflowImplementationOutputPayload(value: unknown): WorkflowImplementationOutputPayload {
+	if (!isRecord(value)) throw new Error("invalid workflow ImplementationOutput payload");
+	assertText(value.outputId, "workflow ImplementationOutput id");
+	assertText(value.kind, "workflow ImplementationOutput kind");
+	assertAssessmentSubject(value.subject);
+	assertArtifactRefs(value.artifacts, "workflow ImplementationOutput artifact");
+	if (value.instructions !== undefined) assertText(value.instructions, "workflow ImplementationOutput instructions");
+	return value as unknown as WorkflowImplementationOutputPayload;
+}
+
 export function parseWorkflowDeliveryPayload(value: unknown): WorkflowDeliveryPayload {
 	if (!isRecord(value)) throw new Error("invalid workflow Delivery payload");
 	assertText(value.deliveryId, "workflow Delivery id");
@@ -398,6 +409,8 @@ export function parseWorkflowSemanticPayload(
 			return parseWorkflowCriterionAssessmentPayload(value);
 		case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.report:
 			return parseWorkflowReportPayload(value);
+		case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput:
+			return parseWorkflowImplementationOutputPayload(value);
 		case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery:
 			return parseWorkflowDeliveryPayload(value);
 		case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.userFeedback:
