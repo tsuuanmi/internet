@@ -208,11 +208,30 @@ describe("workflow vNext capability adapters", () => {
 		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-review-")));
 		const need = createNeed(store, "execution", "Review the current PR head", SOFTWARE_REVIEW_CAPABILITY.id);
 		const headSha = "a".repeat(40);
+		const output = store.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput,
+			schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.implementationOutput,
+			producer: { kind: "runtime", id: "test" },
+			payload: {
+				outputId: "pull-request:tsuuanmi/internet#42@" + headSha,
+				kind: "pull_request_head",
+				subject: { kind: "git_head", id: "tsuuanmi/internet#42", version: headSha },
+				artifacts: [],
+			},
+		});
 		const adapter = new WorkflowSoftwareReviewAdapter(
 			teamRunner(JSON.stringify({ verdict: "CHANGES_REQUIRED", reviewedHeadSha: headSha })),
 			store,
 		);
-		const result = await adapter.execute(context(SOFTWARE_REVIEW_CAPABILITY, need.artifactId));
+		const baseContext = context(SOFTWARE_REVIEW_CAPABILITY, need.artifactId);
+		const result = await adapter.execute({
+			...baseContext,
+			inputBundle: {
+				...baseContext.inputBundle,
+				artifacts: [...baseContext.inputBundle.artifacts, { runId, artifactId: output.artifactId }],
+			},
+		});
 		expect(result.artifacts.map((artifact) => artifact.type)).toEqual([
 			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence,
 			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
@@ -220,7 +239,7 @@ describe("workflow vNext capability adapters", () => {
 		expect(result.artifacts[1]?.payload).toMatchObject({ severity: "blocking" });
 	});
 
-	it("wraps WorkflowWriterRunner mutation output as Delivery plus a separate receipt reference", async () => {
+	it("wraps WorkflowWriterRunner mutation output as reviewable ImplementationOutput plus a separate receipt", async () => {
 		const writer: WorkflowWriterRunner = {
 			deliverExact: async () => ({ conversationUrl: "https://chatgpt.com/c/test" }),
 			runControl: async () => ({
@@ -236,10 +255,15 @@ describe("workflow vNext capability adapters", () => {
 				},
 			}),
 		};
-		const adapter = new WorkflowSoftwareImplementationAdapter(writer, () => ({}) as never);
-		const ctx = context(SOFTWARE_IMPLEMENTATION_CAPABILITY, "c".repeat(64));
+		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-implementation-")));
+		const need = createNeed(store, "execution", "Implement the requested change", SOFTWARE_IMPLEMENTATION_CAPABILITY.id);
+		const adapter = new WorkflowSoftwareImplementationAdapter(writer, () => ({}) as never, store);
+		const ctx = context(SOFTWARE_IMPLEMENTATION_CAPABILITY, need.artifactId);
 		const result = await adapter.execute(ctx);
-		expect(result.artifacts[0]?.type).toBe(WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery);
+		expect(result.artifacts.map((artifact) => artifact.type)).toEqual([
+			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput,
+			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+		]);
 		expect(result.receiptIds).toEqual([`software.pull_request:tsuuanmi/internet#42@${"b".repeat(40)}`]);
 	});
 
