@@ -130,7 +130,7 @@ export class WorkflowSoftwareFeedbackInterpretationAdapter implements WorkflowCa
 				type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
 				payload: {
 					findingId: `feedback:${context.execution.executionId}`,
-					severity: interpretation.outcome === "NO_CHANGE" ? "info" : "blocking",
+					severity: interpretation.outcome === "NO_CHANGE" ? "info" : "warning",
 					summary: interpretation.summary,
 					subjects: need.subjects,
 					relatedArtifacts: need.relatedArtifacts,
