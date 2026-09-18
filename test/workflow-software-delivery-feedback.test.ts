@@ -95,7 +95,7 @@ function setup() {
 		schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.delivery,
 		producer: { kind: "runtime", id: "review" },
 		payload: {
-			deliveryId: "reviewed:pull-request:tsuuanmi/internet#44@" + headSha,
+			deliveryId: `reviewed:pull-request:tsuuanmi/internet#44@${headSha}`,
 			kind: "reviewed_pull_request",
 			subject: { kind: "git_head", id: "tsuuanmi/internet#44", version: headSha },
 			artifacts: [],
@@ -112,7 +112,7 @@ function setup() {
 			type: "clarification",
 			requestOwner: { kind: "delivery", id: "reviewed:pull-request:tsuuanmi/internet#44@" + headSha },
 			question: "Validate this delivery",
-			subjects: [{ kind: "git_head", id: "tsuuanmi/internet#44@" + headSha }],
+			subjects: [{ kind: "git_head", id: `tsuuanmi/internet#44@${headSha}` }],
 			relatedArtifacts: [],
 		},
 	});
@@ -161,7 +161,7 @@ describe("software Delivery/User-feedback lifecycle", () => {
 			schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.implementationOutput,
 			producer: { kind: "runtime", id: "implementation" },
 			payload: {
-				outputId: "pull-request:tsuuanmi/internet#45@" + headSha,
+				outputId: `pull-request:tsuuanmi/internet#45@${headSha}`,
 				kind: "pull_request_head",
 				subject: { kind: "git_head", id: "tsuuanmi/internet#45", version: headSha },
 				artifacts: [],
