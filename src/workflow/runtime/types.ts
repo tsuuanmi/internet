@@ -1,3 +1,9 @@
+import type {
+	WorkflowExternalEventWait,
+	WorkflowExternalEventWaitContract,
+	WorkflowTimer,
+	WorkflowTimerContract,
+} from "#internet/workflow/awaitables/types";
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
 import type { WorkflowPendingAction, WorkflowPendingActionContract } from "#internet/workflow/interactions/types";
 import type {
@@ -88,7 +94,38 @@ export interface WorkflowPendingActionMaterialization extends WorkflowPendingAct
 	readonly kind: "pending_action";
 }
 
-export type WorkflowNeedMaterialization = WorkflowWorkItemMaterialization | WorkflowPendingActionMaterialization;
+export interface WorkflowTimerMaterialization extends WorkflowTimerContract {
+	readonly kind: "timer";
+}
+
+export interface WorkflowExternalEventMaterialization extends WorkflowExternalEventWaitContract {
+	readonly kind: "external_event";
+}
+
+export type WorkflowNeedMaterialization =
+	| WorkflowWorkItemMaterialization
+	| WorkflowPendingActionMaterialization
+	| WorkflowTimerMaterialization
+	| WorkflowExternalEventMaterialization;
+
+export interface WorkflowAwaitableRuntime {
+	ensureTimer(
+		runId: string,
+		causedBy: WorkflowArtifactRef,
+		contract: WorkflowTimerContract,
+		now?: () => number,
+	): WorkflowTimer;
+	ensureExternalEventWait(
+		runId: string,
+		causedBy: WorkflowArtifactRef,
+		contract: WorkflowExternalEventWaitContract,
+		now?: () => number,
+	): WorkflowExternalEventWait;
+	listTimers(runId: string): readonly WorkflowTimer[];
+	listExternalEventWaits(runId: string): readonly WorkflowExternalEventWait[];
+	hasOpen(runId: string, needArtifactId: string): boolean;
+	reconcile(runId: string, now?: () => number): void;
+}
 
 export interface WorkflowPendingActionRuntime {
 	ensure(input: {
