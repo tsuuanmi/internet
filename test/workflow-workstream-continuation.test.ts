@@ -265,6 +265,28 @@ describe("workflow Workstream continuation", () => {
 		expect(runs.get(childRunId)).toBeUndefined();
 	});
 
+	it("rejects source Artifact identity that differs from the accepted continuation admission", () => {
+		const { artifacts, runs, report, service, acceptContinuation } = setup();
+		const workstream = service.createWorkstream(sourceRunId);
+		acceptContinuation(workstream.workstreamId);
+		const other = artifacts.create({
+			runId: sourceRunId,
+			type: "report",
+			schemaRef: report.schemaRef,
+			producer: { kind: "runtime", id: "alternate-report" },
+			payload: { title: "Different report", body: "different", evidence: [] },
+		});
+		expect(() =>
+			service.continueRun({
+				workstreamId: workstream.workstreamId,
+				sourceRunId,
+				childRun: childRun(),
+				sourceArtifacts: [{ runId: sourceRunId, artifactId: other.artifactId }],
+			}),
+		).toThrow("do not match accepted admission identity");
+		expect(runs.get(childRunId)).toBeUndefined();
+	});
+
 	it("requires a terminal source run", () => {
 		const { report, service, acceptContinuation } = setup(undefined, "ACTIVE");
 		const workstream = service.createWorkstream(sourceRunId);
