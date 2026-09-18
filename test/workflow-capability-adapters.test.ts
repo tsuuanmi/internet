@@ -22,6 +22,10 @@ import {
 	WorkflowExternalDeepResearchAdapter,
 } from "#internet/workflow/profiles/research/deep-research-capability";
 import {
+	SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY,
+	WorkflowSoftwareFeedbackInterpretationAdapter,
+} from "#internet/workflow/profiles/software/feedback-capability";
+import {
 	SOFTWARE_IMPLEMENTATION_CAPABILITY,
 	WorkflowSoftwareImplementationAdapter,
 } from "#internet/workflow/profiles/software/implementation-capability";
@@ -237,6 +241,102 @@ describe("workflow vNext capability adapters", () => {
 			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
 		]);
 		expect(result.artifacts[1]?.payload).toMatchObject({ severity: "blocking" });
+	});
+
+	it("creates Delivery and User-validation Need only after exact-head review passes", async () => {
+		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-reviewed-delivery-")));
+		const need = createNeed(store, "execution", "Review current PR", SOFTWARE_REVIEW_CAPABILITY.id);
+		const headSha = "d".repeat(40);
+		const output = store.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput,
+			schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.implementationOutput,
+			producer: { kind: "runtime", id: "test" },
+			payload: {
+				outputId: "pull-request:tsuuanmi/internet#44@" + headSha,
+				kind: "pull_request_head",
+				subject: { kind: "git_head", id: "tsuuanmi/internet#44", version: headSha },
+				artifacts: [],
+				instructions: "Test exact reviewed head",
+			},
+		});
+		const adapter = new WorkflowSoftwareReviewAdapter(
+			teamRunner(JSON.stringify({ verdict: "PASS", reviewedHeadSha: headSha })),
+			store,
+		);
+		const baseContext = context(SOFTWARE_REVIEW_CAPABILITY, need.artifactId);
+		const result = await adapter.execute({
+			...baseContext,
+			inputBundle: {
+				...baseContext.inputBundle,
+				artifacts: [...baseContext.inputBundle.artifacts, { runId, artifactId: output.artifactId }],
+			},
+		});
+		expect(result.artifacts.map((artifact) => artifact.type)).toEqual([
+			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence,
+			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
+			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery,
+			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+		]);
+		expect(result.artifacts[2]?.payload).toMatchObject({
+			kind: "reviewed_pull_request",
+			subject: { kind: "git_head", id: "tsuuanmi/internet#44", version: headSha },
+		});
+		expect(result.artifacts[3]?.payload).toMatchObject({
+			type: "clarification",
+			requestOwner: { kind: "delivery" },
+		});
+	});
+
+	it("routes free-form software feedback through a reasoning capability before mutation", async () => {
+		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-feedback-")));
+		const feedback = store.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.userFeedback,
+			schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.userFeedback,
+			producer: { kind: "runtime", id: "feedback" },
+			payload: {
+				feedbackId: "feedback-1",
+				provenance: "user_explicit",
+				raw: "Please change the spacing",
+				attachments: [],
+			},
+		});
+		const need = store.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+			schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.need,
+			producer: { kind: "runtime", id: "feedback-need" },
+			payload: {
+				needId: "feedback-interpretation-1",
+				type: "execution",
+				requestOwner: { kind: "user_feedback", id: "feedback-1" },
+				requestedCapability: SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY.id,
+				question: "Please change the spacing",
+				subjects: [],
+				relatedArtifacts: [{ runId, artifactId: feedback.artifactId }],
+			},
+		});
+		const adapter = new WorkflowSoftwareFeedbackInterpretationAdapter(
+			teamRunner(JSON.stringify({ outcome: "IMPLEMENTATION_CHANGE", summary: "Adjust spacing" })),
+			store,
+		);
+		const baseContext = context(SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY, need.artifactId);
+		const result = await adapter.execute({
+			...baseContext,
+			inputBundle: {
+				...baseContext.inputBundle,
+				artifacts: [...baseContext.inputBundle.artifacts, { runId, artifactId: feedback.artifactId }],
+			},
+		});
+		expect(result.artifacts.map((artifact) => artifact.type)).toEqual([
+			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
+			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+		]);
+		expect(result.artifacts[1]?.payload).toMatchObject({
+			type: "execution",
+			requestedCapability: SOFTWARE_IMPLEMENTATION_CAPABILITY.id,
+		});
 	});
 
 	it("wraps WorkflowWriterRunner mutation output as reviewable ImplementationOutput plus a separate receipt", async () => {
