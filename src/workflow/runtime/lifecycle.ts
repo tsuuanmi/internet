@@ -3,7 +3,7 @@ import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-s
 import type { WorkflowRun } from "#internet/workflow/kernel/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import { currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidation";
-import type { WorkflowPendingActionMaterializer, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
+import type { WorkflowPendingActionRuntime, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
 import { evaluateWorkflowConvergence, WORKFLOW_SEMANTIC_ARTIFACT_TYPES } from "#internet/workflow/semantic/index";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 
@@ -12,7 +12,7 @@ export interface WorkflowLifecycleDependencies {
 	readonly artifacts: WorkflowArtifactStore;
 	readonly workItems: WorkflowWorkItemStore;
 	readonly inputBundles: WorkflowInputBundleStore;
-	readonly pendingActions: WorkflowPendingActionMaterializer;
+	readonly pendingActions: WorkflowPendingActionRuntime;
 	readonly policy: WorkflowRuntimePolicy;
 }
 
