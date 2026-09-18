@@ -142,7 +142,10 @@ export class WorkflowInteractionService {
 			throw new WorkflowInteractionServiceError(`workflow PendingAction ${input.actionId} does not exist`);
 		}
 		if (action.state === "RESOLVED") {
-			if (sameResponse(action, context.principal, input)) return action;
+			if (sameResponse(action, context.principal, input)) {
+				this.dependencies.onResolved?.(action);
+				return action;
+			}
 			throw new WorkflowInteractionServiceError(
 				`workflow PendingAction ${input.actionId} is already resolved with a different response`,
 			);
