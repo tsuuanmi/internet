@@ -99,7 +99,6 @@ describe("workflow durable Timer and ExternalEvent", () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-event-restart-"));
 		const runs = new WorkflowRunStore(root);
 		runs.create(run());
-		const timers = new WorkflowTimerStore(root);
 		const events = new WorkflowExternalEventStore(root);
 		events.ensureWait(runId, need, {
 			eventType: "research.updated",
