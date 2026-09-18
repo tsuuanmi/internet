@@ -2,11 +2,11 @@
 
 ## Current status
 
-**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 is implemented in PR #41 and Phase 4 deterministic vNext runtime control is implemented in PR #42.**
+**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 is implemented in PR #41, Phase 4 deterministic vNext runtime control is implemented in PR #42, and Phase 5 capability adapters are implemented in PR #43.**
 
-The migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, a planning capability contract, exact result promotion, assessment currentness, deterministic baseline convergence, and a deterministic vNext coordinator/driver with exact-input scheduling, durable execution ownership, reconciliation, causal invalidation, and restart/resume behavior while the v3 runtime remains supported during migration.
+The migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, deterministic baseline convergence, a deterministic vNext coordinator/driver with exact-input scheduling and recovery, and profile adapters that execute planning, software repository research, implementation, exact-state review, and external deep research through existing specialized runners while preserving exact result promotion and keeping provider/account/session selection below capability identity. The v3 runtime remains supported during migration.
 
-The next implementation milestone after Phase 4 is capability adapters and the first executable vNext software path.
+The next implementation milestone after Phase 5 is durable in-run external interactions (`PendingAction`) before the software Delivery/feedback lifecycle.
 
 ## D0 — Design contract harmonization
 
@@ -132,14 +132,14 @@ The next implementation milestone after Phase 4 is capability adapters and the f
 
 ## P1 — Capability adapters
 
-- [ ] Add planning reasoning capability adapter.
-- [ ] Add software repository-research capability adapter around `WorkflowTeamRunner`.
-- [ ] Add software implementation capability adapter around `WorkflowWriterRunner`.
-- [ ] Add software review capability adapter around `WorkflowTeamRunner`.
-- [ ] Add external deep-research capability adapter around `BrowserManager.research`.
-- [ ] Verify capability routing does not require Orchestrator to interpret PlanTask prose.
-- [ ] Verify generic interfaces do not absorb GitHub/PR/browser-specific responsibilities.
-- [ ] Verify every adapter produces an exact result that is schema-validated before Artifact promotion.
+- [x] Add planning reasoning capability adapter.
+- [x] Add software repository-research capability adapter around `WorkflowTeamRunner`.
+- [x] Add software implementation capability adapter around `WorkflowWriterRunner`.
+- [x] Add software review capability adapter around `WorkflowTeamRunner`.
+- [x] Add external deep-research capability adapter around `BrowserManager.research`.
+- [x] Verify capability routing does not require Orchestrator to interpret PlanTask prose.
+- [x] Verify generic interfaces do not absorb GitHub/PR/browser-specific responsibilities.
+- [x] Verify every adapter produces an exact result that is schema-validated before Artifact promotion.
 
 ## P2 — Durable external interactions
 
