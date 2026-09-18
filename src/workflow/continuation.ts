@@ -179,7 +179,6 @@ export class WorkflowContinuationService {
 			if (artifact === undefined) {
 				throw new WorkflowContinuationError(`continuation source Artifact ${ref.artifactId} does not exist`);
 			}
-			this.policy.validate({ workstream, sourceRun, childRun: input.childRun, sourceArtifact: artifact });
 			return artifact;
 		});
 		const admittedSources = [...admittedContinuation.sourceArtifacts].sort((left, right) =>
@@ -199,6 +198,9 @@ export class WorkflowContinuationService {
 			})
 		) {
 			throw new WorkflowContinuationError("continuation source Artifacts do not match accepted admission identity");
+		}
+		for (const sourceArtifact of sources) {
+			this.policy.validate({ workstream, sourceRun, childRun: input.childRun, sourceArtifact });
 		}
 
 		const existingChild = this.runs.get(input.childRun.runId);
