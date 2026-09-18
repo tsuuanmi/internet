@@ -12,6 +12,7 @@ import {
 } from "#internet/workflow/interactions/service";
 import type { WorkflowPendingActionContract } from "#internet/workflow/interactions/types";
 import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
+import { WorkflowExternalSignalStore } from "#internet/workflow/interactions/signal-store";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { WorkflowPendingActionStore } from "#internet/workflow/pending-action-store";
 import { WorkflowRunStore } from "#internet/workflow/run-store";
@@ -67,6 +68,7 @@ function fixture() {
 	const authority: WorkflowInteractionAuthorityPolicy = {
 		canAccess: (_runId, expectedOwner, caller) => workflowPrincipalEquals(expectedOwner, caller),
 		authorizeResponse: (_runId, expectedOwner, caller) => workflowPrincipalEquals(expectedOwner, caller),
+		authorizeSignal: (_runId, expectedOwner, caller) => workflowPrincipalEquals(expectedOwner, caller),
 	};
 	const schemas: WorkflowResponseSchemaRegistry = {
 		validate(schema, payload) {
@@ -83,6 +85,7 @@ function fixture() {
 			}
 		},
 	};
+	const signals = new WorkflowExternalSignalStore(root);
 	const service = new WorkflowInteractionService({
 		runs,
 		actions,
@@ -91,6 +94,7 @@ function fixture() {
 		schemas,
 		authority,
 		subjects: { isCurrent: () => true },
+		signals,
 	});
 	const contract: WorkflowPendingActionContract = {
 		actionType: "clarification",
@@ -99,7 +103,7 @@ function fixture() {
 		blockingScope: [{ kind: "plan_task", id: "task-1" }],
 	};
 	const action = actions.ensure({ run: run(), needArtifact: need, need: need.payload as never, contract });
-	return { root, runs, artifacts, inputBundles, actions, service, need, action, contract };
+	return { root, runs, artifacts, inputBundles, actions, signals, service, need, action, contract };
 }
 
 describe("workflow durable PendingAction protocol", () => {
@@ -209,6 +213,40 @@ describe("workflow durable PendingAction protocol", () => {
 				payload: { choice: "unknown" },
 			}),
 		).toThrow("invalid test response payload");
+	});
+
+	it("persists an unsolicited typed signal idempotently without interpreting its payload", () => {
+		const { service, signals } = fixture();
+		const input = {
+			runId,
+			expectedRunRevision: 1,
+			requestId: "signal-1",
+			provenance: "user_explicit" as const,
+			signalType: "user_directive",
+			payloadSchema: responseSchema,
+			payload: { choice: "preserve" },
+		};
+		const first = service.signal(context, input);
+		const replay = service.signal(context, input);
+		expect(replay).toEqual(first);
+		expect(signals.list(runId)).toHaveLength(1);
+		expect(first.signalType).toBe("user_directive");
+	});
+
+	it("rejects stale workflow-revision signals before persistence", () => {
+		const { service, signals } = fixture();
+		expect(() =>
+			service.signal(context, {
+				runId,
+				expectedRunRevision: 2,
+				requestId: "signal-stale",
+				provenance: "user_explicit",
+				signalType: "user_directive",
+				payloadSchema: responseSchema,
+				payload: { choice: "preserve" },
+			}),
+		).toThrow("revision conflict");
+		expect(signals.list(runId)).toHaveLength(0);
 	});
 
 	it("denies unauthorized callers from listing or resolving actions", () => {
