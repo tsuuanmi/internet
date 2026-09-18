@@ -291,6 +291,27 @@ export {
 export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
 export { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 export { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
+export {
+	WorkflowPlanningCapabilityAdapter,
+	WorkflowTeamPlanningExecutor,
+} from "#internet/workflow/profiles/common/planning-capability";
+export {
+	EXTERNAL_DEEP_RESEARCH_CAPABILITY,
+	WorkflowExternalDeepResearchAdapter,
+} from "#internet/workflow/profiles/research/deep-research-capability";
+export {
+	SOFTWARE_IMPLEMENTATION_CAPABILITY,
+	WorkflowSoftwareImplementationAdapter,
+	type WorkflowSoftwareWriterRequestProjector,
+} from "#internet/workflow/profiles/software/implementation-capability";
+export {
+	SOFTWARE_REPOSITORY_RESEARCH_CAPABILITY,
+	WorkflowSoftwareRepositoryResearchAdapter,
+} from "#internet/workflow/profiles/software/research-capability";
+export {
+	SOFTWARE_REVIEW_CAPABILITY,
+	WorkflowSoftwareReviewAdapter,
+} from "#internet/workflow/profiles/software/review-capability";
 export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/types";
 export type {
 	WorkflowCleanupAudit,
