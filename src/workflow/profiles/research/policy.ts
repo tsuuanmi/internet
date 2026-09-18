@@ -1,6 +1,6 @@
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
-import type { WorkflowArtifact, WorkflowArtifactRef, WorkflowRun } from "#internet/workflow/kernel/types";
+import type { WorkflowArtifact, WorkflowArtifactRef, WorkflowRun, WorkflowVersionRef } from "#internet/workflow/kernel/types";
 import { RESEARCH_ASSESSMENT_CAPABILITY } from "#internet/workflow/profiles/research/assessment-capability";
 import { EXTERNAL_DEEP_RESEARCH_CAPABILITY } from "#internet/workflow/profiles/research/deep-research-capability";
 import { RESEARCH_SYNTHESIS_CAPABILITY } from "#internet/workflow/profiles/research/synthesis-capability";
@@ -13,9 +13,17 @@ import {
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
 } from "#internet/workflow/semantic/index";
 
+export type WorkflowResearchRoundWait =
+	| { readonly kind: "timer"; readonly delayMs: number }
+	| {
+			readonly kind: "external_event";
+			readonly eventType: string;
+			readonly payloadSchema?: WorkflowVersionRef;
+	  };
+
 export interface WorkflowResearchPolicyOptions {
 	readonly maxRounds?: number;
-	readonly refreshDelayMs?: number;
+	readonly roundWait?: WorkflowResearchRoundWait;
 }
 
 function positiveInteger(value: number, label: string): number {
@@ -56,14 +64,16 @@ export function createWorkflowResearchPolicy(
 	options: WorkflowResearchPolicyOptions = {},
 ): WorkflowRuntimePolicy {
 	const maxRounds = positiveInteger(options.maxRounds ?? 2, "research maxRounds");
-	const refreshDelayMs = positiveInteger(options.refreshDelayMs ?? 60 * 60_000, "research refreshDelayMs");
+	const roundWait = options.roundWait ?? { kind: "timer" as const, delayMs: 60 * 60_000 };
+	if (roundWait.kind === "timer") positiveInteger(roundWait.delayMs, "research round Timer delay");
+	else if (roundWait.eventType.trim() === "") throw new Error("research round ExternalEvent type is required");
 
 	return {
 		materializeNeed(context) {
 			const round = researchRoundId(context);
 			if (round !== undefined) {
 				if (round > maxRounds) throw new Error("research round exceeds configured maximum");
-				if (round > 1) {
+				if (round > 1 && roundWait.kind === "timer") {
 					const timer = awaitables
 						.listTimers(context.run.runId)
 						.find((candidate) => candidate.causedBy.artifactId === context.needArtifact.artifactId);
@@ -71,7 +81,20 @@ export function createWorkflowResearchPolicy(
 						return {
 							kind: "timer",
 							timerType: "research.refresh",
-							deadline: new Date(Date.parse(context.needArtifact.createdAt) + refreshDelayMs).toISOString(),
+							deadline: new Date(Date.parse(context.needArtifact.createdAt) + roundWait.delayMs).toISOString(),
+						};
+					}
+				}
+				if (round > 1 && roundWait.kind === "external_event") {
+					const wait = awaitables
+						.listExternalEventWaits(context.run.runId)
+						.find((candidate) => candidate.causedBy.artifactId === context.needArtifact.artifactId);
+					if (wait?.state !== "MATCHED") {
+						return {
+							kind: "external_event",
+							eventType: roundWait.eventType,
+							correlationKey: `research:${context.run.runId}:round:${String(round)}`,
+							payloadSchema: roundWait.payloadSchema,
 						};
 					}
 				}
