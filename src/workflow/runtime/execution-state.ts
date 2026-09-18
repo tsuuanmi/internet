@@ -83,5 +83,5 @@ export function fenceWorkflowWorkItem(
 	workItemId: string,
 	now: () => number,
 ): void {
-	transitionWorkItem(workItems, runId, workItemId, now, ["READY", "RUNNING", "SUCCEEDED"], "FENCED");
+	transitionWorkItem(workItems, runId, workItemId, now, ["READY", "RUNNING", "COMPLETED"], "FENCED");
 }
