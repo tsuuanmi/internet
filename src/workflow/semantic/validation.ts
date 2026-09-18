@@ -380,6 +380,7 @@ export function parseWorkflowUserFeedbackPayload(value: unknown): WorkflowUserFe
 	)
 		throw new Error("invalid workflow UserFeedback provenance");
 	assertText(value.raw, "workflow UserFeedback raw source");
+	if (value.disposition !== undefined) assertText(value.disposition, "workflow UserFeedback disposition");
 	assertOptionalArtifactRef(value.targetDelivery, "workflow UserFeedback target delivery");
 	if (value.targetVersion !== undefined) assertText(value.targetVersion, "workflow UserFeedback target version");
 	if ((value.targetDelivery === undefined) !== (value.targetVersion === undefined))
