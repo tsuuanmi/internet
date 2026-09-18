@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,12 +23,23 @@ function fixture(): { dataDir: string; chromePath: string; profileDir: string } 
 	return { dataDir, chromePath, profileDir };
 }
 
+async function canConnect(port: number): Promise<boolean> {
+	return new Promise((resolve) => {
+		const socket = connect({ host: "127.0.0.1", port });
+		socket.once("connect", () => {
+			socket.destroy();
+			resolve(true);
+		});
+		socket.once("error", () => resolve(false));
+	});
+}
+
 afterEach(() => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 describe.runIf(supported)("RemoteLoginSession", () => {
-	it("serves a tokenized loopback page and finalizes once", async () => {
+	it("returns terminal save status before promptly releasing the login port", async () => {
 		const files = fixture();
 		let finishFinalization = (): void => {};
 		const finalization = new Promise<void>((resolve) => {
@@ -52,11 +64,12 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 			clientScript: "export {};",
 		});
 		try {
-			const status = session.status();
-			expect(status).toMatchObject({ state: "waiting", port: expect.any(Number), expiresAt: expect.any(String) });
-			expect(status.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]{43}\/$/);
-			expect(status.sshCommand).toContain(`127.0.0.1:${status.port}`);
-			const url = new URL(status.url!);
+			const remote = session.status();
+			expect(remote).toMatchObject({ state: "waiting", port: expect.any(Number), expiresAt: expect.any(String) });
+			expect(remote.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]{43}\/$/);
+			expect(remote.sshCommand).toContain(`127.0.0.1:${remote.port}`);
+			const url = new URL(remote.url!);
+			const port = remote.port!;
 			await vi.waitFor(() => expect((session as any).chrome).toBeDefined(), { timeout: 10_000 });
 			const chrome = (session as any).chrome;
 			expect(chrome.spawnargs).toContain("--restore-last-session");
@@ -75,8 +88,8 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 			expect(forwarded.status).toBe(403);
 			const noOriginSave = await fetch(new URL("save", url), { method: "POST" });
 			expect(noOriginSave.status).toBe(403);
-			const save = await fetch(new URL("save", url), { method: "POST", headers: { Origin: url.origin } });
-			expect(save.status).toBe(202);
+
+			const save = fetch(new URL("save", url), { method: "POST", headers: { Origin: url.origin } });
 			await vi.waitFor(() => expect(session.status().state).toBe("finalizing"), { timeout: 10_000 });
 			await vi.waitFor(() => expect(finalize).toHaveBeenCalledTimes(1), { timeout: 10_000 });
 			await vi.waitFor(() => expect(finalizerSawChromeRunning).toBe(false), { timeout: 10_000 });
@@ -86,8 +99,15 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 			);
 			const cancel = await fetch(new URL("cancel", url), { method: "POST", headers: { Origin: url.origin } });
 			expect(cancel.status).toBe(409);
+			expect(await canConnect(port)).toBe(true);
+
 			finishFinalization();
-			await vi.waitFor(() => expect(session.status().state).toBe("complete"), { timeout: 10_000 });
+			const response = await save;
+			expect(response.status).toBe(200);
+			expect(response.headers.get("connection")).toBe("close");
+			await expect(response.json()).resolves.toMatchObject({ state: "complete" });
+			await vi.waitFor(() => expect(closed).toHaveBeenCalledTimes(1), { timeout: 2_000 });
+			expect(await canConnect(port)).toBe(false);
 			expect(finalize).toHaveBeenCalledTimes(1);
 			await session.requestSave();
 			expect(finalize).toHaveBeenCalledTimes(1);
@@ -97,6 +117,31 @@ describe.runIf(supported)("RemoteLoginSession", () => {
 		expect(closed).toHaveBeenCalledTimes(1);
 		expect(readdirSync(join(files.dataDir, "remote-login"))).toEqual([]);
 	}, 20_000);
+
+	it("returns a failed terminal save result without depending on port disappearance", async () => {
+		const files = fixture();
+		const session = await RemoteLoginSession.start({
+			provider: "gemini-web",
+			...files,
+			homeUrl: "https://gemini.google.com/",
+			timeoutMs: 5_000,
+			finalize: async () => {
+				throw new Error("portable capture failed");
+			},
+			clientScript: "export {};",
+		});
+		try {
+			const remote = session.status();
+			const url = new URL(remote.url!);
+			const response = await fetch(new URL("save", url), { method: "POST", headers: { Origin: url.origin } });
+			expect(response.status).toBe(200);
+			await expect(response.json()).resolves.toMatchObject({ state: "failed", message: "portable capture failed" });
+			expect(await canConnect(remote.port!)).toBe(true);
+		} finally {
+			await session.dispose();
+		}
+		expect(readdirSync(join(files.dataDir, "remote-login"))).toEqual([]);
+	}, 15_000);
 
 	it("serves the generated remote-login client by default", async () => {
 		const files = fixture();
