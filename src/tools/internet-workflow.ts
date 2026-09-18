@@ -51,6 +51,11 @@ export interface InternetWorkflowService {
 		admissionId: string,
 		expectedAcceptedSpecHash: string,
 	): WorkflowActivationResource;
+	targetStatus(context: WorkflowAuthorizationContext, targetId: string): WorkflowActivationResource;
+	cancelTarget(
+		context: WorkflowAuthorizationContext,
+		targetId: string,
+	): Promise<WorkflowActivationResource>;
 	status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
 	cancel(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowJob>;
 	continue(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
@@ -427,10 +432,17 @@ export function defineInternetWorkflowTool(
 					return { ok: true, operation, ...activationProject(resource) };
 				}
 				if (typeof args.jobId !== "string") return { ok: false, operation, message: `${operation} requires jobId` };
-				let job: WorkflowJob;
-				if (operation === "status") job = service.status(authorization, args.jobId);
-				else if (operation === "cancel") job = await service.cancel(authorization, args.jobId);
-				else job = service.continue(authorization, args.jobId);
+				if (operation === "status") {
+					return { ok: true, operation, ...activationProject(service.targetStatus(authorization, args.jobId)) };
+				}
+				if (operation === "cancel") {
+					return {
+						ok: true,
+						operation,
+						...activationProject(await service.cancelTarget(authorization, args.jobId)),
+					};
+				}
+				const job = service.continue(authorization, args.jobId);
 				return { ok: true, operation, ...project(job) };
 			} catch (error) {
 				if (error instanceof WorkflowRepositoryError || error instanceof WorkflowServiceError) {
