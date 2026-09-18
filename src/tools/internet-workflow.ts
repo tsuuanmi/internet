@@ -26,11 +26,12 @@ const CONFIRMATION_PROVENANCE = ["local_interpreted", "user_explicit"] as const;
 const DEFAULT_TEST_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_TEST_POLL_MS = 1_000;
 
-export interface WorkflowTestDependencies {
+export interface InternetWorkflowToolDependencies {
 	readonly browser?: Pick<BrowserManager, "status">;
 	readonly runGit?: GitRunner;
 	readonly timeoutMs?: number;
 	readonly pollMs?: number;
+	readonly defaultProfile?: "software_change" | "deep_research";
 }
 
 export interface InternetWorkflowService {
@@ -184,7 +185,7 @@ function acceptedTestAdmission(
 
 async function runAcceptanceTest(
 	service: InternetWorkflowService,
-	dependencies: WorkflowTestDependencies,
+	dependencies: InternetWorkflowToolDependencies,
 	exec: { agent?: unknown; signal: AbortSignal },
 ) {
 	if (dependencies.browser === undefined) {
@@ -281,12 +282,12 @@ async function runAcceptanceTest(
 
 export function defineInternetWorkflowTool(
 	service: InternetWorkflowService,
-	testDependencies: WorkflowTestDependencies = {},
+	dependencies: InternetWorkflowToolDependencies = {},
 ): ReturnType<typeof defineTool> {
 	return defineTool({
 		name: "internet_workflow",
 		description:
-			"Admit and control durable coding workflows. Local Agent starts use admit -> confirm when required -> activate; test runs the full real workflow without merging.",
+			"Admit and control durable workflows. Admission/activation are profile-aware; software_change and deep_research use the same durable control boundary. The test operation remains the software end-to-end acceptance test.",
 		parameters: {
 			operation: {
 				type: "string",
@@ -372,13 +373,16 @@ export function defineInternetWorkflowTool(
 		async execute(args, exec) {
 			const operation = args.operation as WorkflowOperation;
 			try {
-				if (operation === "test") return await runAcceptanceTest(service, testDependencies, exec as never);
+				if (operation === "test") return await runAcceptanceTest(service, dependencies, exec as never);
 				const authorization = workflowSessionAuthorizationContext(String(exec.agent?.id ?? ""));
 				if (operation === "admit") {
 					if (typeof args.objective !== "string") {
 						return { ok: false, operation, message: "admit requires objective" };
 					}
-					const profile = args.profile === "deep_research" ? "deep_research" : "software_change";
+					const profile =
+						args.profile === "deep_research" || args.profile === "software_change"
+							? args.profile
+							: (dependencies.defaultProfile ?? "software_change");
 					const draft =
 						profile === "deep_research"
 							? createResearchAdmissionDraft({
