@@ -1,6 +1,6 @@
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
-import type { WorkflowExternalSignal, WorkflowPendingAction } from "#internet/workflow/interactions/types";
+import type { WorkflowExternalSignal, WorkflowPendingAction, WorkflowResponseProvenance } from "#internet/workflow/interactions/types";
 import { currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidation";
 import {
 	parseWorkflowDeliveryPayload,
@@ -20,11 +20,7 @@ export interface WorkflowSoftwareFeedbackBridgeDependencies {
 	readonly inputBundles: WorkflowInputBundleStore;
 }
 
-function semanticProvenance(value: WorkflowPendingAction["resolution"] extends infer R
-	? R extends { provenance: infer P }
-		? P
-		: never
-	: never): WorkflowFeedbackProvenance {
+function semanticProvenance(value: WorkflowResponseProvenance): WorkflowFeedbackProvenance {
 	return value === "user_explicit" ? "user_explicit" : value === "local_agent" ? "local_agent" : "system_observed";
 }
 
