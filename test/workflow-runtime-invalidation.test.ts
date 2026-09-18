@@ -40,7 +40,7 @@ const derived = {
 	lineage: [],
 } as unknown as WorkflowArtifact;
 const item = {
-	state: "SUCCEEDED",
+	state: "COMPLETED",
 	inputBundleId: bundleId,
 } as unknown as WorkflowWorkItem;
 
