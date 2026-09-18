@@ -37,6 +37,7 @@ const emptyAwaitables = {
 	ensureExternalEventWait: () => ({}) as never,
 	listTimers: () => [],
 	listExternalEventWaits: () => [],
+	cancelInactive: () => undefined,
 	hasOpen: () => false,
 	reconcile: () => undefined,
 };
@@ -327,6 +328,7 @@ describe("workflow vNext run coordinator", () => {
 			ensureExternalEventWait: () => ({}) as never,
 			listTimers: () => timers as never,
 			listExternalEventWaits: () => [],
+			cancelInactive: () => undefined,
 			hasOpen: (_runId: string, artifactId: string) =>
 				timers.some((timer) => timer.causedBy.artifactId === artifactId && timer.state === "PENDING"),
 			reconcile: () => {
