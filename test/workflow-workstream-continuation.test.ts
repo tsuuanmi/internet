@@ -288,7 +288,7 @@ describe("workflow Workstream continuation", () => {
 	});
 
 	it("requires a terminal source run", () => {
-		const { report, service, acceptContinuation } = setup(undefined, "ACTIVE");
+		const { report, service } = setup(undefined, "ACTIVE");
 		const workstream = service.createWorkstream(sourceRunId);
 		expect(() =>
 			service.continueRun({
@@ -301,7 +301,7 @@ describe("workflow Workstream continuation", () => {
 	});
 
 	it("rejects cross-owner continuation before creating child state", () => {
-		const { runs, report, service, acceptContinuation } = setup();
+		const { runs, report, service } = setup();
 		const workstream = service.createWorkstream(sourceRunId);
 		expect(() =>
 			service.continueRun({
@@ -315,7 +315,7 @@ describe("workflow Workstream continuation", () => {
 	});
 
 	it("rejects Artifact refs from a different source run", () => {
-		const { report, service, acceptContinuation } = setup();
+		const { report, service } = setup();
 		const workstream = service.createWorkstream(sourceRunId);
 		expect(() =>
 			service.continueRun({
