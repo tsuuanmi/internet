@@ -1,4 +1,7 @@
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
+import { loadWorkflowExactCapabilityInput, workflowCapabilityInputJson } from "#internet/workflow/profiles/capability-context";
+import { runWorkflowTeamCapability } from "#internet/workflow/profiles/common/team-capability";
+import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
 import type { WorkflowCapabilityExecutor, WorkflowCapabilityActiveExecutionContext } from "#internet/workflow/runtime/types";
 import {
 	executeWorkflowPlanning,
@@ -34,6 +37,41 @@ function planningDrafts(output: WorkflowPlanningOutput): readonly WorkflowSemant
 		...output.needs.map((payload) => ({ type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need, payload })),
 		...output.findings.map((payload) => ({ type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding, payload })),
 	];
+}
+
+export class WorkflowTeamPlanningExecutor implements WorkflowPlanningExecutor {
+	private readonly runner: WorkflowTeamRunner;
+	private readonly artifacts: WorkflowArtifactStore;
+
+	constructor(runner: WorkflowTeamRunner, artifacts: WorkflowArtifactStore) {
+		this.runner = runner;
+		this.artifacts = artifacts;
+	}
+
+	async execute(request: Parameters<WorkflowPlanningExecutor["execute"]>[0]): Promise<unknown> {
+		const exactInput = loadWorkflowExactCapabilityInput(this.artifacts, request.inputBundle);
+		const answer = await runWorkflowTeamCapability(this.runner, {
+			runId: request.inputBundle.runId,
+			inputBundle: request.inputBundle,
+			scope: "planning",
+			promptStrategy: "generic-debate",
+			task: [
+				"Act as the workflow Planner for the exact typed input below.",
+				`Planning mode: ${request.mode}`,
+				"Return only one JSON object with this shape:",
+				'{"mode":"INITIAL|PLAN_CHANGE|REQUIREMENTS_CHANGE|CLARIFICATION","objective":object?,"acceptanceCriteria":object?,"plan":object?,"needs":[],"findings":[]}',
+				"Preserve exact IDs/references from the input where required; do not invent execution authority, provider identity, or runtime topology.",
+				"",
+				"Exact workflow input:",
+				workflowCapabilityInputJson(exactInput),
+			].join("\n"),
+		});
+		try {
+			return JSON.parse(answer);
+		} catch {
+			throw new Error("workflow planning reasoning executor did not return the required JSON object");
+		}
+	}
 }
 
 export class WorkflowPlanningCapabilityAdapter implements WorkflowCapabilityExecutor {
