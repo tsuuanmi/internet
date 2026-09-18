@@ -18,10 +18,7 @@ import {
 	WorkflowRunCoordinator,
 	type WorkflowRuntimePolicy,
 } from "#internet/workflow/runtime/index";
-import {
-	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
-	WORKFLOW_SEMANTIC_SCHEMA_REFS,
-} from "#internet/workflow/semantic/index";
+import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES, WORKFLOW_SEMANTIC_SCHEMA_REFS } from "#internet/workflow/semantic/index";
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 
