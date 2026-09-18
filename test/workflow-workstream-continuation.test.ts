@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
+import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import {
 	WorkflowContinuationError,
@@ -9,6 +11,7 @@ import {
 	type WorkflowContinuationImportPolicy,
 } from "#internet/workflow/continuation";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
+import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
 import { WorkflowRunStore } from "#internet/workflow/run-store";
 import { WorkflowWorkstreamStore } from "#internet/workflow/workstream-store";
 
@@ -66,6 +69,29 @@ function setup(policy?: WorkflowContinuationImportPolicy, lifecycle: WorkflowRun
 	const runs = new WorkflowRunStore(root);
 	const artifacts = new WorkflowArtifactStore(root);
 	const workstreams = new WorkflowWorkstreamStore(root);
+	const admissions = new WorkflowAdmissionStore(root);
+	const profiles = new WorkflowProfileRegistry(
+		[
+			{
+				id: "software_change",
+				version: "1",
+				preflightAdmission: () => ({
+					confirmationLevel: "AUTO_SUBMIT",
+					confirmationReasons: [],
+					defaults: [],
+					unresolved: [],
+					warnings: [],
+					errors: [],
+				}),
+			},
+		],
+		"software_change",
+	);
+	const ids = ["7".repeat(32), childAdmissionId];
+	const admissionService = new WorkflowAdmissionService(admissions, profiles, {
+		createId: () => ids.shift() ?? "8".repeat(32),
+		now: () => new Date("2026-09-18T01:30:00.000Z"),
+	});
 	runs.create(sourceRun(lifecycle));
 	const report = artifacts.create({
 		runId: sourceRunId,
@@ -80,6 +106,7 @@ function setup(policy?: WorkflowContinuationImportPolicy, lifecycle: WorkflowRun
 	});
 	const service = new WorkflowContinuationService(
 		workstreams,
+		admissions,
 		runs,
 		artifacts,
 		policy ?? { validate: () => undefined },
@@ -88,13 +115,39 @@ function setup(policy?: WorkflowContinuationImportPolicy, lifecycle: WorkflowRun
 			now: () => new Date("2026-09-18T02:00:00.000Z"),
 		},
 	);
-	return { root, runs, artifacts, workstreams, report, service };
+	function acceptContinuation(workstreamId: string) {
+		const created = admissionService.create(owner, {
+			source: {
+				kind: "user",
+				rawText: "Implement the selected research report",
+				provenance: "user_explicit",
+			},
+			profileHint: { value: "software_change", provenance: "user_explicit" },
+			continuation: {
+				workstreamId,
+				continuesFromRunId: sourceRunId,
+				sourceArtifacts: [
+					{
+						source: { runId: sourceRunId, artifactId: report.artifactId },
+						payloadHash: report.payloadHash,
+						schemaRef: report.schemaRef,
+					},
+				],
+			},
+		});
+		const accepted = admissionService.preflight(owner, created.admissionId, created.revision);
+		expect(accepted.state).toBe("ACCEPTED");
+		expect(accepted.admissionId).toBe(childAdmissionId);
+		return accepted;
+	}
+	return { root, runs, artifacts, workstreams, admissions, report, service, acceptContinuation };
 }
 
 describe("workflow Workstream continuation", () => {
 	it("imports exact child-owned snapshots with durable source identity", () => {
-		const { artifacts, workstreams, report, service } = setup();
+		const { artifacts, workstreams, report, service, acceptContinuation } = setup();
 		const workstream = service.createWorkstream(sourceRunId, "Research to implementation");
+		acceptContinuation(workstream.workstreamId);
 		const result = service.continueRun({
 			workstreamId: workstream.workstreamId,
 			sourceRunId,
@@ -148,8 +201,9 @@ describe("workflow Workstream continuation", () => {
 	});
 
 	it("is idempotent across retry after child/import/link persistence", () => {
-		const { workstreams, report, service } = setup();
+		const { workstreams, report, service, acceptContinuation } = setup();
 		const workstream = service.createWorkstream(sourceRunId);
+		acceptContinuation(workstream.workstreamId);
 		const request = {
 			workstreamId: workstream.workstreamId,
 			sourceRunId,
@@ -165,8 +219,9 @@ describe("workflow Workstream continuation", () => {
 	});
 
 	it("keeps child inputs reproducible after parent run and source Artifact are removed", () => {
-		const { runs, artifacts, report, service } = setup();
+		const { runs, artifacts, report, service, acceptContinuation } = setup();
 		const workstream = service.createWorkstream(sourceRunId);
+		acceptContinuation(workstream.workstreamId);
 		const result = service.continueRun({
 			workstreamId: workstream.workstreamId,
 			sourceRunId,
@@ -192,12 +247,13 @@ describe("workflow Workstream continuation", () => {
 	});
 
 	it("validates import policy before creating the child run", () => {
-		const { runs, report, service } = setup({
+		const { runs, report, service, acceptContinuation } = setup({
 			validate: () => {
 				throw new Error("source schema is not allowed");
 			},
 		});
 		const workstream = service.createWorkstream(sourceRunId);
+		acceptContinuation(workstream.workstreamId);
 		expect(() =>
 			service.continueRun({
 				workstreamId: workstream.workstreamId,
@@ -210,7 +266,7 @@ describe("workflow Workstream continuation", () => {
 	});
 
 	it("requires a terminal source run", () => {
-		const { report, service } = setup(undefined, "ACTIVE");
+		const { report, service, acceptContinuation } = setup(undefined, "ACTIVE");
 		const workstream = service.createWorkstream(sourceRunId);
 		expect(() =>
 			service.continueRun({
@@ -223,7 +279,7 @@ describe("workflow Workstream continuation", () => {
 	});
 
 	it("rejects cross-owner continuation before creating child state", () => {
-		const { runs, report, service } = setup();
+		const { runs, report, service, acceptContinuation } = setup();
 		const workstream = service.createWorkstream(sourceRunId);
 		expect(() =>
 			service.continueRun({
@@ -237,7 +293,7 @@ describe("workflow Workstream continuation", () => {
 	});
 
 	it("rejects Artifact refs from a different source run", () => {
-		const { report, service } = setup();
+		const { report, service, acceptContinuation } = setup();
 		const workstream = service.createWorkstream(sourceRunId);
 		expect(() =>
 			service.continueRun({
