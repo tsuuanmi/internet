@@ -3,11 +3,13 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { WorkflowAdmissionActivationRegistry } from "#internet/workflow/admission/activation-registry";
 import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
 import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
 import type { WorkflowAuthorizationContext } from "#internet/workflow/authorization";
 import { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
+import { createSoftwareWorkflowActivationHandler } from "#internet/workflow/profiles/software-activation";
 import { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
@@ -43,7 +45,14 @@ function runtime() {
 	};
 	const profiles = new WorkflowProfileRegistry([SOFTWARE_WORKFLOW_PROFILE], SOFTWARE_WORKFLOW_PROFILE.id);
 	const admissions = new WorkflowAdmissionService(new WorkflowAdmissionStore(root), profiles);
-	const service = new WorkflowService(engine, driver, jobs, new WorkflowRetentionManager(root, jobs), admissions);
+	const retention = new WorkflowRetentionManager(root, jobs);
+	const service = new WorkflowService({
+		admissionService: admissions,
+		activationRegistry: new WorkflowAdmissionActivationRegistry([
+			createSoftwareWorkflowActivationHandler(engine, driver, jobs),
+		]),
+		legacy: { engine, driver, jobs, retention },
+	});
 	return { service, jobs };
 }
 
