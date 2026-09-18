@@ -218,7 +218,7 @@ describe("workflow vNext capability adapters", () => {
 			schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.implementationOutput,
 			producer: { kind: "runtime", id: "test" },
 			payload: {
-				outputId: "pull-request:tsuuanmi/internet#42@" + headSha,
+				outputId: `pull-request:tsuuanmi/internet#42@${headSha}`,
 				kind: "pull_request_head",
 				subject: { kind: "git_head", id: "tsuuanmi/internet#42", version: headSha },
 				artifacts: [],
@@ -253,7 +253,7 @@ describe("workflow vNext capability adapters", () => {
 			schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.implementationOutput,
 			producer: { kind: "runtime", id: "test" },
 			payload: {
-				outputId: "pull-request:tsuuanmi/internet#44@" + headSha,
+				outputId: `pull-request:tsuuanmi/internet#44@${headSha}`,
 				kind: "pull_request_head",
 				subject: { kind: "git_head", id: "tsuuanmi/internet#44", version: headSha },
 				artifacts: [],
