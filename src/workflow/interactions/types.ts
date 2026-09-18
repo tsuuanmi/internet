@@ -3,6 +3,7 @@ import type { WorkflowArtifactRef, WorkflowEntityRef, WorkflowVersionRef } from 
 
 export const WORKFLOW_PENDING_ACTION_SCHEMA = "@tsuuanmi/internet-workflow-pending-action" as const;
 export const WORKFLOW_PENDING_ACTION_RESPONSE_SCHEMA = "@tsuuanmi/internet-workflow-pending-action-response" as const;
+export const WORKFLOW_EXTERNAL_SIGNAL_SCHEMA = "@tsuuanmi/internet-workflow-external-signal" as const;
 
 export const WORKFLOW_PENDING_ACTION_STATES = [
 	"PENDING",
@@ -94,5 +95,32 @@ export interface WorkflowPendingActionResponseInput {
 	readonly requestId: string;
 	readonly provenance: WorkflowResponseProvenance;
 	readonly responseSchema: WorkflowVersionRef;
+	readonly payload: unknown;
+}
+
+
+export interface WorkflowExternalSignal {
+	readonly schema: typeof WORKFLOW_EXTERNAL_SIGNAL_SCHEMA;
+	readonly version: 1;
+	readonly signalId: string;
+	readonly runId: string;
+	readonly requestId: string;
+	readonly principal: WorkflowPrincipal;
+	readonly provenance: WorkflowResponseProvenance;
+	readonly signalType: string;
+	readonly payloadSchema: WorkflowVersionRef;
+	readonly payload: unknown;
+	readonly payloadHash: string;
+	readonly expectedRunRevision: number;
+	readonly createdAt: string;
+}
+
+export interface WorkflowExternalSignalInput {
+	readonly runId: string;
+	readonly expectedRunRevision: number;
+	readonly requestId: string;
+	readonly provenance: WorkflowResponseProvenance;
+	readonly signalType: string;
+	readonly payloadSchema: WorkflowVersionRef;
 	readonly payload: unknown;
 }
