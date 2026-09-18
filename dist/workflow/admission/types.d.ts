@@ -1,4 +1,5 @@
 import type { WorkflowPrincipal } from "#internet/workflow/authorization";
+import type { WorkflowArtifactRef, WorkflowVersionRef } from "#internet/workflow/kernel/types";
 export declare const WORKFLOW_ADMISSION_PROVENANCE: readonly ["user_explicit", "local_interpreted", "policy_default", "planner_derived", "system_observed"];
 export type WorkflowAdmissionProvenance = (typeof WORKFLOW_ADMISSION_PROVENANCE)[number];
 export declare const WORKFLOW_ADMISSION_STATES: readonly ["DRAFT", "PREFLIGHTED", "AWAITING_CONFIRMATION", "ACCEPTED", "ACTIVATING", "ACTIVATED"];
@@ -37,6 +38,16 @@ export interface WorkflowAdmissionBudgetHints {
     readonly maxWallClockMs?: ProvenancedValue<number>;
     readonly maxCostUsd?: ProvenancedValue<number>;
 }
+export interface WorkflowAdmissionContinuationArtifact {
+    readonly source: WorkflowArtifactRef;
+    readonly payloadHash: string;
+    readonly schemaRef: WorkflowVersionRef;
+}
+export interface WorkflowAdmissionContinuation {
+    readonly workstreamId: string;
+    readonly continuesFromRunId: string;
+    readonly sourceArtifacts: readonly WorkflowAdmissionContinuationArtifact[];
+}
 export interface WorkflowAdmissionDraftInput {
     readonly source: WorkflowAdmissionSource;
     readonly profileHint?: ProvenancedValue<string>;
@@ -47,6 +58,7 @@ export interface WorkflowAdmissionDraftInput {
     readonly temporal?: WorkflowAdmissionTemporalHints;
     readonly budget?: WorkflowAdmissionBudgetHints;
     readonly deliverables?: readonly ProvenancedValue<string>[];
+    readonly continuation?: WorkflowAdmissionContinuation;
     readonly uncertainties?: readonly {
         readonly field: string;
         readonly description: string;

@@ -1,4 +1,5 @@
 import type { WorkflowPrincipal } from "#internet/workflow/authorization";
+import type { WorkflowArtifactRef, WorkflowVersionRef } from "#internet/workflow/kernel/types";
 
 export const WORKFLOW_ADMISSION_PROVENANCE = [
 	"user_explicit",
@@ -68,6 +69,18 @@ export interface WorkflowAdmissionBudgetHints {
 	readonly maxCostUsd?: ProvenancedValue<number>;
 }
 
+export interface WorkflowAdmissionContinuationArtifact {
+	readonly source: WorkflowArtifactRef;
+	readonly payloadHash: string;
+	readonly schemaRef: WorkflowVersionRef;
+}
+
+export interface WorkflowAdmissionContinuation {
+	readonly workstreamId: string;
+	readonly continuesFromRunId: string;
+	readonly sourceArtifacts: readonly WorkflowAdmissionContinuationArtifact[];
+}
+
 export interface WorkflowAdmissionDraftInput {
 	readonly source: WorkflowAdmissionSource;
 	readonly profileHint?: ProvenancedValue<string>;
@@ -78,6 +91,7 @@ export interface WorkflowAdmissionDraftInput {
 	readonly temporal?: WorkflowAdmissionTemporalHints;
 	readonly budget?: WorkflowAdmissionBudgetHints;
 	readonly deliverables?: readonly ProvenancedValue<string>[];
+	readonly continuation?: WorkflowAdmissionContinuation;
 	readonly uncertainties?: readonly { readonly field: string; readonly description: string }[];
 }
 

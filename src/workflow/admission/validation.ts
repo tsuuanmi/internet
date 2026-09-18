@@ -57,6 +57,33 @@ function assertProvenancedValue(value: unknown, kind: "string" | "boolean" | "nu
 	if (value.uncertainty !== undefined) assertNonEmptyString(value.uncertainty, "admission uncertainty");
 }
 
+function assertContinuation(value: unknown): void {
+	if (!isRecord(value) || !isId(value.workstreamId) || !isId(value.continuesFromRunId)) {
+		throw new Error("invalid admission continuation identity");
+	}
+	if (!Array.isArray(value.sourceArtifacts)) throw new Error("invalid admission continuation source Artifacts");
+	const seen = new Set<string>();
+	for (const item of value.sourceArtifacts) {
+		if (!isRecord(item) || !isRecord(item.source)) {
+			throw new Error("invalid admission continuation source Artifact");
+		}
+		if (
+			!isId(item.source.runId) ||
+			!isHash(item.source.artifactId) ||
+			item.source.runId !== value.continuesFromRunId
+		) {
+			throw new Error("invalid admission continuation source Artifact identity");
+		}
+		if (!isHash(item.payloadHash)) throw new Error("invalid admission continuation source payload hash");
+		if (!isRecord(item.schemaRef)) throw new Error("invalid admission continuation source schema");
+		assertNonEmptyString(item.schemaRef.id, "admission continuation source schema id");
+		assertNonEmptyString(item.schemaRef.version, "admission continuation source schema version");
+		const key = `${item.source.runId}:${item.source.artifactId}`;
+		if (seen.has(key)) throw new Error(`duplicate admission continuation source Artifact ${key}`);
+		seen.add(key);
+	}
+}
+
 function assertStringValues(value: unknown): void {
 	if (value === undefined) return;
 	if (!Array.isArray(value)) throw new Error("invalid admission string values");
@@ -110,6 +137,7 @@ export function parseWorkflowAdmissionDraft(value: unknown): WorkflowAdmissionDr
 	}
 	assertStringValues(value.constraints);
 	assertStringValues(value.deliverables);
+	if (value.continuation !== undefined) assertContinuation(value.continuation);
 	if (value.authority !== undefined) {
 		if (!isRecord(value.authority)) throw new Error("invalid admission authority");
 		if (value.authority.repositoryMutation !== undefined)

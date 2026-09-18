@@ -206,6 +206,8 @@ export type {
 	WorkflowAdmissionAuthority,
 	WorkflowAdmissionBudgetHints,
 	WorkflowAdmissionConfirmationLevel,
+	WorkflowAdmissionContinuation,
+	WorkflowAdmissionContinuationArtifact,
 	WorkflowAdmissionDraft,
 	WorkflowAdmissionDraftInput,
 	WorkflowAdmissionProvenance,
@@ -233,6 +235,13 @@ export type {
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 export type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
 export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
+export type {
+	ContinueWorkflowRunInput,
+	WorkflowContinuationImportPolicy,
+	WorkflowContinuationResult,
+	WorkflowContinuationServiceOptions,
+} from "#internet/workflow/continuation";
+export { WorkflowContinuationError, WorkflowContinuationService } from "#internet/workflow/continuation";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -368,6 +377,13 @@ export type {
 } from "#internet/workflow/types";
 export { workflowJobIsTerminal } from "#internet/workflow/types";
 export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";
+export type {
+	WorkflowContinuationLink,
+	WorkflowImportedArtifactRef,
+	WorkflowWorkstream,
+} from "#internet/workflow/workstream";
+export { parseWorkflowWorkstream, WORKFLOW_WORKSTREAM_SCHEMA } from "#internet/workflow/workstream";
+export { WorkflowWorkstreamStore, WorkflowWorkstreamStoreError } from "#internet/workflow/workstream-store";
 export type {
 	WorkflowWriterControlRequest,
 	WorkflowWriterDeliveryRequest,

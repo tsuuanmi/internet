@@ -2,11 +2,11 @@
 
 ## Current status
 
-**Design Gate D0 and Phases 0-6 have landed on `main`; Phase 7 software Delivery/User-feedback lifecycle is implemented in PR #45.**
+**Design Gate D0 and Phases 0-6 have landed on `main`; Phase 7 software Delivery/User-feedback lifecycle is implemented in PR #45, and Phase 8 Workstream/continuation is implemented in PR #46.**
 
-The migration now has one authoritative `WorkflowService` boundary, durable admission, the parallel vNext kernel/runtime, typed semantic artifacts, deterministic convergence, capability adapters, durable external interactions, and a software Delivery/User-feedback loop where implementation produces an exact reviewable output, review PASS creates an exact-head Delivery checkpoint, User/local feedback is persisted against that checkpoint, and reasoning capabilities—not the deterministic Orchestrator—derive typed consequences. The v3 runtime remains supported during migration.
+The migration now has one authoritative `WorkflowService` boundary, durable admission, the parallel vNext kernel/runtime, typed semantic artifacts, deterministic convergence, capability adapters, durable external interactions, a software Delivery/User-feedback loop, and durable Workstream continuity with admission-pinned parent/child lineage plus child-owned exact Artifact imports that remain reproducible after parent retention. Workstream remains metadata only; WorkflowRun stays the bounded execution authority. The v3 runtime remains supported during migration.
 
-The next implementation milestone after Phase 7 is Workstream/continuation.
+The next implementation milestone after Phase 8 is Timer/ExternalEvent.
 
 ## D0 — Design contract harmonization
 
@@ -173,14 +173,14 @@ The next implementation milestone after Phase 7 is Workstream/continuation.
 
 ## P2 — Workstream and continuation
 
-- [ ] Define Workstream as continuity metadata, not an execution graph.
-- [ ] Add Workstream store.
-- [ ] Add continuation admission linking parent/child runs.
-- [ ] Define source run/artifact/hash lineage.
-- [ ] Preserve historical ownership of original source Artifact in the parent run.
-- [ ] Import/copy exact correctness-bearing Artifact snapshots into child-owned storage for first implementation.
-- [ ] Verify parent-run retention cannot break child-run reproducibility.
-- [ ] Avoid global reference-counted artifact GC in the first version.
+- [x] Define Workstream as continuity metadata, not an execution graph.
+- [x] Add Workstream store.
+- [x] Add continuation admission linking parent/child runs.
+- [x] Define source run/artifact/hash lineage.
+- [x] Preserve historical ownership of original source Artifact in the parent run.
+- [x] Import/copy exact correctness-bearing Artifact snapshots into child-owned storage for first implementation.
+- [x] Verify parent-run retention cannot break child-run reproducibility.
+- [x] Avoid global reference-counted artifact GC in the first version.
 
 ## P2 — Timer / ExternalEvent
 

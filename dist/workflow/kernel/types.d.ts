@@ -9,7 +9,7 @@ export declare const WORKFLOW_WORK_ITEM_STATES: readonly ["PENDING", "READY", "R
 export type WorkflowWorkItemState = (typeof WORKFLOW_WORK_ITEM_STATES)[number];
 export declare const WORKFLOW_SIDE_EFFECT_CLASSES: readonly ["READ_ONLY", "CONTROLLED_MUTATION", "EXTERNAL_MUTATION", "HUMAN_AUTHORITY"];
 export type WorkflowSideEffectClass = (typeof WORKFLOW_SIDE_EFFECT_CLASSES)[number];
-export declare const WORKFLOW_ARTIFACT_LINEAGE_RELATIONS: readonly ["derived_from", "supports", "contradicts", "resolves", "supersedes", "invalidates", "consumes", "continues_from", "validates"];
+export declare const WORKFLOW_ARTIFACT_LINEAGE_RELATIONS: readonly ["derived_from", "supports", "contradicts", "resolves", "supersedes", "invalidates", "consumes", "continues_from", "validates", "imports_from"];
 export type WorkflowArtifactLineageRelation = (typeof WORKFLOW_ARTIFACT_LINEAGE_RELATIONS)[number];
 export interface WorkflowVersionRef {
     readonly id: string;
@@ -47,9 +47,20 @@ export interface WorkflowArtifactLineage {
     readonly relation: WorkflowArtifactLineageRelation;
     readonly artifact: WorkflowArtifactRef;
 }
-export interface WorkflowArtifactProducer extends WorkflowEntityRef {
-    readonly kind: "work_item" | "runtime" | "external_import";
+export interface WorkflowArtifactProducerSource {
+    readonly runId: string;
+    readonly artifactId: string;
+    readonly payloadHash: string;
+    readonly schemaRef: WorkflowVersionRef;
 }
+export type WorkflowArtifactProducer = {
+    readonly kind: "work_item" | "runtime";
+    readonly id: string;
+} | {
+    readonly kind: "external_import";
+    readonly id: string;
+    readonly source: WorkflowArtifactProducerSource;
+};
 export interface WorkflowArtifact {
     readonly schema: typeof WORKFLOW_ARTIFACT_SCHEMA;
     readonly version: 1;

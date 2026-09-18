@@ -130,6 +130,7 @@ export { parseWorkflowAdmissionDraft, parseWorkflowAdmissionRecord } from "#inte
 export { WorkflowArtifactStore, WorkflowArtifactStoreError } from "#internet/workflow/artifact-store";
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
+export { WorkflowContinuationError, WorkflowContinuationService } from "#internet/workflow/continuation";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export { WorkflowDriver } from "#internet/workflow/driver";
 export { WorkflowEngine } from "#internet/workflow/engine";
@@ -166,5 +167,7 @@ export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builde
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 export { workflowJobIsTerminal } from "#internet/workflow/types";
 export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";
+export { parseWorkflowWorkstream, WORKFLOW_WORKSTREAM_SCHEMA } from "#internet/workflow/workstream";
+export { WorkflowWorkstreamStore, WorkflowWorkstreamStoreError } from "#internet/workflow/workstream-store";
 export { BrowserWorkflowWriterRunner, parseWorkflowWriterResult } from "#internet/workflow/writer-runner";
 //# sourceMappingURL=index.js.map

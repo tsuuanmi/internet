@@ -6,8 +6,10 @@ import {
 	WORKFLOW_INPUT_BUNDLE_SCHEMA,
 	WORKFLOW_RUN_SCHEMA,
 	WORKFLOW_WORK_ITEM_SCHEMA,
+	WORKFLOW_WORKSTREAM_SCHEMA,
 	WorkflowArtifactStore,
 	WorkflowCapabilityRegistry,
+	WorkflowContinuationService,
 	WorkflowExecutionResultStore,
 	WorkflowExecutionStore,
 	WorkflowInputBundleStore,
@@ -15,6 +17,7 @@ import {
 	WorkflowRunDriver,
 	WorkflowRunStore,
 	WorkflowWorkItemStore,
+	WorkflowWorkstreamStore,
 } from "#internet/index";
 
 describe("workflow kernel public API", () => {
@@ -24,6 +27,9 @@ describe("workflow kernel public API", () => {
 		expect(WORKFLOW_WORK_ITEM_SCHEMA).toBe("@tsuuanmi/internet-workflow-work-item");
 		expect(WORKFLOW_INPUT_BUNDLE_SCHEMA).toBe("@tsuuanmi/internet-workflow-input-bundle");
 		expect(WORKFLOW_EXECUTION_SCHEMA).toBe("@tsuuanmi/internet-workflow-execution");
+		expect(WORKFLOW_WORKSTREAM_SCHEMA).toBe("@tsuuanmi/internet-workflow-workstream");
+		expect(WorkflowContinuationService).toBeTypeOf("function");
+		expect(WorkflowWorkstreamStore).toBeTypeOf("function");
 		expect(WorkflowRunStore).toBeTypeOf("function");
 		expect(WorkflowArtifactStore).toBeTypeOf("function");
 		expect(WorkflowWorkItemStore).toBeTypeOf("function");

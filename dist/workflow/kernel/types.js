@@ -35,5 +35,6 @@ export const WORKFLOW_ARTIFACT_LINEAGE_RELATIONS = [
     "consumes",
     "continues_from",
     "validates",
+    "imports_from",
 ];
 //# sourceMappingURL=types.js.map
