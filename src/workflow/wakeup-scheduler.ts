@@ -1,3 +1,4 @@
+import type { WorkflowExternalEventStore } from "#internet/workflow/external-event-store";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import type { WorkflowTimerStore } from "#internet/workflow/timer-store";
 
@@ -15,6 +16,7 @@ const MAX_TIMEOUT_MS = 2_147_000_000;
 
 export class WorkflowWakeupScheduler {
 	private readonly timers: WorkflowTimerStore;
+	private readonly events: WorkflowExternalEventStore;
 	private readonly runs: WorkflowRunStore;
 	private readonly driver: WorkflowWakeupDriver;
 	private readonly now: () => number;
@@ -25,11 +27,13 @@ export class WorkflowWakeupScheduler {
 
 	constructor(
 		timers: WorkflowTimerStore,
+		events: WorkflowExternalEventStore,
 		runs: WorkflowRunStore,
 		driver: WorkflowWakeupDriver,
 		options: WorkflowWakeupSchedulerOptions = {},
 	) {
 		this.timers = timers;
+		this.events = events;
 		this.runs = runs;
 		this.driver = driver;
 		this.now = options.now ?? Date.now;
@@ -39,6 +43,7 @@ export class WorkflowWakeupScheduler {
 
 	start(): void {
 		if (this.disposed) return;
+		this.reconcileExternalEvents();
 		this.reconcileOverdue();
 		this.refresh();
 	}
@@ -72,6 +77,15 @@ export class WorkflowWakeupScheduler {
 		if (this.scheduled !== undefined) {
 			this.clearTimer(this.scheduled);
 			this.scheduled = undefined;
+		}
+	}
+
+	private reconcileExternalEvents(): void {
+		for (const run of this.runs.list()) {
+			if (["COMPLETED", "CANCELLED"].includes(run.lifecycle)) continue;
+			const matched = this.events.reconcile(run.runId, this.now);
+			const hasMatched = this.events.listWaits(run.runId).some((wait) => wait.state === "MATCHED");
+			if (matched.length > 0 || hasMatched) this.driver.enqueue(run.runId);
 		}
 	}
 
