@@ -11,6 +11,7 @@ import {
 	setWorkflowWorkItemReady,
 } from "#internet/workflow/runtime/execution-state";
 import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
+import { workflowInputBundleIsCurrent } from "#internet/workflow/runtime/invalidation";
 import type { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
 import type { WorkflowCapabilityExecutorRegistry, WorkflowExecution } from "#internet/workflow/runtime/types";
 import { WORKFLOW_EXECUTION_SCHEMA } from "#internet/workflow/runtime/types";
@@ -158,6 +159,7 @@ export class WorkflowExecutionManager {
 		} catch (error) {
 			const current = this.dependencies.executions.get(run.runId, executionId);
 			if (current?.state !== "RUNNING") return;
+			if (this.dependencies.results.get(run.runId, executionId) !== undefined) throw error;
 			if (isAbort(error, signal) && capability.sideEffect === "READ_ONLY") {
 				fenceWorkflowExecution(
 					this.dependencies.executions,
@@ -189,6 +191,10 @@ export class WorkflowExecutionManager {
 			throw new Error("fenced workflow execution cannot commit results");
 		const bundle = this.dependencies.inputBundles.get(execution.runId, execution.inputBundleId);
 		if (bundle === undefined) throw new Error(`workflow InputBundle ${execution.inputBundleId} does not exist`);
+		const artifacts = this.dependencies.artifacts.list(execution.runId);
+		const bundles = this.dependencies.inputBundles.list(execution.runId);
+		if (!workflowInputBundleIsCurrent(bundle, artifacts, bundles))
+			throw new Error("workflow execution InputBundle is stale");
 		const capability = this.dependencies.capabilities.resolve(execution.capability);
 		const promoted = promoteWorkflowSemanticResult(
 			{
