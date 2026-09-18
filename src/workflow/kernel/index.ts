@@ -11,6 +11,7 @@ export type {
 	WorkflowArtifactLineage,
 	WorkflowArtifactLineageRelation,
 	WorkflowArtifactProducer,
+	WorkflowArtifactProducerSource,
 	WorkflowArtifactRef,
 	WorkflowDefinitionBindings,
 	WorkflowEntityRef,
