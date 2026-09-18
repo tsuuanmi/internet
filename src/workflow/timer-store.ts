@@ -169,6 +169,27 @@ export class WorkflowTimerStore {
 		return next;
 	}
 
+	cancelPendingExcept(
+		runId: string,
+		activeNeedArtifactIds: ReadonlySet<string>,
+		now: () => number = Date.now,
+	): readonly WorkflowTimer[] {
+		const cancelled: WorkflowTimer[] = [];
+		const at = new Date(now()).toISOString();
+		for (const timer of this.list(runId)) {
+			if (timer.state !== "PENDING" || activeNeedArtifactIds.has(timer.causedBy.artifactId)) continue;
+			cancelled.push(
+				this.update(runId, timer.timerId, timer.revision, (current) => ({
+					...current,
+					revision: current.revision + 1,
+					state: "CANCELLED",
+					updatedAt: at,
+				})),
+			);
+		}
+		return cancelled;
+	}
+
 	reconcile(runId: string, now: () => number = Date.now): readonly WorkflowTimer[] {
 		const fired: WorkflowTimer[] = [];
 		const atMs = now();
