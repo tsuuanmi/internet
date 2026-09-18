@@ -16,6 +16,7 @@ import { withSoftwareDeliveryFeedbackPolicy } from "#internet/workflow/profiles/
 import { WorkflowSoftwareFeedbackBridge } from "#internet/workflow/profiles/software/feedback-bridge";
 import { SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY } from "#internet/workflow/profiles/software/feedback-capability";
 import { SOFTWARE_USER_FEEDBACK_SCHEMA } from "#internet/workflow/profiles/software/feedback-contract";
+import { currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidation";
 import type { WorkflowNeedRuntimeContext, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
 import {
 	parseWorkflowNeedPayload,
@@ -101,7 +102,7 @@ function setup() {
 		payload: {
 			needId: "user-validation:44",
 			type: "clarification",
-			requestOwner: { kind: "delivery", id: "reviewed:pull-request:tsuuanmi/internet#44@" + headSha },
+			requestOwner: { kind: "delivery", id: `reviewed:pull-request:tsuuanmi/internet#44@${headSha}` },
 			question: "Validate this delivery",
 			subjects: [{ kind: "git_head", id: `tsuuanmi/internet#44@${headSha}` }],
 			relatedArtifacts: [],
@@ -166,7 +167,7 @@ describe("software Delivery/User-feedback lifecycle", () => {
 			payload: {
 				needId: "review-45",
 				type: "execution",
-				requestOwner: { kind: "implementation_output", id: "pull-request:tsuuanmi/internet#45@" + headSha },
+				requestOwner: { kind: "implementation_output", id: `pull-request:tsuuanmi/internet#45@${headSha}` },
 				requestedCapability: "software.review_current_state",
 				question: "Review exact output",
 				subjects: [],
@@ -231,7 +232,53 @@ describe("software Delivery/User-feedback lifecycle", () => {
 			type: "execution",
 			requestOwner: { kind: "user_feedback" },
 			requestedCapability: SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY.id,
+			relatedArtifacts: [{ runId, artifactId: feedback?.artifactId }],
 		});
+		expect(feedback?.payload).toMatchObject({ disposition: "changes_requested" });
+	});
+
+	it("keeps remediation output current while invalidating the Delivery it replaces", () => {
+		const { artifacts, inputBundles, delivery } = setup();
+		const feedback = artifacts.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.userFeedback,
+			schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.userFeedback,
+			producer: { kind: "runtime", id: "feedback-remediation" },
+			payload: {
+				feedbackId: "feedback-remediation",
+				provenance: "user_explicit",
+				raw: "Please fix the issue",
+				disposition: "changes_requested",
+				targetDelivery: { runId, artifactId: delivery.artifactId },
+				targetVersion: headSha,
+				attachments: [],
+			},
+		});
+		const bundle = inputBundles.create({
+			runId,
+			workItemId: "f".repeat(32),
+			capability: { id: "software.implementation_change", version: "1" },
+			projection: { id: "software-remediation", version: "1" },
+			artifacts: [{ runId, artifactId: feedback.artifactId }],
+			facts: [],
+		});
+		const output = artifacts.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput,
+			schemaRef: WORKFLOW_SEMANTIC_SCHEMA_REFS.implementationOutput,
+			producer: { kind: "work_item", id: "f".repeat(32) },
+			inputBundleId: bundle.bundleId,
+			lineage: [{ relation: "invalidates", artifact: { runId, artifactId: delivery.artifactId } }],
+			payload: {
+				outputId: `pull-request:tsuuanmi/internet#44@${"b".repeat(40)}`,
+				kind: "pull_request_head",
+				subject: { kind: "git_head", id: "tsuuanmi/internet#44", version: "b".repeat(40) },
+				artifacts: [{ runId, artifactId: feedback.artifactId }],
+			},
+		});
+		const current = currentWorkflowArtifactIds(artifacts.list(runId), inputBundles.list(runId));
+		expect(current.has(delivery.artifactId)).toBe(false);
+		expect(current.has(output.artifactId)).toBe(true);
 	});
 
 	it("rejects unsolicited feedback targeting an obsolete Delivery/head", () => {
