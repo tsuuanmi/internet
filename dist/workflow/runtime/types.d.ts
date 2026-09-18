@@ -72,6 +72,7 @@ export interface WorkflowAwaitableRuntime {
     ensureExternalEventWait(runId: string, causedBy: WorkflowArtifactRef, contract: WorkflowExternalEventWaitContract, now?: () => number): WorkflowExternalEventWait;
     listTimers(runId: string): readonly WorkflowTimer[];
     listExternalEventWaits(runId: string): readonly WorkflowExternalEventWait[];
+    cancelInactive(runId: string, activeNeedArtifactIds: ReadonlySet<string>, now?: () => number): void;
     hasOpen(runId: string, needArtifactId: string): boolean;
     reconcile(runId: string, now?: () => number): void;
 }

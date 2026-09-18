@@ -28,6 +28,12 @@ export class WorkflowDurableAwaitableRuntime {
     listExternalEventWaits(runId) {
         return this.events.listWaits(runId);
     }
+    cancelInactive(runId, activeNeedArtifactIds, now) {
+        const cancelledTimers = this.timers.cancelPendingExcept(runId, activeNeedArtifactIds, now);
+        this.events.cancelWaitingExcept(runId, activeNeedArtifactIds, now);
+        if (cancelledTimers.length > 0)
+            this.hooks.onTimerChanged?.();
+    }
     hasOpen(runId, needArtifactId) {
         return (this.timers
             .list(runId)

@@ -17,6 +17,7 @@ export declare class WorkflowExternalEventStore {
     getWait(runId: string, waitId: string): WorkflowExternalEventWait | undefined;
     listEvents(runId: string): readonly WorkflowExternalEvent[];
     listWaits(runId: string): readonly WorkflowExternalEventWait[];
+    cancelWaitingExcept(runId: string, activeNeedArtifactIds: ReadonlySet<string>, now?: () => number): readonly WorkflowExternalEventWait[];
     reconcile(runId: string, now?: () => number): readonly WorkflowExternalEventWait[];
     private reconcileWait;
     private updateWait;

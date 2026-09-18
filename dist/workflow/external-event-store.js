@@ -185,6 +185,21 @@ export class WorkflowExternalEventStore {
             return wait;
         });
     }
+    cancelWaitingExcept(runId, activeNeedArtifactIds, now = Date.now) {
+        const cancelled = [];
+        const at = new Date(now()).toISOString();
+        for (const wait of this.listWaits(runId)) {
+            if (wait.state !== "WAITING" || activeNeedArtifactIds.has(wait.causedBy.artifactId))
+                continue;
+            cancelled.push(this.updateWait(runId, wait.waitId, wait.revision, (current) => ({
+                ...current,
+                revision: current.revision + 1,
+                state: "CANCELLED",
+                updatedAt: at,
+            })));
+        }
+        return cancelled;
+    }
     reconcile(runId, now = Date.now) {
         const at = new Date(now()).toISOString();
         return this.listWaits(runId)

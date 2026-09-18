@@ -1,5 +1,5 @@
 import { WorkflowExecutionManager, } from "#internet/workflow/runtime/execution-manager";
-import { applyWorkflowInvalidation } from "#internet/workflow/runtime/invalidation";
+import { applyWorkflowInvalidation, currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidation";
 import { projectWorkflowRunLifecycle } from "#internet/workflow/runtime/lifecycle";
 import { materializeWorkflowNeeds, prepareWorkflowReadyWork } from "#internet/workflow/runtime/scheduler";
 const TERMINAL_RUN_LIFECYCLES = new Set(["COMPLETED", "CANCELLED"]);
@@ -23,9 +23,10 @@ export class WorkflowRunCoordinator {
         if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle))
             return run;
         this.dependencies.pendingActions.reconcile(runId);
-        this.dependencies.awaitables.reconcile(runId, this.now);
         const artifacts = this.dependencies.artifacts.list(runId);
         applyWorkflowInvalidation(this.dependencies, runId, artifacts, this.now);
+        this.dependencies.awaitables.cancelInactive(runId, currentWorkflowArtifactIds(artifacts, this.dependencies.inputBundles.list(runId)), this.now);
+        this.dependencies.awaitables.reconcile(runId, this.now);
         materializeWorkflowNeeds(this.dependencies, run, artifacts, this.now);
         prepareWorkflowReadyWork(this.dependencies, run, artifacts, this.now);
         run = this.status(runId);
@@ -43,8 +44,10 @@ export class WorkflowRunCoordinator {
         if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle))
             return run;
         this.dependencies.pendingActions.reconcile(runId);
+        const artifacts = this.dependencies.artifacts.list(runId);
+        applyWorkflowInvalidation(this.dependencies, runId, artifacts, this.now);
+        this.dependencies.awaitables.cancelInactive(runId, currentWorkflowArtifactIds(artifacts, this.dependencies.inputBundles.list(runId)), this.now);
         this.dependencies.awaitables.reconcile(runId, this.now);
-        applyWorkflowInvalidation(this.dependencies, runId, this.dependencies.artifacts.list(runId), this.now);
         await this.execution.reconcile(runId, signal);
         return this.advance(runId);
     }

@@ -136,6 +136,21 @@ export class WorkflowTimerStore {
         writePrivateJson(this.pathFor(runId, timerId), next);
         return next;
     }
+    cancelPendingExcept(runId, activeNeedArtifactIds, now = Date.now) {
+        const cancelled = [];
+        const at = new Date(now()).toISOString();
+        for (const timer of this.list(runId)) {
+            if (timer.state !== "PENDING" || activeNeedArtifactIds.has(timer.causedBy.artifactId))
+                continue;
+            cancelled.push(this.update(runId, timer.timerId, timer.revision, (current) => ({
+                ...current,
+                revision: current.revision + 1,
+                state: "CANCELLED",
+                updatedAt: at,
+            })));
+        }
+        return cancelled;
+    }
     reconcile(runId, now = Date.now) {
         const fired = [];
         const atMs = now();

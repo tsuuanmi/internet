@@ -13,6 +13,7 @@ export declare class WorkflowTimerStore {
     list(runId: string): readonly WorkflowTimer[];
     listAll(): readonly WorkflowTimer[];
     update(runId: string, timerId: string, expectedRevision: number, mutate: (current: WorkflowTimer) => WorkflowTimer): WorkflowTimer;
+    cancelPendingExcept(runId: string, activeNeedArtifactIds: ReadonlySet<string>, now?: () => number): readonly WorkflowTimer[];
     reconcile(runId: string, now?: () => number): readonly WorkflowTimer[];
 }
 //# sourceMappingURL=timer-store.d.ts.map
