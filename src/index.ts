@@ -288,13 +288,11 @@ export {
 	WorkflowOperator,
 	WorkflowOperatorError,
 } from "#internet/workflow/operator";
-export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
-export { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
-export { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 export {
 	WorkflowPlanningCapabilityAdapter,
 	WorkflowTeamPlanningExecutor,
 } from "#internet/workflow/profiles/common/planning-capability";
+export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
 export {
 	EXTERNAL_DEEP_RESEARCH_CAPABILITY,
 	WorkflowExternalDeepResearchAdapter,
@@ -312,6 +310,8 @@ export {
 	SOFTWARE_REVIEW_CAPABILITY,
 	WorkflowSoftwareReviewAdapter,
 } from "#internet/workflow/profiles/software/review-capability";
+export { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
+export { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 export type { WorkflowProfileAdmissionResult, WorkflowProfileDescriptor } from "#internet/workflow/profiles/types";
 export type {
 	WorkflowCleanupAudit,

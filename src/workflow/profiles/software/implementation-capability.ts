@@ -4,7 +4,10 @@ import type {
 	WorkflowCapabilityExecutionContext,
 	WorkflowCapabilityExecutor,
 } from "#internet/workflow/runtime/types";
-import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES, type WorkflowSemanticExecutionResult } from "#internet/workflow/semantic/index";
+import {
+	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
+	type WorkflowSemanticExecutionResult,
+} from "#internet/workflow/semantic/index";
 import type { WorkflowWriterControlRequest, WorkflowWriterRunner } from "#internet/workflow/writer-runner";
 
 export const SOFTWARE_IMPLEMENTATION_CAPABILITY = {
@@ -35,9 +38,7 @@ export class WorkflowSoftwareImplementationAdapter implements WorkflowCapability
 		this.project = project;
 	}
 
-	async execute(
-		context: WorkflowCapabilityActiveExecutionContext,
-	): Promise<WorkflowSemanticExecutionResult> {
+	async execute(context: WorkflowCapabilityActiveExecutionContext): Promise<WorkflowSemanticExecutionResult> {
 		const result = await this.runner.runControl(this.project(context));
 		if (result.status !== "PR_OPEN") {
 			throw new Error(`software implementation did not produce a reconciled PR: ${result.message}`);
@@ -47,23 +48,23 @@ export class WorkflowSoftwareImplementationAdapter implements WorkflowCapability
 			executionId: context.execution.executionId,
 			workItemId: context.workItem.workItemId,
 			inputBundleId: context.inputBundle.bundleId,
-			artifacts: [{
-				type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery,
-				payload: {
-					deliveryId: `pull-request:${pr.repository}#${pr.number}@${pr.headSha}`,
-					kind: "pull_request",
-					subject: { kind: "git_head", id: `${pr.repository}#${pr.number}`, version: pr.headSha },
-					artifacts: context.inputBundle.artifacts,
-					instructions: `Review pull request ${pr.url} at exact head ${pr.headSha}`,
+			artifacts: [
+				{
+					type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery,
+					payload: {
+						deliveryId: `pull-request:${pr.repository}#${pr.number}@${pr.headSha}`,
+						kind: "pull_request",
+						subject: { kind: "git_head", id: `${pr.repository}#${pr.number}`, version: pr.headSha },
+						artifacts: context.inputBundle.artifacts,
+						instructions: `Review pull request ${pr.url} at exact head ${pr.headSha}`,
+					},
 				},
-			}],
+			],
 			receiptIds: [`software.pull_request:${pr.repository}#${pr.number}@${pr.headSha}`],
 		};
 	}
 
-	async reconcile(
-		context: WorkflowCapabilityExecutionContext,
-	): Promise<WorkflowSemanticExecutionResult | undefined> {
+	async reconcile(context: WorkflowCapabilityExecutionContext): Promise<WorkflowSemanticExecutionResult | undefined> {
 		const result = await this.runner.runControl(this.project(context));
 		if (result.status !== "PR_OPEN") return undefined;
 		const pr = result.pullRequest;
@@ -71,16 +72,18 @@ export class WorkflowSoftwareImplementationAdapter implements WorkflowCapability
 			executionId: context.execution.executionId,
 			workItemId: context.workItem.workItemId,
 			inputBundleId: context.inputBundle.bundleId,
-			artifacts: [{
-				type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery,
-				payload: {
-					deliveryId: `pull-request:${pr.repository}#${pr.number}@${pr.headSha}`,
-					kind: "pull_request",
-					subject: { kind: "git_head", id: `${pr.repository}#${pr.number}`, version: pr.headSha },
-					artifacts: context.inputBundle.artifacts,
-					instructions: `Review pull request ${pr.url} at exact head ${pr.headSha}`,
+			artifacts: [
+				{
+					type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery,
+					payload: {
+						deliveryId: `pull-request:${pr.repository}#${pr.number}@${pr.headSha}`,
+						kind: "pull_request",
+						subject: { kind: "git_head", id: `${pr.repository}#${pr.number}`, version: pr.headSha },
+						artifacts: context.inputBundle.artifacts,
+						instructions: `Review pull request ${pr.url} at exact head ${pr.headSha}`,
+					},
 				},
-			}],
+			],
 			receiptIds: [`software.pull_request:${pr.repository}#${pr.number}@${pr.headSha}`],
 		};
 	}

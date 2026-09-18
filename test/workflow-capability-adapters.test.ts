@@ -172,14 +172,16 @@ describe("workflow vNext capability adapters", () => {
 		const need = createNeed(store, "clarification", "Ask the user for the missing scope", "planning");
 		const planningOutput = JSON.stringify({
 			mode: "CLARIFICATION",
-			needs: [{
-				needId: "clarification-2",
-				type: "clarification",
-				requestOwner: { kind: "run", id: runId },
-				question: "Which target should be changed?",
-				subjects: [],
-				relatedArtifacts: [],
-			}],
+			needs: [
+				{
+					needId: "clarification-2",
+					type: "clarification",
+					requestOwner: { kind: "run", id: runId },
+					question: "Which target should be changed?",
+					subjects: [],
+					relatedArtifacts: [],
+				},
+			],
 			findings: [],
 		});
 		const adapter = new WorkflowPlanningCapabilityAdapter(
@@ -234,21 +236,21 @@ describe("workflow vNext capability adapters", () => {
 				},
 			}),
 		};
-		const adapter = new WorkflowSoftwareImplementationAdapter(
-			writer,
-			() => ({}) as never,
-		);
+		const adapter = new WorkflowSoftwareImplementationAdapter(writer, () => ({}) as never);
 		const ctx = context(SOFTWARE_IMPLEMENTATION_CAPABILITY, "c".repeat(64));
 		const result = await adapter.execute(ctx);
 		expect(result.artifacts[0]?.type).toBe(WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery);
-		expect(result.receiptIds).toEqual([
-			`software.pull_request:tsuuanmi/internet#42@${"b".repeat(40)}`,
-		]);
+		expect(result.receiptIds).toEqual([`software.pull_request:tsuuanmi/internet#42@${"b".repeat(40)}`]);
 	});
 
 	it("uses BrowserManager.research below the deep-research capability boundary", async () => {
 		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-deep-")));
-		const need = createNeed(store, "execution", "Research the external evidence", EXTERNAL_DEEP_RESEARCH_CAPABILITY.id);
+		const need = createNeed(
+			store,
+			"execution",
+			"Research the external evidence",
+			EXTERNAL_DEEP_RESEARCH_CAPABILITY.id,
+		);
 		const browser = {
 			research: async () => ({
 				text: "deep research report",

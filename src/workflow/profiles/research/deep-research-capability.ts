@@ -2,8 +2,14 @@ import type { BrowserManager } from "#internet/browser/runtime";
 import type { AccountId } from "#internet/core/accounts";
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
-import { loadWorkflowExactCapabilityInput, workflowCapabilityInputJson } from "#internet/workflow/profiles/capability-context";
-import type { WorkflowCapabilityActiveExecutionContext, WorkflowCapabilityExecutor } from "#internet/workflow/runtime/types";
+import {
+	loadWorkflowExactCapabilityInput,
+	workflowCapabilityInputJson,
+} from "#internet/workflow/profiles/capability-context";
+import type {
+	WorkflowCapabilityActiveExecutionContext,
+	WorkflowCapabilityExecutor,
+} from "#internet/workflow/runtime/types";
 import {
 	parseWorkflowNeedPayload,
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
@@ -42,7 +48,10 @@ export class WorkflowExternalDeepResearchAdapter implements WorkflowCapabilityEx
 		context: WorkflowCapabilityActiveExecutionContext,
 		signal?: AbortSignal,
 	): Promise<WorkflowSemanticExecutionResult> {
-		const needArtifact = this.artifacts.get(context.workItem.needArtifact.runId, context.workItem.needArtifact.artifactId);
+		const needArtifact = this.artifacts.get(
+			context.workItem.needArtifact.runId,
+			context.workItem.needArtifact.artifactId,
+		);
 		if (needArtifact === undefined) throw new Error("deep research Need artifact does not exist");
 		const need = parseWorkflowNeedPayload(needArtifact.payload);
 		const exactInput = loadWorkflowExactCapabilityInput(this.artifacts, context.inputBundle);

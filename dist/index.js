@@ -141,7 +141,12 @@ export { parseWorkflowJob, WorkflowJobStore, WorkflowJobStoreError } from "#inte
 export * from "#internet/workflow/kernel/index";
 export { parseWorkflowNodeResult, WorkflowNodeResultStore, workflowNodeResultId, } from "#internet/workflow/node-result-store";
 export { formatWorkflowList, formatWorkflowStatus, WorkflowOperator, WorkflowOperatorError, } from "#internet/workflow/operator";
+export { WorkflowPlanningCapabilityAdapter, WorkflowTeamPlanningExecutor, } from "#internet/workflow/profiles/common/planning-capability";
 export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
+export { EXTERNAL_DEEP_RESEARCH_CAPABILITY, WorkflowExternalDeepResearchAdapter, } from "#internet/workflow/profiles/research/deep-research-capability";
+export { SOFTWARE_IMPLEMENTATION_CAPABILITY, WorkflowSoftwareImplementationAdapter, } from "#internet/workflow/profiles/software/implementation-capability";
+export { SOFTWARE_REPOSITORY_RESEARCH_CAPABILITY, WorkflowSoftwareRepositoryResearchAdapter, } from "#internet/workflow/profiles/software/research-capability";
+export { SOFTWARE_REVIEW_CAPABILITY, WorkflowSoftwareReviewAdapter, } from "#internet/workflow/profiles/software/review-capability";
 export { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 export { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 export { DEFAULT_WORKFLOW_RETENTION_POLICY, WORKFLOW_RETENTION_AUDIT_SCHEMA, WorkflowRetentionError, WorkflowRetentionManager, } from "#internet/workflow/retention";

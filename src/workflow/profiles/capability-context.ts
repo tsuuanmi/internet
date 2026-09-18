@@ -12,7 +12,8 @@ export function loadWorkflowExactCapabilityInput(
 ): WorkflowExactCapabilityInput {
 	const artifacts = inputBundle.artifacts.map((ref) => {
 		const artifact = store.get(ref.runId, ref.artifactId);
-		if (artifact === undefined) throw new Error(`workflow capability input artifact ${ref.runId}:${ref.artifactId} does not exist`);
+		if (artifact === undefined)
+			throw new Error(`workflow capability input artifact ${ref.runId}:${ref.artifactId} does not exist`);
 		return artifact;
 	});
 	return { inputBundle, artifacts };
