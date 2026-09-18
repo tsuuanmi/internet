@@ -114,7 +114,7 @@ function fixture(runtimePolicy = policy()) {
 		results: new WorkflowExecutionResultStore(root),
 		capabilities: new WorkflowCapabilityRegistry([capability]),
 		executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
-		pendingActions: { ensure: () => undefined, hasOpen: () => false },
+		pendingActions: { ensure: () => ({}) as never, list: () => [], hasOpen: () => false, reconcile: () => undefined },
 		policy: runtimePolicy,
 	});
 	return { coordinator, need, artifacts, workItems, inputBundles, executions };
