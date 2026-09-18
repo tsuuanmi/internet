@@ -91,7 +91,6 @@ function fixture() {
 		schemas,
 		authority,
 		subjects: { isCurrent: () => true },
-		now: () => Date.parse("2026-09-18T01:00:00.000Z"),
 	});
 	const contract: WorkflowPendingActionContract = {
 		actionType: "clarification",
@@ -105,7 +104,7 @@ function fixture() {
 
 describe("workflow durable PendingAction protocol", () => {
 	it("creates stable independent actions and keeps their contracts durable", () => {
-		const { actions, need, contract } = fixture();
+		const { actions, need, action, contract } = fixture();
 		const same = actions.ensure({ run: run(), needArtifact: need, need: need.payload as never, contract });
 		const second = actions.ensure({
 			run: run(),
@@ -114,7 +113,7 @@ describe("workflow durable PendingAction protocol", () => {
 			contract: { ...contract, actionType: "secondary-choice" },
 		});
 		expect(same.actionId).not.toBe("");
-		expect(same.actionId).toBe(actions.list(runId)[0]?.actionId);
+		expect(same.actionId).toBe(action.actionId);
 		expect(second.actionId).not.toBe(same.actionId);
 		expect(actions.list(runId)).toHaveLength(2);
 	});
