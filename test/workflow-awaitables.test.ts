@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { WorkflowDurableAwaitableRuntime } from "#internet/workflow/awaitables/runtime";
 import { WorkflowExternalEventStore, WorkflowExternalEventStoreError } from "#internet/workflow/external-event-store";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { WorkflowRunStore } from "#internet/workflow/run-store";
@@ -49,6 +50,44 @@ describe("workflow durable Timer and ExternalEvent", () => {
 		expect(fired?.state).toBe("FIRED");
 		expect(fired?.firedAt).toBe("2026-09-18T02:00:00.000Z");
 		expect(reconstructed.get(runId, timer.timerId)?.deadline).toBe("2026-09-18T01:00:00.000Z");
+	});
+
+
+	it("cancels stale Timer and ExternalEvent waits before they can wake a run", () => {
+		const root = mkdtempSync(join(tmpdir(), "internet-awaitable-invalidation-"));
+		const timers = new WorkflowTimerStore(root);
+		const events = new WorkflowExternalEventStore(root);
+		const runtime = new WorkflowDurableAwaitableRuntime(timers, events);
+		const timer = runtime.ensureTimer(
+			runId,
+			need,
+			{ timerType: "research.refresh", deadline: "2026-09-18T01:00:00.000Z" },
+			() => Date.parse("2026-09-18T00:00:00.000Z"),
+		);
+		const wait = runtime.ensureExternalEventWait(runId, need, {
+			eventType: "research.updated",
+			correlationKey: "topic:stale",
+			payloadSchema: { id: "research.updated", version: "1" },
+		});
+
+		runtime.cancelInactive(runId, new Set(), () => Date.parse("2026-09-18T00:30:00.000Z"));
+		expect(timers.get(runId, timer.timerId)?.state).toBe("CANCELLED");
+		expect(events.getWait(runId, wait.waitId)?.state).toBe("CANCELLED");
+
+		runtime.reconcile(runId, () => Date.parse("2026-09-18T02:00:00.000Z"));
+		expect(timers.get(runId, timer.timerId)?.state).toBe("CANCELLED");
+		events.ingest({
+			runId,
+			source: "provider",
+			sourceEventId: "event-stale",
+			eventType: "research.updated",
+			correlationKey: "topic:stale",
+			payloadSchema: { id: "research.updated", version: "1" },
+			payload: { ready: true },
+			occurredAt: "2026-09-18T02:00:00.000Z",
+		});
+		expect(events.getWait(runId, wait.waitId)?.state).toBe("CANCELLED");
+		expect(runtime.hasOpen(runId, need.artifactId)).toBe(false);
 	});
 
 	it("deduplicates identical ExternalEvent delivery and rejects conflicting replay", () => {
