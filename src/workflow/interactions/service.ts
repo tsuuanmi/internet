@@ -11,6 +11,8 @@ import {
 	type WorkflowResponseProvenance,
 } from "#internet/workflow/interactions/types";
 import type { WorkflowPendingActionStore } from "#internet/workflow/pending-action-store";
+import type { WorkflowExternalSignalStore } from "#internet/workflow/interactions/signal-store";
+import type { WorkflowExternalSignal, WorkflowExternalSignalInput } from "#internet/workflow/interactions/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import { currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidation";
 import type { WorkflowVersionRef } from "#internet/workflow/kernel/types";
@@ -27,6 +29,13 @@ export interface WorkflowInteractionAuthorityPolicy {
 		caller: WorkflowPrincipal,
 		provenance: WorkflowResponseProvenance,
 	): boolean;
+	authorizeSignal(
+		runId: string,
+		owner: WorkflowPrincipal,
+		caller: WorkflowPrincipal,
+		provenance: WorkflowResponseProvenance,
+		signalType: string,
+	): boolean;
 }
 
 export interface WorkflowPendingActionSubjectResolver {
@@ -41,7 +50,9 @@ export interface WorkflowInteractionServiceDependencies {
 	readonly schemas: WorkflowResponseSchemaRegistry;
 	readonly authority: WorkflowInteractionAuthorityPolicy;
 	readonly subjects: WorkflowPendingActionSubjectResolver;
+	readonly signals: WorkflowExternalSignalStore;
 	readonly onResolved?: (runId: string) => void;
+	readonly onSignal?: (signal: WorkflowExternalSignal) => void;
 	readonly now?: () => number;
 }
 
@@ -80,6 +91,35 @@ export class WorkflowInteractionService {
 	constructor(dependencies: WorkflowInteractionServiceDependencies) {
 		this.dependencies = dependencies;
 		this.now = dependencies.now ?? Date.now;
+	}
+
+	signals(context: WorkflowAuthorizationContext, runId: string): readonly WorkflowExternalSignal[] {
+		const run = this.requireAuthorizedRun(context, runId);
+		return this.dependencies.signals.list(run.runId);
+	}
+
+	signal(context: WorkflowAuthorizationContext, input: WorkflowExternalSignalInput): WorkflowExternalSignal {
+		const run = this.requireAuthorizedRun(context, input.runId);
+		if (run.revision !== input.expectedRunRevision) {
+			throw new WorkflowInteractionServiceError(
+				`workflow run ${run.runId} revision conflict: expected ${input.expectedRunRevision}, current ${run.revision}`,
+			);
+		}
+		if (
+			!this.dependencies.authority.authorizeSignal(
+				run.runId,
+				run.owner,
+				context.principal,
+				input.provenance,
+				input.signalType,
+			)
+		) {
+			throw new WorkflowInteractionServiceError("workflow external signal caller/provenance is not authorized");
+		}
+		this.dependencies.schemas.validate(input.payloadSchema, input.payload);
+		const signal = this.dependencies.signals.create(input, context.principal, this.now);
+		this.dependencies.onSignal?.(signal);
+		return signal;
 	}
 
 	list(context: WorkflowAuthorizationContext, runId: string): readonly WorkflowPendingAction[] {
