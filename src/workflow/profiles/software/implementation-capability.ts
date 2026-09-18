@@ -9,7 +9,7 @@ import type {
 import {
 	parseWorkflowDeliveryPayload,
 	parseWorkflowNeedPayload,
-	WORKFLOW_SEMANTIC_ARTIFACT_TYPES
+	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
 	type WorkflowSemanticArtifactDraft,
 	type WorkflowSemanticExecutionResult,
 } from "#internet/workflow/semantic/index";
