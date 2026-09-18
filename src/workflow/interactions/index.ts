@@ -10,6 +10,8 @@ export {
 	type WorkflowResponseSchemaRegistry,
 } from "#internet/workflow/interactions/service";
 export type {
+	WorkflowExternalSignal,
+	WorkflowExternalSignalInput,
 	WorkflowPendingAction,
 	WorkflowPendingActionContract,
 	WorkflowPendingActionResponseInput,
@@ -21,6 +23,7 @@ export type {
 	WorkflowResponseProvenance,
 } from "#internet/workflow/interactions/types";
 export {
+	WORKFLOW_EXTERNAL_SIGNAL_SCHEMA,
 	WORKFLOW_PENDING_ACTION_RESPONSE_SCHEMA,
 	WORKFLOW_PENDING_ACTION_SCHEMA,
 	WORKFLOW_PENDING_ACTION_STATES,
@@ -29,3 +32,5 @@ export {
 	WORKFLOW_RESPONSE_PROVENANCE,
 } from "#internet/workflow/interactions/types";
 export { parseWorkflowPendingAction } from "#internet/workflow/interactions/validation";
+
+export { WorkflowExternalSignalStore, WorkflowExternalSignalStoreError } from "#internet/workflow/interactions/signal-store";
