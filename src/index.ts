@@ -11,8 +11,10 @@ import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { defineInternetWorkflowMaintenanceTool } from "#internet/tools/internet-workflow-maintenance";
+import { WorkflowAdmissionActivationRegistry } from "#internet/workflow/admission/activation-registry";
 import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
 import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
+import { resolveWorkflowProfileAvailability } from "#internet/workflow/bootstrap";
 import { WorkflowDriver } from "#internet/workflow/driver";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { DshWorkflowEventSink, type WorkflowAgentRegistry, WorkflowEventJournal } from "#internet/workflow/events";
@@ -21,6 +23,9 @@ import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import { WorkflowOperator } from "#internet/workflow/operator";
 import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
+import { RESEARCH_WORKFLOW_PROFILE } from "#internet/workflow/profiles/research/profile";
+import { createWorkflowResearchRuntime } from "#internet/workflow/profiles/research/runtime";
+import { createSoftwareWorkflowActivationHandler } from "#internet/workflow/profiles/software-activation";
 import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowService } from "#internet/workflow/service";
@@ -107,39 +112,88 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		ctx.systemPrompt?.section?.({ name: "tool:internet_team", order: 122, text: INTERNET_TEAM_GUIDANCE });
 	}
 
-	const workflowTeamReady = DEFAULT_TEAM_ACCOUNTS.every((accountId) => thinkers.has(accountId));
-	if (workflowTeamReady && accounts.has("chatgpt-writer")) {
-		const jobs = new WorkflowJobStore(config.dataDir);
+	const availability = resolveWorkflowProfileAvailability(accounts);
+	if (availability.software || availability.research) {
+		const teamRunner = new BrowserWorkflowTeamRunner(manager, config);
 		const admissions = new WorkflowAdmissionStore(config.dataDir);
-		const profiles = new WorkflowProfileRegistry([SOFTWARE_WORKFLOW_PROFILE], SOFTWARE_WORKFLOW_PROFILE.id);
-		const admissionService = new WorkflowAdmissionService(admissions, profiles);
-		const handoffs = new WorkflowHandoffStore(config.dataDir);
-		const results = new WorkflowNodeResultStore(config.dataDir);
-		const journal = new WorkflowEventJournal(config.dataDir);
-		const eventSink = new DshWorkflowEventSink(ctx.agents);
-		const retention = new WorkflowRetentionManager(config.dataDir, jobs);
-		const engine = new WorkflowEngine(
-			jobs,
-			new BrowserWorkflowTeamRunner(manager, config),
-			new WorkflowTeamPromptBuilder(),
-			handoffs,
-			new BrowserWorkflowWriterRunner(manager, {
-				hardTimeoutMs: config.workflowHardTimeoutMs,
-				stallTimeoutMs: config.workflowStallTimeoutMs,
-			}),
-			results,
-			eventSink,
-			journal,
+		const profileDescriptors = [
+			...(availability.software ? [SOFTWARE_WORKFLOW_PROFILE] : []),
+			...(availability.research ? [RESEARCH_WORKFLOW_PROFILE] : []),
+		];
+		const profiles = new WorkflowProfileRegistry(
+			profileDescriptors,
+			availability.software ? SOFTWARE_WORKFLOW_PROFILE.id : RESEARCH_WORKFLOW_PROFILE.id,
 		);
-		const driver = new WorkflowDriver(engine, jobs);
-		const service = new WorkflowService(engine, driver, jobs, retention, admissionService);
-		const operator = new WorkflowOperator(service, journal);
-		ctx.effect(() => () => driver.dispose());
-		driver.resumeActive();
-		ctx.commands.register(defineWorkflowCommand({ service, operator }));
+		const admissionService = new WorkflowAdmissionService(admissions, profiles);
+		const activationHandlers = [];
+		const researchRuntime = availability.research
+			? createWorkflowResearchRuntime(config.dataDir, manager, teamRunner)
+			: undefined;
+		if (researchRuntime !== undefined) {
+			activationHandlers.push(researchRuntime.activationHandler);
+			researchRuntime.driver.resumeActive();
+			researchRuntime.wakeups.start();
+			ctx.effect(() => () => researchRuntime.dispose());
+		}
+
+		let legacy:
+			| {
+					engine: WorkflowEngine;
+					driver: WorkflowDriver;
+					jobs: WorkflowJobStore;
+					retention: WorkflowRetentionManager;
+					journal: WorkflowEventJournal;
+			  }
+			| undefined;
+		if (availability.software) {
+			const jobs = new WorkflowJobStore(config.dataDir);
+			const handoffs = new WorkflowHandoffStore(config.dataDir);
+			const results = new WorkflowNodeResultStore(config.dataDir);
+			const journal = new WorkflowEventJournal(config.dataDir);
+			const eventSink = new DshWorkflowEventSink(ctx.agents);
+			const retention = new WorkflowRetentionManager(config.dataDir, jobs);
+			const engine = new WorkflowEngine(
+				jobs,
+				teamRunner,
+				new WorkflowTeamPromptBuilder(),
+				handoffs,
+				new BrowserWorkflowWriterRunner(manager, {
+					hardTimeoutMs: config.workflowHardTimeoutMs,
+					stallTimeoutMs: config.workflowStallTimeoutMs,
+				}),
+				results,
+				eventSink,
+				journal,
+			);
+			const driver = new WorkflowDriver(engine, jobs);
+			activationHandlers.push(createSoftwareWorkflowActivationHandler(engine, driver, jobs));
+			driver.resumeActive();
+			ctx.effect(() => () => driver.dispose());
+			legacy = { engine, driver, jobs, retention, journal };
+		}
+
+		const service = new WorkflowService({
+			admissionService,
+			activationRegistry: new WorkflowAdmissionActivationRegistry(activationHandlers),
+			...(legacy === undefined
+				? {}
+				: {
+						legacy: {
+							engine: legacy.engine,
+							driver: legacy.driver,
+							jobs: legacy.jobs,
+							retention: legacy.retention,
+						},
+					}),
+		});
 		ctx.tools.register(defineInternetWorkflowTool(service, { browser: manager }));
-		ctx.tools.register(defineInternetWorkflowMaintenanceTool(retention));
 		ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
+
+		if (legacy !== undefined) {
+			const operator = new WorkflowOperator(service, legacy.journal);
+			ctx.commands.register(defineWorkflowCommand({ service, operator }));
+			ctx.tools.register(defineInternetWorkflowMaintenanceTool(legacy.retention));
+		}
 	}
 }
 
