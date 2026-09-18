@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowCapabilityRegistry } from "#internet/workflow/capability-registry";
 import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
-import type { WorkflowRun } from "#internet/workflow/kernel/types";
+import type { WorkflowRun, WorkflowWorkItem } from "#internet/workflow/kernel/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import {
@@ -131,7 +131,7 @@ export class WorkflowExecutionManager {
 			leaseUntil: new Date(this.now() + this.leaseMs).toISOString(),
 		};
 		this.dependencies.executions.create(execution);
-		let running;
+		let running: WorkflowWorkItem;
 		try {
 			running = this.dependencies.workItems.update(run.runId, workItemId, item.revision, (current) => ({
 				...current,
