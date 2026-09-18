@@ -40,7 +40,7 @@ describe("workflow deep_research profile", () => {
 		);
 		const policy = createWorkflowResearchPolicy(artifacts, inputBundles, awaitables, {
 			maxRounds: 2,
-			refreshDelayMs: 60_000,
+			roundWait: { kind: "timer", delayMs: 60_000 },
 		});
 		const runId = "a".repeat(32);
 		const needArtifact = artifacts.create({
@@ -94,6 +94,88 @@ describe("workflow deep_research profile", () => {
 		awaitables.reconcile(runId, () => Date.parse(timer.deadline) + 1);
 		const ready = policy.materializeNeed(context);
 		expect(ready).toEqual({
+			kind: "work_item",
+			capability: { id: "research.external_deep_research", version: "1" },
+		});
+	});
+
+	it("can gate a later research round on a correlated ExternalEvent instead of time", () => {
+		const root = mkdtempSync(join(tmpdir(), "internet-research-event-policy-"));
+		const artifacts = new WorkflowArtifactStore(root);
+		const inputBundles = new WorkflowInputBundleStore(root);
+		const events = new WorkflowExternalEventStore(root);
+		const awaitables = new WorkflowDurableAwaitableRuntime(new WorkflowTimerStore(root), events);
+		const policy = createWorkflowResearchPolicy(artifacts, inputBundles, awaitables, {
+			maxRounds: 2,
+			roundWait: {
+				kind: "external_event",
+				eventType: "research.updated",
+				payloadSchema: { id: "research.updated", version: "1" },
+			},
+		});
+		const runId = "c".repeat(32);
+		const needArtifact = artifacts.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+			schemaRef: { id: "workflow.need", version: "1" },
+			producer: { kind: "runtime", id: "round-two-event" },
+			payload: {
+				needId: "research-round:2",
+				type: "execution",
+				requestOwner: { kind: "research_round", id: "2" },
+				requestedCapability: "research.external_deep_research",
+				question: "Refresh after provider event",
+				subjects: [{ kind: "workflow_run", id: runId }],
+				relatedArtifacts: [],
+			},
+		});
+		const run = {
+			schema: "@tsuuanmi/internet-workflow-run" as const,
+			version: 1 as const,
+			revision: 1,
+			runId,
+			admissionId: "d".repeat(32),
+			owner: { kind: "session" as const, id: "owner" },
+			lifecycle: "ACTIVE" as const,
+			definitions: {
+				profile: { id: "deep_research", version: "1" },
+				policy: { id: "research.multi_round", version: "1" },
+				capabilities: [],
+				schemas: [],
+				projection: { id: "research.default", version: "1" },
+			},
+			createdAt: needArtifact.createdAt,
+			updatedAt: needArtifact.createdAt,
+		};
+		const context = {
+			run,
+			needArtifact,
+			need: needArtifact.payload as never,
+			artifacts: artifacts.list(runId),
+			workItems: [],
+			pendingActions: [],
+		};
+
+		const waiting = policy.materializeNeed(context);
+		expect(waiting).toEqual({
+			kind: "external_event",
+			eventType: "research.updated",
+			correlationKey: `research:${runId}:round:2`,
+			payloadSchema: { id: "research.updated", version: "1" },
+		});
+		if (waiting.kind !== "external_event") throw new Error("expected research ExternalEvent wait");
+		awaitables.ensureExternalEventWait(runId, { runId, artifactId: needArtifact.artifactId }, waiting);
+		awaitables.ingestExternalEvent({
+			runId,
+			source: "provider",
+			sourceEventId: "refresh-2",
+			eventType: "research.updated",
+			correlationKey: `research:${runId}:round:2`,
+			payloadSchema: { id: "research.updated", version: "1" },
+			payload: { ready: true },
+			occurredAt: new Date().toISOString(),
+		});
+		expect(policy.materializeNeed(context)).toEqual({
 			kind: "work_item",
 			capability: { id: "research.external_deep_research", version: "1" },
 		});
