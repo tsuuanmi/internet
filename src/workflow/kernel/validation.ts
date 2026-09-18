@@ -90,9 +90,19 @@ function assertEntityRef(value: unknown, label: string): void {
 
 function assertArtifactProducer(value: unknown): asserts value is WorkflowArtifactProducer {
 	if (!isRecord(value) || typeof value.kind !== "string") throw new Error("invalid workflow artifact producer");
-	if (!["work_item", "runtime", "external_import"].includes(value.kind))
+	if (!["work_item", "runtime", "external_import"].includes(value.kind)) {
 		throw new Error("invalid workflow artifact producer");
+	}
 	assertText(value.id, "workflow artifact producer id");
+	if (value.kind === "external_import") {
+		if (!isRecord(value.source)) throw new Error("invalid workflow external-import source");
+		assertHex(value.source.runId, 32, "workflow external-import source run id");
+		assertHex(value.source.artifactId, 64, "workflow external-import source artifact id");
+		assertHex(value.source.payloadHash, 64, "workflow external-import source payload hash");
+		assertVersionRef(value.source.schemaRef, "workflow external-import source schema");
+	} else if (Object.hasOwn(value, "source")) {
+		throw new Error("workflow non-import artifact producer cannot contain source metadata");
+	}
 }
 
 function assertArtifactRef(value: unknown): asserts value is WorkflowArtifactRef {
