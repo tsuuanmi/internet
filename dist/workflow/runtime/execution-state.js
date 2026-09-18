@@ -42,6 +42,6 @@ export function setWorkflowWorkItemFailed(workItems, runId, workItemId, now) {
     transitionWorkItem(workItems, runId, workItemId, now, ["RUNNING"], "FAILED");
 }
 export function fenceWorkflowWorkItem(workItems, runId, workItemId, now) {
-    transitionWorkItem(workItems, runId, workItemId, now, ["READY", "RUNNING", "SUCCEEDED"], "FENCED");
+    transitionWorkItem(workItems, runId, workItemId, now, ["READY", "RUNNING", "COMPLETED"], "FENCED");
 }
 //# sourceMappingURL=execution-state.js.map
