@@ -3,11 +3,13 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { WorkflowAdmissionActivationRegistry } from "#internet/workflow/admission/activation-registry";
 import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
 import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
 import { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
 import { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
+import { createSoftwareWorkflowActivationHandler } from "#internet/workflow/profiles/software-activation";
 import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowService } from "#internet/workflow/service";
@@ -74,13 +76,15 @@ describe("workflow admission activation recovery", () => {
 		});
 		expect(admissions.get(authorization.principal, accepted.admissionId)?.state).toBe("ACCEPTED");
 
-		const workflow = new WorkflowService(
-			runtime.engine,
-			driverFor(runtime),
-			runtime.jobs,
-			new WorkflowRetentionManager(path, runtime.jobs),
-			admissions,
-		);
+		const runtimeDriver = driverFor(runtime);
+		const retention = new WorkflowRetentionManager(path, runtime.jobs);
+		const workflow = new WorkflowService({
+			admissionService: admissions,
+			activationRegistry: new WorkflowAdmissionActivationRegistry([
+				createSoftwareWorkflowActivationHandler(runtime.engine, runtimeDriver, runtime.jobs),
+			]),
+			legacy: { engine: runtime.engine, driver: runtimeDriver, jobs: runtime.jobs, retention },
+		});
 		const recovered = workflow.activateAdmission(authorization, accepted.admissionId, accepted.acceptedSpecHash!);
 
 		expect(recovered.jobId).toBe(persistedBeforeReceipt.jobId);
@@ -153,13 +157,15 @@ describe("workflow admission activation recovery", () => {
 				return false;
 			},
 		};
-		const workflow = new WorkflowService(
-			runtime.engine,
-			driver,
-			runtime.jobs,
-			new WorkflowRetentionManager(path, runtime.jobs),
-			admissions,
-		);
+		const runtimeDriver = driver;
+		const retention = new WorkflowRetentionManager(path, runtime.jobs);
+		const workflow = new WorkflowService({
+			admissionService: admissions,
+			activationRegistry: new WorkflowAdmissionActivationRegistry([
+				createSoftwareWorkflowActivationHandler(runtime.engine, runtimeDriver, runtime.jobs),
+			]),
+			legacy: { engine: runtime.engine, driver: runtimeDriver, jobs: runtime.jobs, retention },
+		});
 		const job = workflow.autoSubmit(authorization, draft("Retry exact terminal activation"));
 		const admission = workflow.admissions(authorization)[0]!;
 		expect(enqueueCount).toBe(1);
