@@ -194,7 +194,7 @@ describe("software Delivery/User-feedback lifecycle", () => {
 			prompt: "Validate delivery",
 			responderPolicy: "USER_OR_LOCAL",
 			responseSchema: SOFTWARE_USER_FEEDBACK_SCHEMA,
-			blockingScope: [{ kind: "delivery", id: "reviewed:pull-request:tsuuanmi/internet#44@" + headSha }],
+			blockingScope: [{ kind: "delivery", id: `reviewed:pull-request:tsuuanmi/internet#44@${headSha}` }],
 			artifactBindings: [{ runId, artifactId: delivery.artifactId }],
 			subjectBindings: [{ subject: { kind: "git_head", id: "tsuuanmi/internet#44" }, version: headSha }],
 			timeoutPolicy: "WAIT_INDEFINITELY",
