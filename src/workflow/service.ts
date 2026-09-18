@@ -12,8 +12,11 @@ import {
 	assertWorkflowPrincipal,
 	requireWorkflowOwnerSessionId,
 	type WorkflowAuthorizationContext,
+	workflowPrincipalEquals,
 } from "#internet/workflow/authorization";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
+import type { WorkflowRun } from "#internet/workflow/kernel/types";
+import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import type { WorkflowDeletionReceipt, WorkflowRetentionManager } from "#internet/workflow/retention";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 import { workflowJobIsTerminal } from "#internet/workflow/types";
@@ -36,9 +39,20 @@ export interface WorkflowLegacyServiceRuntime {
 	readonly retention: WorkflowRetentionManager;
 }
 
+export interface WorkflowRunServiceDriver {
+	cancel(runId: string): Promise<WorkflowRun>;
+	isActive(runId: string): boolean;
+}
+
+export interface WorkflowVNextServiceRuntime {
+	readonly runs: WorkflowRunStore;
+	readonly driver: WorkflowRunServiceDriver;
+}
+
 export interface WorkflowServiceDependencies {
 	readonly admissionService: WorkflowAdmissionService;
 	readonly activationRegistry: WorkflowAdmissionActivationRegistry;
+	readonly vNext?: WorkflowVNextServiceRuntime;
 	readonly legacy?: WorkflowLegacyServiceRuntime;
 }
 
@@ -60,11 +74,13 @@ function preflightFailure(record: WorkflowAdmissionRecord): WorkflowServiceError
 export class WorkflowService {
 	private readonly admissionService: WorkflowAdmissionService;
 	private readonly activationRegistry: WorkflowAdmissionActivationRegistry;
+	private readonly vNextRuntime?: WorkflowVNextServiceRuntime;
 	private readonly legacyRuntime?: WorkflowLegacyServiceRuntime;
 
 	constructor(dependencies: WorkflowServiceDependencies) {
 		this.admissionService = dependencies.admissionService;
 		this.activationRegistry = dependencies.activationRegistry;
+		this.vNextRuntime = dependencies.vNext;
 		this.legacyRuntime = dependencies.legacy;
 	}
 
@@ -131,6 +147,39 @@ export class WorkflowService {
 			throw new WorkflowServiceError(`workflow admission ${admissionId} did not produce an activation target`);
 		}
 		return handler.resolve(record.activation);
+	}
+
+	targetStatus(context: WorkflowAuthorizationContext, targetId: string): WorkflowActivationResource {
+		assertWorkflowPrincipal(context.principal);
+		const run = this.vNextRuntime?.runs.get(targetId);
+		if (run !== undefined) {
+			if (!workflowPrincipalEquals(run.owner, context.principal)) {
+				throw new WorkflowServiceError(`workflow run ${targetId} does not belong to this principal`);
+			}
+			return { kind: "workflow_run", run };
+		}
+		if (this.legacyRuntime === undefined) {
+			throw new WorkflowServiceError(`workflow target ${targetId} does not exist`);
+		}
+		return { kind: "workflow_job", job: this.status(context, targetId) };
+	}
+
+	async cancelTarget(
+		context: WorkflowAuthorizationContext,
+		targetId: string,
+	): Promise<WorkflowActivationResource> {
+		assertWorkflowPrincipal(context.principal);
+		const run = this.vNextRuntime?.runs.get(targetId);
+		if (run !== undefined) {
+			if (!workflowPrincipalEquals(run.owner, context.principal)) {
+				throw new WorkflowServiceError(`workflow run ${targetId} does not belong to this principal`);
+			}
+			return { kind: "workflow_run", run: await this.vNextRuntime!.driver.cancel(targetId) };
+		}
+		if (this.legacyRuntime === undefined) {
+			throw new WorkflowServiceError(`workflow target ${targetId} does not exist`);
+		}
+		return { kind: "workflow_job", job: await this.cancel(context, targetId) };
 	}
 
 	/** v3 software compatibility surface retained until the explicit migration-retirement milestone. */
