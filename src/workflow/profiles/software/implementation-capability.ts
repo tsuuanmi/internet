@@ -1,4 +1,5 @@
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
+import type { WorkflowArtifactRef } from "#internet/workflow/kernel/types";
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
 import type {
 	WorkflowCapabilityActiveExecutionContext,
@@ -8,8 +9,7 @@ import type {
 import {
 	parseWorkflowDeliveryPayload,
 	parseWorkflowNeedPayload,
-	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
-	type WorkflowArtifactRef,
+	WORKFLOW_SEMANTIC_ARTIFACT_TYPES
 	type WorkflowSemanticArtifactDraft,
 	type WorkflowSemanticExecutionResult,
 } from "#internet/workflow/semantic/index";
