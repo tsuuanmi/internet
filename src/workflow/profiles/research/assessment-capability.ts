@@ -21,10 +21,7 @@ export const RESEARCH_ASSESSMENT_CAPABILITY = {
 	id: "research.assess_report",
 	version: "1",
 	acceptedNeedTypes: ["execution"],
-	producedArtifactTypes: [
-		WORKFLOW_SEMANTIC_ARTIFACT_TYPES.criterionAssessment,
-		WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
-	],
+	producedArtifactTypes: [WORKFLOW_SEMANTIC_ARTIFACT_TYPES.criterionAssessment],
 	producedReceiptTypes: [],
 	sideEffect: "READ_ONLY",
 	requiredAuthority: [],
@@ -111,23 +108,10 @@ export class WorkflowResearchAssessmentAdapter implements WorkflowCapabilityExec
 					policyRef: { id: "research.assessment", version: "1" },
 					inputBundleId: context.inputBundle.bundleId,
 					evidence,
-					findingIds: result.verdict === "SATISFIED" ? [] : [`research-assessment:${context.execution.executionId}`],
+					findingIds: [],
 				},
 			},
 		];
-		if (result.verdict !== "SATISFIED") {
-			drafts.push({
-				type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
-				payload: {
-					findingId: `research-assessment:${context.execution.executionId}`,
-					severity: result.verdict === "UNSATISFIED" ? "blocking" : "warning",
-					summary: result.summary,
-					subjects: [{ kind: "workflow_run", id: context.run.runId }],
-					relatedArtifacts: [{ runId: report.runId, artifactId: report.artifactId }],
-					needIds: [],
-				},
-			});
-		}
 		return {
 			executionId: context.execution.executionId,
 			workItemId: context.workItem.workItemId,
