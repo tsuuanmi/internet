@@ -5,6 +5,7 @@ import type {
 	AdmissionActivationTarget,
 } from "#internet/workflow/admission/types";
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
+import type { WorkflowPrincipal } from "#internet/workflow/authorization";
 import {
 	WORKFLOW_RUN_SCHEMA,
 	type WorkflowRun,
@@ -24,7 +25,7 @@ export interface ResearchWorkflowActivationDriver {
 	isActive(runId: string): boolean;
 }
 
-function runFor(spec: AcceptedAdmissionSpec): WorkflowRun {
+function runFor(spec: AcceptedAdmissionSpec, owner: WorkflowPrincipal): WorkflowRun {
 	if (spec.profile.id !== RESEARCH_WORKFLOW_PROFILE_ID) {
 		throw new Error(`research workflow activator does not support profile ${spec.profile.id}`);
 	}
@@ -35,7 +36,7 @@ function runFor(spec: AcceptedAdmissionSpec): WorkflowRun {
 		revision: 1,
 		runId: spec.admissionId,
 		admissionId: spec.admissionId,
-		owner: { kind: "service", id: "workflow-admission" },
+		owner,
 		lifecycle: "CREATED",
 		definitions: {
 			profile: spec.profile,
@@ -70,6 +71,7 @@ export function createResearchWorkflowActivator(
 	runs: WorkflowRunStore,
 	artifacts: WorkflowArtifactStore,
 	driver: ResearchWorkflowActivationDriver,
+	owner: WorkflowPrincipal,
 ): WorkflowAdmissionActivator {
 	return {
 		target(spec): AdmissionActivationTarget {
@@ -82,7 +84,7 @@ export function createResearchWorkflowActivator(
 			if (target.targetKind !== "workflow_run" || target.targetId !== spec.admissionId) {
 				throw new Error("research workflow activation target does not match accepted admission identity");
 			}
-			const expected = runFor(spec);
+			const expected = runFor(spec, owner);
 			const current = runs.get(expected.runId);
 			if (current === undefined) runs.create(expected);
 			else assertExactRun(current, expected);
