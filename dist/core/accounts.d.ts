@@ -9,7 +9,7 @@ export declare const DEFAULT_TEAM_SYNTHESIZER: AccountId;
 export declare const ACCOUNT_ROLES: readonly ["thinker", "writer"];
 export type AccountRole = (typeof ACCOUNT_ROLES)[number];
 /** Capabilities the workflow runtime may require when selecting an account. */
-export declare const ACCOUNT_CAPABILITIES: readonly ["browser.chat", "team.reason", "team.review", "team.synthesize", "github.read", "github.write", "github.pull_request", "github.merge"];
+export declare const ACCOUNT_CAPABILITIES: readonly ["browser.chat", "team.reason", "team.review", "team.synthesize", "github.read", "github.write", "github.pull_request", "github.merge", "research.deep"];
 export type AccountCapability = (typeof ACCOUNT_CAPABILITIES)[number];
 export interface AccountDefinition {
     accountId: AccountId;

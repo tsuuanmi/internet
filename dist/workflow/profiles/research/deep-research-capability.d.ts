@@ -7,7 +7,7 @@ export declare const EXTERNAL_DEEP_RESEARCH_CAPABILITY: {
     readonly id: "research.external_deep_research";
     readonly version: "1";
     readonly acceptedNeedTypes: readonly ["execution"];
-    readonly producedArtifactTypes: readonly ["evidence", "report"];
+    readonly producedArtifactTypes: readonly ["evidence", "need"];
     readonly producedReceiptTypes: readonly [];
     readonly sideEffect: "READ_ONLY";
     readonly requiredAuthority: readonly [];

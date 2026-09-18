@@ -46,6 +46,24 @@ export class WorkflowRunDriver {
                 this.enqueue(run.runId);
         }
     }
+    async cancel(runId) {
+        const active = this.active.get(runId);
+        if (active !== undefined) {
+            active.controller.abort();
+            await active.promise;
+        }
+        const run = this.runs.get(runId);
+        if (run === undefined)
+            throw new Error(`workflow run ${runId} does not exist`);
+        if (["COMPLETED", "CANCELLED"].includes(run.lifecycle))
+            return run;
+        return this.runs.update(runId, run.revision, (current) => ({
+            ...current,
+            revision: current.revision + 1,
+            lifecycle: "CANCELLED",
+            updatedAt: new Date().toISOString(),
+        }));
+    }
     async dispose() {
         if (this.disposed)
             return;

@@ -34,7 +34,7 @@ export type WorkflowAdmissionConfirmationLevel = (typeof WORKFLOW_ADMISSION_CONF
 export const WORKFLOW_ADMISSION_SOURCE_KINDS = ["user", "local_agent"] as const;
 export type WorkflowAdmissionSourceKind = (typeof WORKFLOW_ADMISSION_SOURCE_KINDS)[number];
 
-export const WORKFLOW_ADMISSION_TARGET_KINDS = ["workflow_job"] as const;
+export const WORKFLOW_ADMISSION_TARGET_KINDS = ["workflow_job", "workflow_run"] as const;
 export type WorkflowAdmissionTargetKind = (typeof WORKFLOW_ADMISSION_TARGET_KINDS)[number];
 
 export interface ProvenancedValue<T> {

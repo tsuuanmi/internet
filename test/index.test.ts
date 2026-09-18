@@ -37,13 +37,12 @@ describe("account-aware plugin registration", () => {
 		expect(team?.text).toContain("Gemini remains available");
 		expect(chat?.text).toContain("chatgpt-thinker-2");
 		expect(chat?.text).toContain("Every semantic account has separate login state");
-		expect(workflow?.text).toContain("/workflow status [jobId]");
-		expect(workflow?.text).toContain("durable dependency graph");
-		expect(workflow?.text).toContain("Research A/B and Review A/B become READY independently");
-		expect(workflow?.text).toContain("account scheduler remains the only same-account capacity gate");
-		expect(workflow?.text).toContain("Completed exact-input nodes are never replayed");
-		expect(workflow?.text).toContain("exact active or recovering node");
-		expect(workflow?.text).toContain("Exact node outputs are stored separately from diagnostics");
+		expect(workflow?.text).toContain("profile-aware control plane");
+		expect(workflow?.text).toContain("software_change and deep_research");
+		expect(workflow?.text).toContain("Timer or correlated ExternalEvent");
+		expect(workflow?.text).toContain("separate from legacy recovery notBefore");
+		expect(workflow?.text).toContain("Research workflow availability does not depend on the chatgpt-writer account");
+		expect(workflow?.text).toContain("/workflow remains the software convenience command");
 		expect(tools).toEqual([
 			"internet_browser",
 			"internet_chat",

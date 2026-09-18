@@ -21,5 +21,5 @@ export const WORKFLOW_ADMISSION_PREVIEW_STATUSES = [
 ];
 export const WORKFLOW_ADMISSION_CONFIRMATION_LEVELS = ["AUTO_SUBMIT", "LOCAL_CONFIRM", "USER_CONFIRM"];
 export const WORKFLOW_ADMISSION_SOURCE_KINDS = ["user", "local_agent"];
-export const WORKFLOW_ADMISSION_TARGET_KINDS = ["workflow_job"];
+export const WORKFLOW_ADMISSION_TARGET_KINDS = ["workflow_job", "workflow_run"];
 //# sourceMappingURL=types.js.map

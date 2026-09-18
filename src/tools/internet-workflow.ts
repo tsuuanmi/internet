@@ -2,6 +2,7 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { BrowserManager } from "#internet/browser/runtime";
 import { ACCOUNT_IDS } from "#internet/core/accounts";
 import { sleep } from "#internet/core/sleep";
+import type { WorkflowActivationResource } from "#internet/workflow/admission/activation-registry";
 import type {
 	AdmissionConfirmationInput,
 	WorkflowAdmissionDraftInput,
@@ -11,6 +12,7 @@ import {
 	type WorkflowAuthorizationContext,
 	workflowSessionAuthorizationContext,
 } from "#internet/workflow/authorization";
+import { createResearchAdmissionDraft } from "#internet/workflow/profiles/research/admission";
 import { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 import type { GitRunner } from "#internet/workflow/repository-context";
 import { resolveWorkflowRepository, WorkflowRepositoryError } from "#internet/workflow/repository-context";
@@ -24,11 +26,12 @@ const CONFIRMATION_PROVENANCE = ["local_interpreted", "user_explicit"] as const;
 const DEFAULT_TEST_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_TEST_POLL_MS = 1_000;
 
-export interface WorkflowTestDependencies {
+export interface InternetWorkflowToolDependencies {
 	readonly browser?: Pick<BrowserManager, "status">;
 	readonly runGit?: GitRunner;
 	readonly timeoutMs?: number;
 	readonly pollMs?: number;
+	readonly defaultProfile?: "software_change" | "deep_research";
 }
 
 export interface InternetWorkflowService {
@@ -44,6 +47,13 @@ export interface InternetWorkflowService {
 		admissionId: string,
 		expectedAcceptedSpecHash: string,
 	): WorkflowJob;
+	activateAdmissionTarget(
+		context: WorkflowAuthorizationContext,
+		admissionId: string,
+		expectedAcceptedSpecHash: string,
+	): WorkflowActivationResource;
+	targetStatus(context: WorkflowAuthorizationContext, targetId: string): WorkflowActivationResource;
+	cancelTarget(context: WorkflowAuthorizationContext, targetId: string): Promise<WorkflowActivationResource>;
 	status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
 	cancel(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowJob>;
 	continue(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
@@ -96,6 +106,16 @@ function project(job: WorkflowJob) {
 					pendingMessage: job.pendingAction.message,
 				}),
 		updatedAt: job.updatedAt,
+	};
+}
+
+function activationProject(resource: WorkflowActivationResource) {
+	if (resource.kind === "workflow_job") return project(resource.job);
+	return {
+		runId: resource.run.runId,
+		lifecycle: resource.run.lifecycle,
+		profile: resource.run.definitions.profile.id,
+		updatedAt: resource.run.updatedAt,
 	};
 }
 
@@ -162,7 +182,7 @@ function acceptedTestAdmission(
 
 async function runAcceptanceTest(
 	service: InternetWorkflowService,
-	dependencies: WorkflowTestDependencies,
+	dependencies: InternetWorkflowToolDependencies,
 	exec: { agent?: unknown; signal: AbortSignal },
 ) {
 	if (dependencies.browser === undefined) {
@@ -259,12 +279,12 @@ async function runAcceptanceTest(
 
 export function defineInternetWorkflowTool(
 	service: InternetWorkflowService,
-	testDependencies: WorkflowTestDependencies = {},
+	dependencies: InternetWorkflowToolDependencies = {},
 ): ReturnType<typeof defineTool> {
 	return defineTool({
 		name: "internet_workflow",
 		description:
-			"Admit and control durable coding workflows. Local Agent starts use admit -> confirm when required -> activate; test runs the full real workflow without merging.",
+			"Admit and control durable workflows. Admission/activation are profile-aware; software_change and deep_research use the same durable control boundary. The test operation remains the software end-to-end acceptance test.",
 		parameters: {
 			operation: {
 				type: "string",
@@ -283,6 +303,11 @@ export function defineInternetWorkflowTool(
 			},
 			jobId: { type: "string", description: "32-character workflow job ID for runtime control operations." },
 			objective: { type: "string", description: "Local-Agent interpretation/source for admission." },
+			profile: {
+				type: "string",
+				enum: ["software_change", "deep_research"],
+				description: "Workflow profile for admission. Defaults to software_change.",
+			},
 			repository: { type: "string", description: "Repository URL for software admission." },
 			baseRevision: { type: "string", description: "Full 40-character Git SHA for software admission." },
 		},
@@ -303,6 +328,8 @@ export function defineInternetWorkflowTool(
 					confirmationLevel: { type: "string" },
 					confirmationReasons: { type: "string" },
 					jobId: { type: "string" },
+					runId: { type: "string" },
+					profile: { type: "string" },
 					phase: { type: "string" },
 					lifecycle: { type: "string" },
 					repository: { type: "string" },
@@ -330,6 +357,8 @@ export function defineInternetWorkflowTool(
 				if (result.admissionId !== undefined) summary.push(`admission=${String(result.admissionId)}`);
 				if (result.admissionState !== undefined) summary.push(`admission_state=${String(result.admissionState)}`);
 				if (result.jobId !== undefined) summary.push(`job=${String(result.jobId)}`);
+				if (result.runId !== undefined) summary.push(`run=${String(result.runId)}`);
+				if (result.profile !== undefined) summary.push(`profile=${String(result.profile)}`);
 				if (result.phase !== undefined) summary.push(`phase=${String(result.phase)}`);
 				if (result.lifecycle !== undefined) summary.push(`status=${String(result.lifecycle)}`);
 				if (result.message !== undefined) summary.push(String(result.message));
@@ -341,27 +370,40 @@ export function defineInternetWorkflowTool(
 		async execute(args, exec) {
 			const operation = args.operation as WorkflowOperation;
 			try {
-				if (operation === "test") return await runAcceptanceTest(service, testDependencies, exec as never);
+				if (operation === "test") return await runAcceptanceTest(service, dependencies, exec as never);
 				const authorization = workflowSessionAuthorizationContext(String(exec.agent?.id ?? ""));
 				if (operation === "admit") {
-					if (
-						typeof args.objective !== "string" ||
-						typeof args.repository !== "string" ||
-						typeof args.baseRevision !== "string"
-					) {
-						return { ok: false, operation, message: "admit requires objective, repository, and baseRevision" };
+					if (typeof args.objective !== "string") {
+						return { ok: false, operation, message: "admit requires objective" };
 					}
-					const admitted = service.admit(
-						authorization,
-						createSoftwareAdmissionDraft({
-							rawSource: args.objective,
-							sourceProvenance: "local_interpreted",
-							repository: args.repository,
-							baseRevision: args.baseRevision,
-							targetProvenance: "local_interpreted",
-							authorityProvenance: "local_interpreted",
-						}),
-					);
+					const profile =
+						args.profile === "deep_research" || args.profile === "software_change"
+							? args.profile
+							: (dependencies.defaultProfile ?? "software_change");
+					const draft =
+						profile === "deep_research"
+							? createResearchAdmissionDraft({
+									rawSource: args.objective,
+									sourceProvenance: "local_interpreted",
+								})
+							: typeof args.repository === "string" && typeof args.baseRevision === "string"
+								? createSoftwareAdmissionDraft({
+										rawSource: args.objective,
+										sourceProvenance: "local_interpreted",
+										repository: args.repository,
+										baseRevision: args.baseRevision,
+										targetProvenance: "local_interpreted",
+										authorityProvenance: "local_interpreted",
+									})
+								: undefined;
+					if (draft === undefined) {
+						return {
+							ok: false,
+							operation,
+							message: "software_change admit requires repository and baseRevision",
+						};
+					}
+					const admitted = service.admit(authorization, draft);
 					return { ok: true, operation, ...admissionProject(admitted) };
 				}
 				if (operation === "confirm") {
@@ -387,14 +429,21 @@ export function defineInternetWorkflowTool(
 					if (typeof args.admissionId !== "string" || typeof args.acceptedSpecHash !== "string") {
 						return { ok: false, operation, message: "activate requires admissionId and acceptedSpecHash" };
 					}
-					const job = service.activateAdmission(authorization, args.admissionId, args.acceptedSpecHash);
-					return { ok: true, operation, ...project(job) };
+					const resource = service.activateAdmissionTarget(authorization, args.admissionId, args.acceptedSpecHash);
+					return { ok: true, operation, ...activationProject(resource) };
 				}
 				if (typeof args.jobId !== "string") return { ok: false, operation, message: `${operation} requires jobId` };
-				let job: WorkflowJob;
-				if (operation === "status") job = service.status(authorization, args.jobId);
-				else if (operation === "cancel") job = await service.cancel(authorization, args.jobId);
-				else job = service.continue(authorization, args.jobId);
+				if (operation === "status") {
+					return { ok: true, operation, ...activationProject(service.targetStatus(authorization, args.jobId)) };
+				}
+				if (operation === "cancel") {
+					return {
+						ok: true,
+						operation,
+						...activationProject(await service.cancelTarget(authorization, args.jobId)),
+					};
+				}
+				const job = service.continue(authorization, args.jobId);
 				return { ok: true, operation, ...project(job) };
 			} catch (error) {
 				if (error instanceof WorkflowRepositoryError || error instanceof WorkflowServiceError) {

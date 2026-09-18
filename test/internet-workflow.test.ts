@@ -3,10 +3,12 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { defineInternetWorkflowTool, type WorkflowTestDependencies } from "#internet/tools/internet-workflow";
+import { defineInternetWorkflowTool, type InternetWorkflowToolDependencies } from "#internet/tools/internet-workflow";
+import { WorkflowAdmissionActivationRegistry } from "#internet/workflow/admission/activation-registry";
 import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
 import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
 import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
+import { createSoftwareWorkflowActivationHandler } from "#internet/workflow/profiles/software-activation";
 import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowService } from "#internet/workflow/service";
@@ -15,7 +17,7 @@ import { createWorkflowTestRuntime } from "./workflow-test-fixture.js";
 const roots: string[] = [];
 const REVISION = "0123456789abcdef0123456789abcdef01234567";
 
-function tool(testDependencies: WorkflowTestDependencies = {}) {
+function tool(dependencies: InternetWorkflowToolDependencies = {}) {
 	const root = mkdtempSync(join(tmpdir(), "internet-workflow-tool-"));
 	roots.push(root);
 	const { engine, jobs } = createWorkflowTestRuntime(root);
@@ -32,8 +34,15 @@ function tool(testDependencies: WorkflowTestDependencies = {}) {
 		new WorkflowAdmissionStore(root),
 		new WorkflowProfileRegistry([SOFTWARE_WORKFLOW_PROFILE], SOFTWARE_WORKFLOW_PROFILE.id),
 	);
-	const service = new WorkflowService(engine, driver, jobs, new WorkflowRetentionManager(root, jobs), admissions);
-	return defineInternetWorkflowTool(service, testDependencies);
+	const retention = new WorkflowRetentionManager(root, jobs);
+	const service = new WorkflowService({
+		admissionService: admissions,
+		activationRegistry: new WorkflowAdmissionActivationRegistry([
+			createSoftwareWorkflowActivationHandler(engine, driver, jobs),
+		]),
+		legacy: { engine, driver, jobs, retention },
+	});
+	return defineInternetWorkflowTool(service, dependencies);
 }
 
 const exec = { agent: { id: "agent-11" }, signal: new AbortController().signal } as never;

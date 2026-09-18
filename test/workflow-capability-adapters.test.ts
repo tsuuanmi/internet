@@ -388,10 +388,25 @@ describe("workflow vNext capability adapters", () => {
 			}),
 		};
 		const adapter = new WorkflowExternalDeepResearchAdapter(browser as never, "chatgpt-thinker", store);
-		const result = await adapter.execute(context(EXTERNAL_DEEP_RESEARCH_CAPABILITY, need.artifactId));
+		const baseContext = context(EXTERNAL_DEEP_RESEARCH_CAPABILITY, need.artifactId);
+		const result = await adapter.execute({
+			...baseContext,
+			inputBundle: {
+				...baseContext.inputBundle,
+				facts: [
+					{ name: "research.round", value: 1 },
+					{ name: "research.maxRounds", value: 2 },
+				],
+			},
+		});
 		expect(result.artifacts.map((artifact) => artifact.type)).toEqual([
 			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence,
-			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.report,
+			WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
 		]);
+		expect(result.artifacts[1]?.payload).toMatchObject({
+			needId: "research-round:2",
+			requestOwner: { kind: "research_round", id: "2" },
+			requestedCapability: EXTERNAL_DEEP_RESEARCH_CAPABILITY.id,
+		});
 	});
 });

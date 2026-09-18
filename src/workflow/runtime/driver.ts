@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { WorkflowRun } from "#internet/workflow/kernel/types";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import type { WorkflowRunCoordinator } from "#internet/workflow/runtime/coordinator";
 
@@ -54,6 +55,23 @@ export class WorkflowRunDriver {
 		for (const run of this.runs.list()) {
 			if (["CREATED", "ACTIVE"].includes(run.lifecycle)) this.enqueue(run.runId);
 		}
+	}
+
+	async cancel(runId: string): Promise<WorkflowRun> {
+		const active = this.active.get(runId);
+		if (active !== undefined) {
+			active.controller.abort();
+			await active.promise;
+		}
+		const run = this.runs.get(runId);
+		if (run === undefined) throw new Error(`workflow run ${runId} does not exist`);
+		if (["COMPLETED", "CANCELLED"].includes(run.lifecycle)) return run;
+		return this.runs.update(runId, run.revision, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			lifecycle: "CANCELLED",
+			updatedAt: new Date().toISOString(),
+		}));
 	}
 
 	async dispose(): Promise<void> {

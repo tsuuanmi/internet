@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { WorkflowAdmissionActivator } from "#internet/workflow/admission/activation";
+import { WorkflowAdmissionActivationRegistry } from "#internet/workflow/admission/activation-registry";
 import { canonicalAdmissionJson, hashAdmissionValue } from "#internet/workflow/admission/hash";
 import { WorkflowAdmissionService, WorkflowAdmissionServiceError } from "#internet/workflow/admission/service";
 import { WorkflowAdmissionStore, WorkflowAdmissionStoreError } from "#internet/workflow/admission/store";
 import type { AcceptedAdmissionSpec } from "#internet/workflow/admission/types";
 import { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
+import { createSoftwareWorkflowActivationHandler } from "#internet/workflow/profiles/software-activation";
 import { createSoftwareAdmissionDraft } from "#internet/workflow/profiles/software-admission";
 import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
@@ -207,13 +209,14 @@ describe("workflow admission", () => {
 			},
 		};
 		const admissions = admissionService(path);
-		const workflow = new WorkflowService(
-			runtime.engine,
-			driver,
-			runtime.jobs,
-			new WorkflowRetentionManager(path, runtime.jobs),
-			admissions,
-		);
+		const retention = new WorkflowRetentionManager(path, runtime.jobs);
+		const workflow = new WorkflowService({
+			admissionService: admissions,
+			activationRegistry: new WorkflowAdmissionActivationRegistry([
+				createSoftwareWorkflowActivationHandler(runtime.engine, driver, runtime.jobs),
+			]),
+			legacy: { engine: runtime.engine, driver, jobs: runtime.jobs, retention },
+		});
 		const authorization = workflowSessionAuthorizationContext("session-a");
 		const job = workflow.autoSubmit(authorization, softwareDraft());
 

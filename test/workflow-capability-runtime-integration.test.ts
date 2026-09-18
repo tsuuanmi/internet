@@ -148,6 +148,15 @@ describe("workflow vNext capability runtime integration", () => {
 				hasOpen: () => false,
 				reconcile: () => undefined,
 			},
+			awaitables: {
+				ensureTimer: () => ({}) as never,
+				ensureExternalEventWait: () => ({}) as never,
+				listTimers: () => [],
+				listExternalEventWaits: () => [],
+				cancelInactive: () => undefined,
+				hasOpen: () => false,
+				reconcile: () => undefined,
+			},
 			policy,
 		});
 

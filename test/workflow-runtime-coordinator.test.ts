@@ -32,6 +32,16 @@ const capability: WorkflowCapabilityDescriptor = {
 	policyHooks: [],
 };
 
+const emptyAwaitables = {
+	ensureTimer: () => ({}) as never,
+	ensureExternalEventWait: () => ({}) as never,
+	listTimers: () => [],
+	listExternalEventWaits: () => [],
+	cancelInactive: () => undefined,
+	hasOpen: () => false,
+	reconcile: () => undefined,
+};
+
 function workflowRun(): WorkflowRun {
 	return {
 		schema: WORKFLOW_RUN_SCHEMA,
@@ -115,6 +125,7 @@ function fixture(runtimePolicy = policy()) {
 		capabilities: new WorkflowCapabilityRegistry([capability]),
 		executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
 		pendingActions: { ensure: () => ({}) as never, list: () => [], hasOpen: () => false, reconcile: () => undefined },
+		awaitables: emptyAwaitables,
 		policy: runtimePolicy,
 	});
 	return { coordinator, need, artifacts, workItems, inputBundles, executions };
@@ -278,6 +289,7 @@ describe("workflow vNext run coordinator", () => {
 			capabilities: new WorkflowCapabilityRegistry([capability]),
 			executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
 			pendingActions,
+			awaitables: emptyAwaitables,
 			policy: runtimePolicy,
 		});
 
@@ -300,6 +312,86 @@ describe("workflow vNext run coordinator", () => {
 			updatedAt: "2026-09-18T02:01:00.000Z",
 		}));
 		expect(coordinator.advance(runId).lifecycle).toBe("WAITING_EXTERNAL");
+	});
+
+	it("waits durably on a Timer and becomes ACTIVE only after the Timer fires", () => {
+		let fired = false;
+		const timers: Array<{ causedBy: { artifactId: string }; state: "PENDING" | "FIRED" }> = [];
+		const awaitables = {
+			ensureTimer: (_runId: string, causedBy: { artifactId: string }) => {
+				const existing = timers.find((timer) => timer.causedBy.artifactId === causedBy.artifactId);
+				if (existing !== undefined) return existing as never;
+				const timer = { causedBy, state: "PENDING" as const };
+				timers.push(timer);
+				return timer as never;
+			},
+			ensureExternalEventWait: () => ({}) as never,
+			listTimers: () => timers as never,
+			listExternalEventWaits: () => [],
+			cancelInactive: () => undefined,
+			hasOpen: (_runId: string, artifactId: string) =>
+				timers.some((timer) => timer.causedBy.artifactId === artifactId && timer.state === "PENDING"),
+			reconcile: () => {
+				if (fired) for (const timer of timers) timer.state = "FIRED";
+			},
+		};
+		const root = mkdtempSync(join(tmpdir(), "internet-workflow-timer-runtime-"));
+		const runs = new WorkflowRunStore(root);
+		const artifacts = new WorkflowArtifactStore(root);
+		const workItems = new WorkflowWorkItemStore(root);
+		const inputBundles = new WorkflowInputBundleStore(root);
+		runs.create(workflowRun());
+		artifacts.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+			schemaRef: { id: "workflow-need", version: "1" },
+			producer: { kind: "runtime", id: "timer-test" },
+			payload: {
+				needId: "need-timer",
+				type: "execution",
+				requestOwner: { kind: "timer_test", id: "1" },
+				requestedCapability: capability.id,
+				question: "Run after the Timer",
+				subjects: [],
+				relatedArtifacts: [],
+			},
+		});
+		const runtimePolicy: WorkflowRuntimePolicy = {
+			materializeNeed: ({ needArtifact }) => {
+				const timer = timers.find((candidate) => candidate.causedBy.artifactId === needArtifact.artifactId);
+				return timer?.state === "FIRED"
+					? { kind: "work_item", capability: { id: capability.id, version: capability.version } }
+					: { kind: "timer", timerType: "test", deadline: "2099-01-01T00:00:00.000Z" };
+			},
+			readiness: () => ({ ready: true, artifacts: [], facts: [], blockers: [] }),
+			convergence: policy().convergence,
+		};
+		const coordinator = new WorkflowRunCoordinator({
+			runs,
+			artifacts,
+			workItems,
+			inputBundles,
+			executions: new WorkflowExecutionStore(root),
+			results: new WorkflowExecutionResultStore(root),
+			capabilities: new WorkflowCapabilityRegistry([capability]),
+			executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
+			pendingActions: {
+				ensure: () => ({}) as never,
+				list: () => [],
+				hasOpen: () => false,
+				reconcile: () => undefined,
+			},
+			awaitables,
+			policy: runtimePolicy,
+		});
+
+		expect(coordinator.advance(runId).lifecycle).toBe("WAITING_EXTERNAL");
+		expect(workItems.list(runId)).toHaveLength(0);
+		expect(timers).toHaveLength(1);
+
+		fired = true;
+		expect(coordinator.advance(runId).lifecycle).toBe("ACTIVE");
+		expect(workItems.list(runId)[0]?.state).toBe("READY");
 	});
 
 	it("rejects contradictory readiness instead of constructing an ambiguous InputBundle", () => {
