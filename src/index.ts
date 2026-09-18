@@ -60,15 +60,12 @@ const INTERNET_TEAM_GUIDANCE = [
 ].join(" ");
 
 const INTERNET_WORKFLOW_GUIDANCE = [
-	"Use /workflow <task> as the normal entry point for a durable coding workflow. Use /workflow list, /workflow status [jobId], /workflow watch [jobId], /workflow stop [jobId], /workflow continue [jobId], and /workflow delete <jobId> for operator control without reading private JSON files manually. New jobs always pin a freshly queried upstream main HEAD; deletion requires an explicit workflow ID.",
-	"New workflow starts are recorded through the durable admission protocol before the existing v3 coding runtime is activated; raw User source, Local interpretation provenance, preflight identity, and exact accepted activation remain distinct.",
-	"The workflow is a durable dependency graph. Research A/B and Review A/B become READY independently and may execute concurrently while the account scheduler remains the only same-account capacity gate. Completed exact-input nodes are never replayed merely because a later node fails.",
-	"Status/watch project the authoritative graph: phase/lifecycle, exact active or recovering node, execution attempt, provider activity, dependency blockers, recent meaningful events, required user action, and the next transition.",
-	"WorkflowDriver reconciles orphaned execution leases after restart, schedules only READY/recoverable nodes, and retries the smallest failed logical node. Exact node outputs are stored separately from diagnostics so restart recovery can reconstruct prompts without replaying completed work.",
-	"Research and review finals are materialized as exact SHA-256-bound durable handoffs. The separate chatgpt-writer account receives exact payloads and trusted controls in one persistent per-job conversation.",
-	"Scoped Website confirmation classification is fail-closed. Recognized scope-valid Writer confirmations for PR preparation remain auto-approved; merge is never workflow-authorized or auto-approved.",
-	"The workflow completes when the exact PR head passes review, then returns the PR identity and persistent Writer chat URL. Any later edits or merge are user-controlled outside the workflow review guarantee.",
-	"internet_workflow remains the deterministic lower-level control-plane tool, including the real end-to-end acceptance test. Workflow retention remains explicit operator maintenance only.",
+	"internet_workflow is the durable profile-aware control plane. Use admit -> confirm when required -> activate for both software_change and deep_research workflows; status/cancel accept either a legacy software job ID or a vNext WorkflowRun ID.",
+	"/workflow remains the software convenience command while v3 software compatibility is explicitly retained during migration. New software jobs still pin an exact repository revision and merge remains User-controlled.",
+	"deep_research activates a bounded vNext WorkflowRun that can execute multiple provider-native research rounds, durably wait on Timer or correlated ExternalEvent dependencies, synthesize Evidence into a Report, and converge only after a current reviewer CriterionAssessment.",
+	"Timer is semantic durable workflow state and is separate from legacy recovery notBefore/backoff. Persisted deadlines are reconciled after restart; duplicate ExternalEvents are deduplicated by source identity.",
+	"Capability/profile registration is availability-driven. Research workflow availability does not depend on the chatgpt-writer account; software workflow surfaces are registered only when software execution topology is available.",
+	"The deterministic runtime routes typed Needs/awaitables and never interprets research or feedback prose as control authority.",
 ].join(" ");
 
 export interface PluginContext {
@@ -189,7 +186,12 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 						},
 					}),
 		});
-		ctx.tools.register(defineInternetWorkflowTool(service, { browser: manager }));
+		ctx.tools.register(
+			defineInternetWorkflowTool(service, {
+				browser: manager,
+				defaultProfile: availability.software ? "software_change" : "deep_research",
+			}),
+		);
 		ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
 
 		if (legacy !== undefined) {
