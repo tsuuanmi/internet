@@ -1,12 +1,17 @@
 import { loadWorkflowExactCapabilityInput, workflowCapabilityInputJson, } from "#internet/workflow/profiles/capability-context";
 import { runWorkflowTeamCapability } from "#internet/workflow/profiles/common/team-capability";
 import { parseWorkflowReviewResult } from "#internet/workflow/review-result";
-import { parseWorkflowNeedPayload, WORKFLOW_SEMANTIC_ARTIFACT_TYPES, } from "#internet/workflow/semantic/index";
+import { parseWorkflowImplementationOutputPayload, parseWorkflowNeedPayload, WORKFLOW_SEMANTIC_ARTIFACT_TYPES, } from "#internet/workflow/semantic/index";
 export const SOFTWARE_REVIEW_CAPABILITY = {
     id: "software.review_current_state",
     version: "1",
     acceptedNeedTypes: ["execution"],
-    producedArtifactTypes: [WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence, WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding],
+    producedArtifactTypes: [
+        WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence,
+        WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
+        WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery,
+        WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+    ],
     producedReceiptTypes: [],
     sideEffect: "READ_ONLY",
     requiredAuthority: [],
@@ -15,11 +20,26 @@ export const SOFTWARE_REVIEW_CAPABILITY = {
     outputSchema: { id: "workflow.software.review.output", version: "1" },
     policyHooks: ["exact_subject_review"],
 };
+function exactImplementationOutput(artifacts, reviewedHeadSha) {
+    const matches = artifacts
+        .filter((artifact) => artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput)
+        .map((artifact) => ({ artifact, payload: parseWorkflowImplementationOutputPayload(artifact.payload) }))
+        .filter(({ payload }) => payload.subject.version === reviewedHeadSha);
+    if (matches.length !== 1 || matches[0] === undefined) {
+        throw new Error("software review result does not bind exactly one ImplementationOutput for the reviewed head");
+    }
+    return {
+        artifact: matches[0].artifact,
+        ref: { runId: matches[0].artifact.runId, artifactId: matches[0].artifact.artifactId },
+        payload: matches[0].payload,
+    };
+}
 export class WorkflowSoftwareReviewAdapter {
-    constructor(runner, artifacts) {
+    constructor(runner, artifacts, options = {}) {
         this.kind = "software_review";
         this.runner = runner;
         this.artifacts = artifacts;
+        this.requireUserValidation = options.requireUserValidation ?? true;
     }
     async execute(context, signal) {
         const needArtifact = this.artifacts.get(context.workItem.needArtifact.runId, context.workItem.needArtifact.artifactId);
@@ -45,38 +65,66 @@ export class WorkflowSoftwareReviewAdapter {
             ].join("\n"),
         });
         const review = parseWorkflowReviewResult(answer);
+        const implementation = exactImplementationOutput(exactInput.artifacts, review.reviewedHeadSha);
         const source = { kind: "capability_execution", id: context.execution.executionId };
-        const subject = { kind: "git_head", id: review.reviewedHeadSha };
+        const subject = implementation.payload.subject;
+        const artifacts = [
+            {
+                type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence,
+                payload: {
+                    evidenceId: `software-review:${context.execution.executionId}`,
+                    summary: answer,
+                    subjects: [...need.subjects, { kind: subject.kind, id: `${subject.id}@${subject.version}` }],
+                    sourceRefs: [source],
+                    relatedArtifacts: [implementation.ref],
+                },
+            },
+            {
+                type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
+                payload: {
+                    findingId: `software-review:${context.execution.executionId}`,
+                    severity: review.verdict === "PASS" ? "info" : "blocking",
+                    summary: review.verdict === "PASS"
+                        ? `Exact head ${review.reviewedHeadSha} passed review`
+                        : `Exact head ${review.reviewedHeadSha} requires changes`,
+                    details: answer,
+                    subjects: [...need.subjects, { kind: subject.kind, id: `${subject.id}@${subject.version}` }],
+                    relatedArtifacts: [implementation.ref],
+                    needIds: [need.needId],
+                },
+            },
+        ];
+        if (review.verdict === "PASS") {
+            const deliveryId = `reviewed:${implementation.payload.outputId}`;
+            artifacts.push({
+                type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery,
+                payload: {
+                    deliveryId,
+                    kind: "reviewed_pull_request",
+                    subject,
+                    artifacts: [implementation.ref],
+                    instructions: implementation.payload.instructions,
+                },
+            });
+            if (this.requireUserValidation) {
+                artifacts.push({
+                    type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+                    payload: {
+                        needId: `user-validation:${deliveryId}`,
+                        type: "clarification",
+                        requestOwner: { kind: "delivery", id: deliveryId },
+                        question: `Validate the reviewed delivery at exact head ${subject.version} and provide typed feedback.`,
+                        subjects: [{ kind: subject.kind, id: `${subject.id}@${subject.version}` }],
+                        relatedArtifacts: [implementation.ref],
+                    },
+                });
+            }
+        }
         return {
             executionId: context.execution.executionId,
             workItemId: context.workItem.workItemId,
             inputBundleId: context.inputBundle.bundleId,
-            artifacts: [
-                {
-                    type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence,
-                    payload: {
-                        evidenceId: `software-review:${context.execution.executionId}`,
-                        summary: answer,
-                        subjects: [...need.subjects, subject],
-                        sourceRefs: [source],
-                        relatedArtifacts: context.inputBundle.artifacts,
-                    },
-                },
-                {
-                    type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.finding,
-                    payload: {
-                        findingId: `software-review:${context.execution.executionId}`,
-                        severity: review.verdict === "PASS" ? "info" : "blocking",
-                        summary: review.verdict === "PASS"
-                            ? `Exact head ${review.reviewedHeadSha} passed review`
-                            : `Exact head ${review.reviewedHeadSha} requires changes`,
-                        details: answer,
-                        subjects: [...need.subjects, subject],
-                        relatedArtifacts: context.inputBundle.artifacts,
-                        needIds: [need.needId],
-                    },
-                },
-            ],
+            artifacts,
             receiptIds: [],
         };
     }

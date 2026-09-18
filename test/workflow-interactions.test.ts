@@ -12,7 +12,7 @@ import {
 	type WorkflowResponseSchemaRegistry,
 } from "#internet/workflow/interactions/service";
 import { WorkflowExternalSignalStore } from "#internet/workflow/interactions/signal-store";
-import type { WorkflowPendingActionContract } from "#internet/workflow/interactions/types";
+import type { WorkflowPendingAction, WorkflowPendingActionContract } from "#internet/workflow/interactions/types";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { WorkflowPendingActionStore } from "#internet/workflow/pending-action-store";
 import { WorkflowRunStore } from "#internet/workflow/run-store";
@@ -44,7 +44,7 @@ function run(): WorkflowRun {
 	};
 }
 
-function fixture() {
+function fixture(onResolved?: (action: WorkflowPendingAction) => void) {
 	const root = mkdtempSync(join(tmpdir(), "internet-interaction-"));
 	const runs = new WorkflowRunStore(root);
 	const artifacts = new WorkflowArtifactStore(root);
@@ -95,6 +95,7 @@ function fixture() {
 		authority,
 		subjects: { isCurrent: () => true },
 		signals,
+		onResolved,
 	});
 	const contract: WorkflowPendingActionContract = {
 		actionType: "clarification",
@@ -144,6 +145,27 @@ describe("workflow durable PendingAction protocol", () => {
 				payload: { choice: "break" },
 			}),
 		).toThrow("already resolved with a different response");
+	});
+
+	it("replays downstream resolution handling after a post-commit callback failure", () => {
+		let calls = 0;
+		const { service, action } = fixture(() => {
+			calls += 1;
+			if (calls === 1) throw new Error("downstream feedback bridge failed");
+		});
+		const request = {
+			runId,
+			actionId: action.actionId,
+			expectedRevision: action.revision,
+			requestId: "response-recovery",
+			provenance: "local_agent" as const,
+			responseSchema,
+			payload: { choice: "preserve" },
+		};
+		expect(() => service.respond(context, request)).toThrow("downstream feedback bridge failed");
+		expect(service.get(context, runId, action.actionId).state).toBe("RESOLVED");
+		expect(service.respond(context, request).state).toBe("RESOLVED");
+		expect(calls).toBe(2);
 	});
 
 	it("fails closed when Local Agent provenance attempts to satisfy USER_AUTHORITY", () => {
