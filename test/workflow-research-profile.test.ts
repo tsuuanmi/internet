@@ -181,7 +181,7 @@ describe("workflow deep_research profile", () => {
 		});
 	});
 
-	it("activates a vNext research run without constructing any legacy software runtime", () => {
+	it("activates a vNext research run without constructing any legacy software runtime", async () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-research-activation-"));
 		const runs = new WorkflowRunStore(root);
 		const artifacts = new WorkflowArtifactStore(root);
