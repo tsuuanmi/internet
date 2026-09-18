@@ -2,11 +2,11 @@
 
 ## Current status
 
-**Design Gate D0 is complete. Phase 0 has landed on `main`, and Phase 1 durable admission is implemented in PR #39.**
+**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 semantic protocol and baseline convergence are implemented in PR #41.**
 
-The current production migration now has one authoritative `WorkflowService` boundary, explicit principal/authorization context, durable provenance-preserving admission, deterministic preflight, explicit Local/User confirmation, exact accepted-spec activation, and crash-safe idempotent activation of the current software `WorkflowJob` target.
+The migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, a planning capability contract, exact result promotion, assessment currentness, and deterministic baseline convergence while the v3 runtime remains supported during migration.
 
-The next implementation milestone is the parallel vNext kernel substrate (`WorkflowRun`, Artifact, WorkItem, InputBundle, capability registry) without mutating the existing v3 durable-job schema in place.
+The next implementation milestone after Phase 3 is the deterministic vNext RunEngine / Driver / Scheduler beside the existing v3 runtime.
 
 ## D0 — Design contract harmonization
 
@@ -70,50 +70,50 @@ The next implementation milestone is the parallel vNext kernel substrate (`Workf
 
 ## P1 — Kernel substrate
 
-- [ ] Define domain-neutral `WorkflowRun` type.
-- [ ] Add `WorkflowRunStore`.
-- [ ] Define generic immutable/superseding Artifact envelope.
-- [ ] Add `ArtifactStore`.
-- [ ] Define `WorkItem` lifecycle separately from semantic Need lifecycle.
-- [ ] Add `WorkItemStore`.
-- [ ] Define exact `InputBundle` schema and hash rules.
-- [ ] Define deterministic capability registry interface.
-- [ ] Define execution/result/receipt references without collapsing them into Artifact.
-- [ ] Bind profile/policy/capability/schema versions needed for long-lived recovery.
-- [ ] Keep provider/account/session allocation below capability identity.
+- [x] Define domain-neutral `WorkflowRun` type.
+- [x] Add `WorkflowRunStore`.
+- [x] Define generic immutable/superseding Artifact envelope.
+- [x] Add `ArtifactStore`.
+- [x] Define `WorkItem` lifecycle separately from semantic Need lifecycle.
+- [x] Add `WorkItemStore`.
+- [x] Define exact `InputBundle` schema and hash rules.
+- [x] Define deterministic capability registry interface.
+- [x] Define execution/result/receipt references without collapsing them into Artifact.
+- [x] Bind profile/policy/capability/schema versions needed for long-lived recovery.
+- [x] Keep provider/account/session allocation below capability identity.
 - [ ] Reuse current execution/recovery/fencing mechanics where possible instead of duplicating them.
 
 ## P1 — Semantic protocol and Planner
 
-- [ ] Define ObjectiveArtifact.
-- [ ] Define AcceptanceCriteriaArtifact with provenance/authority.
-- [ ] Define PlanArtifact and PlanTask identity.
-- [ ] Define typed Need schema and request-owner binding.
-- [ ] Define FindingArtifact.
-- [ ] Define EvidenceArtifact.
-- [ ] Define ReportArtifact.
-- [ ] Define DeliveryArtifact.
-- [ ] Define UserFeedbackArtifact.
-- [ ] Define explicit execution-result-to-artifact promotion/validation path.
-- [ ] Keep `NodeResult` / execution result, Handoff/Receipt, and semantic Artifact separate.
-- [ ] Define a first-class `planning` capability contract.
-- [ ] Add a planning executor adapter/typed output contract; do not assume current `WorkflowTeamRunner` already provides Planner semantics.
-- [ ] Define Planner re-entry triggers without fixed phase assumptions.
-- [ ] Keep `plan_change`, `requirements_change`, and `clarification` distinct.
-- [ ] Define user/policy-owned acceptance-criterion authority checks.
-- [ ] Decide whether progressive/lazy PlanTask refinement needs a separate artifact or ordinary PlanRevision.
+- [x] Define ObjectiveArtifact.
+- [x] Define AcceptanceCriteriaArtifact with provenance/authority.
+- [x] Define PlanArtifact and PlanTask identity.
+- [x] Define typed Need schema and request-owner binding.
+- [x] Define FindingArtifact.
+- [x] Define EvidenceArtifact.
+- [x] Define ReportArtifact.
+- [x] Define DeliveryArtifact.
+- [x] Define UserFeedbackArtifact.
+- [x] Define explicit execution-result-to-artifact promotion/validation path.
+- [x] Keep `NodeResult` / execution result, Handoff/Receipt, and semantic Artifact separate.
+- [x] Define a first-class `planning` capability contract.
+- [x] Add a planning executor adapter/typed output contract; do not assume current `WorkflowTeamRunner` already provides Planner semantics.
+- [x] Define Planner re-entry triggers without fixed phase assumptions.
+- [x] Keep `plan_change`, `requirements_change`, and `clarification` distinct.
+- [x] Define user/policy-owned acceptance-criterion authority checks.
+- [x] Use ordinary versioned PlanRevision for progressive/lazy PlanTask refinement; add a separate artifact only if a future contract requires distinct semantics.
 
 ## P1 — Baseline criterion assessment and convergence
 
 - [x] Create ADR/SRS for criterion-scoped assessment and baseline convergence.
-- [ ] Implement assessment identity and exact subject binding.
-- [ ] Implement verdicts: SATISFIED / UNSATISFIED / INCONCLUSIVE.
-- [ ] Implement deterministic vs Reviewer vs User assessment methods/policies.
-- [ ] Implement stale assessment rules when criterion/head/InputBundle/evidence changes.
-- [ ] Keep waiver/override as separate authority object rather than normal assessment verdict.
-- [ ] Implement a minimum profile convergence predicate over current valid assessments, Findings, required deliverables, authority gates, and external state.
-- [ ] Distinguish WorkItem completion, PlanTask execution completion, criterion satisfaction, and WorkflowRun convergence in runtime state/tests.
-- [ ] Ensure no product-journey implementation claims terminal success before this baseline exists.
+- [x] Implement assessment identity and exact subject binding.
+- [x] Implement verdicts: SATISFIED / UNSATISFIED / INCONCLUSIVE.
+- [x] Implement deterministic vs Reviewer vs User assessment methods/policies.
+- [x] Implement stale assessment rules when criterion/head/InputBundle/evidence changes.
+- [x] Keep waiver/override outside CriterionAssessment verdicts; any future waiver authority object belongs to the convergence hardening milestone.
+- [x] Implement a minimum profile convergence predicate over current valid assessments, Findings, required deliverables, authority gates, and external state.
+- [x] Distinguish WorkItem completion, PlanTask execution completion, criterion satisfaction, and WorkflowRun convergence in runtime state/tests.
+- [x] Land baseline assessment/convergence before any vNext product journey can claim terminal semantic success.
 
 ## P1 — vNext RunEngine / Driver / Scheduler
 
