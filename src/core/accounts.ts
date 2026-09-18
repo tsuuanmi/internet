@@ -22,6 +22,7 @@ export const ACCOUNT_CAPABILITIES = [
 	"github.write",
 	"github.pull_request",
 	"github.merge",
+	"research.deep",
 ] as const;
 export type AccountCapability = (typeof ACCOUNT_CAPABILITIES)[number];
 
@@ -38,7 +39,7 @@ export const ACCOUNTS: Readonly<Record<AccountId, AccountDefinition>> = {
 		accountId: "chatgpt-thinker",
 		provider: "chatgpt-web",
 		role: "thinker",
-		capabilities: ["browser.chat", "team.reason", "team.review", "team.synthesize", "github.read"],
+		capabilities: ["browser.chat", "team.reason", "team.review", "team.synthesize", "github.read", "research.deep"],
 	},
 	"chatgpt-writer": {
 		accountId: "chatgpt-writer",
