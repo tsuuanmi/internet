@@ -51,7 +51,7 @@ export interface WorkflowInteractionServiceDependencies {
 	readonly authority: WorkflowInteractionAuthorityPolicy;
 	readonly subjects: WorkflowPendingActionSubjectResolver;
 	readonly signals: WorkflowExternalSignalStore;
-	readonly onResolved?: (runId: string) => void;
+	readonly onResolved?: (action: WorkflowPendingAction) => void;
 	readonly onSignal?: (signal: WorkflowExternalSignal) => void;
 	readonly now?: () => number;
 }
@@ -198,7 +198,7 @@ export class WorkflowInteractionService {
 			},
 			updatedAt: at,
 		}));
-		this.dependencies.onResolved?.(run.runId);
+		this.dependencies.onResolved?.(resolved);
 		return resolved;
 	}
 
