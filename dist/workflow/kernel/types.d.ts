@@ -5,9 +5,9 @@ export declare const WORKFLOW_WORK_ITEM_SCHEMA: "@tsuuanmi/internet-workflow-wor
 export declare const WORKFLOW_INPUT_BUNDLE_SCHEMA: "@tsuuanmi/internet-workflow-input-bundle";
 export declare const WORKFLOW_RUN_LIFECYCLES: readonly ["CREATED", "ACTIVE", "WAITING_EXTERNAL", "BLOCKED", "COMPLETED", "CANCELLED"];
 export type WorkflowRunLifecycle = (typeof WORKFLOW_RUN_LIFECYCLES)[number];
-export declare const WORKFLOW_WORK_ITEM_STATES: readonly ["PENDING", "READY", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "FENCED"];
+export declare const WORKFLOW_WORK_ITEM_STATES: readonly ["PENDING", "READY", "RUNNING", "COMPLETED", "FAILED", "CANCELLED", "FENCED"];
 export type WorkflowWorkItemState = (typeof WORKFLOW_WORK_ITEM_STATES)[number];
-export declare const WORKFLOW_SIDE_EFFECT_CLASSES: readonly ["READ_ONLY", "REPOSITORY_MUTATION", "EXTERNAL_MUTATION", "HUMAN_AUTHORITY"];
+export declare const WORKFLOW_SIDE_EFFECT_CLASSES: readonly ["READ_ONLY", "CONTROLLED_MUTATION", "EXTERNAL_MUTATION", "HUMAN_AUTHORITY"];
 export type WorkflowSideEffectClass = (typeof WORKFLOW_SIDE_EFFECT_CLASSES)[number];
 export declare const WORKFLOW_ARTIFACT_LINEAGE_RELATIONS: readonly ["derived_from", "supports", "contradicts", "resolves", "supersedes", "invalidates", "consumes", "continues_from", "validates"];
 export type WorkflowArtifactLineageRelation = (typeof WORKFLOW_ARTIFACT_LINEAGE_RELATIONS)[number];
@@ -70,6 +70,7 @@ export interface WorkflowWorkItem {
     readonly revision: number;
     readonly workItemId: string;
     readonly runId: string;
+    readonly needArtifact: WorkflowArtifactRef;
     readonly needId: string;
     readonly requestOwner: WorkflowEntityRef;
     readonly capability: WorkflowVersionRef;
