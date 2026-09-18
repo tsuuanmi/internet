@@ -114,7 +114,7 @@ function fixture(runtimePolicy = policy()) {
 		results: new WorkflowExecutionResultStore(root),
 		capabilities: new WorkflowCapabilityRegistry([capability]),
 		executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
-		pendingActions: { ensure: () => undefined, hasOpen: () => false },
+		pendingActions: { ensure: () => ({}) as never, list: () => [], hasOpen: () => false, reconcile: () => undefined },
 		policy: runtimePolicy,
 	});
 	return { coordinator, need, artifacts, workItems, inputBundles, executions };
@@ -198,6 +198,108 @@ describe("workflow vNext run coordinator", () => {
 			.find((candidate) => candidate.needArtifact.artifactId === replacement.artifactId);
 		expect(replacementItem?.state).toBe("READY");
 		expect(inputBundles.get(runId, replacementItem?.inputBundleId ?? "")).toBeDefined();
+	});
+
+	it("keeps autonomous work ACTIVE while an independent PendingAction waits", () => {
+		const root = mkdtempSync(join(tmpdir(), "internet-workflow-interactions-"));
+		const runs = new WorkflowRunStore(root);
+		const artifacts = new WorkflowArtifactStore(root);
+		const workItems = new WorkflowWorkItemStore(root);
+		const inputBundles = new WorkflowInputBundleStore(root);
+		const executions = new WorkflowExecutionStore(root);
+		runs.create(workflowRun());
+		const externalNeed = artifacts.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+			schemaRef: { id: "workflow-need", version: "1" },
+			producer: { kind: "runtime", id: "test" },
+			payload: {
+				needId: "need-external",
+				type: "clarification",
+				requestOwner: { kind: "plan_task", id: "external" },
+				question: "Need external input",
+				subjects: [],
+				relatedArtifacts: [],
+			},
+		});
+		artifacts.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+			schemaRef: { id: "workflow-need", version: "1" },
+			producer: { kind: "runtime", id: "test" },
+			payload: {
+				needId: "need-autonomous",
+				type: "execution",
+				requestOwner: { kind: "plan_task", id: "autonomous" },
+				requestedCapability: capability.id,
+				question: "Run autonomous work",
+				subjects: [],
+				relatedArtifacts: [],
+			},
+		});
+		const actions: Array<{ causedBy: { artifactId: string }; state: "PENDING" }> = [];
+		const pendingActions = {
+			ensure(input: { needArtifact: { artifactId: string } }) {
+				const existing = actions.find((action) => action.causedBy.artifactId === input.needArtifact.artifactId);
+				if (existing !== undefined) return existing as never;
+				const action = { causedBy: { artifactId: input.needArtifact.artifactId }, state: "PENDING" as const };
+				actions.push(action);
+				return action as never;
+			},
+			list: () => actions as never,
+			hasOpen: (_runId: string, artifactId: string) =>
+				actions.some((action) => action.causedBy.artifactId === artifactId && action.state === "PENDING"),
+			reconcile: () => undefined,
+		};
+		const runtimePolicy: WorkflowRuntimePolicy = {
+			materializeNeed: ({ need }) =>
+				need.type === "clarification"
+					? {
+							kind: "pending_action",
+							actionType: "clarification",
+							responderPolicy: "USER_OR_LOCAL",
+							responseSchema: { id: "workflow.test.response", version: "1" },
+							blockingScope: [need.requestOwner],
+						}
+					: {
+							kind: "work_item",
+							capability: { id: capability.id, version: capability.version },
+						},
+			readiness: () => ({ ready: true, artifacts: [], facts: [], blockers: [] }),
+			convergence: policy().convergence,
+		};
+		const coordinator = new WorkflowRunCoordinator({
+			runs,
+			artifacts,
+			workItems,
+			inputBundles,
+			executions,
+			results: new WorkflowExecutionResultStore(root),
+			capabilities: new WorkflowCapabilityRegistry([capability]),
+			executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
+			pendingActions,
+			policy: runtimePolicy,
+		});
+
+		expect(coordinator.advance(runId).lifecycle).toBe("ACTIVE");
+		expect(actions).toHaveLength(1);
+		expect(actions[0]?.causedBy.artifactId).toBe(externalNeed.artifactId);
+		const [item] = workItems.list(runId);
+		expect(item?.state).toBe("READY");
+
+		const running = workItems.update(runId, item!.workItemId, item!.revision, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			state: "RUNNING",
+			updatedAt: "2026-09-18T02:00:00.000Z",
+		}));
+		workItems.update(runId, running.workItemId, running.revision, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			state: "COMPLETED",
+			updatedAt: "2026-09-18T02:01:00.000Z",
+		}));
+		expect(coordinator.advance(runId).lifecycle).toBe("WAITING_EXTERNAL");
 	});
 
 	it("rejects contradictory readiness instead of constructing an ambiguous InputBundle", () => {

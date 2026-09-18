@@ -30,7 +30,7 @@ export type {
 	WorkflowNeedMaterialization,
 	WorkflowNeedRuntimeContext,
 	WorkflowPendingActionMaterialization,
-	WorkflowPendingActionMaterializer,
+	WorkflowPendingActionRuntime,
 	WorkflowReadinessDecision,
 	WorkflowRuntimePolicy,
 	WorkflowWorkItemMaterialization,

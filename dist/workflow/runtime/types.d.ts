@@ -1,4 +1,5 @@
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
+import type { WorkflowPendingAction, WorkflowPendingActionContract } from "#internet/workflow/interactions/types";
 import type { WorkflowArtifact, WorkflowArtifactRef, WorkflowInputBundle, WorkflowInputFact, WorkflowRun, WorkflowVersionRef, WorkflowWorkItem } from "#internet/workflow/kernel/types";
 import type { WorkflowConvergencePolicy, WorkflowConvergenceState, WorkflowNeedPayload, WorkflowSemanticExecutionResult } from "#internet/workflow/semantic/index";
 export declare const WORKFLOW_EXECUTION_SCHEMA: "@tsuuanmi/internet-workflow-execution";
@@ -47,6 +48,7 @@ export interface WorkflowNeedRuntimeContext {
     readonly need: WorkflowNeedPayload;
     readonly artifacts: readonly WorkflowArtifact[];
     readonly workItems: readonly WorkflowWorkItem[];
+    readonly pendingActions: readonly WorkflowPendingAction[];
 }
 export interface WorkflowWorkItemMaterialization {
     readonly kind: "work_item";
@@ -54,14 +56,21 @@ export interface WorkflowWorkItemMaterialization {
     readonly authorityRef?: string;
     readonly budgetRef?: string;
 }
-export interface WorkflowPendingActionMaterialization {
+export interface WorkflowPendingActionMaterialization extends WorkflowPendingActionContract {
     readonly kind: "pending_action";
-    readonly actionType: string;
 }
 export type WorkflowNeedMaterialization = WorkflowWorkItemMaterialization | WorkflowPendingActionMaterialization;
-export interface WorkflowPendingActionMaterializer {
-    ensure(run: WorkflowRun, needArtifact: WorkflowArtifact, need: WorkflowNeedPayload, actionType: string): void;
+export interface WorkflowPendingActionRuntime {
+    ensure(input: {
+        readonly run: WorkflowRun;
+        readonly needArtifact: WorkflowArtifact;
+        readonly need: WorkflowNeedPayload;
+        readonly contract: WorkflowPendingActionContract;
+        readonly now?: () => number;
+    }): WorkflowPendingAction;
+    list(runId: string): readonly WorkflowPendingAction[];
     hasOpen(runId: string, needArtifactId: string): boolean;
+    reconcile(runId: string): void;
 }
 export interface WorkflowReadinessDecision {
     readonly ready: boolean;

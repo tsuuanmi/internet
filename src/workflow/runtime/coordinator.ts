@@ -15,7 +15,7 @@ import { materializeWorkflowNeeds, prepareWorkflowReadyWork } from "#internet/wo
 import type {
 	WorkflowCapabilityExecutorRegistry,
 	WorkflowExecution,
-	WorkflowPendingActionMaterializer,
+	WorkflowPendingActionRuntime,
 	WorkflowRuntimePolicy,
 } from "#internet/workflow/runtime/types";
 import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
@@ -36,7 +36,7 @@ export interface WorkflowRunCoordinatorDependencies extends WorkflowExecutionMan
 	readonly results: WorkflowExecutionResultStore;
 	readonly capabilities: WorkflowCapabilityRegistry;
 	readonly executors: WorkflowCapabilityExecutorRegistry;
-	readonly pendingActions: WorkflowPendingActionMaterializer;
+	readonly pendingActions: WorkflowPendingActionRuntime;
 	readonly policy: WorkflowRuntimePolicy;
 }
 
@@ -62,6 +62,7 @@ export class WorkflowRunCoordinator {
 	advance(runId: string): WorkflowRun {
 		let run = this.status(runId);
 		if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle)) return run;
+		this.dependencies.pendingActions.reconcile(runId);
 		const artifacts = this.dependencies.artifacts.list(runId);
 		applyWorkflowInvalidation(this.dependencies, runId, artifacts, this.now);
 		materializeWorkflowNeeds(this.dependencies, run, artifacts, this.now);
@@ -81,6 +82,7 @@ export class WorkflowRunCoordinator {
 	async reconcile(runId: string, signal?: AbortSignal): Promise<WorkflowRun> {
 		const run = this.status(runId);
 		if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle)) return run;
+		this.dependencies.pendingActions.reconcile(runId);
 		applyWorkflowInvalidation(this.dependencies, runId, this.dependencies.artifacts.list(runId), this.now);
 		await this.execution.reconcile(runId, signal);
 		return this.advance(runId);

@@ -24,10 +24,18 @@ export function materializeWorkflowNeeds(dependencies, run, artifacts, now) {
             continue;
         const need = parseWorkflowNeedPayload(artifact.payload);
         const workItems = dependencies.workItems.list(run.runId);
-        const context = { run, needArtifact: artifact, need, artifacts, workItems };
+        const context = {
+            run,
+            needArtifact: artifact,
+            need,
+            artifacts,
+            workItems,
+            pendingActions: dependencies.pendingActions.list(run.runId),
+        };
         const materialization = dependencies.policy.materializeNeed(context);
         if (materialization.kind === "pending_action") {
-            dependencies.pendingActions.ensure(run, artifact, need, materialization.actionType);
+            const { kind: _kind, ...contract } = materialization;
+            dependencies.pendingActions.ensure({ run, needArtifact: artifact, need, contract, now });
             continue;
         }
         const capability = routeWorkflowCapability(run, need, dependencies.capabilities, materialization.capability);
@@ -71,6 +79,7 @@ export function prepareWorkflowReadyWork(dependencies, run, artifacts, now) {
             need,
             artifacts,
             workItems: dependencies.workItems.list(run.runId),
+            pendingActions: dependencies.pendingActions.list(run.runId),
         };
         const readiness = dependencies.policy.readiness(context, item);
         if (readiness.ready && readiness.blockers.length > 0)

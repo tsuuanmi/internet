@@ -22,6 +22,7 @@ export class WorkflowRunCoordinator {
         let run = this.status(runId);
         if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle))
             return run;
+        this.dependencies.pendingActions.reconcile(runId);
         const artifacts = this.dependencies.artifacts.list(runId);
         applyWorkflowInvalidation(this.dependencies, runId, artifacts, this.now);
         materializeWorkflowNeeds(this.dependencies, run, artifacts, this.now);
@@ -40,6 +41,7 @@ export class WorkflowRunCoordinator {
         const run = this.status(runId);
         if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle))
             return run;
+        this.dependencies.pendingActions.reconcile(runId);
         applyWorkflowInvalidation(this.dependencies, runId, this.dependencies.artifacts.list(runId), this.now);
         await this.execution.reconcile(runId, signal);
         return this.advance(runId);
