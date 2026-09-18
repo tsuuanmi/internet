@@ -287,11 +287,17 @@ describe("workflow vNext run coordinator", () => {
 		const [item] = workItems.list(runId);
 		expect(item?.state).toBe("READY");
 
-		workItems.update(runId, item!.workItemId, item!.revision, (current) => ({
+		const running = workItems.update(runId, item!.workItemId, item!.revision, (current) => ({
 			...current,
 			revision: current.revision + 1,
-			state: "CANCELLED",
+			state: "RUNNING",
 			updatedAt: "2026-09-18T02:00:00.000Z",
+		}));
+		workItems.update(runId, running.workItemId, running.revision, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			state: "COMPLETED",
+			updatedAt: "2026-09-18T02:01:00.000Z",
 		}));
 		expect(coordinator.advance(runId).lifecycle).toBe("WAITING_EXTERNAL");
 	});
