@@ -189,7 +189,7 @@ describe("software Delivery/User-feedback lifecycle", () => {
 			actionId: "b".repeat(32),
 			runId,
 			causedBy: { runId, artifactId: validationNeed.artifactId },
-			requestOwner: { kind: "delivery", id: `reviewed:pull-request:tsuuanmi/internet#44@${headSha}` },
+			requestOwner: { kind: "delivery", id: "reviewed:pull-request:tsuuanmi/internet#44@" + headSha },
 			actionType: "software.user_validation",
 			prompt: "Validate delivery",
 			responderPolicy: "USER_OR_LOCAL",
