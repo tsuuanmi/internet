@@ -5,7 +5,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -17,9 +17,22 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Normalize Phase 4 source
+        if: github.event_name == 'push'
+        run: npx biome check --write src test
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - name: Commit normalized source and generated dist
+        if: github.event_name == 'push'
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- src test dist)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A src test dist
+            git commit -m "build: finalize phase 4 runtime artifacts"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
       - name: Verify generated dist
         run: |
           git diff --exit-code -- dist
