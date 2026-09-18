@@ -29,6 +29,19 @@ export interface WorkflowServiceDriver {
 	isActive(jobId: string): boolean;
 }
 
+export interface WorkflowLegacyServiceRuntime {
+	readonly engine: WorkflowServiceEngine;
+	readonly driver: WorkflowServiceDriver;
+	readonly jobs: WorkflowJobStore;
+	readonly retention: WorkflowRetentionManager;
+}
+
+export interface WorkflowServiceDependencies {
+	readonly admissionService: WorkflowAdmissionService;
+	readonly activationRegistry: WorkflowAdmissionActivationRegistry;
+	readonly legacy?: WorkflowLegacyServiceRuntime;
+}
+
 export class WorkflowServiceError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -45,27 +58,14 @@ function preflightFailure(record: WorkflowAdmissionRecord): WorkflowServiceError
 }
 
 export class WorkflowService {
-	private readonly engine: WorkflowServiceEngine;
-	private readonly driver: WorkflowServiceDriver;
-	private readonly jobs: WorkflowJobStore;
-	private readonly retention: WorkflowRetentionManager;
 	private readonly admissionService: WorkflowAdmissionService;
 	private readonly activationRegistry: WorkflowAdmissionActivationRegistry;
+	private readonly legacyRuntime?: WorkflowLegacyServiceRuntime;
 
-	constructor(
-		engine: WorkflowServiceEngine,
-		driver: WorkflowServiceDriver,
-		jobs: WorkflowJobStore,
-		retention: WorkflowRetentionManager,
-		admissionService: WorkflowAdmissionService,
-		activationRegistry: WorkflowAdmissionActivationRegistry,
-	) {
-		this.engine = engine;
-		this.driver = driver;
-		this.jobs = jobs;
-		this.retention = retention;
-		this.admissionService = admissionService;
-		this.activationRegistry = activationRegistry;
+	constructor(dependencies: WorkflowServiceDependencies) {
+		this.admissionService = dependencies.admissionService;
+		this.activationRegistry = dependencies.activationRegistry;
+		this.legacyRuntime = dependencies.legacy;
 	}
 
 	admit(context: WorkflowAuthorizationContext, input: WorkflowAdmissionDraftInput): WorkflowAdmissionRecord {
@@ -133,6 +133,7 @@ export class WorkflowService {
 		return handler.resolve(record.activation);
 	}
 
+	/** v3 software compatibility surface retained until the explicit migration-retirement milestone. */
 	activateAdmission(
 		context: WorkflowAuthorizationContext,
 		admissionId: string,
@@ -146,37 +147,40 @@ export class WorkflowService {
 	}
 
 	list(context: WorkflowAuthorizationContext): readonly WorkflowJob[] {
-		return this.ownerJobs(requireWorkflowOwnerSessionId(context));
+		return this.ownerJobs(this.legacy(), requireWorkflowOwnerSessionId(context));
 	}
 
 	status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob {
-		return this.selectJob(context, jobId, false);
+		return this.selectJob(this.legacy(), context, jobId, false);
 	}
 
 	async cancel(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowJob> {
-		const selected = this.selectJob(context, jobId, true);
-		return this.driver.cancel(selected.jobId);
+		const legacy = this.legacy();
+		const selected = this.selectJob(legacy, context, jobId, true);
+		return legacy.driver.cancel(selected.jobId);
 	}
 
 	continue(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob {
-		const selected = this.selectJob(context, jobId, true);
-		if (this.driver.isActive(selected.jobId)) {
+		const legacy = this.legacy();
+		const selected = this.selectJob(legacy, context, jobId, true);
+		if (legacy.driver.isActive(selected.jobId)) {
 			throw new WorkflowServiceError(`workflow job ${selected.jobId} already has an active driver`);
 		}
 		if (selected.graph.lifecycle !== "BLOCKED" && selected.graph.lifecycle !== "RECOVERING") {
 			throw new WorkflowServiceError(`workflow job ${selected.jobId} has no explicit recovery path`);
 		}
-		const resumed = this.engine.continue(selected.jobId);
-		this.driver.enqueue(resumed.jobId);
+		const resumed = legacy.engine.continue(selected.jobId);
+		legacy.driver.enqueue(resumed.jobId);
 		return resumed;
 	}
 
 	async delete(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowDeletionReceipt> {
 		if (jobId === undefined) throw new WorkflowServiceError("/workflow delete requires an explicit jobId");
+		const legacy = this.legacy();
 		const ownerSessionId = requireWorkflowOwnerSessionId(context);
-		const selected = this.selectJob(context, jobId, false);
-		const terminal = workflowJobIsTerminal(selected) ? selected : await this.driver.cancel(selected.jobId);
-		return this.retention.deleteNow({
+		const selected = this.selectJob(legacy, context, jobId, false);
+		const terminal = workflowJobIsTerminal(selected) ? selected : await legacy.driver.cancel(selected.jobId);
+		return legacy.retention.deleteNow({
 			jobId: terminal.jobId,
 			expectedUpdatedAt: terminal.updatedAt,
 			operatorSessionId: ownerSessionId,
@@ -184,23 +188,31 @@ export class WorkflowService {
 	}
 
 	isActive(jobId: string): boolean {
-		return this.driver.isActive(jobId);
+		return this.legacy().driver.isActive(jobId);
 	}
 
-	private ownerJobs(ownerSessionId: string): readonly WorkflowJob[] {
-		return this.jobs
+	private legacy(): WorkflowLegacyServiceRuntime {
+		if (this.legacyRuntime === undefined) {
+			throw new WorkflowServiceError("legacy software workflow runtime is not available");
+		}
+		return this.legacyRuntime;
+	}
+
+	private ownerJobs(legacy: WorkflowLegacyServiceRuntime, ownerSessionId: string): readonly WorkflowJob[] {
+		return legacy.jobs
 			.list()
 			.filter((job) => job.ownerSessionId === ownerSessionId)
 			.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.jobId.localeCompare(b.jobId));
 	}
 
 	private selectJob(
+		legacy: WorkflowLegacyServiceRuntime,
 		context: WorkflowAuthorizationContext,
 		explicitJobId: string | undefined,
 		requireActive: boolean,
 	): WorkflowJob {
 		const ownerSessionId = requireWorkflowOwnerSessionId(context);
-		const owned = this.ownerJobs(ownerSessionId);
+		const owned = this.ownerJobs(legacy, ownerSessionId);
 		if (explicitJobId !== undefined) {
 			const job = owned.find((candidate) => candidate.jobId === explicitJobId);
 			if (job === undefined) {
