@@ -32,6 +32,15 @@ const capability: WorkflowCapabilityDescriptor = {
 	policyHooks: [],
 };
 
+const emptyAwaitables = {
+	ensureTimer: () => ({}) as never,
+	ensureExternalEventWait: () => ({}) as never,
+	listTimers: () => [],
+	listExternalEventWaits: () => [],
+	hasOpen: () => false,
+	reconcile: () => undefined,
+};
+
 function workflowRun(): WorkflowRun {
 	return {
 		schema: WORKFLOW_RUN_SCHEMA,
@@ -115,6 +124,7 @@ function fixture(runtimePolicy = policy()) {
 		capabilities: new WorkflowCapabilityRegistry([capability]),
 		executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
 		pendingActions: { ensure: () => ({}) as never, list: () => [], hasOpen: () => false, reconcile: () => undefined },
+		awaitables: emptyAwaitables,
 		policy: runtimePolicy,
 	});
 	return { coordinator, need, artifacts, workItems, inputBundles, executions };
@@ -278,6 +288,7 @@ describe("workflow vNext run coordinator", () => {
 			capabilities: new WorkflowCapabilityRegistry([capability]),
 			executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
 			pendingActions,
+			awaitables: emptyAwaitables,
 			policy: runtimePolicy,
 		});
 
