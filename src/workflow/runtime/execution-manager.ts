@@ -235,7 +235,7 @@ export class WorkflowExecutionManager {
 			(current) => ({
 				...current,
 				revision: current.revision + 1,
-				state: "COMPLETED",
+				state: "SUCCEEDED",
 				finishedAt: at,
 			}),
 		);
