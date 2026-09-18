@@ -206,6 +206,8 @@ export type {
 	WorkflowAdmissionAuthority,
 	WorkflowAdmissionBudgetHints,
 	WorkflowAdmissionConfirmationLevel,
+	WorkflowAdmissionContinuation,
+	WorkflowAdmissionContinuationArtifact,
 	WorkflowAdmissionDraft,
 	WorkflowAdmissionDraftInput,
 	WorkflowAdmissionProvenance,
