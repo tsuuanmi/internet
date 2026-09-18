@@ -20,7 +20,8 @@ export interface WorkflowResponseSchemaRegistry {
 }
 
 export interface WorkflowInteractionAuthorityPolicy {
-	authorize(
+	canAccess(runId: string, owner: WorkflowPrincipal, caller: WorkflowPrincipal): boolean;
+	authorizeResponse(
 		runId: string,
 		owner: WorkflowPrincipal,
 		caller: WorkflowPrincipal,
@@ -126,7 +127,7 @@ export class WorkflowInteractionService {
 				`workflow PendingAction ${input.actionId} responder provenance does not satisfy ${action.responderPolicy}`,
 			);
 		}
-		if (!this.dependencies.authority.authorize(run.runId, run.owner, context.principal, input.provenance)) {
+		if (!this.dependencies.authority.authorizeResponse(run.runId, run.owner, context.principal, input.provenance)) {
 			throw new WorkflowInteractionServiceError("workflow PendingAction caller/provenance is not authorized");
 		}
 		this.dependencies.schemas.validate(input.responseSchema, input.payload);
@@ -203,7 +204,7 @@ export class WorkflowInteractionService {
 		assertWorkflowPrincipal(context.principal);
 		const run = this.dependencies.runs.get(runId);
 		if (run === undefined) throw new WorkflowInteractionServiceError(`workflow run ${runId} does not exist`);
-		if (!this.dependencies.authority.authorize(runId, run.owner, context.principal, "local_agent")) {
+		if (!this.dependencies.authority.canAccess(runId, run.owner, context.principal)) {
 			throw new WorkflowInteractionServiceError(`workflow run ${runId} is not authorized for this caller`);
 		}
 		return run;
