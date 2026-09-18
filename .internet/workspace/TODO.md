@@ -2,11 +2,11 @@
 
 ## Current status
 
-**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 is implemented in PR #41, Phase 4 deterministic vNext runtime control is implemented in PR #42, and Phase 5 capability adapters are implemented in PR #43.**
+**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 is implemented in PR #41, Phase 4 deterministic vNext runtime control is implemented in PR #42, Phase 5 capability adapters are implemented in PR #43, and Phase 6 durable external interactions are implemented in PR #44.**
 
 The migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, deterministic baseline convergence, a deterministic vNext coordinator/driver with exact-input scheduling and recovery, and profile adapters that execute planning, software repository research, implementation, exact-state review, and external deep research through existing specialized runners while preserving exact result promotion and keeping provider/account/session selection below capability identity. The v3 runtime remains supported during migration.
 
-The next implementation milestone after Phase 5 is durable in-run external interactions (`PendingAction`) before the software Delivery/feedback lifecycle.
+The next implementation milestone after Phase 6 is the vNext software Delivery/feedback loop.
 
 ## D0 — Design contract harmonization
 
@@ -143,20 +143,20 @@ The next implementation milestone after Phase 5 is durable in-run external inter
 
 ## P2 — Durable external interactions
 
-- [ ] Replace/augment single v3 job-level PendingAction with vNext durable action collection.
-- [ ] Give every action stable `actionId`.
-- [ ] Add action state lifecycle.
-- [ ] Add owner/subject references.
-- [ ] Add responder policy: `USER_AUTHORITY`, `LOCAL_AGENT_INPUT`, `USER_OR_LOCAL`.
-- [ ] Add response schema/version.
-- [ ] Add exact subject/head/version binding where required.
-- [ ] Add response provenance.
-- [ ] Add idempotent response retry behavior.
-- [ ] Reject conflicting second responses deterministically.
-- [ ] Reject stale action responses deterministically.
-- [ ] Verify independent runnable branches continue while one action is pending.
-- [ ] Derive `WAITING_EXTERNAL` only when no autonomous progress remains.
-- [ ] Keep `continue` as legacy/recovery surface, not generic semantic response.
+- [x] Replace/augment single v3 job-level PendingAction with vNext durable action collection.
+- [x] Give every action stable `actionId`.
+- [x] Add action state lifecycle.
+- [x] Add owner/subject references.
+- [x] Add responder policy: `USER_AUTHORITY`, `LOCAL_AGENT_INPUT`, `USER_OR_LOCAL`.
+- [x] Add response schema/version.
+- [x] Add exact subject/head/version binding where required.
+- [x] Add response provenance.
+- [x] Add idempotent response retry behavior.
+- [x] Reject conflicting second responses deterministically.
+- [x] Reject stale action responses deterministically.
+- [x] Verify independent runnable branches continue while one action is pending.
+- [x] Derive `WAITING_EXTERNAL` only when no autonomous progress remains.
+- [x] Keep `continue` as legacy/recovery surface, not generic semantic response.
 
 ## P2 — Software delivery feedback loop
 
