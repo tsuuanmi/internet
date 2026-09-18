@@ -209,6 +209,7 @@ export interface WorkflowUserFeedbackPayload {
 	readonly feedbackId: string;
 	readonly provenance: WorkflowFeedbackProvenance;
 	readonly raw: string;
+	readonly disposition?: string;
 	readonly targetDelivery?: WorkflowArtifactRef;
 	readonly targetVersion?: string;
 	readonly attachments: readonly WorkflowArtifactRef[];
