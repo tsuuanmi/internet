@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { canonicalJson } from "#internet/core/canonical-json";
+import type { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import { workflowPrincipalEquals } from "#internet/workflow/authorization";
 import type { WorkflowArtifact, WorkflowArtifactRef, WorkflowRun } from "#internet/workflow/kernel/types";
@@ -78,6 +79,7 @@ function sameImports(left: readonly WorkflowImportedArtifactRef[], right: readon
 
 export class WorkflowContinuationService {
 	private readonly workstreams: WorkflowWorkstreamStore;
+	private readonly admissions: WorkflowAdmissionStore;
 	private readonly runs: WorkflowRunStore;
 	private readonly artifacts: WorkflowArtifactStore;
 	private readonly policy: WorkflowContinuationImportPolicy;
@@ -86,12 +88,14 @@ export class WorkflowContinuationService {
 
 	constructor(
 		workstreams: WorkflowWorkstreamStore,
+		admissions: WorkflowAdmissionStore,
 		runs: WorkflowRunStore,
 		artifacts: WorkflowArtifactStore,
 		policy: WorkflowContinuationImportPolicy,
 		options: WorkflowContinuationServiceOptions = {},
 	) {
 		this.workstreams = workstreams;
+		this.admissions = admissions;
 		this.runs = runs;
 		this.artifacts = artifacts;
 		this.policy = policy;
@@ -136,8 +140,36 @@ export class WorkflowContinuationService {
 		if (input.childRun.runId === sourceRun.runId) {
 			throw new WorkflowContinuationError("continuation child run must differ from the source run");
 		}
-		if (!workflowPrincipalEquals(workstream.owner, sourceRun.owner) || !workflowPrincipalEquals(workstream.owner, input.childRun.owner)) {
+		if (
+			!workflowPrincipalEquals(workstream.owner, sourceRun.owner) ||
+			!workflowPrincipalEquals(workstream.owner, input.childRun.owner)
+		) {
 			throw new WorkflowContinuationError("continuation runs must share the Workstream owner");
+		}
+		const admission = this.admissions.get(input.childRun.admissionId);
+		if (
+			admission === undefined ||
+			admission.acceptedSpec === undefined ||
+			admission.acceptedSpecHash === undefined
+		) {
+			throw new WorkflowContinuationError("continuation child run requires an accepted admission");
+		}
+		if (!workflowPrincipalEquals(admission.owner, workstream.owner)) {
+			throw new WorkflowContinuationError("continuation admission owner does not match the Workstream owner");
+		}
+		if (
+			admission.acceptedSpec.profile.id !== input.childRun.definitions.profile.id ||
+			admission.acceptedSpec.profile.version !== input.childRun.definitions.profile.version
+		) {
+			throw new WorkflowContinuationError("continuation child run profile does not match accepted admission");
+		}
+		const admittedContinuation = admission.acceptedSpec.draft.continuation;
+		if (
+			admittedContinuation === undefined ||
+			admittedContinuation.workstreamId !== workstream.workstreamId ||
+			admittedContinuation.continuesFromRunId !== sourceRun.runId
+		) {
+			throw new WorkflowContinuationError("continuation child admission does not match selected source lineage");
 		}
 
 		const sourceRefs = uniqueSourceRefs(input.sourceArtifacts, sourceRun.runId);
@@ -149,6 +181,24 @@ export class WorkflowContinuationService {
 			this.policy.validate({ workstream, sourceRun, childRun: input.childRun, sourceArtifact: artifact });
 			return artifact;
 		});
+		const admittedSources = [...admittedContinuation.sourceArtifacts].sort((left, right) =>
+			left.source.artifactId.localeCompare(right.source.artifactId),
+		);
+		if (
+			admittedSources.length !== sources.length ||
+			sources.some((source, index) => {
+				const admitted = admittedSources[index];
+				return (
+					admitted === undefined ||
+					admitted.source.runId !== source.runId ||
+					admitted.source.artifactId !== source.artifactId ||
+					admitted.payloadHash !== source.payloadHash ||
+					canonicalJson(admitted.schemaRef) !== canonicalJson(source.schemaRef)
+				);
+			})
+		) {
+			throw new WorkflowContinuationError("continuation source Artifacts do not match accepted admission identity");
+		}
 
 		const existingChild = this.runs.get(input.childRun.runId);
 		if (existingChild === undefined) {
