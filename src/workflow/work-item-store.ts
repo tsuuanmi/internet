@@ -15,8 +15,8 @@ export class WorkflowWorkItemStoreError extends Error {
 const WORKFLOW_WORK_ITEM_TRANSITIONS: Readonly<Record<WorkflowWorkItemState, readonly WorkflowWorkItemState[]>> = {
 	PENDING: ["READY", "CANCELLED", "FENCED"],
 	READY: ["RUNNING", "CANCELLED", "FENCED"],
-	RUNNING: ["READY", "SUCCEEDED", "FAILED", "CANCELLED", "FENCED"],
-	SUCCEEDED: ["FENCED"],
+	RUNNING: ["READY", "COMPLETED", "FAILED", "CANCELLED", "FENCED"],
+	COMPLETED: ["FENCED"],
 	FAILED: [],
 	CANCELLED: [],
 	FENCED: [],
