@@ -175,6 +175,9 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		const service = new WorkflowService({
 			admissionService,
 			activationRegistry: new WorkflowAdmissionActivationRegistry(activationHandlers),
+			...(researchRuntime === undefined
+				? {}
+				: { vNext: { runs: researchRuntime.runs, driver: researchRuntime.driver } }),
 			...(legacy === undefined
 				? {}
 				: {
@@ -198,6 +201,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 }
 
 export { BrowserManager } from "#internet/browser/runtime";
+export { resolveWorkflowProfileAvailability } from "#internet/workflow/bootstrap";
 export {
 	hashProviderTurnText,
 	ProviderTurnReceiptStore,
@@ -389,6 +393,7 @@ export {
 	createWorkflowResearchPolicy,
 	type WorkflowResearchPolicyOptions,
 } from "#internet/workflow/profiles/research/policy";
+export type { WorkflowResearchRoundWait } from "#internet/workflow/profiles/research/policy";
 export {
 	RESEARCH_WORKFLOW_PROFILE,
 	RESEARCH_WORKFLOW_PROFILE_ID,
@@ -449,7 +454,9 @@ export * from "#internet/workflow/runtime/index";
 export * from "#internet/workflow/semantic/index";
 export type {
 	WorkflowLegacyServiceRuntime,
+	WorkflowRunServiceDriver,
 	WorkflowServiceDependencies,
+	WorkflowVNextServiceRuntime,
 	WorkflowServiceDriver,
 	WorkflowServiceEngine,
 } from "#internet/workflow/service";
