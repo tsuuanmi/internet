@@ -185,8 +185,22 @@ describe("workflow deep_research profile", () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-research-activation-"));
 		const runs = new WorkflowRunStore(root);
 		const artifacts = new WorkflowArtifactStore(root);
-		const driver = { enqueue: () => undefined, isActive: () => false };
-		const activation = createResearchWorkflowActivationHandler(runs, artifacts, driver);
+		const activationDriver = { enqueue: () => undefined, isActive: () => false };
+		const activation = createResearchWorkflowActivationHandler(runs, artifacts, activationDriver);
+		const runDriver = {
+			isActive: () => false,
+			async cancel(runId: string) {
+				const current = runs.get(runId);
+				if (current === undefined) throw new Error("run missing");
+				if (["COMPLETED", "CANCELLED"].includes(current.lifecycle)) return current;
+				return runs.update(runId, current.revision, (run) => ({
+					...run,
+					revision: run.revision + 1,
+					lifecycle: "CANCELLED",
+					updatedAt: "2026-09-18T00:01:00.000Z",
+				}));
+			},
+		};
 		const admissions = new WorkflowAdmissionService(
 			new WorkflowAdmissionStore(root),
 			new WorkflowProfileRegistry([RESEARCH_WORKFLOW_PROFILE], RESEARCH_WORKFLOW_PROFILE.id),
@@ -201,6 +215,7 @@ describe("workflow deep_research profile", () => {
 		const service = new WorkflowService({
 			admissionService: admissions,
 			activationRegistry: new WorkflowAdmissionActivationRegistry([activation]),
+			vNext: { runs, driver: runDriver },
 		});
 		const context = workflowSessionAuthorizationContext("research-session");
 		const admitted = service.admit(
@@ -228,5 +243,20 @@ describe("workflow deep_research profile", () => {
 		expect(() => service.activateAdmission(context, admitted.admissionId, admitted.acceptedSpecHash!)).toThrow(
 			"activated a vNext WorkflowRun",
 		);
+
+		const active = runs.update(resource.run.runId, resource.run.revision, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			lifecycle: "ACTIVE",
+			updatedAt: "2026-09-18T00:00:30.000Z",
+		}));
+		const replay = service.activateAdmissionTarget(context, admitted.admissionId, admitted.acceptedSpecHash!);
+		expect(replay).toEqual({ kind: "workflow_run", run: active });
+		expect(service.targetStatus(context, active.runId)).toEqual({ kind: "workflow_run", run: active });
+
+		const cancelled = await service.cancelTarget(context, active.runId);
+		expect(cancelled.kind).toBe("workflow_run");
+		if (cancelled.kind !== "workflow_run") throw new Error("expected cancelled WorkflowRun");
+		expect(cancelled.run.lifecycle).toBe("CANCELLED");
 	});
 });
