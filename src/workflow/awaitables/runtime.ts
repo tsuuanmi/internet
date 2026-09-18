@@ -67,6 +67,12 @@ export class WorkflowDurableAwaitableRuntime {
 		return this.events.listWaits(runId);
 	}
 
+	cancelInactive(runId: string, activeNeedArtifactIds: ReadonlySet<string>, now?: () => number): void {
+		const cancelledTimers = this.timers.cancelPendingExcept(runId, activeNeedArtifactIds, now);
+		this.events.cancelWaitingExcept(runId, activeNeedArtifactIds, now);
+		if (cancelledTimers.length > 0) this.hooks.onTimerChanged?.();
+	}
+
 	hasOpen(runId: string, needArtifactId: string): boolean {
 		return (
 			this.timers
