@@ -2,11 +2,11 @@
 
 ## Current status
 
-**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 semantic protocol and baseline convergence are implemented in PR #41.**
+**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 is implemented in PR #41 and Phase 4 deterministic vNext runtime control is implemented in PR #42.**
 
-The migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, a planning capability contract, exact result promotion, assessment currentness, and deterministic baseline convergence while the v3 runtime remains supported during migration.
+The migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, a planning capability contract, exact result promotion, assessment currentness, deterministic baseline convergence, and a deterministic vNext coordinator/driver with exact-input scheduling, durable execution ownership, reconciliation, causal invalidation, and restart/resume behavior while the v3 runtime remains supported during migration.
 
-The next implementation milestone after Phase 3 is the deterministic vNext RunEngine / Driver / Scheduler beside the existing v3 runtime.
+The next implementation milestone after Phase 4 is capability adapters and the first executable vNext software path.
 
 ## D0 — Design contract harmonization
 
@@ -81,7 +81,7 @@ The next implementation milestone after Phase 3 is the deterministic vNext RunEn
 - [x] Define execution/result/receipt references without collapsing them into Artifact.
 - [x] Bind profile/policy/capability/schema versions needed for long-lived recovery.
 - [x] Keep provider/account/session allocation below capability identity.
-- [ ] Reuse current execution/recovery/fencing mechanics where possible instead of duplicating them.
+- [x] Reuse current execution/recovery/fencing semantics where applicable while keeping one authoritative domain-neutral vNext implementation.
 
 ## P1 — Semantic protocol and Planner
 
@@ -117,18 +117,18 @@ The next implementation milestone after Phase 3 is the deterministic vNext RunEn
 
 ## P1 — vNext RunEngine / Driver / Scheduler
 
-- [ ] Add a vNext deterministic run coordinator beside legacy `WorkflowEngine`.
-- [ ] Define optimistic run revision/CAS behavior.
-- [ ] Implement Need -> WorkItem/PendingAction materialization from typed fields/policy only.
-- [ ] Implement deterministic capability routing.
-- [ ] Implement readiness/dependency evaluation.
-- [ ] Implement exact InputBundle construction.
-- [ ] Implement execution lease/fencing/reconciliation.
-- [ ] Implement result promotion/validation.
-- [ ] Implement causal invalidation.
-- [ ] Implement baseline convergence evaluation.
-- [ ] Implement restart/resume scheduling.
-- [ ] Do not make legacy Research/Writer/Review phase or node-kind vocabulary the generic vNext kernel vocabulary.
+- [x] Add a vNext deterministic run coordinator beside legacy `WorkflowEngine`.
+- [x] Define optimistic run revision/CAS behavior.
+- [x] Implement Need -> WorkItem/PendingAction materialization from typed fields/policy only.
+- [x] Implement deterministic capability routing.
+- [x] Implement readiness/dependency evaluation.
+- [x] Implement exact InputBundle construction.
+- [x] Implement execution lease/fencing/reconciliation.
+- [x] Implement result promotion/validation.
+- [x] Implement causal invalidation.
+- [x] Implement baseline convergence evaluation.
+- [x] Implement restart/resume scheduling.
+- [x] Do not make legacy Research/Writer/Review phase or node-kind vocabulary the generic vNext kernel vocabulary.
 
 ## P1 — Capability adapters
 
