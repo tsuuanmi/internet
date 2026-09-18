@@ -376,6 +376,7 @@ export type {
 	WorkflowWriterConversation,
 } from "#internet/workflow/types";
 export { workflowJobIsTerminal } from "#internet/workflow/types";
+export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";
 export type {
 	WorkflowContinuationLink,
 	WorkflowImportedArtifactRef,
@@ -383,7 +384,6 @@ export type {
 } from "#internet/workflow/workstream";
 export { parseWorkflowWorkstream, WORKFLOW_WORKSTREAM_SCHEMA } from "#internet/workflow/workstream";
 export { WorkflowWorkstreamStore, WorkflowWorkstreamStoreError } from "#internet/workflow/workstream-store";
-export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";
 export type {
 	WorkflowWriterControlRequest,
 	WorkflowWriterDeliveryRequest,

@@ -13,7 +13,8 @@ export class WorkflowWorkstreamStoreError extends Error {
 }
 
 function assertId(value: string, label: string): void {
-	if (!/^[0-9a-f]{32}$/u.test(value)) throw new WorkflowWorkstreamStoreError(`${label} must be 32 lowercase hex characters`);
+	if (!/^[0-9a-f]{32}$/u.test(value))
+		throw new WorkflowWorkstreamStoreError(`${label} must be 32 lowercase hex characters`);
 }
 
 function assertPrivateFile(path: string, label: string): void {
@@ -39,7 +40,8 @@ export class WorkflowWorkstreamStore {
 	create(workstream: WorkflowWorkstream): WorkflowWorkstream {
 		parseWorkflowWorkstream(workstream);
 		const path = this.pathFor(workstream.workstreamId);
-		if (existsSync(path)) throw new WorkflowWorkstreamStoreError(`workflow Workstream ${workstream.workstreamId} already exists`);
+		if (existsSync(path))
+			throw new WorkflowWorkstreamStoreError(`workflow Workstream ${workstream.workstreamId} already exists`);
 		ensurePrivateDirectory(this.directory);
 		writePrivateJson(path, workstream);
 		return workstream;
@@ -81,14 +83,16 @@ export class WorkflowWorkstreamStore {
 		mutate: (current: WorkflowWorkstream) => WorkflowWorkstream,
 	): WorkflowWorkstream {
 		const current = this.get(workstreamId);
-		if (current === undefined) throw new WorkflowWorkstreamStoreError(`workflow Workstream ${workstreamId} does not exist`);
+		if (current === undefined)
+			throw new WorkflowWorkstreamStoreError(`workflow Workstream ${workstreamId} does not exist`);
 		if (current.revision !== expectedRevision) {
 			throw new WorkflowWorkstreamStoreError(
 				`workflow Workstream ${workstreamId} revision conflict: expected ${expectedRevision}, current ${current.revision}`,
 			);
 		}
 		const next = mutate(current);
-		if (next.workstreamId !== current.workstreamId) throw new WorkflowWorkstreamStoreError("workflow Workstream id cannot change");
+		if (next.workstreamId !== current.workstreamId)
+			throw new WorkflowWorkstreamStoreError("workflow Workstream id cannot change");
 		if (canonicalJson(next.owner) !== canonicalJson(current.owner)) {
 			throw new WorkflowWorkstreamStoreError("workflow Workstream owner cannot change");
 		}

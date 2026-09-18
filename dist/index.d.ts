@@ -42,7 +42,7 @@ export { preflightWorkflowAdmission } from "#internet/workflow/admission/preflig
 export type { WorkflowAdmissionLifecycleOptions } from "#internet/workflow/admission/service";
 export { WorkflowAdmissionService, WorkflowAdmissionServiceError } from "#internet/workflow/admission/service";
 export { WorkflowAdmissionStore, WorkflowAdmissionStoreError } from "#internet/workflow/admission/store";
-export type { AcceptedAdmissionSpec, AdmissionActivationReceipt, AdmissionConfirmationInput, AdmissionConfirmationReason, AdmissionConfirmationReceipt, AdmissionPreview, ProvenancedValue, WorkflowAdmissionAuthority, WorkflowAdmissionBudgetHints, WorkflowAdmissionConfirmationLevel, WorkflowAdmissionDraft, WorkflowAdmissionDraftInput, WorkflowAdmissionProvenance, WorkflowAdmissionRecord, WorkflowAdmissionSource, WorkflowAdmissionSourceKind, WorkflowAdmissionState, WorkflowAdmissionTarget, WorkflowAdmissionTemporalHints, } from "#internet/workflow/admission/types";
+export type { AcceptedAdmissionSpec, AdmissionActivationReceipt, AdmissionConfirmationInput, AdmissionConfirmationReason, AdmissionConfirmationReceipt, AdmissionPreview, ProvenancedValue, WorkflowAdmissionAuthority, WorkflowAdmissionBudgetHints, WorkflowAdmissionConfirmationLevel, WorkflowAdmissionContinuation, WorkflowAdmissionContinuationArtifact, WorkflowAdmissionDraft, WorkflowAdmissionDraftInput, WorkflowAdmissionProvenance, WorkflowAdmissionRecord, WorkflowAdmissionSource, WorkflowAdmissionSourceKind, WorkflowAdmissionState, WorkflowAdmissionTarget, WorkflowAdmissionTemporalHints, } from "#internet/workflow/admission/types";
 export { WORKFLOW_ADMISSION_CONFIRMATION_LEVELS, WORKFLOW_ADMISSION_PROVENANCE, WORKFLOW_ADMISSION_SOURCE_KINDS, WORKFLOW_ADMISSION_STATES, } from "#internet/workflow/admission/types";
 export { parseWorkflowAdmissionDraft, parseWorkflowAdmissionRecord } from "#internet/workflow/admission/validation";
 export type { CreateWorkflowArtifactInput } from "#internet/workflow/artifact-store";
@@ -51,6 +51,8 @@ export type { WorkflowAuthorizationContext, WorkflowPrincipal, WorkflowPrincipal
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 export type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
 export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
+export type { ContinueWorkflowRunInput, WorkflowContinuationImportPolicy, WorkflowContinuationResult, WorkflowContinuationServiceOptions, } from "#internet/workflow/continuation";
+export { WorkflowContinuationError, WorkflowContinuationService } from "#internet/workflow/continuation";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -101,6 +103,9 @@ export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
 export type { StartWorkflowInput, WorkflowAccountRouting, WorkflowEventRecord, WorkflowHandoffReceipt, WorkflowJob, WorkflowPendingAction, WorkflowPullRequestReceipt, WorkflowWriterConversation, } from "#internet/workflow/types";
 export { workflowJobIsTerminal } from "#internet/workflow/types";
 export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";
+export type { WorkflowContinuationLink, WorkflowImportedArtifactRef, WorkflowWorkstream, } from "#internet/workflow/workstream";
+export { parseWorkflowWorkstream, WORKFLOW_WORKSTREAM_SCHEMA } from "#internet/workflow/workstream";
+export { WorkflowWorkstreamStore, WorkflowWorkstreamStoreError } from "#internet/workflow/workstream-store";
 export type { WorkflowWriterControlRequest, WorkflowWriterDeliveryRequest, WorkflowWriterResult, WorkflowWriterRunner, } from "#internet/workflow/writer-runner";
 export { BrowserWorkflowWriterRunner, parseWorkflowWriterResult } from "#internet/workflow/writer-runner";
 //# sourceMappingURL=index.d.ts.map

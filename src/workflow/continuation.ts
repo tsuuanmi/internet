@@ -73,7 +73,10 @@ function sameRun(left: WorkflowRun, right: WorkflowRun): boolean {
 	return canonicalJson(left) === canonicalJson(right);
 }
 
-function sameImports(left: readonly WorkflowImportedArtifactRef[], right: readonly WorkflowImportedArtifactRef[]): boolean {
+function sameImports(
+	left: readonly WorkflowImportedArtifactRef[],
+	right: readonly WorkflowImportedArtifactRef[],
+): boolean {
 	return canonicalJson(left) === canonicalJson(right);
 }
 
@@ -105,7 +108,8 @@ export class WorkflowContinuationService {
 
 	createWorkstream(sourceRunId: string, title?: string): WorkflowWorkstream {
 		const sourceRun = this.runs.get(sourceRunId);
-		if (sourceRun === undefined) throw new WorkflowContinuationError(`source workflow run ${sourceRunId} does not exist`);
+		if (sourceRun === undefined)
+			throw new WorkflowContinuationError(`source workflow run ${sourceRunId} does not exist`);
 		const at = this.now().toISOString();
 		return this.workstreams.create({
 			schema: WORKFLOW_WORKSTREAM_SCHEMA,
@@ -127,7 +131,8 @@ export class WorkflowContinuationService {
 			throw new WorkflowContinuationError(`workflow Workstream ${input.workstreamId} does not exist`);
 		}
 		const sourceRun = this.runs.get(input.sourceRunId);
-		if (sourceRun === undefined) throw new WorkflowContinuationError(`source workflow run ${input.sourceRunId} does not exist`);
+		if (sourceRun === undefined)
+			throw new WorkflowContinuationError(`source workflow run ${input.sourceRunId} does not exist`);
 		if (!workstream.runIds.includes(sourceRun.runId)) {
 			throw new WorkflowContinuationError("continuation source run does not belong to the Workstream");
 		}
@@ -147,11 +152,7 @@ export class WorkflowContinuationService {
 			throw new WorkflowContinuationError("continuation runs must share the Workstream owner");
 		}
 		const admission = this.admissions.get(input.childRun.admissionId);
-		if (
-			admission === undefined ||
-			admission.acceptedSpec === undefined ||
-			admission.acceptedSpecHash === undefined
-		) {
+		if (admission === undefined || admission.acceptedSpec === undefined || admission.acceptedSpecHash === undefined) {
 			throw new WorkflowContinuationError("continuation child run requires an accepted admission");
 		}
 		if (!workflowPrincipalEquals(admission.owner, workstream.owner)) {
@@ -204,7 +205,9 @@ export class WorkflowContinuationService {
 		if (existingChild === undefined) {
 			this.runs.create(input.childRun);
 		} else if (!sameRun(existingChild, input.childRun)) {
-			throw new WorkflowContinuationError(`continuation child run ${input.childRun.runId} conflicts with existing state`);
+			throw new WorkflowContinuationError(
+				`continuation child run ${input.childRun.runId} conflicts with existing state`,
+			);
 		}
 
 		const importedArtifacts = sources.map((source) =>
@@ -247,7 +250,9 @@ export class WorkflowContinuationService {
 				existingLink.childAdmissionId !== input.childRun.admissionId ||
 				!sameImports(existingLink.imports, imports)
 			) {
-				throw new WorkflowContinuationError(`continuation child run ${input.childRun.runId} conflicts with existing lineage`);
+				throw new WorkflowContinuationError(
+					`continuation child run ${input.childRun.runId} conflicts with existing lineage`,
+				);
 			}
 			return { workstream, childRun: existingChild ?? input.childRun, importedArtifacts };
 		}

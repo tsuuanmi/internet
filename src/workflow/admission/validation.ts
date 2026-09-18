@@ -67,7 +67,11 @@ function assertContinuation(value: unknown): void {
 		if (!isRecord(item) || !isRecord(item.source)) {
 			throw new Error("invalid admission continuation source Artifact");
 		}
-		if (!isId(item.source.runId) || !isHash(item.source.artifactId) || item.source.runId !== value.continuesFromRunId) {
+		if (
+			!isId(item.source.runId) ||
+			!isHash(item.source.artifactId) ||
+			item.source.runId !== value.continuesFromRunId
+		) {
 			throw new Error("invalid admission continuation source Artifact identity");
 		}
 		if (!isHash(item.payloadHash)) throw new Error("invalid admission continuation source payload hash");

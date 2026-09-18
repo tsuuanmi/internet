@@ -89,7 +89,8 @@ function assertContinuation(value: unknown, runIds: ReadonlySet<string>): assert
 	if (!runIds.has(value.sourceRunId) || !runIds.has(value.childRunId)) {
 		throw new Error("workflow continuation runs must belong to the Workstream");
 	}
-	if (value.sourceRunId === value.childRunId) throw new Error("workflow continuation source and child runs must differ");
+	if (value.sourceRunId === value.childRunId)
+		throw new Error("workflow continuation source and child runs must differ");
 	if (!Array.isArray(value.imports)) throw new Error("invalid workflow continuation imports");
 	const sources = new Set<string>();
 	const imported = new Set<string>();

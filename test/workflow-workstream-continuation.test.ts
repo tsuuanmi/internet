@@ -7,8 +7,8 @@ import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import {
 	WorkflowContinuationError,
-	WorkflowContinuationService,
 	type WorkflowContinuationImportPolicy,
+	WorkflowContinuationService,
 } from "#internet/workflow/continuation";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
