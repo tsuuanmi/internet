@@ -8,6 +8,7 @@ import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store"
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { WorkflowRunStore } from "#internet/workflow/run-store";
 import {
+	WORKFLOW_EXECUTION_SCHEMA,
 	WorkflowExecutionResultStore,
 	WorkflowExecutionStore,
 	WorkflowRunCoordinator,
@@ -103,19 +104,20 @@ function fixture(runtimePolicy = policy()) {
 			relatedArtifacts: [],
 		},
 	});
+	const executions = new WorkflowExecutionStore(root);
 	const coordinator = new WorkflowRunCoordinator({
 		runs,
 		artifacts,
 		workItems,
 		inputBundles,
-		executions: new WorkflowExecutionStore(root),
+		executions,
 		results: new WorkflowExecutionResultStore(root),
 		capabilities: new WorkflowCapabilityRegistry([capability]),
 		executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
 		pendingActions: { ensure: () => undefined, hasOpen: () => false },
 		policy: runtimePolicy,
 	});
-	return { coordinator, need, workItems, inputBundles };
+	return { coordinator, need, artifacts, workItems, inputBundles, executions };
 }
 
 describe("workflow vNext run coordinator", () => {
@@ -133,6 +135,70 @@ describe("workflow vNext run coordinator", () => {
 		expect(workItems.list(runId)).toHaveLength(1);
 		coordinator.advance(runId);
 		expect(workItems.list(runId)).toHaveLength(1);
+	});
+
+
+	it("fences stale running work before restart reconciliation", async () => {
+		const { coordinator, need, artifacts, workItems, inputBundles, executions } = fixture();
+		coordinator.advance(runId);
+		const item = workItems.list(runId)[0];
+		if (item?.inputBundleId === undefined) throw new Error("expected ready WorkItem");
+		const startedAt = "2026-09-18T00:00:00.000Z";
+		const executionId = "6".repeat(32);
+		workItems.update(runId, item.workItemId, item.revision, (current) => ({
+			...current,
+			revision: current.revision + 1,
+			state: "RUNNING",
+			executionIds: [...current.executionIds, executionId],
+			updatedAt: startedAt,
+		}));
+		executions.create({
+			schema: WORKFLOW_EXECUTION_SCHEMA,
+			version: 1,
+			revision: 1,
+			executionId,
+			runId,
+			workItemId: item.workItemId,
+			inputBundleId: item.inputBundleId,
+			capability: item.capability,
+			attempt: 1,
+			ownerInstanceId: "runtime-1",
+			state: "RUNNING",
+			startedAt,
+			heartbeatAt: startedAt,
+			leaseUntil: "2099-01-01T00:00:00.000Z",
+		});
+		const replacement = artifacts.create({
+			runId,
+			type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+			schemaRef: { id: "workflow-need", version: "1" },
+			producer: { kind: "runtime", id: "test" },
+			lineage: [{ relation: "supersedes", artifact: { runId, artifactId: need.artifactId } }],
+			payload: {
+				needId: "need-2",
+				type: "execution",
+				requestOwner: { kind: "workflow_run", id: runId },
+				requestedCapability: capability.id,
+				question: "Run replacement work",
+				subjects: [],
+				relatedArtifacts: [],
+			},
+		});
+
+		await coordinator.reconcile(runId);
+
+		expect(executions.get(runId, executionId)).toEqual(
+			expect.objectContaining({
+				state: "FENCED",
+				failure: expect.objectContaining({ code: "INPUT_INVALIDATED" }),
+			}),
+		);
+		expect(workItems.get(runId, item.workItemId)?.state).toBe("FENCED");
+		const replacementItem = workItems
+			.list(runId)
+			.find((candidate) => candidate.needArtifact.artifactId === replacement.artifactId);
+		expect(replacementItem?.state).toBe("READY");
+		expect(inputBundles.get(runId, replacementItem?.inputBundleId ?? "")).toBeDefined();
 	});
 
 	it("rejects contradictory readiness instead of constructing an ambiguous InputBundle", () => {
