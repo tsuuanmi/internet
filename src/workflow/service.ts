@@ -16,8 +16,8 @@ import {
 } from "#internet/workflow/authorization";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowRun } from "#internet/workflow/kernel/types";
-import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import type { WorkflowDeletionReceipt, WorkflowRetentionManager } from "#internet/workflow/retention";
+import type { WorkflowRunStore } from "#internet/workflow/run-store";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 import { workflowJobIsTerminal } from "#internet/workflow/types";
 
@@ -164,10 +164,7 @@ export class WorkflowService {
 		return { kind: "workflow_job", job: this.status(context, targetId) };
 	}
 
-	async cancelTarget(
-		context: WorkflowAuthorizationContext,
-		targetId: string,
-	): Promise<WorkflowActivationResource> {
+	async cancelTarget(context: WorkflowAuthorizationContext, targetId: string): Promise<WorkflowActivationResource> {
 		assertWorkflowPrincipal(context.principal);
 		const run = this.vNextRuntime?.runs.get(targetId);
 		if (run !== undefined) {
@@ -190,7 +187,9 @@ export class WorkflowService {
 	): WorkflowJob {
 		const resource = this.activateAdmissionTarget(context, admissionId, expectedAcceptedSpecHash);
 		if (resource.kind !== "workflow_job") {
-			throw new WorkflowServiceError(`workflow admission ${admissionId} activated a vNext WorkflowRun, not a v3 WorkflowJob`);
+			throw new WorkflowServiceError(
+				`workflow admission ${admissionId} activated a vNext WorkflowRun, not a v3 WorkflowJob`,
+			);
 		}
 		return resource.job;
 	}

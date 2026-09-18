@@ -10,7 +10,7 @@ export declare const WORKFLOW_ADMISSION_CONFIRMATION_LEVELS: readonly ["AUTO_SUB
 export type WorkflowAdmissionConfirmationLevel = (typeof WORKFLOW_ADMISSION_CONFIRMATION_LEVELS)[number];
 export declare const WORKFLOW_ADMISSION_SOURCE_KINDS: readonly ["user", "local_agent"];
 export type WorkflowAdmissionSourceKind = (typeof WORKFLOW_ADMISSION_SOURCE_KINDS)[number];
-export declare const WORKFLOW_ADMISSION_TARGET_KINDS: readonly ["workflow_job"];
+export declare const WORKFLOW_ADMISSION_TARGET_KINDS: readonly ["workflow_job", "workflow_run"];
 export type WorkflowAdmissionTargetKind = (typeof WORKFLOW_ADMISSION_TARGET_KINDS)[number];
 export interface ProvenancedValue<T> {
     readonly value: T;

@@ -11,7 +11,8 @@ import {
 } from "#internet/workflow/awaitables/types";
 
 function record(value: unknown): Record<string, unknown> {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("invalid workflow awaitable");
+	if (typeof value !== "object" || value === null || Array.isArray(value))
+		throw new Error("invalid workflow awaitable");
 	return value as Record<string, unknown>;
 }
 
@@ -47,7 +48,8 @@ function artifactRef(value: unknown, label: string): void {
 
 export function parseWorkflowTimer(value: unknown): WorkflowTimer {
 	const timer = record(value);
-	if (timer.schema !== WORKFLOW_TIMER_SCHEMA || timer.version !== 1) throw new Error("unsupported workflow Timer schema");
+	if (timer.schema !== WORKFLOW_TIMER_SCHEMA || timer.version !== 1)
+		throw new Error("unsupported workflow Timer schema");
 	revision(timer.revision, "workflow Timer revision");
 	hex(timer.timerId, 32, "workflow Timer id");
 	hex(timer.runId, 32, "workflow Timer run id");

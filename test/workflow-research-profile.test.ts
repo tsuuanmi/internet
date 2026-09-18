@@ -5,21 +5,21 @@ import { describe, expect, it } from "vitest";
 import { WorkflowAdmissionActivationRegistry } from "#internet/workflow/admission/activation-registry";
 import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
 import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
-import { WorkflowDurableAwaitableRuntime } from "#internet/workflow/awaitables/runtime";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
+import { WorkflowDurableAwaitableRuntime } from "#internet/workflow/awaitables/runtime";
 import { resolveWorkflowProfileAvailability } from "#internet/workflow/bootstrap";
 import { WorkflowExternalEventStore } from "#internet/workflow/external-event-store";
 import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
-import { createResearchAdmissionDraft } from "#internet/workflow/profiles/research/admission";
+import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
 import { createResearchWorkflowActivationHandler } from "#internet/workflow/profiles/research/activation";
+import { createResearchAdmissionDraft } from "#internet/workflow/profiles/research/admission";
 import { createWorkflowResearchPolicy } from "#internet/workflow/profiles/research/policy";
 import { RESEARCH_WORKFLOW_PROFILE } from "#internet/workflow/profiles/research/profile";
-import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
 import { WorkflowRunStore } from "#internet/workflow/run-store";
+import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES } from "#internet/workflow/semantic/index";
 import { WorkflowService } from "#internet/workflow/service";
 import { WorkflowTimerStore } from "#internet/workflow/timer-store";
-import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES } from "#internet/workflow/semantic/index";
 
 describe("workflow deep_research profile", () => {
 	it("is available with thinker capabilities even when no Writer account is available", () => {
@@ -34,10 +34,7 @@ describe("workflow deep_research profile", () => {
 		const artifacts = new WorkflowArtifactStore(root);
 		const inputBundles = new WorkflowInputBundleStore(root);
 		const timers = new WorkflowTimerStore(root);
-		const awaitables = new WorkflowDurableAwaitableRuntime(
-			timers,
-			new WorkflowExternalEventStore(root),
-		);
+		const awaitables = new WorkflowDurableAwaitableRuntime(timers, new WorkflowExternalEventStore(root));
 		const policy = createWorkflowResearchPolicy(artifacts, inputBundles, awaitables, {
 			maxRounds: 2,
 			roundWait: { kind: "timer", delayMs: 60_000 },
@@ -232,7 +229,10 @@ describe("workflow deep_research profile", () => {
 		expect(resource.run.owner).toEqual(context.principal);
 		expect(resource.run.definitions.profile).toEqual({ id: "deep_research", version: "1" });
 		expect(resource.run.lifecycle).toBe("CREATED");
-		const types = artifacts.list(resource.run.runId).map((artifact) => artifact.type).sort();
+		const types = artifacts
+			.list(resource.run.runId)
+			.map((artifact) => artifact.type)
+			.sort();
 		expect(types).toEqual(
 			[
 				WORKFLOW_SEMANTIC_ARTIFACT_TYPES.acceptanceCriteria,

@@ -4,7 +4,7 @@ export const EXTERNAL_DEEP_RESEARCH_CAPABILITY = {
     id: "research.external_deep_research",
     version: "1",
     acceptedNeedTypes: ["execution"],
-    producedArtifactTypes: [WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence, WORKFLOW_SEMANTIC_ARTIFACT_TYPES.report],
+    producedArtifactTypes: [WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence, WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need],
     producedReceiptTypes: [],
     sideEffect: "READ_ONLY",
     requiredAuthority: [],
@@ -41,6 +41,30 @@ export class WorkflowExternalDeepResearchAdapter {
             signal,
         });
         const source = { kind: "provider_conversation", id: result.url };
+        const round = Number(context.inputBundle.facts.find((fact) => fact.name === "research.round")?.value);
+        const maxRounds = Number(context.inputBundle.facts.find((fact) => fact.name === "research.maxRounds")?.value);
+        if (!Number.isSafeInteger(round) || round < 1 || !Number.isSafeInteger(maxRounds) || maxRounds < round) {
+            throw new Error("deep research capability requires valid round facts");
+        }
+        const nextNeed = round < maxRounds
+            ? {
+                needId: `research-round:${String(round + 1)}`,
+                type: "execution",
+                requestOwner: { kind: "research_round", id: String(round + 1) },
+                requestedCapability: EXTERNAL_DEEP_RESEARCH_CAPABILITY.id,
+                question: need.question,
+                subjects: need.subjects,
+                relatedArtifacts: [],
+            }
+            : {
+                needId: "research-synthesis",
+                type: "execution",
+                requestOwner: { kind: "research_synthesis", id: context.run.runId },
+                requestedCapability: "research.synthesize_report",
+                question: "Synthesize the accumulated research Evidence into the final Report.",
+                subjects: need.subjects,
+                relatedArtifacts: [],
+            };
         return {
             executionId: context.execution.executionId,
             workItemId: context.workItem.workItemId,
@@ -56,15 +80,7 @@ export class WorkflowExternalDeepResearchAdapter {
                         relatedArtifacts: context.inputBundle.artifacts,
                     },
                 },
-                {
-                    type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.report,
-                    payload: {
-                        reportId: `deep-research:${context.execution.executionId}`,
-                        title: need.question,
-                        body: result.text,
-                        evidence: context.inputBundle.artifacts,
-                    },
-                },
+                { type: WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need, payload: nextNeed },
             ],
             receiptIds: [],
         };

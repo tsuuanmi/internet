@@ -2,7 +2,11 @@ import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalJson, hashCanonicalJson } from "#internet/core/canonical-json";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
-import { WORKFLOW_TIMER_SCHEMA, type WorkflowTimer, type WorkflowTimerContract } from "#internet/workflow/awaitables/types";
+import {
+	WORKFLOW_TIMER_SCHEMA,
+	type WorkflowTimer,
+	type WorkflowTimerContract,
+} from "#internet/workflow/awaitables/types";
 import { parseWorkflowTimer } from "#internet/workflow/awaitables/validation";
 import type { WorkflowArtifactRef } from "#internet/workflow/kernel/types";
 
@@ -59,8 +63,10 @@ export class WorkflowTimerStore {
 		contract: WorkflowTimerContract,
 		now: () => number = Date.now,
 	): WorkflowTimer {
-		if (causedBy.runId !== runId) throw new WorkflowTimerStoreError("workflow Timer cause must belong to the same run");
-		if (!Number.isFinite(Date.parse(contract.deadline))) throw new WorkflowTimerStoreError("workflow Timer deadline is invalid");
+		if (causedBy.runId !== runId)
+			throw new WorkflowTimerStoreError("workflow Timer cause must belong to the same run");
+		if (!Number.isFinite(Date.parse(contract.deadline)))
+			throw new WorkflowTimerStoreError("workflow Timer deadline is invalid");
 		const conflicting = this.list(runId).find(
 			(timer) => timer.causedBy.artifactId === causedBy.artifactId && !sameContract(timer, causedBy, contract),
 		);
@@ -108,7 +114,8 @@ export class WorkflowTimerStore {
 	list(runId: string): readonly WorkflowTimer[] {
 		const directory = this.runDir(runId);
 		if (!existsSync(directory)) return [];
-		if (!lstatSync(directory).isDirectory()) throw new WorkflowTimerStoreError("workflow Timer path is not a directory");
+		if (!lstatSync(directory).isDirectory())
+			throw new WorkflowTimerStoreError("workflow Timer path is not a directory");
 		return readdirSync(directory)
 			.filter((name) => /^[0-9a-f]{32}\.json$/u.test(name))
 			.sort()
@@ -121,7 +128,8 @@ export class WorkflowTimerStore {
 
 	listAll(): readonly WorkflowTimer[] {
 		if (!existsSync(this.root)) return [];
-		if (!lstatSync(this.root).isDirectory()) throw new WorkflowTimerStoreError("workflow Timer root is not a directory");
+		if (!lstatSync(this.root).isDirectory())
+			throw new WorkflowTimerStoreError("workflow Timer root is not a directory");
 		return readdirSync(this.root)
 			.filter((name) => /^[0-9a-f]{32}$/u.test(name))
 			.sort()

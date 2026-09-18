@@ -1,7 +1,7 @@
 import type { WorkflowAdmissionActivator } from "#internet/workflow/admission/activation";
 import type { WorkflowAdmissionActivationHandler } from "#internet/workflow/admission/activation-registry";
-import { requireWorkflowOwnerSessionId } from "#internet/workflow/authorization";
 import type { AcceptedAdmissionSpec, AdmissionActivationTarget } from "#internet/workflow/admission/types";
+import { requireWorkflowOwnerSessionId } from "#internet/workflow/authorization";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { StartWorkflowInput, WorkflowJob } from "#internet/workflow/types";
 import { workflowJobIsTerminal } from "#internet/workflow/types";
@@ -73,7 +73,6 @@ export function createSoftwareWorkflowActivator(
 		},
 	};
 }
-
 
 export function createSoftwareWorkflowActivationHandler(
 	engine: SoftwareWorkflowActivationEngine,

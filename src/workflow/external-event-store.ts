@@ -10,10 +10,7 @@ import {
 	type WorkflowExternalEventWait,
 	type WorkflowExternalEventWaitContract,
 } from "#internet/workflow/awaitables/types";
-import {
-	parseWorkflowExternalEvent,
-	parseWorkflowExternalEventWait,
-} from "#internet/workflow/awaitables/validation";
+import { parseWorkflowExternalEvent, parseWorkflowExternalEventWait } from "#internet/workflow/awaitables/validation";
 import type { WorkflowArtifactRef, WorkflowVersionRef } from "#internet/workflow/kernel/types";
 
 export class WorkflowExternalEventStoreError extends Error {
@@ -202,7 +199,8 @@ export class WorkflowExternalEventStore {
 			.sort()
 			.map((name) => {
 				const event = this.getEvent(runId, name.slice(0, -5));
-				if (event === undefined) throw new WorkflowExternalEventStoreError(`workflow ExternalEvent ${name} disappeared`);
+				if (event === undefined)
+					throw new WorkflowExternalEventStoreError(`workflow ExternalEvent ${name} disappeared`);
 				return event;
 			});
 	}
@@ -237,7 +235,10 @@ export class WorkflowExternalEventStore {
 		if (wait.state !== "WAITING") return wait;
 		const event = this.listEvents(wait.runId)
 			.filter((candidate) => waitMatchesEvent(wait, candidate))
-			.sort((left, right) => left.occurredAt.localeCompare(right.occurredAt) || left.eventId.localeCompare(right.eventId))[0];
+			.sort(
+				(left, right) =>
+					left.occurredAt.localeCompare(right.occurredAt) || left.eventId.localeCompare(right.eventId),
+			)[0];
 		if (event === undefined) return wait;
 		return this.updateWait(wait.runId, wait.waitId, wait.revision, (current) => ({
 			...current,

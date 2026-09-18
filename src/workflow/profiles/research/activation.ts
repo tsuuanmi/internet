@@ -1,25 +1,16 @@
 import { canonicalJson } from "#internet/core/canonical-json";
 import type { WorkflowAdmissionActivator } from "#internet/workflow/admission/activation";
 import type { WorkflowAdmissionActivationHandler } from "#internet/workflow/admission/activation-registry";
-import type {
-	AcceptedAdmissionSpec,
-	AdmissionActivationTarget,
-} from "#internet/workflow/admission/types";
+import type { AcceptedAdmissionSpec, AdmissionActivationTarget } from "#internet/workflow/admission/types";
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowPrincipal } from "#internet/workflow/authorization";
-import {
-	WORKFLOW_RUN_SCHEMA,
-	type WorkflowRun,
-} from "#internet/workflow/kernel/types";
+import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { RESEARCH_ASSESSMENT_CAPABILITY } from "#internet/workflow/profiles/research/assessment-capability";
 import { EXTERNAL_DEEP_RESEARCH_CAPABILITY } from "#internet/workflow/profiles/research/deep-research-capability";
 import { RESEARCH_WORKFLOW_PROFILE_ID } from "#internet/workflow/profiles/research/profile";
 import { RESEARCH_SYNTHESIS_CAPABILITY } from "#internet/workflow/profiles/research/synthesis-capability";
 import type { WorkflowRunStore } from "#internet/workflow/run-store";
-import {
-	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
-	WORKFLOW_SEMANTIC_SCHEMA_REFS,
-} from "#internet/workflow/semantic/index";
+import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES, WORKFLOW_SEMANTIC_SCHEMA_REFS } from "#internet/workflow/semantic/index";
 
 export interface ResearchWorkflowActivationDriver {
 	enqueue(runId: string): void;
@@ -149,13 +140,16 @@ export function createResearchWorkflowActivator(
 				},
 			});
 			const latest = runs.get(expected.runId);
-			if (latest !== undefined && !["COMPLETED", "CANCELLED"].includes(latest.lifecycle) && !driver.isActive(latest.runId)) {
+			if (
+				latest !== undefined &&
+				!["COMPLETED", "CANCELLED"].includes(latest.lifecycle) &&
+				!driver.isActive(latest.runId)
+			) {
 				driver.enqueue(latest.runId);
 			}
 		},
 	};
 }
-
 
 export function createResearchWorkflowActivationHandler(
 	runs: WorkflowRunStore,

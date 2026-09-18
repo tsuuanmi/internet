@@ -203,7 +203,6 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 }
 
 export { BrowserManager } from "#internet/browser/runtime";
-export { resolveWorkflowProfileAvailability } from "#internet/workflow/bootstrap";
 export {
 	hashProviderTurnText,
 	ProviderTurnReceiptStore,
@@ -293,7 +292,6 @@ export {
 	WORKFLOW_ADMISSION_STATES,
 } from "#internet/workflow/admission/types";
 export { parseWorkflowAdmissionDraft, parseWorkflowAdmissionRecord } from "#internet/workflow/admission/validation";
-export * from "#internet/workflow/awaitables/index";
 export type { CreateWorkflowArtifactInput } from "#internet/workflow/artifact-store";
 export { WorkflowArtifactStore, WorkflowArtifactStoreError } from "#internet/workflow/artifact-store";
 export type {
@@ -302,6 +300,8 @@ export type {
 	WorkflowPrincipalKind,
 } from "#internet/workflow/authorization";
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
+export * from "#internet/workflow/awaitables/index";
+export { resolveWorkflowProfileAvailability } from "#internet/workflow/bootstrap";
 export type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
 export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
 export type {
@@ -311,10 +311,6 @@ export type {
 	WorkflowContinuationServiceOptions,
 } from "#internet/workflow/continuation";
 export { WorkflowContinuationError, WorkflowContinuationService } from "#internet/workflow/continuation";
-export {
-	WorkflowExternalEventStore,
-	WorkflowExternalEventStoreError,
-} from "#internet/workflow/external-event-store";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -332,6 +328,10 @@ export {
 	parseWorkflowGraphEvent,
 	WorkflowEventJournal,
 } from "#internet/workflow/events";
+export {
+	WorkflowExternalEventStore,
+	WorkflowExternalEventStoreError,
+} from "#internet/workflow/external-event-store";
 export type {
 	WorkflowExecutionRecord,
 	WorkflowFailure,
@@ -378,11 +378,11 @@ export {
 	WorkflowTeamPlanningExecutor,
 } from "#internet/workflow/profiles/common/planning-capability";
 export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
-export { createResearchAdmissionDraft } from "#internet/workflow/profiles/research/admission";
 export {
 	createResearchWorkflowActivationHandler,
 	createResearchWorkflowActivator,
 } from "#internet/workflow/profiles/research/activation";
+export { createResearchAdmissionDraft } from "#internet/workflow/profiles/research/admission";
 export {
 	RESEARCH_ASSESSMENT_CAPABILITY,
 	WorkflowResearchAssessmentAdapter,
@@ -391,11 +391,11 @@ export {
 	EXTERNAL_DEEP_RESEARCH_CAPABILITY,
 	WorkflowExternalDeepResearchAdapter,
 } from "#internet/workflow/profiles/research/deep-research-capability";
+export type { WorkflowResearchRoundWait } from "#internet/workflow/profiles/research/policy";
 export {
 	createWorkflowResearchPolicy,
 	type WorkflowResearchPolicyOptions,
 } from "#internet/workflow/profiles/research/policy";
-export type { WorkflowResearchRoundWait } from "#internet/workflow/profiles/research/policy";
 export {
 	RESEARCH_WORKFLOW_PROFILE,
 	RESEARCH_WORKFLOW_PROFILE_ID,
@@ -458,9 +458,9 @@ export type {
 	WorkflowLegacyServiceRuntime,
 	WorkflowRunServiceDriver,
 	WorkflowServiceDependencies,
-	WorkflowVNextServiceRuntime,
 	WorkflowServiceDriver,
 	WorkflowServiceEngine,
+	WorkflowVNextServiceRuntime,
 } from "#internet/workflow/service";
 export { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 export type {
@@ -472,6 +472,7 @@ export type {
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export type { WorkflowTeamRunner, WorkflowTeamStepRequest } from "#internet/workflow/team-runner";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
+export { WorkflowTimerStore, WorkflowTimerStoreError } from "#internet/workflow/timer-store";
 export type {
 	StartWorkflowInput,
 	WorkflowAccountRouting,
@@ -483,10 +484,9 @@ export type {
 	WorkflowWriterConversation,
 } from "#internet/workflow/types";
 export { workflowJobIsTerminal } from "#internet/workflow/types";
-export { WorkflowTimerStore, WorkflowTimerStoreError } from "#internet/workflow/timer-store";
 export {
-	WorkflowWakeupScheduler,
 	type WorkflowWakeupDriver,
+	WorkflowWakeupScheduler,
 	type WorkflowWakeupSchedulerOptions,
 } from "#internet/workflow/wakeup-scheduler";
 export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";

@@ -75,7 +75,12 @@ export function materializeWorkflowNeeds(
 		}
 		if (materialization.kind === "timer") {
 			const { kind: _kind, ...contract } = materialization;
-			dependencies.awaitables.ensureTimer(run.runId, { runId: run.runId, artifactId: artifact.artifactId }, contract, now);
+			dependencies.awaitables.ensureTimer(
+				run.runId,
+				{ runId: run.runId, artifactId: artifact.artifactId },
+				contract,
+				now,
+			);
 			continue;
 		}
 		if (materialization.kind === "external_event") {

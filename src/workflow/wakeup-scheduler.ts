@@ -61,7 +61,9 @@ export class WorkflowWakeupScheduler {
 				const run = this.runs.get(timer.runId);
 				return run !== undefined && !["COMPLETED", "CANCELLED"].includes(run.lifecycle);
 			})
-			.sort((left, right) => left.deadline.localeCompare(right.deadline) || left.timerId.localeCompare(right.timerId));
+			.sort(
+				(left, right) => left.deadline.localeCompare(right.deadline) || left.timerId.localeCompare(right.timerId),
+			);
 		const next = pending[0];
 		if (next === undefined) return;
 		const delayMs = Math.max(1, Math.min(MAX_TIMEOUT_MS, Date.parse(next.deadline) - this.now()));

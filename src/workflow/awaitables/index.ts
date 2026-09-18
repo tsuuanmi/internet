@@ -1,7 +1,5 @@
+export type { WorkflowAwaitableRuntimeHooks } from "#internet/workflow/awaitables/runtime";
 export { WorkflowDurableAwaitableRuntime } from "#internet/workflow/awaitables/runtime";
-export type {
-	WorkflowAwaitableRuntimeHooks,
-} from "#internet/workflow/awaitables/runtime";
 export type {
 	WorkflowExternalEvent,
 	WorkflowExternalEventInput,

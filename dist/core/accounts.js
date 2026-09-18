@@ -15,6 +15,7 @@ export const ACCOUNT_CAPABILITIES = [
     "github.write",
     "github.pull_request",
     "github.merge",
+    "research.deep",
 ];
 /** Authenticated account catalog. Team roles are assigned by ordered membership, not provider identity. */
 export const ACCOUNTS = {
@@ -22,7 +23,7 @@ export const ACCOUNTS = {
         accountId: "chatgpt-thinker",
         provider: "chatgpt-web",
         role: "thinker",
-        capabilities: ["browser.chat", "team.reason", "team.review", "team.synthesize", "github.read"],
+        capabilities: ["browser.chat", "team.reason", "team.review", "team.synthesize", "github.read", "research.deep"],
     },
     "chatgpt-writer": {
         accountId: "chatgpt-writer",

@@ -1,6 +1,11 @@
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
-import type { WorkflowArtifact, WorkflowArtifactRef, WorkflowRun, WorkflowVersionRef } from "#internet/workflow/kernel/types";
+import type {
+	WorkflowArtifact,
+	WorkflowArtifactRef,
+	WorkflowRun,
+	WorkflowVersionRef,
+} from "#internet/workflow/kernel/types";
 import { RESEARCH_ASSESSMENT_CAPABILITY } from "#internet/workflow/profiles/research/assessment-capability";
 import { EXTERNAL_DEEP_RESEARCH_CAPABILITY } from "#internet/workflow/profiles/research/deep-research-capability";
 import { RESEARCH_SYNTHESIS_CAPABILITY } from "#internet/workflow/profiles/research/synthesis-capability";
@@ -41,10 +46,7 @@ function currentArtifacts(
 	return all.filter((artifact) => current.has(artifact.artifactId));
 }
 
-function refsOf(
-	artifacts: readonly WorkflowArtifact[],
-	types: readonly string[],
-): readonly WorkflowArtifactRef[] {
+function refsOf(artifacts: readonly WorkflowArtifact[], types: readonly string[]): readonly WorkflowArtifactRef[] {
 	return artifacts
 		.filter((artifact) => types.includes(artifact.type))
 		.map((artifact) => ({ runId: artifact.runId, artifactId: artifact.artifactId }));

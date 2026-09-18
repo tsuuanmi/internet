@@ -1,7 +1,7 @@
 import { BrowserManager } from "#internet/browser/runtime";
 import { defineInternetCommand } from "#internet/commands/internet";
 import { defineWorkflowCommand } from "#internet/commands/workflow";
-import { ACCOUNT_IDS, DEFAULT_TEAM_ACCOUNTS, getAccountDefinition } from "#internet/core/accounts";
+import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
 import { resolveBrowserConfig } from "#internet/core/config";
 import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
 import { defineInternetChatTool } from "#internet/tools/internet-chat";
@@ -9,8 +9,10 @@ import { defineInternetResearchTool } from "#internet/tools/internet-research";
 import { defineInternetTeamTool } from "#internet/tools/internet-team";
 import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { defineInternetWorkflowMaintenanceTool } from "#internet/tools/internet-workflow-maintenance";
+import { WorkflowAdmissionActivationRegistry } from "#internet/workflow/admission/activation-registry";
 import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
 import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
+import { resolveWorkflowProfileAvailability } from "#internet/workflow/bootstrap";
 import { WorkflowDriver } from "#internet/workflow/driver";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { DshWorkflowEventSink, WorkflowEventJournal } from "#internet/workflow/events";
@@ -19,6 +21,9 @@ import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import { WorkflowOperator } from "#internet/workflow/operator";
 import { WorkflowProfileRegistry } from "#internet/workflow/profiles/registry";
+import { RESEARCH_WORKFLOW_PROFILE } from "#internet/workflow/profiles/research/profile";
+import { createWorkflowResearchRuntime } from "#internet/workflow/profiles/research/runtime";
+import { createSoftwareWorkflowActivationHandler } from "#internet/workflow/profiles/software-activation";
 import { SOFTWARE_WORKFLOW_PROFILE } from "#internet/workflow/profiles/software-profile";
 import { WorkflowRetentionManager } from "#internet/workflow/retention";
 import { WorkflowService } from "#internet/workflow/service";
@@ -47,15 +52,12 @@ const INTERNET_TEAM_GUIDANCE = [
     "Every selected member needs its own ready portable account state. Provider/browser execution failures are orchestration errors, not valid member contributions; provider/account identity is reserved for explicit diagnostics.",
 ].join(" ");
 const INTERNET_WORKFLOW_GUIDANCE = [
-    "Use /workflow <task> as the normal entry point for a durable coding workflow. Use /workflow list, /workflow status [jobId], /workflow watch [jobId], /workflow stop [jobId], /workflow continue [jobId], and /workflow delete <jobId> for operator control without reading private JSON files manually. New jobs always pin a freshly queried upstream main HEAD; deletion requires an explicit workflow ID.",
-    "New workflow starts are recorded through the durable admission protocol before the existing v3 coding runtime is activated; raw User source, Local interpretation provenance, preflight identity, and exact accepted activation remain distinct.",
-    "The workflow is a durable dependency graph. Research A/B and Review A/B become READY independently and may execute concurrently while the account scheduler remains the only same-account capacity gate. Completed exact-input nodes are never replayed merely because a later node fails.",
-    "Status/watch project the authoritative graph: phase/lifecycle, exact active or recovering node, execution attempt, provider activity, dependency blockers, recent meaningful events, required user action, and the next transition.",
-    "WorkflowDriver reconciles orphaned execution leases after restart, schedules only READY/recoverable nodes, and retries the smallest failed logical node. Exact node outputs are stored separately from diagnostics so restart recovery can reconstruct prompts without replaying completed work.",
-    "Research and review finals are materialized as exact SHA-256-bound durable handoffs. The separate chatgpt-writer account receives exact payloads and trusted controls in one persistent per-job conversation.",
-    "Scoped Website confirmation classification is fail-closed. Recognized scope-valid Writer confirmations for PR preparation remain auto-approved; merge is never workflow-authorized or auto-approved.",
-    "The workflow completes when the exact PR head passes review, then returns the PR identity and persistent Writer chat URL. Any later edits or merge are user-controlled outside the workflow review guarantee.",
-    "internet_workflow remains the deterministic lower-level control-plane tool, including the real end-to-end acceptance test. Workflow retention remains explicit operator maintenance only.",
+    "internet_workflow is the durable profile-aware control plane. Use admit -> confirm when required -> activate for both software_change and deep_research workflows; status/cancel accept either a legacy software job ID or a vNext WorkflowRun ID.",
+    "/workflow remains the software convenience command while v3 software compatibility is explicitly retained during migration. New software jobs still pin an exact repository revision and merge remains User-controlled.",
+    "deep_research activates a bounded vNext WorkflowRun that can execute multiple provider-native research rounds, durably wait on Timer or correlated ExternalEvent dependencies, synthesize Evidence into a Report, and converge only after a current reviewer CriterionAssessment.",
+    "Timer is semantic durable workflow state and is separate from legacy recovery notBefore/backoff. Persisted deadlines are reconciled after restart; duplicate ExternalEvents are deduplicated by source identity.",
+    "Capability/profile registration is availability-driven. Research workflow availability does not depend on the chatgpt-writer account; software workflow surfaces are registered only when software execution topology is available.",
+    "The deterministic runtime routes typed Needs/awaitables and never interprets research or feedback prose as control authority.",
 ].join(" ");
 function enabledAccounts(config) {
     return new Set(ACCOUNT_IDS.filter((accountId) => {
@@ -84,30 +86,71 @@ export function apply(ctx, rawConfig) {
         ctx.tools.register(defineInternetTeamTool(manager, config, thinkers));
         ctx.systemPrompt?.section?.({ name: "tool:internet_team", order: 122, text: INTERNET_TEAM_GUIDANCE });
     }
-    const workflowTeamReady = DEFAULT_TEAM_ACCOUNTS.every((accountId) => thinkers.has(accountId));
-    if (workflowTeamReady && accounts.has("chatgpt-writer")) {
-        const jobs = new WorkflowJobStore(config.dataDir);
+    const availability = resolveWorkflowProfileAvailability(accounts);
+    if (availability.software || availability.research) {
+        const teamRunner = new BrowserWorkflowTeamRunner(manager, config);
         const admissions = new WorkflowAdmissionStore(config.dataDir);
-        const profiles = new WorkflowProfileRegistry([SOFTWARE_WORKFLOW_PROFILE], SOFTWARE_WORKFLOW_PROFILE.id);
+        const profileDescriptors = [
+            ...(availability.software ? [SOFTWARE_WORKFLOW_PROFILE] : []),
+            ...(availability.research ? [RESEARCH_WORKFLOW_PROFILE] : []),
+        ];
+        const profiles = new WorkflowProfileRegistry(profileDescriptors, availability.software ? SOFTWARE_WORKFLOW_PROFILE.id : RESEARCH_WORKFLOW_PROFILE.id);
         const admissionService = new WorkflowAdmissionService(admissions, profiles);
-        const handoffs = new WorkflowHandoffStore(config.dataDir);
-        const results = new WorkflowNodeResultStore(config.dataDir);
-        const journal = new WorkflowEventJournal(config.dataDir);
-        const eventSink = new DshWorkflowEventSink(ctx.agents);
-        const retention = new WorkflowRetentionManager(config.dataDir, jobs);
-        const engine = new WorkflowEngine(jobs, new BrowserWorkflowTeamRunner(manager, config), new WorkflowTeamPromptBuilder(), handoffs, new BrowserWorkflowWriterRunner(manager, {
-            hardTimeoutMs: config.workflowHardTimeoutMs,
-            stallTimeoutMs: config.workflowStallTimeoutMs,
-        }), results, eventSink, journal);
-        const driver = new WorkflowDriver(engine, jobs);
-        const service = new WorkflowService(engine, driver, jobs, retention, admissionService);
-        const operator = new WorkflowOperator(service, journal);
-        ctx.effect(() => () => driver.dispose());
-        driver.resumeActive();
-        ctx.commands.register(defineWorkflowCommand({ service, operator }));
-        ctx.tools.register(defineInternetWorkflowTool(service, { browser: manager }));
-        ctx.tools.register(defineInternetWorkflowMaintenanceTool(retention));
+        const activationHandlers = [];
+        const researchRuntime = availability.research
+            ? createWorkflowResearchRuntime(config.dataDir, manager, teamRunner)
+            : undefined;
+        if (researchRuntime !== undefined) {
+            activationHandlers.push(researchRuntime.activationHandler);
+            researchRuntime.driver.resumeActive();
+            researchRuntime.wakeups.start();
+            ctx.effect(() => () => researchRuntime.dispose());
+        }
+        let legacy;
+        if (availability.software) {
+            const jobs = new WorkflowJobStore(config.dataDir);
+            const handoffs = new WorkflowHandoffStore(config.dataDir);
+            const results = new WorkflowNodeResultStore(config.dataDir);
+            const journal = new WorkflowEventJournal(config.dataDir);
+            const eventSink = new DshWorkflowEventSink(ctx.agents);
+            const retention = new WorkflowRetentionManager(config.dataDir, jobs);
+            const engine = new WorkflowEngine(jobs, teamRunner, new WorkflowTeamPromptBuilder(), handoffs, new BrowserWorkflowWriterRunner(manager, {
+                hardTimeoutMs: config.workflowHardTimeoutMs,
+                stallTimeoutMs: config.workflowStallTimeoutMs,
+            }), results, eventSink, journal);
+            const driver = new WorkflowDriver(engine, jobs);
+            activationHandlers.push(createSoftwareWorkflowActivationHandler(engine, driver, jobs));
+            driver.resumeActive();
+            ctx.effect(() => () => driver.dispose());
+            legacy = { engine, driver, jobs, retention, journal };
+        }
+        const service = new WorkflowService({
+            admissionService,
+            activationRegistry: new WorkflowAdmissionActivationRegistry(activationHandlers),
+            ...(researchRuntime === undefined
+                ? {}
+                : { vNext: { runs: researchRuntime.runs, driver: researchRuntime.driver } }),
+            ...(legacy === undefined
+                ? {}
+                : {
+                    legacy: {
+                        engine: legacy.engine,
+                        driver: legacy.driver,
+                        jobs: legacy.jobs,
+                        retention: legacy.retention,
+                    },
+                }),
+        });
+        ctx.tools.register(defineInternetWorkflowTool(service, {
+            browser: manager,
+            defaultProfile: availability.software ? "software_change" : "deep_research",
+        }));
         ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
+        if (legacy !== undefined) {
+            const operator = new WorkflowOperator(service, legacy.journal);
+            ctx.commands.register(defineWorkflowCommand({ service, operator }));
+            ctx.tools.register(defineInternetWorkflowMaintenanceTool(legacy.retention));
+        }
     }
 }
 export { BrowserManager } from "#internet/browser/runtime";
@@ -121,6 +164,7 @@ export { getTeamPromptStrategy, TEAM_PROMPT_STRATEGIES } from "#internet/team/pr
 export { parseChatArgs, parseResearchArgs, parseTeamArgs } from "#internet/tools/args";
 export { WORKFLOW_OPERATIONS } from "#internet/tools/internet-workflow";
 export { defineInternetWorkflowMaintenanceTool, WORKFLOW_MAINTENANCE_OPERATIONS, } from "#internet/tools/internet-workflow-maintenance";
+export { WorkflowAdmissionActivationRegistry, WorkflowAdmissionActivationRegistryError, } from "#internet/workflow/admission/activation-registry";
 export { canonicalAdmissionJson, hashAdmissionValue } from "#internet/workflow/admission/hash";
 export { preflightWorkflowAdmission } from "#internet/workflow/admission/preflight";
 export { WorkflowAdmissionService, WorkflowAdmissionServiceError } from "#internet/workflow/admission/service";
@@ -129,12 +173,15 @@ export { WORKFLOW_ADMISSION_CONFIRMATION_LEVELS, WORKFLOW_ADMISSION_PROVENANCE, 
 export { parseWorkflowAdmissionDraft, parseWorkflowAdmissionRecord } from "#internet/workflow/admission/validation";
 export { WorkflowArtifactStore, WorkflowArtifactStoreError } from "#internet/workflow/artifact-store";
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
+export * from "#internet/workflow/awaitables/index";
+export { resolveWorkflowProfileAvailability } from "#internet/workflow/bootstrap";
 export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
 export { WorkflowContinuationError, WorkflowContinuationService } from "#internet/workflow/continuation";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export { WorkflowDriver } from "#internet/workflow/driver";
 export { WorkflowEngine } from "#internet/workflow/engine";
 export { DshWorkflowEventSink, formatWorkflowEvent, parseWorkflowGraphEvent, WorkflowEventJournal, } from "#internet/workflow/events";
+export { WorkflowExternalEventStore, WorkflowExternalEventStoreError, } from "#internet/workflow/external-event-store";
 export { assertWorkflowGraph, workflowNodeId } from "#internet/workflow/graph";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export { WorkflowInputBundleStore, WorkflowInputBundleStoreError } from "#internet/workflow/input-bundle-store";
@@ -147,7 +194,14 @@ export { formatWorkflowList, formatWorkflowStatus, WorkflowOperator, WorkflowOpe
 export { WorkflowPendingActionStore, WorkflowPendingActionStoreError } from "#internet/workflow/pending-action-store";
 export { WorkflowPlanningCapabilityAdapter, WorkflowTeamPlanningExecutor, } from "#internet/workflow/profiles/common/planning-capability";
 export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
+export { createResearchWorkflowActivationHandler, createResearchWorkflowActivator, } from "#internet/workflow/profiles/research/activation";
+export { createResearchAdmissionDraft } from "#internet/workflow/profiles/research/admission";
+export { RESEARCH_ASSESSMENT_CAPABILITY, WorkflowResearchAssessmentAdapter, } from "#internet/workflow/profiles/research/assessment-capability";
 export { EXTERNAL_DEEP_RESEARCH_CAPABILITY, WorkflowExternalDeepResearchAdapter, } from "#internet/workflow/profiles/research/deep-research-capability";
+export { createWorkflowResearchPolicy, } from "#internet/workflow/profiles/research/policy";
+export { RESEARCH_WORKFLOW_PROFILE, RESEARCH_WORKFLOW_PROFILE_ID, } from "#internet/workflow/profiles/research/profile";
+export { createWorkflowResearchRuntime, } from "#internet/workflow/profiles/research/runtime";
+export { RESEARCH_SYNTHESIS_CAPABILITY, WorkflowResearchSynthesisAdapter, } from "#internet/workflow/profiles/research/synthesis-capability";
 export { withSoftwareDeliveryFeedbackPolicy } from "#internet/workflow/profiles/software/delivery-policy";
 export { WorkflowSoftwareFeedbackBridge } from "#internet/workflow/profiles/software/feedback-bridge";
 export { SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY, WorkflowSoftwareFeedbackInterpretationAdapter, } from "#internet/workflow/profiles/software/feedback-capability";
@@ -165,7 +219,9 @@ export * from "#internet/workflow/semantic/index";
 export { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 export { WorkflowTeamPromptBuilder } from "#internet/workflow/team-prompt-builder";
 export { BrowserWorkflowTeamRunner } from "#internet/workflow/team-runner";
+export { WorkflowTimerStore, WorkflowTimerStoreError } from "#internet/workflow/timer-store";
 export { workflowJobIsTerminal } from "#internet/workflow/types";
+export { WorkflowWakeupScheduler, } from "#internet/workflow/wakeup-scheduler";
 export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";
 export { parseWorkflowWorkstream, WORKFLOW_WORKSTREAM_SCHEMA } from "#internet/workflow/workstream";
 export { WorkflowWorkstreamStore, WorkflowWorkstreamStoreError } from "#internet/workflow/workstream-store";

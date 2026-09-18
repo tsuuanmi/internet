@@ -1,13 +1,11 @@
-import type { AccountId } from "#internet/core/accounts";
 import type { BrowserManager } from "#internet/browser/runtime";
-import { WorkflowDurableAwaitableRuntime } from "#internet/workflow/awaitables/runtime";
+import type { AccountId } from "#internet/core/accounts";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
+import { WorkflowDurableAwaitableRuntime } from "#internet/workflow/awaitables/runtime";
 import { WorkflowCapabilityRegistry } from "#internet/workflow/capability-registry";
 import { WorkflowExternalEventStore } from "#internet/workflow/external-event-store";
 import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
-import {
-	createResearchWorkflowActivationHandler,
-} from "#internet/workflow/profiles/research/activation";
+import { createResearchWorkflowActivationHandler } from "#internet/workflow/profiles/research/activation";
 import {
 	RESEARCH_ASSESSMENT_CAPABILITY,
 	WorkflowResearchAssessmentAdapter,
@@ -29,10 +27,7 @@ import { WorkflowRunCoordinator } from "#internet/workflow/runtime/coordinator";
 import { WorkflowRunDriver } from "#internet/workflow/runtime/driver";
 import { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
 import { WorkflowExecutionResultStore } from "#internet/workflow/runtime/result-store";
-import type {
-	WorkflowCapabilityExecutor,
-	WorkflowPendingActionRuntime,
-} from "#internet/workflow/runtime/types";
+import type { WorkflowCapabilityExecutor, WorkflowPendingActionRuntime } from "#internet/workflow/runtime/types";
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { WorkflowTimerStore } from "#internet/workflow/timer-store";
 import { WorkflowWakeupScheduler } from "#internet/workflow/wakeup-scheduler";

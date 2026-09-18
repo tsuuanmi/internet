@@ -1,5 +1,4 @@
-import { assertWorkflowPrincipal, requireWorkflowOwnerSessionId, } from "#internet/workflow/authorization";
-import { createSoftwareWorkflowActivator } from "#internet/workflow/profiles/software-activation";
+import { assertWorkflowPrincipal, requireWorkflowOwnerSessionId, workflowPrincipalEquals, } from "#internet/workflow/authorization";
 import { workflowJobIsTerminal } from "#internet/workflow/types";
 export class WorkflowServiceError extends Error {
     constructor(message) {
@@ -13,12 +12,11 @@ function preflightFailure(record) {
     return new WorkflowServiceError(`workflow admission ${record.admissionId} cannot activate: ${reasons.join("; ") || "preflight did not accept the request"}`);
 }
 export class WorkflowService {
-    constructor(engine, driver, jobs, retention, admissionService) {
-        this.engine = engine;
-        this.driver = driver;
-        this.jobs = jobs;
-        this.retention = retention;
-        this.admissionService = admissionService;
+    constructor(dependencies) {
+        this.admissionService = dependencies.admissionService;
+        this.activationRegistry = dependencies.activationRegistry;
+        this.vNextRuntime = dependencies.vNext;
+        this.legacyRuntime = dependencies.legacy;
     }
     admit(context, input) {
         assertWorkflowPrincipal(context.principal);
@@ -52,65 +50,110 @@ export class WorkflowService {
         }
         return this.activateAdmission(context, admitted.admissionId, admitted.acceptedSpecHash);
     }
+    activateAdmissionTarget(context, admissionId, expectedAcceptedSpecHash) {
+        assertWorkflowPrincipal(context.principal);
+        const admitted = this.admission(context, admissionId);
+        if (admitted.acceptedSpec === undefined) {
+            throw new WorkflowServiceError(`workflow admission ${admissionId} has no accepted specification`);
+        }
+        const handler = this.activationRegistry.resolve(admitted.acceptedSpec.profile.id);
+        const record = this.admissionService.activate(context.principal, admissionId, expectedAcceptedSpecHash, handler.activator(context));
+        if (record.activation === undefined) {
+            throw new WorkflowServiceError(`workflow admission ${admissionId} did not produce an activation target`);
+        }
+        return handler.resolve(record.activation);
+    }
+    targetStatus(context, targetId) {
+        assertWorkflowPrincipal(context.principal);
+        const run = this.vNextRuntime?.runs.get(targetId);
+        if (run !== undefined) {
+            if (!workflowPrincipalEquals(run.owner, context.principal)) {
+                throw new WorkflowServiceError(`workflow run ${targetId} does not belong to this principal`);
+            }
+            return { kind: "workflow_run", run };
+        }
+        if (this.legacyRuntime === undefined) {
+            throw new WorkflowServiceError(`workflow target ${targetId} does not exist`);
+        }
+        return { kind: "workflow_job", job: this.status(context, targetId) };
+    }
+    async cancelTarget(context, targetId) {
+        assertWorkflowPrincipal(context.principal);
+        const run = this.vNextRuntime?.runs.get(targetId);
+        if (run !== undefined) {
+            if (!workflowPrincipalEquals(run.owner, context.principal)) {
+                throw new WorkflowServiceError(`workflow run ${targetId} does not belong to this principal`);
+            }
+            return { kind: "workflow_run", run: await this.vNextRuntime.driver.cancel(targetId) };
+        }
+        if (this.legacyRuntime === undefined) {
+            throw new WorkflowServiceError(`workflow target ${targetId} does not exist`);
+        }
+        return { kind: "workflow_job", job: await this.cancel(context, targetId) };
+    }
+    /** v3 software compatibility surface retained until the explicit migration-retirement milestone. */
     activateAdmission(context, admissionId, expectedAcceptedSpecHash) {
-        const ownerSessionId = requireWorkflowOwnerSessionId(context);
-        const activator = createSoftwareWorkflowActivator(this.engine, this.driver, this.jobs, ownerSessionId);
-        const record = this.admissionService.activate(context.principal, admissionId, expectedAcceptedSpecHash, activator);
-        if (record.activation?.targetKind !== "workflow_job") {
-            throw new WorkflowServiceError(`workflow admission ${admissionId} did not activate a software workflow job`);
+        const resource = this.activateAdmissionTarget(context, admissionId, expectedAcceptedSpecHash);
+        if (resource.kind !== "workflow_job") {
+            throw new WorkflowServiceError(`workflow admission ${admissionId} activated a vNext WorkflowRun, not a v3 WorkflowJob`);
         }
-        const job = this.jobs.get(record.activation.targetId);
-        if (job === undefined) {
-            throw new WorkflowServiceError(`activated workflow job ${record.activation.targetId} does not exist`);
-        }
-        return job;
+        return resource.job;
     }
     list(context) {
-        return this.ownerJobs(requireWorkflowOwnerSessionId(context));
+        return this.ownerJobs(this.legacy(), requireWorkflowOwnerSessionId(context));
     }
     status(context, jobId) {
-        return this.selectJob(context, jobId, false);
+        return this.selectJob(this.legacy(), context, jobId, false);
     }
     async cancel(context, jobId) {
-        const selected = this.selectJob(context, jobId, true);
-        return this.driver.cancel(selected.jobId);
+        const legacy = this.legacy();
+        const selected = this.selectJob(legacy, context, jobId, true);
+        return legacy.driver.cancel(selected.jobId);
     }
     continue(context, jobId) {
-        const selected = this.selectJob(context, jobId, true);
-        if (this.driver.isActive(selected.jobId)) {
+        const legacy = this.legacy();
+        const selected = this.selectJob(legacy, context, jobId, true);
+        if (legacy.driver.isActive(selected.jobId)) {
             throw new WorkflowServiceError(`workflow job ${selected.jobId} already has an active driver`);
         }
         if (selected.graph.lifecycle !== "BLOCKED" && selected.graph.lifecycle !== "RECOVERING") {
             throw new WorkflowServiceError(`workflow job ${selected.jobId} has no explicit recovery path`);
         }
-        const resumed = this.engine.continue(selected.jobId);
-        this.driver.enqueue(resumed.jobId);
+        const resumed = legacy.engine.continue(selected.jobId);
+        legacy.driver.enqueue(resumed.jobId);
         return resumed;
     }
     async delete(context, jobId) {
         if (jobId === undefined)
             throw new WorkflowServiceError("/workflow delete requires an explicit jobId");
+        const legacy = this.legacy();
         const ownerSessionId = requireWorkflowOwnerSessionId(context);
-        const selected = this.selectJob(context, jobId, false);
-        const terminal = workflowJobIsTerminal(selected) ? selected : await this.driver.cancel(selected.jobId);
-        return this.retention.deleteNow({
+        const selected = this.selectJob(legacy, context, jobId, false);
+        const terminal = workflowJobIsTerminal(selected) ? selected : await legacy.driver.cancel(selected.jobId);
+        return legacy.retention.deleteNow({
             jobId: terminal.jobId,
             expectedUpdatedAt: terminal.updatedAt,
             operatorSessionId: ownerSessionId,
         });
     }
     isActive(jobId) {
-        return this.driver.isActive(jobId);
+        return this.legacy().driver.isActive(jobId);
     }
-    ownerJobs(ownerSessionId) {
-        return this.jobs
+    legacy() {
+        if (this.legacyRuntime === undefined) {
+            throw new WorkflowServiceError("legacy software workflow runtime is not available");
+        }
+        return this.legacyRuntime;
+    }
+    ownerJobs(legacy, ownerSessionId) {
+        return legacy.jobs
             .list()
             .filter((job) => job.ownerSessionId === ownerSessionId)
             .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.jobId.localeCompare(b.jobId));
     }
-    selectJob(context, explicitJobId, requireActive) {
+    selectJob(legacy, context, explicitJobId, requireActive) {
         const ownerSessionId = requireWorkflowOwnerSessionId(context);
-        const owned = this.ownerJobs(ownerSessionId);
+        const owned = this.ownerJobs(legacy, ownerSessionId);
         if (explicitJobId !== undefined) {
             const job = owned.find((candidate) => candidate.jobId === explicitJobId);
             if (job === undefined) {

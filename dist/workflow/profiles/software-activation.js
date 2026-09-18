@@ -1,3 +1,4 @@
+import { requireWorkflowOwnerSessionId } from "#internet/workflow/authorization";
 import { workflowJobIsTerminal } from "#internet/workflow/types";
 function activationInput(spec, ownerSessionId) {
     if (spec.profile.id !== "software_change") {
@@ -47,6 +48,23 @@ export function createSoftwareWorkflowActivator(engine, driver, jobs, ownerSessi
                 assertMatchingJob(existing, expected);
             if (!workflowJobIsTerminal(job) && !driver.isActive(job.jobId))
                 driver.enqueue(job.jobId);
+        },
+    };
+}
+export function createSoftwareWorkflowActivationHandler(engine, driver, jobs) {
+    return {
+        profileId: "software_change",
+        activator(context) {
+            return createSoftwareWorkflowActivator(engine, driver, jobs, requireWorkflowOwnerSessionId(context));
+        },
+        resolve(target) {
+            if (target.targetKind !== "workflow_job") {
+                throw new Error("software workflow activation target is not a WorkflowJob");
+            }
+            const job = jobs.get(target.targetId);
+            if (job === undefined)
+                throw new Error(`activated workflow job ${target.targetId} does not exist`);
+            return { kind: "workflow_job", job };
         },
     };
 }

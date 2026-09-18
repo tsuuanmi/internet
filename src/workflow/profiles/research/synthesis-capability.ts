@@ -44,7 +44,9 @@ export class WorkflowResearchSynthesisAdapter implements WorkflowCapabilityExecu
 		signal?: AbortSignal,
 	): Promise<WorkflowSemanticExecutionResult> {
 		const exact = loadWorkflowExactCapabilityInput(this.artifacts, context.inputBundle);
-		const evidence = exact.artifacts.filter((artifact) => artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence);
+		const evidence = exact.artifacts.filter(
+			(artifact) => artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.evidence,
+		);
 		if (evidence.length === 0) throw new Error("research synthesis requires Evidence artifacts");
 		const answer = await runWorkflowTeamCapability(this.runner, {
 			runId: context.run.runId,

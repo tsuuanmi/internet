@@ -20,17 +20,17 @@ export {
 } from "#internet/workflow/runtime/result-store";
 export { routeWorkflowCapability, WorkflowCapabilityRoutingError } from "#internet/workflow/runtime/routing";
 export type {
+	WorkflowAwaitableRuntime,
 	WorkflowCapabilityActiveExecutionContext,
 	WorkflowCapabilityExecutionContext,
 	WorkflowCapabilityExecutor,
-	WorkflowAwaitableRuntime,
 	WorkflowCapabilityExecutorRegistry,
 	WorkflowExecution,
 	WorkflowExecutionFailure,
 	WorkflowExecutionState,
+	WorkflowExternalEventMaterialization,
 	WorkflowNeedMaterialization,
 	WorkflowNeedRuntimeContext,
-	WorkflowExternalEventMaterialization,
 	WorkflowPendingActionMaterialization,
 	WorkflowPendingActionRuntime,
 	WorkflowReadinessDecision,

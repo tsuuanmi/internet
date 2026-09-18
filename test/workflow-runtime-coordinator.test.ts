@@ -373,7 +373,12 @@ describe("workflow vNext run coordinator", () => {
 			results: new WorkflowExecutionResultStore(root),
 			capabilities: new WorkflowCapabilityRegistry([capability]),
 			executors: { resolve: () => ({ kind: "test", execute: async () => ({}) as never }) },
-			pendingActions: { ensure: () => ({}) as never, list: () => [], hasOpen: () => false, reconcile: () => undefined },
+			pendingActions: {
+				ensure: () => ({}) as never,
+				list: () => [],
+				hasOpen: () => false,
+				reconcile: () => undefined,
+			},
 			awaitables,
 			policy: runtimePolicy,
 		});

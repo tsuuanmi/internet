@@ -135,11 +135,8 @@ describe("workflow durable Timer and ExternalEvent", () => {
 		const runs = new WorkflowRunStore(root);
 		runs.create(run());
 		const timers = new WorkflowTimerStore(root);
-		timers.ensure(
-			runId,
-			need,
-			{ timerType: "research.refresh", deadline: "2026-09-18T01:00:00.000Z" },
-			() => Date.parse("2026-09-18T00:00:00.000Z"),
+		timers.ensure(runId, need, { timerType: "research.refresh", deadline: "2026-09-18T01:00:00.000Z" }, () =>
+			Date.parse("2026-09-18T00:00:00.000Z"),
 		);
 		const woken: string[] = [];
 		const scheduler = new WorkflowWakeupScheduler(

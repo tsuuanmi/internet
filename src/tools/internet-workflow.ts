@@ -53,10 +53,7 @@ export interface InternetWorkflowService {
 		expectedAcceptedSpecHash: string,
 	): WorkflowActivationResource;
 	targetStatus(context: WorkflowAuthorizationContext, targetId: string): WorkflowActivationResource;
-	cancelTarget(
-		context: WorkflowAuthorizationContext,
-		targetId: string,
-	): Promise<WorkflowActivationResource>;
+	cancelTarget(context: WorkflowAuthorizationContext, targetId: string): Promise<WorkflowActivationResource>;
 	status(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
 	cancel(context: WorkflowAuthorizationContext, jobId?: string): Promise<WorkflowJob>;
 	continue(context: WorkflowAuthorizationContext, jobId?: string): WorkflowJob;
@@ -400,7 +397,11 @@ export function defineInternetWorkflowTool(
 									})
 								: undefined;
 					if (draft === undefined) {
-						return { ok: false, operation, message: "software_change admit requires repository and baseRevision" };
+						return {
+							ok: false,
+							operation,
+							message: "software_change admit requires repository and baseRevision",
+						};
 					}
 					const admitted = service.admit(authorization, draft);
 					return { ok: true, operation, ...admissionProject(admitted) };
@@ -428,11 +429,7 @@ export function defineInternetWorkflowTool(
 					if (typeof args.admissionId !== "string" || typeof args.acceptedSpecHash !== "string") {
 						return { ok: false, operation, message: "activate requires admissionId and acceptedSpecHash" };
 					}
-					const resource = service.activateAdmissionTarget(
-						authorization,
-						args.admissionId,
-						args.acceptedSpecHash,
-					);
+					const resource = service.activateAdmissionTarget(authorization, args.admissionId, args.acceptedSpecHash);
 					return { ok: true, operation, ...activationProject(resource) };
 				}
 				if (typeof args.jobId !== "string") return { ok: false, operation, message: `${operation} requires jobId` };

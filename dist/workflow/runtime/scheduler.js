@@ -38,6 +38,16 @@ export function materializeWorkflowNeeds(dependencies, run, artifacts, now) {
             dependencies.pendingActions.ensure({ run, needArtifact: artifact, need, contract, now });
             continue;
         }
+        if (materialization.kind === "timer") {
+            const { kind: _kind, ...contract } = materialization;
+            dependencies.awaitables.ensureTimer(run.runId, { runId: run.runId, artifactId: artifact.artifactId }, contract, now);
+            continue;
+        }
+        if (materialization.kind === "external_event") {
+            const { kind: _kind, ...contract } = materialization;
+            dependencies.awaitables.ensureExternalEventWait(run.runId, { runId: run.runId, artifactId: artifact.artifactId }, contract, now);
+            continue;
+        }
         const capability = routeWorkflowCapability(run, need, dependencies.capabilities, materialization.capability);
         const existing = workItems.filter((item) => item.needArtifact.artifactId === artifact.artifactId);
         if (existing.some((item) => !["CANCELLED", "FENCED"].includes(item.state)))

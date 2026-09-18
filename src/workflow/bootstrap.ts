@@ -1,8 +1,4 @@
-import {
-	DEFAULT_TEAM_ACCOUNTS,
-	type AccountId,
-	accountHasCapability,
-} from "#internet/core/accounts";
+import { type AccountId, accountHasCapability, DEFAULT_TEAM_ACCOUNTS } from "#internet/core/accounts";
 
 export interface WorkflowProfileAvailability {
 	readonly software: boolean;

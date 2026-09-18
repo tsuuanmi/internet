@@ -18,7 +18,8 @@ export function projectWorkflowRunLifecycle(dependencies, run, now) {
         const currentArtifacts = currentWorkflowArtifactIds(artifacts, dependencies.inputBundles.list(run.runId));
         const openExternal = artifacts
             .filter((artifact) => artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need && currentArtifacts.has(artifact.artifactId))
-            .some((artifact) => dependencies.pendingActions.hasOpen(run.runId, artifact.artifactId));
+            .some((artifact) => dependencies.pendingActions.hasOpen(run.runId, artifact.artifactId) ||
+            dependencies.awaitables.hasOpen(run.runId, artifact.artifactId));
         lifecycle = autonomous ? "ACTIVE" : openExternal ? "WAITING_EXTERNAL" : "BLOCKED";
     }
     if (lifecycle === run.lifecycle)
