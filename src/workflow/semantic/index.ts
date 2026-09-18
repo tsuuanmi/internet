@@ -52,6 +52,7 @@ export {
 	parseWorkflowDeliveryPayload,
 	parseWorkflowEvidencePayload,
 	parseWorkflowFindingPayload,
+	parseWorkflowImplementationOutputPayload,
 	parseWorkflowNeedPayload,
 	parseWorkflowObjectivePayload,
 	parseWorkflowPlanPayload,
