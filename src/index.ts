@@ -244,6 +244,14 @@ export {
 	defineInternetWorkflowMaintenanceTool,
 	WORKFLOW_MAINTENANCE_OPERATIONS,
 } from "#internet/tools/internet-workflow-maintenance";
+export type {
+	WorkflowActivationResource,
+	WorkflowAdmissionActivationHandler,
+} from "#internet/workflow/admission/activation-registry";
+export {
+	WorkflowAdmissionActivationRegistry,
+	WorkflowAdmissionActivationRegistryError,
+} from "#internet/workflow/admission/activation-registry";
 export { canonicalAdmissionJson, hashAdmissionValue } from "#internet/workflow/admission/hash";
 export { preflightWorkflowAdmission } from "#internet/workflow/admission/preflight";
 export type { WorkflowAdmissionLifecycleOptions } from "#internet/workflow/admission/service";
@@ -279,6 +287,7 @@ export {
 	WORKFLOW_ADMISSION_STATES,
 } from "#internet/workflow/admission/types";
 export { parseWorkflowAdmissionDraft, parseWorkflowAdmissionRecord } from "#internet/workflow/admission/validation";
+export * from "#internet/workflow/awaitables/index";
 export type { CreateWorkflowArtifactInput } from "#internet/workflow/artifact-store";
 export { WorkflowArtifactStore, WorkflowArtifactStoreError } from "#internet/workflow/artifact-store";
 export type {
@@ -296,6 +305,10 @@ export type {
 	WorkflowContinuationServiceOptions,
 } from "#internet/workflow/continuation";
 export { WorkflowContinuationError, WorkflowContinuationService } from "#internet/workflow/continuation";
+export {
+	WorkflowExternalEventStore,
+	WorkflowExternalEventStoreError,
+} from "#internet/workflow/external-event-store";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -359,10 +372,36 @@ export {
 	WorkflowTeamPlanningExecutor,
 } from "#internet/workflow/profiles/common/planning-capability";
 export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
+export { createResearchAdmissionDraft } from "#internet/workflow/profiles/research/admission";
+export {
+	createResearchWorkflowActivationHandler,
+	createResearchWorkflowActivator,
+} from "#internet/workflow/profiles/research/activation";
+export {
+	RESEARCH_ASSESSMENT_CAPABILITY,
+	WorkflowResearchAssessmentAdapter,
+} from "#internet/workflow/profiles/research/assessment-capability";
 export {
 	EXTERNAL_DEEP_RESEARCH_CAPABILITY,
 	WorkflowExternalDeepResearchAdapter,
 } from "#internet/workflow/profiles/research/deep-research-capability";
+export {
+	createWorkflowResearchPolicy,
+	type WorkflowResearchPolicyOptions,
+} from "#internet/workflow/profiles/research/policy";
+export {
+	RESEARCH_WORKFLOW_PROFILE,
+	RESEARCH_WORKFLOW_PROFILE_ID,
+} from "#internet/workflow/profiles/research/profile";
+export {
+	createWorkflowResearchRuntime,
+	type WorkflowResearchRuntime,
+	type WorkflowResearchRuntimeOptions,
+} from "#internet/workflow/profiles/research/runtime";
+export {
+	RESEARCH_SYNTHESIS_CAPABILITY,
+	WorkflowResearchSynthesisAdapter,
+} from "#internet/workflow/profiles/research/synthesis-capability";
 export { withSoftwareDeliveryFeedbackPolicy } from "#internet/workflow/profiles/software/delivery-policy";
 export { WorkflowSoftwareFeedbackBridge } from "#internet/workflow/profiles/software/feedback-bridge";
 export {
@@ -408,7 +447,12 @@ export { parseWorkflowReviewResult, WORKFLOW_REVIEW_VERDICTS } from "#internet/w
 export { WorkflowRunStore, WorkflowRunStoreError } from "#internet/workflow/run-store";
 export * from "#internet/workflow/runtime/index";
 export * from "#internet/workflow/semantic/index";
-export type { WorkflowServiceDriver, WorkflowServiceEngine } from "#internet/workflow/service";
+export type {
+	WorkflowLegacyServiceRuntime,
+	WorkflowServiceDependencies,
+	WorkflowServiceDriver,
+	WorkflowServiceEngine,
+} from "#internet/workflow/service";
 export { WorkflowService, WorkflowServiceError } from "#internet/workflow/service";
 export type {
 	WorkflowPromptContext,
@@ -430,6 +474,12 @@ export type {
 	WorkflowWriterConversation,
 } from "#internet/workflow/types";
 export { workflowJobIsTerminal } from "#internet/workflow/types";
+export { WorkflowTimerStore, WorkflowTimerStoreError } from "#internet/workflow/timer-store";
+export {
+	WorkflowWakeupScheduler,
+	type WorkflowWakeupDriver,
+	type WorkflowWakeupSchedulerOptions,
+} from "#internet/workflow/wakeup-scheduler";
 export { WorkflowWorkItemStore, WorkflowWorkItemStoreError } from "#internet/workflow/work-item-store";
 export type {
 	WorkflowContinuationLink,
