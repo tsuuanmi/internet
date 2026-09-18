@@ -11,6 +11,7 @@ import {
 import { currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidation";
 import { routeWorkflowCapability } from "#internet/workflow/runtime/routing";
 import type {
+	WorkflowAwaitableRuntime,
 	WorkflowNeedRuntimeContext,
 	WorkflowPendingActionRuntime,
 	WorkflowRuntimePolicy,
@@ -24,6 +25,7 @@ export interface WorkflowSchedulerDependencies {
 	readonly inputBundles: WorkflowInputBundleStore;
 	readonly capabilities: WorkflowCapabilityRegistry;
 	readonly pendingActions: WorkflowPendingActionRuntime;
+	readonly awaitables: WorkflowAwaitableRuntime;
 	readonly policy: WorkflowRuntimePolicy;
 }
 
@@ -69,6 +71,21 @@ export function materializeWorkflowNeeds(
 		if (materialization.kind === "pending_action") {
 			const { kind: _kind, ...contract } = materialization;
 			dependencies.pendingActions.ensure({ run, needArtifact: artifact, need, contract, now });
+			continue;
+		}
+		if (materialization.kind === "timer") {
+			const { kind: _kind, ...contract } = materialization;
+			dependencies.awaitables.ensureTimer(run.runId, { runId: run.runId, artifactId: artifact.artifactId }, contract, now);
+			continue;
+		}
+		if (materialization.kind === "external_event") {
+			const { kind: _kind, ...contract } = materialization;
+			dependencies.awaitables.ensureExternalEventWait(
+				run.runId,
+				{ runId: run.runId, artifactId: artifact.artifactId },
+				contract,
+				now,
+			);
 			continue;
 		}
 		const capability = routeWorkflowCapability(run, need, dependencies.capabilities, materialization.capability);
