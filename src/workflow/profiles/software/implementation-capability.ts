@@ -9,6 +9,7 @@ import type {
 import {
 	parseWorkflowDeliveryPayload,
 	parseWorkflowNeedPayload,
+	parseWorkflowUserFeedbackPayload,
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
 	type WorkflowSemanticArtifactDraft,
 	type WorkflowSemanticExecutionResult,
@@ -43,12 +44,26 @@ function relatedDeliveryRefs(
 	const needArtifact = artifacts.get(context.workItem.needArtifact.runId, context.workItem.needArtifact.artifactId);
 	if (needArtifact === undefined) throw new Error("software implementation Need artifact does not exist");
 	const need = parseWorkflowNeedPayload(needArtifact.payload);
-	return need.relatedArtifacts.filter((ref) => {
+	const refs = new Map<string, WorkflowArtifactRef>();
+	for (const ref of need.relatedArtifacts) {
 		const artifact = artifacts.get(ref.runId, ref.artifactId);
-		if (artifact?.type !== WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery) return false;
-		parseWorkflowDeliveryPayload(artifact.payload);
-		return true;
-	});
+		if (artifact?.type !== WORKFLOW_SEMANTIC_ARTIFACT_TYPES.userFeedback) continue;
+		const feedback = parseWorkflowUserFeedbackPayload(artifact.payload);
+		if (feedback.targetDelivery === undefined || feedback.targetVersion === undefined) continue;
+		const target = artifacts.get(feedback.targetDelivery.runId, feedback.targetDelivery.artifactId);
+		if (target?.type !== WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery) {
+			throw new Error("software implementation feedback targets a missing Delivery");
+		}
+		const delivery = parseWorkflowDeliveryPayload(target.payload);
+		if (feedback.targetVersion !== delivery.subject.version) {
+			throw new Error("software implementation feedback targets an obsolete Delivery version");
+		}
+		refs.set(
+			`${feedback.targetDelivery.runId}:${feedback.targetDelivery.artifactId}`,
+			feedback.targetDelivery,
+		);
+	}
+	return [...refs.values()];
 }
 
 function resultArtifacts(
