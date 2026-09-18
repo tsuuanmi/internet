@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { failWorkflowExecution, fenceWorkflowExecution, setWorkflowWorkItemFailed, setWorkflowWorkItemReady, } from "#internet/workflow/runtime/execution-state";
+import { workflowInputBundleIsCurrent } from "#internet/workflow/runtime/invalidation";
 import { WORKFLOW_EXECUTION_SCHEMA } from "#internet/workflow/runtime/types";
 import { promoteWorkflowSemanticResult } from "#internet/workflow/semantic/index";
 function isAbort(error, signal) {
@@ -111,6 +112,8 @@ export class WorkflowExecutionManager {
             const current = this.dependencies.executions.get(run.runId, executionId);
             if (current?.state !== "RUNNING")
                 return;
+            if (this.dependencies.results.get(run.runId, executionId) !== undefined)
+                throw error;
             if (isAbort(error, signal) && capability.sideEffect === "READ_ONLY") {
                 fenceWorkflowExecution(this.dependencies.executions, current, this.now, "EXECUTION_ABORTED", "read-only execution was aborted");
                 setWorkflowWorkItemReady(this.dependencies.workItems, run.runId, workItemId, this.now);
@@ -129,6 +132,10 @@ export class WorkflowExecutionManager {
         const bundle = this.dependencies.inputBundles.get(execution.runId, execution.inputBundleId);
         if (bundle === undefined)
             throw new Error(`workflow InputBundle ${execution.inputBundleId} does not exist`);
+        const artifacts = this.dependencies.artifacts.list(execution.runId);
+        const bundles = this.dependencies.inputBundles.list(execution.runId);
+        if (!workflowInputBundleIsCurrent(bundle, artifacts, bundles))
+            throw new Error("workflow execution InputBundle is stale");
         const capability = this.dependencies.capabilities.resolve(execution.capability);
         const promoted = promoteWorkflowSemanticResult({
             workItem: item,

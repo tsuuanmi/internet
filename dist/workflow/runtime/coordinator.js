@@ -40,6 +40,7 @@ export class WorkflowRunCoordinator {
         const run = this.status(runId);
         if (TERMINAL_RUN_LIFECYCLES.has(run.lifecycle))
             return run;
+        applyWorkflowInvalidation(this.dependencies, runId, this.dependencies.artifacts.list(runId), this.now);
         await this.execution.reconcile(runId, signal);
         return this.advance(runId);
     }

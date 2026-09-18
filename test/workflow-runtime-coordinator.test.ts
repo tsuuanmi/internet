@@ -137,7 +137,6 @@ describe("workflow vNext run coordinator", () => {
 		expect(workItems.list(runId)).toHaveLength(1);
 	});
 
-
 	it("fences stale running work before restart reconciliation", async () => {
 		const { coordinator, need, artifacts, workItems, inputBundles, executions } = fixture();
 		coordinator.advance(runId);
