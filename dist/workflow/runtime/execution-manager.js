@@ -171,7 +171,7 @@ export class WorkflowExecutionManager {
         this.dependencies.executions.update(execution.runId, execution.executionId, currentExecution.revision, (current) => ({
             ...current,
             revision: current.revision + 1,
-            state: "COMPLETED",
+            state: "SUCCEEDED",
             finishedAt: at,
         }));
     }
