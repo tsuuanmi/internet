@@ -208,6 +208,7 @@ export function createWorkflowResearchPolicy(
 							},
 							subject,
 							requiredMethods: ["reviewer"],
+							policyRef: { id: "research.assessment", version: "1" },
 						},
 					],
 					requiredDeliverableTypes: [WORKFLOW_SEMANTIC_ARTIFACT_TYPES.report],
