@@ -146,11 +146,11 @@ export class WorkflowExecutionManager {
         const currentItem = this.dependencies.workItems.get(execution.runId, execution.workItemId);
         if (currentItem === undefined)
             throw new Error("workflow WorkItem disappeared during result commit");
-        if (currentItem.state !== "SUCCEEDED") {
+        if (currentItem.state !== "COMPLETED") {
             this.dependencies.workItems.update(execution.runId, execution.workItemId, currentItem.revision, (current) => ({
                 ...current,
                 revision: current.revision + 1,
-                state: "SUCCEEDED",
+                state: "COMPLETED",
                 resultArtifactIds: [
                     ...current.resultArtifactIds,
                     ...promoted.artifacts
@@ -171,7 +171,7 @@ export class WorkflowExecutionManager {
         this.dependencies.executions.update(execution.runId, execution.executionId, currentExecution.revision, (current) => ({
             ...current,
             revision: current.revision + 1,
-            state: "SUCCEEDED",
+            state: "COMPLETED",
             finishedAt: at,
         }));
     }
