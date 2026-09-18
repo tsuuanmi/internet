@@ -12,7 +12,7 @@ import { currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidat
 import { routeWorkflowCapability } from "#internet/workflow/runtime/routing";
 import type {
 	WorkflowNeedRuntimeContext,
-	WorkflowPendingActionMaterializer,
+	WorkflowPendingActionRuntime,
 	WorkflowRuntimePolicy,
 } from "#internet/workflow/runtime/types";
 import { parseWorkflowNeedPayload, WORKFLOW_SEMANTIC_ARTIFACT_TYPES } from "#internet/workflow/semantic/index";
@@ -23,7 +23,7 @@ export interface WorkflowSchedulerDependencies {
 	readonly workItems: WorkflowWorkItemStore;
 	readonly inputBundles: WorkflowInputBundleStore;
 	readonly capabilities: WorkflowCapabilityRegistry;
-	readonly pendingActions: WorkflowPendingActionMaterializer;
+	readonly pendingActions: WorkflowPendingActionRuntime;
 	readonly policy: WorkflowRuntimePolicy;
 }
 
@@ -57,10 +57,18 @@ export function materializeWorkflowNeeds(
 		if (artifact.type !== WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need || !current.has(artifact.artifactId)) continue;
 		const need = parseWorkflowNeedPayload(artifact.payload);
 		const workItems = dependencies.workItems.list(run.runId);
-		const context: WorkflowNeedRuntimeContext = { run, needArtifact: artifact, need, artifacts, workItems };
+		const context: WorkflowNeedRuntimeContext = {
+			run,
+			needArtifact: artifact,
+			need,
+			artifacts,
+			workItems,
+			pendingActions: dependencies.pendingActions.list(run.runId),
+		};
 		const materialization = dependencies.policy.materializeNeed(context);
 		if (materialization.kind === "pending_action") {
-			dependencies.pendingActions.ensure(run, artifact, need, materialization.actionType);
+			const { kind: _kind, ...contract } = materialization;
+			dependencies.pendingActions.ensure({ run, needArtifact: artifact, need, contract, now });
 			continue;
 		}
 		const capability = routeWorkflowCapability(run, need, dependencies.capabilities, materialization.capability);
@@ -108,6 +116,7 @@ export function prepareWorkflowReadyWork(
 			need,
 			artifacts,
 			workItems: dependencies.workItems.list(run.runId),
+			pendingActions: dependencies.pendingActions.list(run.runId),
 		};
 		const readiness = dependencies.policy.readiness(context, item);
 		if (readiness.ready && readiness.blockers.length > 0)
