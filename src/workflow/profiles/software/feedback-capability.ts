@@ -5,6 +5,7 @@ import {
 	workflowCapabilityInputJson,
 } from "#internet/workflow/profiles/capability-context";
 import { runWorkflowTeamCapability } from "#internet/workflow/profiles/common/team-capability";
+import { SOFTWARE_IMPLEMENTATION_CAPABILITY } from "#internet/workflow/profiles/software/implementation-capability";
 import type {
 	WorkflowCapabilityActiveExecutionContext,
 	WorkflowCapabilityExecutor,
@@ -17,7 +18,6 @@ import {
 	type WorkflowSemanticExecutionResult,
 } from "#internet/workflow/semantic/index";
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
-import { SOFTWARE_IMPLEMENTATION_CAPABILITY } from "#internet/workflow/profiles/software/implementation-capability";
 
 export const SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY = {
 	id: "software.feedback_interpretation",
@@ -102,7 +102,10 @@ export class WorkflowSoftwareFeedbackInterpretationAdapter implements WorkflowCa
 		context: WorkflowCapabilityActiveExecutionContext,
 		signal?: AbortSignal,
 	): Promise<WorkflowSemanticExecutionResult> {
-		const needArtifact = this.artifacts.get(context.workItem.needArtifact.runId, context.workItem.needArtifact.artifactId);
+		const needArtifact = this.artifacts.get(
+			context.workItem.needArtifact.runId,
+			context.workItem.needArtifact.artifactId,
+		);
 		if (needArtifact === undefined) throw new Error("software feedback Need artifact does not exist");
 		const need = parseWorkflowNeedPayload(needArtifact.payload);
 		const exactInput = loadWorkflowExactCapabilityInput(this.artifacts, context.inputBundle);

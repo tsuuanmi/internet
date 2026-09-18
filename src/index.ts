@@ -300,19 +300,19 @@ export {
 	EXTERNAL_DEEP_RESEARCH_CAPABILITY,
 	WorkflowExternalDeepResearchAdapter,
 } from "#internet/workflow/profiles/research/deep-research-capability";
+export { withSoftwareDeliveryFeedbackPolicy } from "#internet/workflow/profiles/software/delivery-policy";
+export { WorkflowSoftwareFeedbackBridge } from "#internet/workflow/profiles/software/feedback-bridge";
 export {
 	SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY,
 	WorkflowSoftwareFeedbackInterpretationAdapter,
 } from "#internet/workflow/profiles/software/feedback-capability";
 export {
+	parseSoftwareUserFeedbackInput,
 	SOFTWARE_USER_FEEDBACK_SCHEMA,
 	SOFTWARE_USER_FEEDBACK_VERDICTS,
-	parseSoftwareUserFeedbackInput,
 	type SoftwareUserFeedbackInput,
 	type SoftwareUserFeedbackVerdict,
 } from "#internet/workflow/profiles/software/feedback-contract";
-export { WorkflowSoftwareFeedbackBridge } from "#internet/workflow/profiles/software/feedback-bridge";
-export { withSoftwareDeliveryFeedbackPolicy } from "#internet/workflow/profiles/software/delivery-policy";
 export {
 	SOFTWARE_IMPLEMENTATION_CAPABILITY,
 	WorkflowSoftwareImplementationAdapter,

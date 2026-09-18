@@ -1,6 +1,16 @@
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
-import type { WorkflowExternalSignal, WorkflowPendingAction, WorkflowResponseProvenance } from "#internet/workflow/interactions/types";
+import type {
+	WorkflowExternalSignal,
+	WorkflowPendingAction,
+	WorkflowResponseProvenance,
+} from "#internet/workflow/interactions/types";
+import { SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY } from "#internet/workflow/profiles/software/feedback-capability";
+import {
+	parseSoftwareUserFeedbackInput,
+	SOFTWARE_USER_FEEDBACK_SCHEMA,
+	type SoftwareUserFeedbackInput,
+} from "#internet/workflow/profiles/software/feedback-contract";
 import { currentWorkflowArtifactIds } from "#internet/workflow/runtime/invalidation";
 import {
 	parseWorkflowDeliveryPayload,
@@ -8,12 +18,6 @@ import {
 	WORKFLOW_SEMANTIC_SCHEMA_REFS,
 	type WorkflowFeedbackProvenance,
 } from "#internet/workflow/semantic/index";
-import {
-	parseSoftwareUserFeedbackInput,
-	SOFTWARE_USER_FEEDBACK_SCHEMA,
-	type SoftwareUserFeedbackInput,
-} from "#internet/workflow/profiles/software/feedback-contract";
-import { SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY } from "#internet/workflow/profiles/software/feedback-capability";
 
 export interface WorkflowSoftwareFeedbackBridgeDependencies {
 	readonly artifacts: WorkflowArtifactStore;
@@ -32,17 +36,27 @@ export class WorkflowSoftwareFeedbackBridge {
 	}
 
 	onResolved(action: WorkflowPendingAction): void {
-		if (action.actionType !== "software.user_validation" || action.state !== "RESOLVED" || action.resolution === undefined) {
+		if (
+			action.actionType !== "software.user_validation" ||
+			action.state !== "RESOLVED" ||
+			action.resolution === undefined
+		) {
 			return;
 		}
 		const input = parseSoftwareUserFeedbackInput(action.resolution.payload);
-		const delivery = this.boundDelivery(action.runId, action.artifactBindings.map((ref) => ref.artifactId));
+		const delivery = this.boundDelivery(
+			action.runId,
+			action.artifactBindings.map((ref) => ref.artifactId),
+		);
 		const payload = parseWorkflowDeliveryPayload(delivery.payload);
-		if (!action.subjectBindings.some((binding) =>
-			binding.subject.kind === payload.subject.kind &&
-			binding.subject.id === payload.subject.id &&
-			binding.version === payload.subject.version
-		)) {
+		if (
+			!action.subjectBindings.some(
+				(binding) =>
+					binding.subject.kind === payload.subject.kind &&
+					binding.subject.id === payload.subject.id &&
+					binding.version === payload.subject.version,
+			)
+		) {
 			throw new Error("software User validation action is not bound to the Delivery exact subject");
 		}
 		this.persistFeedback(
@@ -57,7 +71,10 @@ export class WorkflowSoftwareFeedbackBridge {
 
 	onSignal(signal: WorkflowExternalSignal): void {
 		if (signal.signalType !== "software.user_feedback") return;
-		if (signal.payloadSchema.id !== SOFTWARE_USER_FEEDBACK_SCHEMA.id || signal.payloadSchema.version !== SOFTWARE_USER_FEEDBACK_SCHEMA.version) {
+		if (
+			signal.payloadSchema.id !== SOFTWARE_USER_FEEDBACK_SCHEMA.id ||
+			signal.payloadSchema.version !== SOFTWARE_USER_FEEDBACK_SCHEMA.version
+		) {
 			throw new Error("software User feedback signal uses the wrong schema");
 		}
 		const input = parseSoftwareUserFeedbackInput(signal.payload);
@@ -133,10 +150,7 @@ export class WorkflowSoftwareFeedbackBridge {
 				requestedCapability: SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY.id,
 				question: input.raw,
 				subjects: [{ kind: "delivery", id: `${targetDelivery.artifactId}@${targetVersion}` }],
-				relatedArtifacts: [
-					{ runId: feedback.runId, artifactId: feedback.artifactId },
-					targetDelivery,
-				],
+				relatedArtifacts: [{ runId: feedback.runId, artifactId: feedback.artifactId }, targetDelivery],
 			},
 		});
 	}

@@ -8,6 +8,7 @@ export declare const WORKFLOW_SEMANTIC_ARTIFACT_TYPES: {
     readonly evidence: "evidence";
     readonly criterionAssessment: "criterion_assessment";
     readonly report: "report";
+    readonly implementationOutput: "implementation_output";
     readonly delivery: "delivery";
     readonly userFeedback: "user_feedback";
 };
@@ -44,6 +45,10 @@ export declare const WORKFLOW_SEMANTIC_SCHEMA_REFS: {
     };
     readonly report: {
         readonly id: "workflow.report";
+        readonly version: "1";
+    };
+    readonly implementationOutput: {
+        readonly id: "workflow.implementation-output";
         readonly version: "1";
     };
     readonly delivery: {
@@ -182,6 +187,13 @@ export interface WorkflowReportPayload {
     readonly body: string;
     readonly evidence: readonly WorkflowArtifactRef[];
 }
+export interface WorkflowImplementationOutputPayload {
+    readonly outputId: string;
+    readonly kind: string;
+    readonly subject: WorkflowAssessmentSubject;
+    readonly artifacts: readonly WorkflowArtifactRef[];
+    readonly instructions?: string;
+}
 export interface WorkflowDeliveryPayload {
     readonly deliveryId: string;
     readonly kind: string;
@@ -198,7 +210,7 @@ export interface WorkflowUserFeedbackPayload {
     readonly targetVersion?: string;
     readonly attachments: readonly WorkflowArtifactRef[];
 }
-export type WorkflowSemanticPayload = WorkflowObjectivePayload | WorkflowAcceptanceCriteriaPayload | WorkflowPlanPayload | WorkflowNeedPayload | WorkflowFindingPayload | WorkflowEvidencePayload | WorkflowCriterionAssessmentPayload | WorkflowReportPayload | WorkflowDeliveryPayload | WorkflowUserFeedbackPayload;
+export type WorkflowSemanticPayload = WorkflowObjectivePayload | WorkflowAcceptanceCriteriaPayload | WorkflowPlanPayload | WorkflowNeedPayload | WorkflowFindingPayload | WorkflowEvidencePayload | WorkflowCriterionAssessmentPayload | WorkflowReportPayload | WorkflowImplementationOutputPayload | WorkflowDeliveryPayload | WorkflowUserFeedbackPayload;
 export interface WorkflowPlanTaskRef {
     readonly planArtifact: WorkflowArtifactRef;
     readonly taskId: string;

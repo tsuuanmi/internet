@@ -109,7 +109,7 @@ export class WorkflowInteractionService {
             },
             updatedAt: at,
         }));
-        this.dependencies.onResolved?.(run.runId);
+        this.dependencies.onResolved?.(resolved);
         return resolved;
     }
     supersedeStale(runId) {

@@ -1,6 +1,6 @@
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
-import type { WorkflowArtifactRef } from "#internet/workflow/kernel/types";
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
+import type { WorkflowArtifactRef } from "#internet/workflow/kernel/types";
 import type {
 	WorkflowCapabilityActiveExecutionContext,
 	WorkflowCapabilityExecutionContext,
@@ -19,7 +19,10 @@ export const SOFTWARE_IMPLEMENTATION_CAPABILITY = {
 	id: "software.implementation_change",
 	version: "1",
 	acceptedNeedTypes: ["execution"],
-	producedArtifactTypes: [WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput, WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need],
+	producedArtifactTypes: [
+		WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput,
+		WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need,
+	],
 	producedReceiptTypes: ["software.pull_request"],
 	sideEffect: "CONTROLLED_MUTATION",
 	requiredAuthority: ["repository_mutation"],

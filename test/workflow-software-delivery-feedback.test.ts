@@ -12,20 +12,11 @@ import {
 	type WorkflowPendingAction,
 } from "#internet/workflow/interactions/types";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
-import {
-	withSoftwareDeliveryFeedbackPolicy,
-} from "#internet/workflow/profiles/software/delivery-policy";
+import { withSoftwareDeliveryFeedbackPolicy } from "#internet/workflow/profiles/software/delivery-policy";
 import { WorkflowSoftwareFeedbackBridge } from "#internet/workflow/profiles/software/feedback-bridge";
-import {
-	SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY,
-} from "#internet/workflow/profiles/software/feedback-capability";
-import {
-	SOFTWARE_USER_FEEDBACK_SCHEMA,
-} from "#internet/workflow/profiles/software/feedback-contract";
-import type {
-	WorkflowNeedRuntimeContext,
-	WorkflowRuntimePolicy,
-} from "#internet/workflow/runtime/types";
+import { SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY } from "#internet/workflow/profiles/software/feedback-capability";
+import { SOFTWARE_USER_FEEDBACK_SCHEMA } from "#internet/workflow/profiles/software/feedback-contract";
+import type { WorkflowNeedRuntimeContext, WorkflowRuntimePolicy } from "#internet/workflow/runtime/types";
 import {
 	parseWorkflowNeedPayload,
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
@@ -227,7 +218,8 @@ describe("software Delivery/User-feedback lifecycle", () => {
 		const need = all.find(
 			(artifact) =>
 				artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.need &&
-				parseWorkflowNeedPayload(artifact.payload).requestedCapability === SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY.id,
+				parseWorkflowNeedPayload(artifact.payload).requestedCapability ===
+					SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY.id,
 		);
 		expect(feedback?.payload).toMatchObject({
 			provenance: "user_explicit",

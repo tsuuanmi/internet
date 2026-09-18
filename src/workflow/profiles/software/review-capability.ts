@@ -1,6 +1,6 @@
-import type { WorkflowArtifact, WorkflowArtifactRef } from "#internet/workflow/kernel/types";
 import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
+import type { WorkflowArtifact, WorkflowArtifactRef } from "#internet/workflow/kernel/types";
 import {
 	loadWorkflowExactCapabilityInput,
 	workflowCapabilityInputJson,
@@ -42,7 +42,11 @@ export const SOFTWARE_REVIEW_CAPABILITY = {
 function exactImplementationOutput(
 	artifacts: readonly WorkflowArtifact[],
 	reviewedHeadSha: string,
-): { artifact: WorkflowArtifact; ref: WorkflowArtifactRef; payload: ReturnType<typeof parseWorkflowImplementationOutputPayload> } {
+): {
+	artifact: WorkflowArtifact;
+	ref: WorkflowArtifactRef;
+	payload: ReturnType<typeof parseWorkflowImplementationOutputPayload>;
+} {
 	const matches = artifacts
 		.filter((artifact) => artifact.type === WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput)
 		.map((artifact) => ({ artifact, payload: parseWorkflowImplementationOutputPayload(artifact.payload) }))

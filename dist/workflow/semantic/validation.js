@@ -322,6 +322,17 @@ export function parseWorkflowReportPayload(value) {
     assertArtifactRefs(value.evidence, "workflow Report evidence");
     return value;
 }
+export function parseWorkflowImplementationOutputPayload(value) {
+    if (!isRecord(value))
+        throw new Error("invalid workflow ImplementationOutput payload");
+    assertText(value.outputId, "workflow ImplementationOutput id");
+    assertText(value.kind, "workflow ImplementationOutput kind");
+    assertAssessmentSubject(value.subject);
+    assertArtifactRefs(value.artifacts, "workflow ImplementationOutput artifact");
+    if (value.instructions !== undefined)
+        assertText(value.instructions, "workflow ImplementationOutput instructions");
+    return value;
+}
 export function parseWorkflowDeliveryPayload(value) {
     if (!isRecord(value))
         throw new Error("invalid workflow Delivery payload");
@@ -368,6 +379,8 @@ export function parseWorkflowSemanticPayload(type, value) {
             return parseWorkflowCriterionAssessmentPayload(value);
         case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.report:
             return parseWorkflowReportPayload(value);
+        case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput:
+            return parseWorkflowImplementationOutputPayload(value);
         case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery:
             return parseWorkflowDeliveryPayload(value);
         case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.userFeedback:

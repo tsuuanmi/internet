@@ -1,4 +1,5 @@
 import type { WorkflowArtifactRef } from "#internet/workflow/kernel/types";
+import { SOFTWARE_USER_FEEDBACK_SCHEMA } from "#internet/workflow/profiles/software/feedback-contract";
 import type {
 	WorkflowNeedRuntimeContext,
 	WorkflowPendingActionMaterialization,
@@ -10,7 +11,6 @@ import {
 	parseWorkflowImplementationOutputPayload,
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
 } from "#internet/workflow/semantic/index";
-import { SOFTWARE_USER_FEEDBACK_SCHEMA } from "#internet/workflow/profiles/software/feedback-contract";
 
 function uniqueRefs(refs: readonly WorkflowArtifactRef[]): readonly WorkflowArtifactRef[] {
 	const byKey = new Map<string, WorkflowArtifactRef>();
@@ -37,14 +37,14 @@ function deliveryValidationAction(
 		responseSchema: SOFTWARE_USER_FEEDBACK_SCHEMA,
 		blockingScope: [context.need.requestOwner],
 		artifactBindings: [{ runId: delivery.runId, artifactId: delivery.artifactId }],
-		subjectBindings: [{ subject: { kind: payload.subject.kind, id: payload.subject.id }, version: payload.subject.version }],
+		subjectBindings: [
+			{ subject: { kind: payload.subject.kind, id: payload.subject.id }, version: payload.subject.version },
+		],
 		timeoutPolicy: "WAIT_INDEFINITELY",
 	};
 }
 
-function requiredReadinessArtifacts(
-	context: WorkflowNeedRuntimeContext,
-): readonly WorkflowArtifactRef[] {
+function requiredReadinessArtifacts(context: WorkflowNeedRuntimeContext): readonly WorkflowArtifactRef[] {
 	const refs: WorkflowArtifactRef[] = [...context.need.relatedArtifacts];
 	if (context.need.requestOwner.kind === "implementation_output") {
 		const output = context.artifacts.find((artifact) => {

@@ -356,7 +356,12 @@ describe("workflow vNext capability adapters", () => {
 			}),
 		};
 		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-implementation-")));
-		const need = createNeed(store, "execution", "Implement the requested change", SOFTWARE_IMPLEMENTATION_CAPABILITY.id);
+		const need = createNeed(
+			store,
+			"execution",
+			"Implement the requested change",
+			SOFTWARE_IMPLEMENTATION_CAPABILITY.id,
+		);
 		const adapter = new WorkflowSoftwareImplementationAdapter(writer, () => ({}) as never, store);
 		const ctx = context(SOFTWARE_IMPLEMENTATION_CAPABILITY, need.artifactId);
 		const result = await adapter.execute(ctx);
