@@ -1,4 +1,11 @@
 import type { WorkflowArtifact, WorkflowInputBundle, WorkflowWorkItem } from "#internet/workflow/kernel/types";
+import type { WorkflowExecutionStore } from "#internet/workflow/runtime/execution-store";
+import {
+	fenceWorkflowExecution,
+	fenceWorkflowWorkItem,
+} from "#internet/workflow/runtime/execution-state";
+import type { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
+import type { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
 
 const INVALIDATING_RELATIONS = new Set(["supersedes", "invalidates"]);
 
@@ -55,4 +62,34 @@ export function staleWorkflowWorkItems(
 		const bundle = byId.get(item.inputBundleId);
 		return bundle === undefined || !workflowInputBundleIsCurrent(bundle, artifacts, bundles);
 	});
+}
+
+export interface WorkflowInvalidationDependencies {
+	readonly workItems: WorkflowWorkItemStore;
+	readonly inputBundles: WorkflowInputBundleStore;
+	readonly executions: WorkflowExecutionStore;
+}
+
+export function applyWorkflowInvalidation(
+	dependencies: WorkflowInvalidationDependencies,
+	runId: string,
+	artifacts: readonly WorkflowArtifact[],
+	now: () => number,
+): void {
+	const items = dependencies.workItems.list(runId);
+	const bundles = dependencies.inputBundles.list(runId);
+	const executions = dependencies.executions.list(runId);
+	for (const item of staleWorkflowWorkItems(items, bundles, artifacts)) {
+		for (const execution of executions) {
+			if (execution.workItemId === item.workItemId && execution.state === "RUNNING")
+				fenceWorkflowExecution(
+					dependencies.executions,
+					execution,
+					now,
+					"INPUT_INVALIDATED",
+					"execution input was invalidated",
+				);
+		}
+		fenceWorkflowWorkItem(dependencies.workItems, runId, item.workItemId, now);
+	}
 }
