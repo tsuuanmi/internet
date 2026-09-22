@@ -82,7 +82,7 @@
 		"esbuild": "0.28.2",
 		"shx": "0.4.0",
 		"typescript": "5.9.3",
-		"vitest": "3.2.6"
+		"vitest": "5.0.1"
 	},
 	"scripts": {
 		"clean": "shx rm -rf dist",
