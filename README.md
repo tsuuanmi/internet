@@ -324,17 +324,16 @@ Do not treat machine-local login profiles or durable conversation files as the p
 
 ## Documentation
 
-Start with [`docs/README.md`](./docs/README.md). Current-state contracts:
+Start with [`docs/README.md`](./docs/README.md), the canonical knowledge router.
 
-- [`docs/how-it-works.md`](./docs/how-it-works.md)
-- [`docs/WORKFLOW.md`](./docs/WORKFLOW.md)
-- [`docs/WORKFLOW-ENGINE.md`](./docs/WORKFLOW-ENGINE.md)
-- [`docs/WORKFLOW-GRAPH-ORCHESTRATION.md`](./docs/WORKFLOW-GRAPH-ORCHESTRATION.md)
-- [`docs/AGENT-TEAM-DESIGN.md`](./docs/AGENT-TEAM-DESIGN.md)
-- [`docs/WORKFLOW-OPERATOR-CONTRACT.md`](./docs/WORKFLOW-OPERATOR-CONTRACT.md)
-- [`docs/WORKFLOW-HARDENING.md`](./docs/WORKFLOW-HARDENING.md)
-- [`docs/SRS.md`](./docs/SRS.md)
-- [`docs/internet-team-architecture.md`](./docs/internet-team-architecture.md)
-- [`docs/TODO.md`](./docs/TODO.md)
+Current production knowledge is organized under:
 
-Historical ADR/roadmap/update documents remain useful for design rationale, but current behavior is defined by the as-built contracts above.
+- [requirements](./docs/requirements/README.md)
+- [architecture](./docs/architecture/README.md)
+- [design](./docs/design/README.md)
+- [accepted decisions](./docs/decisions/README.md)
+- [reference contracts](./docs/reference/README.md)
+- [validation](./docs/validation/README.md)
+- [operations](./docs/operations/README.md)
+
+Workflow vNext remains explicitly separated under [proposals](./docs/proposals/workflow-vnext/README.md) until implemented and promoted.

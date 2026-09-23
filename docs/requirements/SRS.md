@@ -6,7 +6,7 @@
 
 ## 1. Purpose
 
-This SRS defines the required behavior of the current `@tsuuanmi/internet` multi-account Website workflow runtime for coding tasks. The durable dependency graph is the authoritative execution model. Implementation detail lives in [`how-it-works.md`](./how-it-works.md), [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md), and [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md).
+This SRS defines the required behavior of the current `@tsuuanmi/internet` multi-account Website workflow runtime for coding tasks. The durable dependency graph is the authoritative execution model. Implementation detail lives in [`how-it-works.md`](../design/how-it-works.md), [`WORKFLOW-ENGINE.md`](../design/WORKFLOW-ENGINE.md), and [`WORKFLOW-GRAPH-ORCHESTRATION.md`](../design/WORKFLOW-GRAPH-ORCHESTRATION.md).
 
 ## 2. Primary UX
 

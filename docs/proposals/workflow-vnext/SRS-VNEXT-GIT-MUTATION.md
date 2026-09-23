@@ -4,7 +4,7 @@
 - **Version:** 0.2
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
-- **Decision:** [`ADR/0014-reconciled-git-mutation-protocol.md`](./ADR/0014-reconciled-git-mutation-protocol.md)
+- **Decision:** [`ADR/0014-reconciled-git-mutation-protocol.md`](./adr/0014-reconciled-git-mutation-protocol.md)
 
 ## 1. Purpose and authority
 

@@ -4,7 +4,7 @@
 - **Version:** 0.2
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
-- **Decision:** [`ADR/0016-planner-objective-plan-task-boundary.md`](./ADR/0016-planner-objective-plan-task-boundary.md)
+- **Decision:** [`ADR/0016-planner-objective-plan-task-boundary.md`](./adr/0016-planner-objective-plan-task-boundary.md)
 
 ## 1. Purpose and authority
 
