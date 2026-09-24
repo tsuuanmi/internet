@@ -27,6 +27,520 @@ That approach also creates a brittle edge: when a provider changes its UI or pre
 
 The important distinction is between **semantic workflow truth** and **browser presentation state**. The former should remain deterministic and durable. The latter may benefit from a more adaptive observer and bounded recovery mechanism.
 
+
+## Broader goal: a less strict browser control loop
+
+The larger opportunity is not merely to make selectors more resilient. It is to stop treating a Website turn as a single opaque operation that either follows the expected path or fails.
+
+A more flexible model is:
+
+~~~text
+Website/browser state
+        |
+        v
+atomic snapshot + semantic progress event
+        |
+        v
+Local agent / workflow reasoning
+        |
+        v
+typed browser intent
+        |
+        v
+runtime policy + durable validation
+        |
+        v
+observed browser action
+        |
+        v
+Website/browser state
+~~~
+
+This allows Local to reason about unexpected but understandable provider states without giving Local raw browser authority.
+
+The key conversion boundary is:
+
+~~~text
+browser observation
+-> semantic event
+-> agent decision
+-> typed intent
+-> runtime-approved action
+~~~
+
+For example:
+
+~~~text
+Website shows:
+  "Research timed out"
+  [Retry]
+
+Snapshot/event says:
+  provider_state = recoverable_timeout
+  actions = [retry:a42]
+  request_receipt = submitted
+  retry_policy = provider_local_retry_allowed
+
+Local decides:
+  RETRY_CURRENT_PROVIDER_ATTEMPT
+
+Runtime validates:
+  same execution
+  same conversation
+  same request receipt
+  fresh action a42
+  no duplicate logical submission
+
+Browser executes:
+  CLICK a42
+~~~
+
+The adaptive layer therefore makes the system **less strict about UI trajectories** while remaining strict about correctness, idempotency, and authority.
+
+## Scenario 1 — Website research timeout and agent-directed retry
+
+Today a research turn can reach a hard or semantic timeout from the runtime's perspective even though the Website itself exposes a useful recoverable state. Local deterministic logic may know only that the expected completion contract was not reached.
+
+The browser can often observe more:
+
+~~~text
+research is no longer running
+visible provider notice says the attempt timed out
+Retry is available
+conversation remains intact
+partial research state may still be present
+~~~
+
+Rather than immediately collapsing this into a terminal generic timeout, the browser layer could return a bounded diagnostic/recovery packet:
+
+~~~yaml
+event: provider_recovery_required
+reason: research_timeout
+conversation: <stable conversation receipt>
+execution: <current provider execution>
+snapshot_revision: <freshness marker>
+
+provider_state:
+  response_present: true
+  running: false
+  visible_notice: "..."
+  partial_output_present: true
+
+allowed_actions:
+  - id: a42
+    intent: retry_current_attempt
+    operation: CLICK
+    role: button
+    name: Retry
+~~~
+
+Local can then reason at the semantic level:
+
+~~~text
+current workflow still needs this research result
++ provider reports a recoverable timeout
++ retry refers to the current provider attempt
++ runtime says retry is safe
+=> retry
+~~~
+
+The result is converted back into a typed browser intent rather than arbitrary instructions:
+
+~~~text
+RETRY_CURRENT_PROVIDER_ATTEMPT(snapshot=a42)
+~~~
+
+The browser runtime revalidates freshness and durable receipts before clicking the observed Retry control.
+
+This is stronger than hardcoding every possible timeout/error surface because:
+
+- the browser captures what is actually visible now;
+- Local can combine that observation with workflow context;
+- the same semantic recovery intent can survive provider UI wording/layout changes;
+- the executor remains constrained to runtime-approved actions.
+
+### Timeout should become a diagnostic boundary before a terminal boundary
+
+A useful experiment is to change the conceptual sequence from:
+
+~~~text
+completion timeout
+-> close provider turn
+-> return timeout error
+~~~
+
+to:
+
+~~~text
+completion deadline reached
+-> take final atomic snapshot
+-> classify provider state
+
+completed/recoverable:
+  reconcile normally
+
+known recoverable:
+  emit recovery-required event
+
+unknown but actionable:
+  ask bounded recovery policy
+
+ambiguous or unsafe:
+  fail closed
+~~~
+
+This does not mean every timeout must be extended indefinitely. A workflow still needs a hard budget. It means the budget boundary should preserve enough observed state for an informed recovery decision instead of discarding the browser situation immediately.
+
+## Scenario 2 — User adds information while a Website agent is running
+
+A second opportunity is live steering.
+
+Suppose Research Team A is already running a Website research turn and the user adds an important constraint or source. The desired behavior is not necessarily:
+
+~~~text
+cancel everything
+-> restart workflow
+-> replay research from the beginning
+~~~
+
+If the provider conversation supports receiving a follow-up/steering message while the ongoing task remains usable, Local could convert the user update into a durable **turn augmentation** and deliver it into the same stable Website conversation.
+
+Conceptually:
+
+~~~text
+User
+  -> Local
+  -> interpret update against active workflow
+  -> create durable augmentation
+  -> target active research conversation
+  -> deliver as provider message when browser state permits
+  -> research continues
+  -> final result records the augmentation as part of its exact input lineage
+~~~
+
+Example:
+
+~~~yaml
+augmentation:
+  id: aug-17
+  target_node: research:A:synthesis
+  target_execution: exec-42
+  source: user
+  message: "Also compare the new upstream JEV snapshot design."
+  message_hash: ...
+  created_at: ...
+
+delivery:
+  conversation: <stable Website conversation>
+  status: pending | delivered | incorporated | superseded
+~~~
+
+### Preserve the main workflow while allowing live steering
+
+The workflow graph does not need to be replaced by an open-ended chat loop.
+
+The durable graph can remain:
+
+~~~text
+Research A -> synthesis -> Writer
+~~~
+
+while the active provider execution has an ordered control/input stream:
+
+~~~text
+initial exact input
+  + augmentation aug-17
+  + augmentation aug-18
+  -> final provider result
+~~~
+
+The resulting node receipt must bind to the final ordered augmentation set. Otherwise the system would violate its own exact-input rule by claiming that a result was produced from the original input when the user materially changed it mid-run.
+
+A candidate identity is therefore:
+
+~~~text
+effective_input_hash =
+  hash(
+    base_input_hash,
+    ordered_applied_augmentation_hashes
+  )
+~~~
+
+If an augmentation arrives after the provider result is already complete, it should not be retroactively attached. It becomes either:
+
+- a follow-up provider turn in the same stable Website conversation;
+- a new/reopened workflow WorkItem;
+- or an input revision that invalidates the old result under normal workflow rules.
+
+Which behavior is correct depends on the semantic ownership of the active node.
+
+### Browser action conversion for live steering
+
+The local agent should not directly call DOM operations.
+
+It emits an intent such as:
+
+~~~text
+SEND_AUGMENTATION(
+  augmentation_id = aug-17,
+  target_execution = exec-42
+)
+~~~
+
+The browser layer then observes the current Website state and chooses the safe mechanical action:
+
+~~~text
+if composer accepts steering message now:
+  attach exact runtime-owned augmentation text
+  verify exact attachment
+  submit through observed semantic Send action
+
+else if provider exposes "add details", "continue", or equivalent:
+  map intent to the observed supported control
+
+else:
+  keep augmentation pending and re-observe
+
+if current provider state makes delivery semantically unsafe:
+  return blocked / defer; do not invent a path
+~~~
+
+This makes the Website agent interactive without making browser presentation state part of workflow correctness.
+
+## A general Local <-> Website control protocol
+
+The two scenarios above suggest a broader interface than today's request/response-shaped browser turn.
+
+Possible semantic events from Browser/Provider to Local:
+
+~~~text
+PROGRESS
+RESPONSE_CHANGED
+RECOVERY_REQUIRED
+RECOVERABLE_TIMEOUT
+CONTINUE_AVAILABLE
+RETRY_AVAILABLE
+INPUT_REQUIRED
+PROVIDER_BLOCKED
+CONFIRMATION_REQUIRED
+COMPLETED
+~~~
+
+Possible typed intents from Local to Browser/Provider:
+
+~~~text
+CONTINUE_CURRENT_ATTEMPT
+RETRY_CURRENT_ATTEMPT
+WAIT_FOR_PROGRESS
+SEND_AUGMENTATION(augmentation_id)
+RESTORE_PENDING_EXACT_INPUT
+DISMISS_NON_AUTHORITY_MODAL
+ABORT_CURRENT_ATTEMPT
+~~~
+
+Not every event or intent needs to become a public API. This is a research vocabulary for separating:
+
+- what the Website/browser currently says is possible;
+- what Local/workflow reasoning wants to do;
+- what the deterministic runtime is actually allowed to execute.
+
+The runtime remains the compiler and policy enforcement layer between semantic intent and browser action.
+
+## How JEV could improve internet
+
+JEV's contribution is not one isolated optimization. Its design suggests several complementary improvements.
+
+### 1. From selector-first automation to observation-first automation
+
+Current provider code often starts with an expected selector/action sequence:
+
+~~~text
+find expected control
+-> interact
+-> wait for expected next control/state
+~~~
+
+JEV starts by observing the actual actionable state.
+
+For internet, the hybrid form would be:
+
+~~~text
+take provider-aware atomic snapshot
+-> recognize expected semantic state
+-> use deterministic path when recognized
+-> otherwise reason over observed state
+~~~
+
+This makes the implementation tolerant of legitimate alternate UI trajectories without abandoning provider semantics.
+
+### 2. Atomic snapshots make failures explainable
+
+A failed sequence currently may expose only the failed locator/postcondition.
+
+A snapshot can preserve:
+
+- visible provider notice;
+- running/completed status;
+- composer contents;
+- retry/continue controls;
+- modal state;
+- current mode;
+- bounded visible text;
+- exact observed action set.
+
+That gives Local enough evidence to distinguish:
+
+~~~text
+wait more
+retry
+continue
+restore input
+dismiss modal
+ask user
+fail closed
+~~~
+
+instead of mapping every unknown state to a generic provider error.
+
+### 3. Dynamic action spaces reduce hardcoded mechanical paths
+
+internet should keep hardcoded **semantic invariants**, but it does not need to hardcode every mechanical UI path.
+
+For example, the invariant may be:
+
+~~~text
+Deep Research must be enabled before submitting this research request.
+~~~
+
+The mechanical UI path could evolve:
+
+~~~text
+old UI:
+  Tools -> Deep research
+
+new UI:
+  Research button
+
+alternate UI:
+  mode menu -> Deep Research
+~~~
+
+An atomic snapshot plus runtime-owned action space allows a bounded agent to select the current path while the provider adapter still verifies the semantic postcondition: Deep Research is actually enabled.
+
+### 4. Semantic actions can survive UI renames and reshuffles
+
+JEV separates “what operation is needed” from “which current target can perform it.”
+
+internet can use the same idea at a safer semantic level:
+
+~~~text
+intent: CONTINUE_CURRENT_ATTEMPT
+
+snapshot candidates:
+  [a1] Continue
+  [a2] Resume
+~~~
+
+The runtime can expose only candidates compatible with that intent. The agent does not search the whole DOM or invent selectors.
+
+### 5. Freshness guards reduce wrong-button interactions
+
+When UI changes between observation and action, the system should re-observe rather than click a stale target.
+
+This directly addresses cases where internet occasionally presses the wrong control because a menu, modal, or rerender changed the page between locator discovery and execution.
+
+### 6. Postcondition-oriented execution makes retries safer
+
+A successful click is not the same as a successful semantic transition.
+
+Every adaptive action should have a postcondition:
+
+~~~text
+Continue
+-> generation resumes
+
+Retry
+-> a new provider-local attempt starts
+
+Send augmentation
+-> exact augmentation is acknowledged in the target conversation
+
+Select research mode
+-> research mode reads enabled
+~~~
+
+This lets deterministic logic remain the final judge of whether an adaptive browser action worked.
+
+### 7. Local reasoning can use workflow context that the browser cannot
+
+A pure browser agent sees the page but may not know:
+
+- whether the logical request was already submitted;
+- whether a retry is idempotent;
+- whether the user just changed requirements;
+- whether this node is still authoritative;
+- whether a newer workflow revision superseded the current execution;
+- whether an action would expand user authority.
+
+Local/workflow state knows these facts.
+
+JEV-style observation becomes much more useful when paired with internet's durable context:
+
+~~~text
+browser says what is visible/possible
++
+workflow says what is correct/allowed
++
+Local reasons about what should happen
++
+runtime executes only the intersection
+~~~
+
+### 8. The browser turn can evolve from request/response into a controlled session
+
+The current abstraction is close to:
+
+~~~text
+submit request
+-> wait
+-> return completed result or error
+~~~
+
+The researched abstraction is closer to:
+
+~~~text
+start/attach provider execution
+-> observe semantic events
+-> optionally receive typed control intents
+-> execute validated browser actions
+-> continue observing
+-> reconcile durable result
+~~~
+
+This better matches long-running research where timeouts, interruptions, new user information, provider questions, and recovery actions can occur before final completion.
+
+It should still be bounded by one durable workflow execution and exact conversation/request receipts.
+
+### 9. Less strict trajectory, stricter boundary
+
+The intended outcome can be summarized as:
+
+~~~text
+BEFORE
+strict UI trajectory
++ strict correctness boundary
+
+AFTER
+adaptive UI trajectory
++ strict correctness boundary
+~~~
+
+The goal is not “let the agent click whatever looks right.”
+
+The goal is:
+
+> make the system flexible about how it reaches a valid provider state, while remaining uncompromising about what counts as the correct workflow state.
+
 ## What JEV Ultrafast demonstrates
 
 JEV Ultrafast is a generic browser agent built around a small, dynamic, indexed action space. Its most relevant ideas for internet are below.
