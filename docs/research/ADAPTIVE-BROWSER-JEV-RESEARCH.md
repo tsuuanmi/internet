@@ -976,6 +976,311 @@ A generic observed-action layer can identify visible buttons such as **Close**, 
 
 Unknown destructive or authority-bearing controls should not be exposed to the recovery agent.
 
+## Self-debugging and development feedback loop
+
+A third use case is especially valuable for internet itself: the same observation layer can make provider integration development much more self-explanatory.
+
+Today, when a new Website feature is added or a provider UI changes, Local may know only that a deterministic step failed:
+
+~~~text
+expected Send button
+-> selector did not match
+-> provider interaction failed
+~~~
+
+At that point, development often becomes manual DOM archaeology:
+
+- inspect the live page;
+- dump HTML around the composer;
+- search for current attributes or ARIA roles;
+- compare several similar buttons;
+- determine which control is actually enabled/visible;
+- update selectors;
+- rerun and repeat.
+
+This is expensive because Local is reasoning from an error produced by old assumptions rather than from the page that actually exists.
+
+A JEV-style atomic snapshot changes the development loop:
+
+~~~text
+new feature / provider UI drift
+        |
+        v
+deterministic logic cannot satisfy expected semantic state
+        |
+        v
+atomic browser snapshot
+        |
+        v
+Local receives:
+  visible semantic state
+  actionable controls
+  accessible names/roles
+  values / enabled state
+  bounded context
+  freshness marker
+        |
+        v
+Local can understand the current Website state
+        |
+        +--> choose a safe runtime recovery action
+        |
+        +--> identify which provider assumption is stale
+        |
+        +--> propose/update provider adapter code and tests
+~~~
+
+The key improvement is that internet can expose **what the browser sees in a machine-reasonable form** instead of forcing Local to rediscover the DOM from scratch.
+
+### Example — Send button no longer matches
+
+Old development loop:
+
+~~~text
+chatgptSend()
+-> CHATGPT_SEND_BUTTON_SELECTOR finds 0 controls
+-> provider_error
+
+Developer/Local:
+  manually inspect DOM
+  find new button structure
+  determine whether it is really Send
+  update selector
+~~~
+
+With an observation layer:
+
+~~~yaml
+expected_semantic_action: submit_prompt
+
+snapshot:
+  composer:
+    role: textbox
+    text_matches_expected_prompt: true
+
+  observed_actions:
+    - id: a31
+      role: button
+      name: Send message
+      enabled: true
+      context: composer form
+
+    - id: a32
+      role: button
+      name: Start voice mode
+      enabled: true
+      context: composer form
+~~~
+
+Local can immediately reason:
+
+~~~text
+the provider still exposes a semantic Send action
+the hardcoded selector no longer recognizes it
+a31 is the likely canonical submit control
+a32 must remain excluded
+~~~
+
+That information is useful in two different ways:
+
+1. **runtime:** a bounded policy may execute a31 if current policy permits it;
+2. **development:** Local can update the deterministic provider adapter and add a regression test representing the new DOM shape.
+
+The adaptive layer therefore does not merely hide provider drift. It can help turn drift into a concrete, testable maintenance task.
+
+### Semantic expectation versus observed reality
+
+Every important provider interaction can expose a diagnostic pair:
+
+~~~text
+Expected:
+  semantic action = SEND_PROMPT
+  invariant = exact prompt attached
+  postcondition = submission acknowledged
+
+Observed:
+  composer present
+  exact prompt attached
+  known Send selector missing
+  observed button "Send message" present/enabled
+  voice button also present
+~~~
+
+This is much more useful to a coding agent than:
+
+~~~text
+locator timeout after 10000ms
+~~~
+
+The diagnostic should answer:
+
+- what semantic state was expected;
+- what semantic state was actually observed;
+- which expected selector/assumption failed;
+- which actionable controls currently exist;
+- which controls are close semantic candidates;
+- what changed since a known-good fixture/snapshot, when available.
+
+### Snapshot-driven provider adapter development
+
+A future development workflow could be:
+
+~~~text
+1. Run provider interaction in diagnostic/development mode.
+2. Capture sanitized atomic snapshots at semantic boundaries.
+3. Deterministic adapter fails or reaches an unknown state.
+4. Local receives the failure plus the exact bounded snapshot.
+5. Local identifies stale provider assumptions.
+6. Local adds/updates a fixture representing the observed state.
+7. Red: regression test proves current adapter cannot handle it.
+8. Green: update deterministic semantic adapter.
+9. Refactor: reduce duplicated selectors/rules and keep snapshot/recovery generic.
+10. Re-run live diagnostic to verify the postcondition on the real Website.
+~~~
+
+This fits internet's preferred TDD workflow particularly well: a live Website failure becomes evidence for a reproducible fixture and regression test rather than a one-off selector patch.
+
+### The snapshot should support explanation, not only execution
+
+For runtime action selection, the action space can stay compact.
+
+For development diagnostics, Local may need slightly richer but still bounded information:
+
+~~~yaml
+semantic_boundary: prompt_submission
+
+expected:
+  composer_present: true
+  exact_prompt_attached: true
+  send_action_present: true
+
+observed:
+  composer_present: true
+  exact_prompt_attached: true
+  send_action_present_by_known_adapter: false
+
+actions:
+  - id: a31
+    role: button
+    accessible_name: Send message
+    enabled: true
+    visible: true
+    ancestor_summary: composer form
+    semantic_features:
+      near_composer: true
+      submit_like: true
+
+  - id: a32
+    role: button
+    accessible_name: Start voice mode
+    enabled: true
+    visible: true
+    ancestor_summary: composer form
+
+diagnostic:
+  failed_assumption: known_send_selector
+~~~
+
+This can remain far smaller and safer than sending a complete raw DOM dump.
+
+### Optional snapshot diffing
+
+Once snapshots exist, internet can compare a failing provider state with a known-good semantic fixture:
+
+~~~text
+known good
+  button name = Send
+  data-testid = send-button
+
+current
+  button name = Send message
+  data-testid = absent
+
+unchanged
+  composer relationship
+  enabled state
+  semantic location
+  exact prompt
+~~~
+
+A Local coding agent can then see that the likely change is a provider presentation contract rather than the workflow logic itself.
+
+The goal is not to automatically patch selectors from arbitrary live HTML. The goal is to make the evidence required for a correct patch immediately available.
+
+### Development-mode action trace
+
+A useful diagnostic artifact could record only browser semantics around a failed interaction:
+
+~~~text
+OBSERVE rev=17
+  expected SEND_PROMPT
+  known target absent
+  candidates a31 Send message, a32 Start voice mode
+
+DECIDE
+  deterministic adapter unresolved
+
+RECOVERY/DEBUG
+  Local maps a31 -> SEND_PROMPT candidate
+
+EXECUTE
+  a31
+
+POSTCONDITION
+  generation_started = true
+~~~
+
+If the action succeeds and satisfies the canonical postcondition, that trace becomes strong evidence for how the deterministic adapter should be updated.
+
+It is still evidence, not authority: a successful exploratory click should not automatically rewrite production selectors or promote new behavior without tests/review.
+
+### Self-development boundary
+
+The long-term opportunity is that internet can become partially **self-debuggable**:
+
+~~~text
+internet runs
+-> internet observes an unexpected Website state
+-> Local understands that state from the snapshot
+-> Local can continue safely when allowed
+-> Local can also diagnose why deterministic code failed
+-> Local updates tests + provider adapter
+-> internet becomes more deterministic for that state next time
+~~~
+
+This produces a healthy feedback loop:
+
+~~~text
+unknown state
+-> adaptive observation/recovery
+-> captured evidence
+-> deterministic implementation improvement
+-> smaller unknown-state surface
+~~~
+
+The adaptive layer should therefore be treated as both:
+
+- a runtime resilience mechanism; and
+- an engineering observability/development mechanism.
+
+A good outcome is not that more and more behavior moves into an agent. A good outcome is that the agent helps internet understand new Website states, and repeated/important states can then be promoted into clear deterministic semantics and regression tests.
+
+### Safety and privacy for development diagnostics
+
+Development snapshots should remain sanitized and bounded.
+
+Avoid exposing or persisting:
+
+- cookies;
+- access tokens;
+- account identifiers not needed for the interaction;
+- full raw DOM when semantic extraction is sufficient;
+- unrelated conversation content;
+- hidden form values;
+- password/file inputs.
+
+The diagnostic contract should prioritize semantic facts and actionable visible controls, matching the same principle used for runtime recovery.
+
 ## Atomic snapshot scope
 
 A fully generic DOM accessibility snapshot is not required initially.
@@ -1150,6 +1455,12 @@ Suggested first behavioral tests:
    - browser actions are executed only after current execution, receipt, freshness, and policy validation;
    - duplicate augmentation delivery is idempotently reconciled.
 
+12. **Self-debugging diagnostics**
+   - a failed semantic interaction returns the expected state plus a sanitized atomic observation of the actual state;
+   - diagnostic snapshots expose enough role/name/state/context to distinguish a new Send control from nearby non-Send controls;
+   - live evidence can be converted into an offline regression fixture without persisting secrets;
+   - successful exploratory recovery does not silently modify or promote production provider rules.
+
 ## Research questions
 
 The following questions should be answered before promotion to an architecture proposal:
@@ -1164,6 +1475,9 @@ The following questions should be answered before promotion to an architecture p
 8. What is the minimum recovery context needed for a model to choose obvious UI recovery actions reliably?
 9. Which states are better handled by deterministic recovery rules before invoking a model?
 10. What recovery budget prevents loops while still covering common provider UI drift?
+11. What is the smallest sanitized snapshot that lets a Local coding agent diagnose provider UI drift without requiring raw DOM dumps?
+12. Which observed states should be promoted from adaptive recovery into deterministic provider fixtures and rules, and on what evidence threshold?
+13. Can semantic snapshot diffs reliably distinguish provider presentation drift from actual workflow/provider-contract changes?
 
 ## Suggested experiment order
 
