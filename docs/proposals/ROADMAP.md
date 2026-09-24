@@ -192,6 +192,12 @@ These are not the next automatic phase and should not be implemented merely to c
 - broad generalization to non-coding workflows before a specific use case is defined;
 - synchronous `wait(job_id)` convenience unless a caller actually needs it.
 
+- live resumable browser `WAITING_USER` with safe suspension/resumption of the same provider execution;
+- multi-process/distributed graph mutation and lease coordination beyond the current revision-guarded local store;
+- richer event metadata and retention tooling beyond the current ordered diagnostic event journal;
+- dynamic member/provider health scoring or automatic member substitution/failover;
+- degraded one-team/reviewer quorum modes;
+
 ## Rule for future roadmap work
 
 A new phase should be added only when there is a concrete user problem, measurable ROI, and a clear authority/safety boundary. Preserve the existing clean-break architecture: deterministic code owns workflow transitions and authority gates; Website models own reasoning/implementation content; Local remains the user-facing authority broker.
