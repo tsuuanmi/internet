@@ -4,7 +4,7 @@
 - **Version:** 0.3
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
-- **Decision:** [`ADR/0013-pr-workspace-projection.md`](./ADR/0013-pr-workspace-projection.md)
+- **Decision:** [`ADR/0013-pr-workspace-projection.md`](./adr/0013-pr-workspace-projection.md)
 
 ## 1. Purpose and authority
 

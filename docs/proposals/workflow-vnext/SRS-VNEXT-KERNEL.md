@@ -5,7 +5,7 @@
 - **Started:** 2026-09-16
 - **Updated:** 2026-09-16 after core-SRS harmonization
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
-- **Decision:** [`ADR/0019-domain-agnostic-durable-workflow-kernel.md`](./ADR/0019-domain-agnostic-durable-workflow-kernel.md)
+- **Decision:** [`ADR/0019-domain-agnostic-durable-workflow-kernel.md`](./adr/0019-domain-agnostic-durable-workflow-kernel.md)
 
 ## 1. Purpose
 

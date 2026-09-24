@@ -2,9 +2,9 @@
 
 > **Status:** current as-built architecture  
 > **Last synchronized:** 2026-09-15  
-> **Implementation:** [`how-it-works.md`](./how-it-works.md)  
-> **Operational flow:** [`WORKFLOW.md`](./WORKFLOW.md)  
-> **Runtime state machine:** [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md)
+> **Implementation:** [`how-it-works.md`](../design/how-it-works.md)  
+> **Operational flow:** [`WORKFLOW.md`](../operations/WORKFLOW.md)  
+> **Runtime state machine:** [`WORKFLOW-ENGINE.md`](../design/WORKFLOW-ENGINE.md)
 
 ## Goal
 

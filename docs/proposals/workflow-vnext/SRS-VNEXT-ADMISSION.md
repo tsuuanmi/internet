@@ -4,7 +4,7 @@
 - **Version:** 0.1
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
-- **Decision:** [`ADR/0018-workflow-admission-protocol.md`](./ADR/0018-workflow-admission-protocol.md)
+- **Decision:** [`ADR/0018-workflow-admission-protocol.md`](./adr/0018-workflow-admission-protocol.md)
 
 ## 1. Purpose
 

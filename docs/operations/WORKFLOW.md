@@ -3,7 +3,7 @@
 - **Status:** implemented
 - **Last synchronized:** 2026-09-15
 
-This document describes the user-visible coding workflow. Runtime detail lives in [`WORKFLOW-ENGINE.md`](./WORKFLOW-ENGINE.md) and [`WORKFLOW-GRAPH-ORCHESTRATION.md`](./WORKFLOW-GRAPH-ORCHESTRATION.md).
+This document describes the user-visible coding workflow. Runtime detail lives in [`WORKFLOW-ENGINE.md`](../design/WORKFLOW-ENGINE.md) and [`WORKFLOW-GRAPH-ORCHESTRATION.md`](../design/WORKFLOW-GRAPH-ORCHESTRATION.md).
 
 ## Command surface
 

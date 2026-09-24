@@ -4,7 +4,7 @@
 - **Version:** 0.3
 - **Started:** 2026-09-16
 - **Rewritten:** 2026-09-16 after production-readiness/codebase review
-- **Related:** [`SRS.md`](./SRS.md), [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md), ADR-0009 through ADR-0021
+- **Related:** [`SRS.md`](../../requirements/SRS.md), [`WORKFLOW-VNEXT.md`](./WORKFLOW-VNEXT.md), ADR-0009 through ADR-0021
 
 ## 1. Purpose and authority
 
@@ -22,7 +22,7 @@ It intentionally stays above domain-specific implementation detail. Specialized 
 - [`SRS-VNEXT-PR-WORKSPACE.md`](./SRS-VNEXT-PR-WORKSPACE.md) — software-profile collaboration workspace;
 - [`SRS-VNEXT-GIT-MUTATION.md`](./SRS-VNEXT-GIT-MUTATION.md) — software-profile Git mutation/reconciliation.
 
-The current implemented contract remains [`SRS.md`](./SRS.md) plus current code/as-built documentation until individual vNext behavior is implemented, tested, and explicitly promoted.
+The current implemented contract remains [`SRS.md`](../../requirements/SRS.md) plus current code/as-built documentation until individual vNext behavior is implemented, tested, and explicitly promoted.
 
 Production precedence is:
 

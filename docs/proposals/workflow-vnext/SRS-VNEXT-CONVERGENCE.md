@@ -4,7 +4,7 @@
 - **Version:** 0.1
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
-- **Decision:** [`ADR/0021-criterion-assessment-and-convergence.md`](./ADR/0021-criterion-assessment-and-convergence.md)
+- **Decision:** [`ADR/0021-criterion-assessment-and-convergence.md`](./adr/0021-criterion-assessment-and-convergence.md)
 
 ## 1. Purpose
 

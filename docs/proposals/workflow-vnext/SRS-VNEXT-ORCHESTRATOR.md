@@ -4,7 +4,7 @@
 - **Version:** 0.2
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
-- **Decision:** [`ADR/0015-deterministic-local-orchestrator.md`](./ADR/0015-deterministic-local-orchestrator.md)
+- **Decision:** [`ADR/0015-deterministic-local-orchestrator.md`](./adr/0015-deterministic-local-orchestrator.md)
 
 ## 1. Purpose
 

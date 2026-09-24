@@ -4,7 +4,7 @@
 - **Version:** 0.2
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
-- **Decision:** [`ADR/0020-workstream-run-continuation.md`](./ADR/0020-workstream-run-continuation.md)
+- **Decision:** [`ADR/0020-workstream-run-continuation.md`](./adr/0020-workstream-run-continuation.md)
 
 ## 1. Purpose
 

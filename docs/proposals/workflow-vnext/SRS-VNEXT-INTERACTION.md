@@ -4,7 +4,7 @@
 - **Version:** 0.1
 - **Started:** 2026-09-16
 - **Parent:** [`SRS-VNEXT.md`](./SRS-VNEXT.md)
-- **Decision:** [`ADR/0017-autonomous-external-interaction.md`](./ADR/0017-autonomous-external-interaction.md)
+- **Decision:** [`ADR/0017-autonomous-external-interaction.md`](./adr/0017-autonomous-external-interaction.md)
 
 ## 1. Purpose and authority
 
