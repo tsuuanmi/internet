@@ -193,6 +193,9 @@ This does not mean every timeout must be extended indefinitely. A workflow still
 
 ## Scenario 2 — User adds information while a Website agent is running
 
+> Current production architecture explicitly defers live resumable headless-browser user interaction. This section is research for a possible future promotion; it does not change the current architecture contract.
+
+
 A second opportunity is live steering.
 
 Suppose Research Team A is already running a Website research turn and the user adds an important constraint or source. The desired behavior is not necessarily:
@@ -1130,6 +1133,22 @@ Suggested first behavioral tests:
 8. **Bounded recovery**
    - repeated no-progress recovery choices terminate under a fixed budget;
    - stale decisions trigger re-observation, not blind retry.
+
+9. **Timeout diagnosis before teardown**
+   - a research deadline captures one final atomic snapshot before the provider context is discarded;
+   - a safe Retry/Continue surface becomes a typed recovery event rather than an unstructured timeout;
+   - unsafe or ambiguous timeout states still fail closed.
+
+10. **Mid-run augmentation lineage**
+   - a user update is durably recorded before browser delivery;
+   - delivered augmentations are ordered and included in the effective input hash;
+   - a stale completion produced before a material augmentation cannot satisfy the revised input;
+   - an augmentation arriving after completion becomes an explicit follow-up/reopen rather than silently changing history.
+
+11. **Control-stream isolation**
+   - control intents cannot mutate workflow graph authority directly;
+   - browser actions are executed only after current execution, receipt, freshness, and policy validation;
+   - duplicate augmentation delivery is idempotently reconciled.
 
 ## Research questions
 
