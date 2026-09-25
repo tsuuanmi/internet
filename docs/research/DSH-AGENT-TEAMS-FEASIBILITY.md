@@ -548,7 +548,7 @@ The DSH controller Agent can still decide **when and why** to invoke it; executi
 
 The smallest complete implementation plan should preserve current production behavior until each boundary is proven.
 
-### Phase A0 — characterize current behavior
+#### Phase A0 — characterize current behavior
 
 Before production changes:
 
@@ -557,7 +557,7 @@ Before production changes:
 - characterize ProviderTurnReceipt reconciliation;
 - record current `internet_team` behavior as the comparison baseline.
 
-### Phase A1 — compose Agent Teams in an experimental Internet profile
+#### Phase A1 — compose Agent Teams in an experimental Internet profile
 
 Create an opt-in composition/profile using:
 
@@ -573,7 +573,7 @@ Do not remove current `internet_team` yet.
 
 Goal: prove local teammates can use Internet and keep stable website conversations.
 
-### Phase A2 — define linked website participant service
+#### Phase A2 — define linked website participant service
 
 Refactor the correctness-bearing website call below the model-facing tools:
 
@@ -597,7 +597,7 @@ Required semantics:
 - cancellation/failure classification;
 - result/artifact identity.
 
-### Phase A3 — add website-first delegation policy
+#### Phase A3 — add website-first delegation policy
 
 Install concise guidance for linked teammates:
 
@@ -611,7 +611,7 @@ Use Local reasoning for planning, critique, verification, and decisions.
 
 This should be policy/guidance plus observability, not a brittle hard-coded router that prevents Local judgment.
 
-### Phase A4 — compact artifact/result path
+#### Phase A4 — compact artifact/result path
 
 Add a bounded controller projection:
 
@@ -623,7 +623,7 @@ website execution
 
 The local teammate receives enough to reason and can request deeper material if needed. Team messages should normally carry compact conclusions + artifact ids rather than raw full reports.
 
-### Phase A5 — use Agent Teams as authoritative team substrate
+#### Phase A5 — use Agent Teams as authoritative team substrate
 
 Once continuity/recovery/token tests pass:
 
@@ -632,13 +632,13 @@ Once continuity/recovery/token tests pass:
 - retain Internet-specific Workstream/artifact/authority state;
 - remove the old duplicate team implementation when migration no longer requires it.
 
-### Phase A6 — bounded DSH Workflow integration
+#### Phase A6 — bounded DSH Workflow integration
 
 Allow Local Lead/teammates to use DSH Workflow for bounded live fan-out where appropriate.
 
 Do **not** make DSH Workflow the durable Workstream owner because current DSH Workflow has no journaling/resume and blocks until a live run settles.
 
-### Phase A7 — evaluate upstream optimization
+#### Phase A7 — evaluate upstream optimization
 
 After measurements, decide whether Agent-Team spawn should expose a small subset of existing continuable-child composition controls such as `agentOptions`, `toolFilter`, or `persona`.
 
