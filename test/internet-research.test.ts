@@ -34,19 +34,17 @@ describe("internet_research execution", () => {
 
 	it("routes each account through the durable website participant with a named research owner", async () => {
 		const execute = vi.fn(
-			async (request: {
-				accountId: "chatgpt-thinker" | "gemini-thinker";
-				logicalRequestId: string;
-			}) => ({
-			accountId: request.accountId,
-			provider: request.accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
-			mode: "research" as const,
-			text: "Report",
-			url: "https://gemini.google.com/app/conversation",
-			conversationId: "conversation",
-			artifactId: "c".repeat(64),
-			totalChars: 6,
-		}));
+			async (request: { accountId: "chatgpt-thinker" | "gemini-thinker"; logicalRequestId: string }) => ({
+				accountId: request.accountId,
+				provider: request.accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
+				mode: "research" as const,
+				text: "Report",
+				url: "https://gemini.google.com/app/conversation",
+				conversationId: "conversation",
+				artifactId: "c".repeat(64),
+				totalChars: 6,
+			}),
+		);
 		const tool = defineInternetResearchTool({ execute } as never, config, allowed);
 		const signal = new AbortController().signal;
 
