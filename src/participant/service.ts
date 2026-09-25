@@ -71,8 +71,10 @@ export class WebsiteParticipantService {
 	) {}
 
 	async execute(request: WebsiteParticipantRequest): Promise<WebsiteParticipantResult> {
-		if (request.ownerSessionId.trim() === "") throw new Error("website participant owner session id must not be empty");
-		if (request.logicalRequestId.trim() === "") throw new Error("website participant logical request id must not be empty");
+		if (request.ownerSessionId.trim() === "")
+			throw new Error("website participant owner session id must not be empty");
+		if (request.logicalRequestId.trim() === "")
+			throw new Error("website participant logical request id must not be empty");
 		if (request.prompt.trim() === "") throw new Error("website participant prompt must not be empty");
 		const existing = this.artifacts.readForRequest(
 			request.ownerSessionId,
@@ -86,7 +88,8 @@ export class WebsiteParticipantService {
 			}
 			return resultFromArtifact(existing);
 		}
-		const execute = request.mode === "research" ? this.browser.research.bind(this.browser) : this.browser.chat.bind(this.browser);
+		const execute =
+			request.mode === "research" ? this.browser.research.bind(this.browser) : this.browser.chat.bind(this.browser);
 		const result: ChatResult = await execute(request.accountId, browserRequest(request));
 		const artifact = this.artifacts.create({
 			ownerSessionId: request.ownerSessionId,
