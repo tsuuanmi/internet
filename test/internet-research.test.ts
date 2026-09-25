@@ -73,7 +73,8 @@ describe("internet_research execution", () => {
 			],
 		});
 		expect(execute).toHaveBeenCalledWith({
-			ownerSessionId: "agent:research:policy",
+			ownerSessionId: "agent",
+			conversationSessionId: "agent:research:policy",
 			accountId: "gemini-thinker",
 			logicalRequestId: "call-research",
 			mode: "research",
