@@ -47,10 +47,11 @@ describe("internet_research execution", () => {
 		const signal = new AbortController().signal;
 
 		await expect(
-			tool.execute(
-				{ query: "Compare policies", name: "policy", accounts: ["gemini-thinker"], visible: true },
-				{ agent: { id: "agent" }, callId: "call-research", signal } as never,
-			),
+			tool.execute({ query: "Compare policies", name: "policy", accounts: ["gemini-thinker"], visible: true }, {
+				agent: { id: "agent" },
+				callId: "call-research",
+				signal,
+			} as never),
 		).resolves.toEqual({
 			state: "completed",
 			results: [
@@ -90,10 +91,11 @@ describe("internet_research execution", () => {
 		}));
 		const tool = defineInternetResearchTool({ execute } as never, config, allowed);
 
-		const result = await tool.execute(
-			{ query: "Compare", accounts: ["chatgpt-thinker", "gemini-thinker"] },
-			{ agent: { id: "agent" }, callId: "call-shared", signal: new AbortController().signal } as never,
-		);
+		const result = await tool.execute({ query: "Compare", accounts: ["chatgpt-thinker", "gemini-thinker"] }, {
+			agent: { id: "agent" },
+			callId: "call-shared",
+			signal: new AbortController().signal,
+		} as never);
 
 		expect(result.state).toBe("completed");
 		expect(execute.mock.calls.map(([request]) => [request.accountId, request.logicalRequestId])).toEqual([
@@ -106,10 +108,11 @@ describe("internet_research execution", () => {
 		const execute = vi.fn();
 		const tool = defineInternetResearchTool({ execute } as never, config, new Set(["gemini-thinker"] as const));
 		await expect(
-			tool.execute(
-				{ query: "x", accounts: ["chatgpt-thinker"] },
-				{ agent: { id: "agent" }, callId: "call", signal: new AbortController().signal } as never,
-			),
+			tool.execute({ query: "x", accounts: ["chatgpt-thinker"] }, {
+				agent: { id: "agent" },
+				callId: "call",
+				signal: new AbortController().signal,
+			} as never),
 		).resolves.toEqual({ state: "failed", results: [] });
 		expect(execute).not.toHaveBeenCalled();
 	});
