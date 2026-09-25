@@ -2,7 +2,7 @@
 
 - **Status:** proposed product/architecture thesis; not current production contract
 - **Date:** 2026-09-25
-- **Related:** [target architecture](WORKFLOW-VNEXT.md), [end-to-end use cases](WORKFLOW-VNEXT-USE-CASES.md), [external landscape research](../../research/ORCHESTRATION-LANDSCAPE.md)
+- **Related:** [target architecture](WORKFLOW-VNEXT.md), [end-to-end use cases](WORKFLOW-VNEXT-USE-CASES.md), [external landscape research](../../research/ORCHESTRATION-LANDSCAPE.md), [DSH Agent Teams feasibility](../../research/DSH-AGENT-TEAMS-FEASIBILITY.md)
 
 ## 1. Thesis
 
