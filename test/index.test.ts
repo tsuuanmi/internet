@@ -29,6 +29,7 @@ describe("account-aware plugin registration", () => {
 		const research = sections.find((section) => section.name === "tool:internet_research");
 		const workflow = sections.find((section) => section.name === "tool:internet_workflow");
 
+		expect(sections.some((section) => section.name === "integration:agent-teams")).toBe(false);
 		expect(team?.text).toContain("<child-agent-id>:team:<name>");
 		expect(team?.text).toContain("Member 1..N");
 		expect(team?.text).toContain("two independent ChatGPT thinker accounts");
