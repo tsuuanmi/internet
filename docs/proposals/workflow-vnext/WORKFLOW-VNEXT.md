@@ -272,6 +272,30 @@ monitoring.v1
 
 Provider/model/account/session routing remains below semantic capability selection.
 
+### 8.1 Internet remains a plugin and composes plugins
+
+Internet is not intended to become the host platform for every execution capability. It is itself a plugin running inside a host such as DeepSeek Harness and should consume other host/plugin capabilities through stable contracts where practical.
+
+The target dependency direction is:
+
+```text
+workflow/profile semantic Need
+  -> versioned capability contract
+  -> host/plugin capability resolution
+  -> selected implementation
+  -> typed Artifact / Assessment / Receipt
+```
+
+The orchestrator should own collaboration correctness semantics, not commodity implementations merely because a workflow needs them.
+
+Examples of capabilities that should remain independently replaceable when a real substitution boundary exists include browser runtime, repository hosting, coding-agent execution, search/research, storage backends, and notification transport.
+
+Authenticated ChatGPT/Gemini web participation remains strategically useful, but it is a provider implementation below the participant/capability boundary rather than a generic-kernel assumption.
+
+Replaceability must preserve the semantics relied on by the workflow. An alternative implementation is valid only if it satisfies the required capability version, schemas, authority rules, side-effect/reconciliation behavior, cancellation semantics, and receipt/failure contracts.
+
+See [Product thesis and adaptive plugin composition](PRODUCT-THESIS.md) for the broader build-vs-adapt rationale.
+
 ## 9. Artifact-based communication
 
 Correctness-bearing semantic communication uses typed durable artifacts rather than transient chat transcripts.
