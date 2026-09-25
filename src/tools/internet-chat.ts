@@ -1,7 +1,10 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import type { BrowserManager } from "#internet/browser/runtime";
 import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import { isInternetError } from "#internet/core/errors";
+import {
+	projectWebsiteParticipantResult,
+	type WebsiteParticipantService,
+} from "#internet/participant/service";
 import { parseChatArgs } from "#internet/tools/args";
 
 export type { ChatInput } from "#internet/tools/args";
@@ -9,14 +12,14 @@ export { parseChatArgs } from "#internet/tools/args";
 
 /** Define the `internet_chat` model tool over explicitly selected thinker accounts. */
 export function defineInternetChatTool(
-	manager: BrowserManager,
+	participant: Pick<WebsiteParticipantService, "execute">,
 	timeoutMs: number,
 	allowed: ReadonlySet<AccountId>,
 ): ReturnType<typeof defineTool> {
 	return defineTool({
 		name: "internet_chat",
 		description:
-			"Ask an explicitly selected authenticated web account. Thinker accounts durably resume one native conversation per current DSH session. The browser is hidden by default; set visible=true to show it on the user-managed display.",
+			"Ask an explicitly selected authenticated web account. Thinker accounts durably resume one native conversation per current DSH session. Completed calls are retained as owner-scoped artifacts; long answers are compacted and can be continued with internet_artifact.",
 		parameters: {
 			account: {
 				type: "string",
@@ -44,6 +47,10 @@ export function defineInternetChatTool(
 					provider: { type: "string", required: true },
 					url: { type: "string" },
 					conversationId: { type: "string" },
+					artifactId: { type: "string" },
+					totalChars: { type: "integer" },
+					truncated: { type: "boolean" },
+					nextOffset: { type: "integer" },
 					isError: { type: "boolean" },
 				},
 			},
@@ -73,18 +80,26 @@ export function defineInternetChatTool(
 				};
 			}
 			try {
-				const result = await manager.chat(accountId, {
+				const result = await participant.execute({
+					ownerSessionId: String(sessionId),
+					accountId,
+					logicalRequestId: String(exec.callId),
+					mode: "chat",
 					prompt,
-					sessionId: String(sessionId),
 					visible,
 					signal: exec.signal,
 				});
+				const projection = projectWebsiteParticipantResult(result);
 				return {
-					answer: result.text,
+					answer: projection.text,
 					accountId,
 					provider,
 					url: result.url,
 					...(result.conversationId === undefined ? {} : { conversationId: result.conversationId }),
+					artifactId: projection.artifactId,
+					totalChars: projection.totalChars,
+					truncated: projection.truncated,
+					...(projection.nextOffset === undefined ? {} : { nextOffset: projection.nextOffset }),
 				};
 			} catch (error) {
 				if (isInternetError(error)) {
