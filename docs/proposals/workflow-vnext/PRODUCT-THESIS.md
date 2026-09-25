@@ -99,6 +99,23 @@ Authenticated web accounts are therefore valuable adapters, not the definition o
 
 Their value is also not equivalent to ordinary host-side web search. ChatGPT and Gemini can search/research from inside the signed-in product conversation itself. That native path can preserve the same provider conversation context, use provider-native Search/Deep Research behavior, and consume the user's web-product allowance rather than forcing every research step through a separate API-backed `web.search/fetch` call.
 
+The goal is **not zero Local-Agent/API token use**. Local reasoning remains valuable for decomposition, orchestration, critique, policy/authority decisions, and any step where the host model is the better reasoner. The efficiency goal is to allocate expensive context work to the execution surface that handles it best.
+
+In particular, source-heavy work such as browsing many pages, reading long files/diffs, collecting evidence, and provider-native research can often stay inside the website participant so the Local Agent sees only the conclusions, compact evidence references, or selected excerpts it actually needs.
+
+```text
+Local Agent
+  reason / coordinate / decide what needs inspection
+        |
+        +-> website participant
+              search / browse / read large context / Deep Research
+        |
+        <- compact result / artifact / evidence reference
+  critique / decide / continue
+```
+
+A workflow may intentionally use more Local-Agent reasoning when that improves quality. Token efficiency is an optimization objective, not an authority rule or a prohibition on local reasoning.
+
 Therefore:
 
 ```text
@@ -291,7 +308,7 @@ For ChatGPT/Gemini website participants, the website session adapter owns the st
 
 `ctx.subagents` is attractive because DSH already owns durable child Session identity, continuations, lifecycle, and messaging.
 
-However, direct reuse has a product constraint: Internet's website participants should stay linked to native ChatGPT/Gemini conversations and should not require a second API-model reasoning hop simply to relay each turn.
+However, direct reuse has a product constraint: Internet's website participants should stay linked to native ChatGPT/Gemini conversations. A host-side reasoning/controller hop is acceptable when it performs useful decomposition, critique, coordination, or authority work; it should not exist merely to relay large context that the website participant can process more efficiently.
 
 Therefore a future integration should test one of these shapes rather than assuming a subagent-provider mapping:
 
@@ -307,7 +324,7 @@ C. upstream DSH extension for externally executed continuable participants
    <-> native website conversation
 ```
 
-If using `ctx.subagents` requires an ordinary API-backed child model to reinterpret every prompt and call Internet again, the extra token cost, latency, and semantic hop must be justified; otherwise the integration defeats part of the website-session value proposition.
+If using `ctx.subagents` adds an ordinary API-backed child model, that model should have a real controller/reasoning role. The design should avoid making the host child repeatedly ingest raw files, long source material, or full research transcripts that the website participant already processed well. Extra token cost, latency, and semantic transformation must buy useful reasoning rather than mere transport.
 
 ### 6.2 Reuse DSH Agent Teams where the execution model fits
 
