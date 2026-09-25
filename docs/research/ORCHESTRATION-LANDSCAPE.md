@@ -99,13 +99,32 @@ A useful description is:
 
 ## 4. Why authenticated web accounts are useful
 
-Authenticated web products can expose value that differs from ordinary stateless API calls:
+Authenticated web products can expose value that differs materially from ordinary stateless API calls:
 
-- provider-native products such as Deep Research or UI-only modes;
-- subscription usage already available to the user;
+- provider-native products such as ChatGPT Search/Deep Research and Gemini Deep Research;
+- web-product subscription/usage allowance already available to the user;
 - persistent native conversations;
 - long-lived specialist context across repeated rounds;
+- provider-native browsing/search performed inside the same conversation;
 - direct access to future provider-native capabilities without requiring Internet to reproduce them.
+
+This distinction is central to Internet's product motivation.
+
+Routing research through a host `web.search/fetch` service may still require a separate API-model reasoning path and does not preserve the same native website conversation. It is therefore an optional complementary capability, **not a semantic substitute** for a requested website-native research turn.
+
+```text
+ChatGPT/Gemini native conversation
+  -> native Search / Deep Research
+  -> same provider-side thread/context
+  -> provider product usage limits
+
+host web.search / fetch
+  -> separate host-side search/fetch capability
+  -> useful for Local/other agents
+  -> not an automatic downgrade path
+```
+
+This does not mean website usage is free or unlimited; it remains subject to provider plan limits and product behavior. The architectural point is that Internet should preserve native product capabilities when those are the reason the participant was selected.
 
 However, these properties are opportunistic capabilities, not correctness guarantees.
 
@@ -155,26 +174,123 @@ The important object is not only an execution run. It is the longer-lived work c
 | Layer | Default stance | Reason |
 |---|---|---|
 | Collaboration/workstream semantics | Build/own contract | Candidate Internet-specific value |
+| Website participant/session binding | Build/own provider contract | Core value: stable authenticated native conversation identity |
 | Participant identity + authority | Build/own contract | Required for cross-provider/human governance |
 | Artifact lineage/provenance | Build/own contract | Correctness-bearing cross-plugin state |
 | Feedback/continuation semantics | Build/own contract | Required for multi-round work |
 | Side-effect reconciliation requirements | Build/own contract | Correctness boundary |
 | Capability routing contract | Build/own contract | Enables adaptive composition |
-| Browser engine | Adapt/plugin | Mature external ecosystem |
-| Git/GitHub implementation | Adapt/plugin | Commodity integration layer |
-| Coding agent | Adapt/plugin | Strong dedicated systems exist |
-| Model/API client | Adapt/plugin | Provider-specific commodity layer |
-| Search/research engine | Adapt/plugin | Multiple existing implementations |
-| Memory/vector database | Adapt/plugin unless required | Mature external systems |
+| Browser engine/backend | Adapt/plugin | Infrastructure implementation; current Patchright should not be permanent architecture |
+| Team roster/task/mailbox substrate | Prefer DSH Agent Teams if semantics fit | DSH already has durable team coordination |
+| Subagent/session lifecycle | Prefer DSH `ctx.subagents` where it can link cleanly to website sessions | Avoid duplicate durable child lifecycle |
+| Workflow scheduler/runtime | Build only missing semantics; keep replaceable | DSH/external runtimes may eventually satisfy mechanics |
 | Storage backend | Adapter boundary | Implementation should remain replaceable |
-| Notifications | Adapt/plugin | Host/ecosystem concern |
-| Generic plugin lifecycle | Host responsibility | Internet is itself a plugin |
+| Generic plugin lifecycle/service discovery | Host responsibility | Internet is itself a Cordis plugin |
+| Jira/MCP/LSP/domain tools | Outside this substitution discussion | Agents may consume them normally; Internet need not wrap them |
 
 This table is a design default, not a rule that forbids a small internal implementation.
 
 An internal implementation is justified when it is the smallest way to satisfy a concrete Internet-specific invariant and remains behind a replaceable contract where substitution is valuable.
 
-## 7. Current repository fit
+## 7. DeepSeek Harness reuse findings
+
+DSH already contains several infrastructure seams that Internet should try to reuse before maintaining parallel implementations.
+
+### 7.1 `ctx.subagents` is promising, but website participants should not become generic subagent providers
+
+DSH continuable subagents provide durable child Session identity, cold resume, FIFO message delivery, cancellation, and provider-neutral child lifecycle.
+
+That is useful infrastructure.
+
+However, the target Internet participant is still an authenticated ChatGPT/Gemini **website session**. The native conversation should remain the actual reasoning workspace because that is where provider-native Search, Deep Research, long context, and website actions live.
+
+Therefore the target is **not**:
+
+```text
+ChatGPT Web = generic DSH subagent provider
+```
+
+Instead, research should prototype a binding such as:
+
+```text
+DSH durable child/team identity
+  <-> Internet participant binding
+  <-> native ChatGPT/Gemini conversation
+```
+
+A reuse path is only attractive if it avoids a second API-model reasoning hop for every website turn. Spawning an ordinary DSH model merely so that it can call `internet_chat` would add API token cost, latency, and another semantic transformation layer.
+
+### 7.2 DSH Agent Teams is attractive infrastructure but current direct reuse is not yet proven
+
+DSH Agent Teams already owns:
+
+```text
+durable roster
+shared task DAG
+durable mailbox
+teammate identity
+continuable teammate lifecycle
+```
+
+Internet should prefer this substrate over maintaining a second equivalent team implementation if the execution boundary can be made compatible.
+
+Current Agent Teams creates teammates as continuable subagents and Team operations require live DSH Agent identities. Because Internet does not want to model ChatGPT/Gemini Web as generic subagent providers, there is a mismatch today.
+
+Candidate directions:
+
+```text
+1. lightweight host-side proxy/controller linked 1:1 to a native website session
+2. upstream DSH support for externally executed continuable participants
+3. selective reuse of Team roster/task/mailbox semantics while current Internet website execution remains separate
+```
+
+The correct direction should be chosen by prototype, especially measuring extra API-token cost and whether state becomes duplicated.
+
+### 7.3 DSH browser-use confirms replaceability, but is not a drop-in API
+
+DSH `ctx.browserUse` is intentionally a provider-registration seam with no common browser-operation methods. Providers own their own tools/resources.
+
+This supports the architectural principle that browser infrastructure can be swapped, but Internet's website adapters need programmatic guarantees beyond generic browser-use registration:
+
+```text
+authenticated account restore
+exact native conversation binding
+provider mode selection
+stable completion observation
+turn reconciliation
+failure classification
+```
+
+A DSH or external browser implementation is reusable only if the ChatGPT/Gemini website adapter can preserve those guarantees.
+
+### 7.4 Reuse host plugins first, then external projects
+
+The priority order should be:
+
+```text
+1. existing DSH/Cordis capability that satisfies the semantics
+2. small adapter around another DSH plugin
+3. adapter around a strong external project
+4. Internet-owned implementation only when required
+```
+
+This keeps Internet small and lets it benefit from improvements in DSH and the broader ecosystem.
+
+### 7.5 "Tool" is overloaded
+
+In this research, "replaceable tools/plugins" mainly means **implementation infrastructure used by Internet itself**:
+
+```text
+browser
+team coordination
+subagent/session lifecycle
+workflow runtime
+persistence
+```
+
+It does not primarily mean Jira, LSP, MCP servers, or arbitrary application tools. Those may remain normal tools available to agents through DSH.
+
+## 8. Current repository fit
 
 The repository already contains several elements aligned with this direction:
 
@@ -191,7 +307,7 @@ This is acceptable as current implementation reality, but it is not yet proof of
 
 The target should be reached incrementally by proving real substitution boundaries rather than introducing speculative interfaces.
 
-## 8. Tests for whether a plugin boundary is real
+## 9. Tests for whether a plugin boundary is real
 
 A boundary is meaningfully adaptive when:
 
@@ -205,7 +321,7 @@ A boundary is meaningfully adaptive when:
 
 A boundary that merely wraps one concrete class without independent lifecycle or substitution value is not automatically useful.
 
-## 9. Strategic risks
+## 10. Strategic risks
 
 ### Provider policy and product dependency
 
@@ -225,7 +341,7 @@ A domain-agnostic kernel is useful only when grounded in concrete workflows. Sof
 
 Plugin interfaces created before there is a real ownership or replacement boundary can add coupling rather than reduce it.
 
-## 10. Decision heuristic
+## 11. Decision heuristic
 
 For each new subsystem:
 
@@ -246,7 +362,7 @@ Is there no concrete alternative or independent lifecycle?
   yes -> avoid speculative abstraction.
 ```
 
-## 11. Research conclusion
+## 12. Research conclusion
 
 There is a plausible reason for Internet to exist, but not as a general agent framework.
 
@@ -254,12 +370,19 @@ The strongest product thesis is:
 
 > **Internet is a plugin that keeps heterogeneous AI participants and tools collaborating on the same evolving work across multiple rounds, while durable artifacts and human authority remain independent of any one provider or implementation.**
 
-The architecture should become more valuable as the surrounding ecosystem improves. Better browser runtimes, coding agents, search systems, storage backends, or repository tools should be composable into Internet rather than forcing Internet to compete with them.
+The architecture should become more valuable as the surrounding ecosystem improves. Better DSH team/subagent infrastructure, browser backends, workflow runtimes, persistence layers, or external execution components should be composable into Internet rather than forcing Internet to compete with them.
 
-## 12. Primary references
+At the same time, provider-native website Search/Deep Research should remain first-class website-participant behavior rather than being normalized away into generic host web search.
+
+## 13. Primary references
 
 - [DeepSeek Harness architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md) — plugin/service composition and replaceability.
-- [DeepSeek Harness services](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/framework/service.md) — named service capabilities consumed through host injection rather than concrete provider imports.
+- [DeepSeek Harness subagents](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/subagent.md) — named providers, durable continuable child Sessions, cold resume, and messaging.
+- [DeepSeek Harness Agent Teams](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/agent-team.md) — durable roster, task DAG, mailbox, and continuable teammate model.
+- [DeepSeek Harness browser-use](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/browser-use.md) — provider-registration browser seam with provider-owned tools/resources.
+- [OpenAI ChatGPT Search and Deep Research](https://openai.com/academy/search-and-deep-research/) — native web search and research inside ChatGPT conversations.
+- [OpenAI Deep Research Help](https://help.openai.com/en/articles/10500283-deep-research-in-chatgpt) — in-product public-web research, citations, and provider-managed usage.
+- [Gemini Deep Research Help](https://support.google.com/gemini/answer/15719111?hl=en) — in-product Deep Research using Google Search and other signed-in sources by default.
 - [LangGraph persistence](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/persistence.mdx) — checkpointed graph state, conversation continuity, HITL, and fault tolerance.
 - [LangGraph checkpoint interface](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint/README.md) — replaceable persistence interface for durable graph execution.
 - [Letta](https://github.com/letta-ai/letta) — stateful agents with durable memory, identity, and conversations.
