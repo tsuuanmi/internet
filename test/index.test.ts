@@ -57,14 +57,20 @@ describe("account-aware plugin registration", () => {
 		expect(research?.text).toContain("thinker accounts");
 	});
 
-	it("adds website-first guidance only when DSH Agent Teams is present, without replacing current tools", () => {
+	it("activates website-first guidance when DSH Agent Teams becomes available without replacing current tools", () => {
 		const { context, sections, tools } = fakeContext();
+		let activateAgentTeams: (() => void) | undefined;
 		const agentTeamsContext = {
 			...context,
-			get: (name: string) => (name === "agentTeams" ? {} : undefined),
+			inject: (services: readonly string[], callback: (scope: PluginContext) => void) => {
+				if (services.includes("agentTeams")) activateAgentTeams = () => callback(context);
+			},
 		};
 
 		apply(agentTeamsContext, {});
+		expect(sections.some((section) => section.name === "integration:agent-teams")).toBe(false);
+
+		activateAgentTeams?.();
 
 		const integration = sections.find((section) => section.name === "integration:agent-teams");
 		expect(integration?.text).toContain("DSH Agent Teams");
