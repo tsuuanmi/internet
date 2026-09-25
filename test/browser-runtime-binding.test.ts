@@ -185,33 +185,46 @@ function runtime(provider: WebProvider, research = false) {
 	}));
 	vi.spyOn(chatgpt, "chatgptLastAssistantTurnText").mockResolvedValue("");
 	vi.spyOn(chatgpt, "chatgptSelectThinkingLevel").mockResolvedValue(undefined);
-	vi.spyOn(chatgpt, "chatgptSend").mockResolvedValue(undefined);
+	const chatgptSend = vi.spyOn(chatgpt, "chatgptSend").mockResolvedValue(undefined);
 	vi.spyOn(chatgpt, "chatgptSnapshot").mockImplementation(snapshot);
 	vi.spyOn(chatgptResearch, "chatgptEnableDeepResearch").mockResolvedValue(undefined);
-	vi.spyOn(chatgptResearch, "chatgptSendDeepResearch").mockResolvedValue(undefined);
+	const chatgptResearchSend = vi.spyOn(chatgptResearch, "chatgptSendDeepResearch").mockResolvedValue(undefined);
 	vi.spyOn(chatgptResearch, "chatgptDeepResearchSnapshot").mockImplementation(snapshot);
 	vi.spyOn(gemini, "geminiLastResponseText").mockResolvedValue("");
 	vi.spyOn(gemini, "geminiLastDeepResearchReportText").mockResolvedValue("");
 	vi.spyOn(gemini, "geminiSelectDefaultMode").mockResolvedValue(undefined);
-	vi.spyOn(gemini, "geminiSend").mockResolvedValue(undefined);
+	const geminiSend = vi.spyOn(gemini, "geminiSend").mockResolvedValue(undefined);
 	vi.spyOn(gemini, "geminiSnapshot").mockImplementation(snapshot);
 	vi.spyOn(gemini, "geminiDeepResearchSnapshot").mockImplementation(snapshot);
 	vi.spyOn(geminiResearch, "geminiEnableDeepResearch").mockResolvedValue(undefined);
 	const plan = vi.spyOn(geminiResearch, "geminiStartResearchPlan").mockResolvedValue(undefined);
 	const accountId = provider === "chatgpt-web" ? "chatgpt-thinker" : "gemini-thinker";
 	const store = new ConversationStore(dataDir, accountId);
-	const start = () =>
+	const start = (requestId?: string, prompt = "test") =>
 		internals
 			.chatAccount(
 				accountId,
-				{ prompt: "test", sessionId: "session", research, timeoutMs: 90_000 },
+				{
+					prompt,
+					sessionId: "session",
+					research,
+					timeoutMs: 90_000,
+					...(requestId === undefined ? {} : { requestId }),
+				},
 				{ signal: controller.signal },
 			)
 			.then(
 				(value: unknown) => ({ value }),
 				(error: unknown) => ({ error }),
 			);
-	return { start, store, page, controller, snapshot, context, plan };
+	const providerSend = research
+		? provider === "chatgpt-web"
+			? chatgptResearchSend
+			: geminiSend
+		: provider === "chatgpt-web"
+			? chatgptSend
+			: geminiSend;
+	return { start, store, page, controller, snapshot, context, plan, providerSend };
 }
 
 describe.each(providers)("%s runtime wiring", (provider) => {
@@ -227,6 +240,27 @@ describe.each(providers)("%s runtime wiring", (provider) => {
 			value: { text: "answer", conversationId: "native", url: canonical(provider) },
 		});
 		expect(turn.context.close).toHaveBeenCalledTimes(1);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	
+	it("recovers a completed durable research request without re-submitting it", async () => {
+		const turn = runtime(provider, true);
+		turn.page.url.mockImplementation(() => canonical(provider));
+
+		const first = turn.start("research-call-1");
+		await vi.advanceTimersByTimeAsync(45_000);
+		expect(await first).toMatchObject({
+			value: { text: "answer", conversationId: "native", url: canonical(provider) },
+		});
+		expect(turn.providerSend).toHaveBeenCalledTimes(1);
+
+		const repeated = turn.start("research-call-1");
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(await repeated).toMatchObject({
+			value: { text: "answer", conversationId: "native", url: canonical(provider) },
+		});
+		expect(turn.providerSend).toHaveBeenCalledTimes(1);
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
