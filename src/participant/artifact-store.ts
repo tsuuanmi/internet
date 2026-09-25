@@ -1,9 +1,9 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { hashProviderTurnText } from "#internet/browser/turn-receipts";
 import { type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import { hashCanonicalJson } from "#internet/core/canonical-json";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
-import { hashProviderTurnText } from "#internet/browser/turn-receipts";
 
 export const WEBSITE_PARTICIPANT_ARTIFACT_SCHEMA = "@tsuuanmi/internet-website-participant-artifact" as const;
 export type WebsiteParticipantMode = "chat" | "research";
