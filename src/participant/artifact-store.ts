@@ -114,7 +114,10 @@ export function parseWebsiteParticipantArtifact(value: unknown): WebsiteParticip
 		throw new Error("website participant artifact text hash mismatch");
 	}
 	if (typeof value.url !== "string" || value.url.trim() === "") throw new Error("invalid website participant URL");
-	if (value.conversationId !== undefined && (typeof value.conversationId !== "string" || value.conversationId === "")) {
+	if (
+		value.conversationId !== undefined &&
+		(typeof value.conversationId !== "string" || value.conversationId === "")
+	) {
 		throw new Error("invalid website participant conversation id");
 	}
 	if (typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt))) {
@@ -204,7 +207,8 @@ export class WebsiteParticipantArtifactStore {
 		const path = this.path(artifactId);
 		if (!existsSync(path)) return undefined;
 		const stat = lstatSync(path);
-		if (!stat.isFile()) throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} is not a regular file`);
+		if (!stat.isFile())
+			throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} is not a regular file`);
 		if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) {
 			throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} permissions must be 0600`);
 		}
@@ -234,7 +238,8 @@ export class WebsiteParticipantArtifactStore {
 			throw new WebsiteParticipantArtifactStoreError("artifact max chars must be a positive integer");
 		}
 		const artifact = this.read(ownerSessionId, artifactId);
-		if (artifact === undefined) throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} was not found`);
+		if (artifact === undefined)
+			throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} was not found`);
 		const totalChars = artifact.text.length;
 		const offset = Math.min(options.offset, totalChars);
 		const end = Math.min(totalChars, offset + options.maxChars);
