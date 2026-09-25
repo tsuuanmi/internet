@@ -58,11 +58,7 @@ import { type ProviderLease, ProviderScheduler } from "#internet/browser/provide
 import { RemoteLoginSession, type RemoteLoginStatus } from "#internet/browser/remote-login";
 import { type ResponseRepresentation, renderCompletedResponse } from "#internet/browser/response";
 import { type AccountLocations, accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
-import {
-	hashProviderTurnText,
-	ProviderTurnReceiptStore,
-	reconcileProviderTurn,
-} from "#internet/browser/turn-receipts";
+import { hashProviderTurnText, ProviderTurnReceiptStore, reconcileProviderTurn } from "#internet/browser/turn-receipts";
 import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 import { InternetError } from "#internet/core/errors";
@@ -974,10 +970,7 @@ export class BrowserManager {
 				const existing = receipts.read(request.sessionId, request.requestId);
 				if (existing !== undefined) {
 					if (existing.promptHash !== hashProviderTurnText(request.prompt)) {
-						throw new InternetError(
-							"config_error",
-							"provider request id was reused with different input",
-						);
+						throw new InternetError("config_error", "provider request id was reused with different input");
 					}
 					const reconciliation = reconcileProviderTurn(existing, snapshot);
 					if (reconciliation === "AMBIGUOUS") {
