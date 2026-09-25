@@ -65,10 +65,13 @@ function browserRequest(request: WebsiteParticipantRequest): ChatRequest {
 }
 
 export class WebsiteParticipantService {
-	constructor(
-		private readonly browser: ParticipantBrowser,
-		private readonly artifacts: WebsiteParticipantArtifactStore,
-	) {}
+	private readonly browser: ParticipantBrowser;
+	private readonly artifacts: WebsiteParticipantArtifactStore;
+
+	constructor(browser: ParticipantBrowser, artifacts: WebsiteParticipantArtifactStore) {
+		this.browser = browser;
+		this.artifacts = artifacts;
+	}
 
 	async execute(request: WebsiteParticipantRequest): Promise<WebsiteParticipantResult> {
 		if (request.ownerSessionId.trim() === "")
