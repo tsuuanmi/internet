@@ -77,7 +77,7 @@ function requestFor(options: TeamStepExecutionOptions, prompt: string): ChatRequ
 	return {
 		prompt,
 		sessionId: options.sessionId,
-		requestKey: options.requestKey,
+		requestId: options.requestKey,
 		visible: options.visible,
 		timeoutMs: options.timeoutMs,
 		stallTimeoutMs: options.stallTimeoutMs,
