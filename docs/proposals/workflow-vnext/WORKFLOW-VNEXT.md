@@ -272,6 +272,98 @@ monitoring.v1
 
 Provider/model/account/session routing remains below semantic capability selection.
 
+### 8.1 Internet remains a plugin and composes host/external infrastructure
+
+Internet is not intended to become the host platform for every execution subsystem. It is itself a plugin running inside a host such as DeepSeek Harness and should reuse DSH/Cordis services or strong external implementations where their semantics fit.
+
+The main substitution targets are implementation infrastructure used by Internet itself:
+
+```text
+browser backend
+team coordination
+subagent/session lifecycle
+workflow runtime/scheduler
+persistence
+```
+
+This principle is not primarily about wrapping Jira, MCP, LSP, or arbitrary domain tools. Those may remain ordinary agent tools supplied by the host.
+
+The target dependency direction is:
+
+```text
+Internet collaboration semantics
+  -> versioned semantic capability / participant binding
+  -> DSH service or external adapter
+  -> selected implementation
+  -> typed Artifact / Assessment / Receipt / durable binding
+```
+
+The orchestrator should own collaboration correctness semantics, not commodity infrastructure merely because a workflow needs it.
+
+### 8.2 Website-native participants remain linked to native conversations
+
+Authenticated ChatGPT/Gemini website participation is strategically important because the signed-in product conversation itself can supply native Search/Deep Research, long-lived context, and website actions.
+
+A website-native research Need must therefore not be silently normalized into generic host `web.search/fetch` execution.
+
+```text
+Need(native website research)
+  -> selected website participant
+  -> stable authenticated native conversation
+  -> provider-native Search / Deep Research
+  -> typed result/artifact
+
+Need(generic host web lookup)
+  -> host web/search capability
+```
+
+The two paths may coexist but have different semantics, cost models, and context continuity.
+
+Internet durable state remains authoritative; the native website conversation is working context and provider-side execution state.
+
+### 8.3 Reuse DSH subagent and Agent-Team infrastructure without redefining website execution
+
+DSH `ctx.subagents` already provides durable child Session identity, continuable lifecycle, cold resume, and messaging. DSH Agent Teams adds a durable roster, task DAG, mailbox, and teammate coordination.
+
+Internet should attempt to reuse those facilities before maintaining duplicate infrastructure.
+
+However, current DSH Agent Teams creates teammates as continuable subagents. The target Internet website participant is **not** defined as a generic subagent provider. Its actual reasoning workspace remains the native ChatGPT/Gemini website conversation.
+
+The preferred binding is:
+
+```text
+local DSH Agent / Team teammate
+  <-> Internet website-participant binding
+  <-> exact native provider conversation
+```
+
+The local Agent remains the Team member and can reason, coordinate, and use DSH tools normally. The linked website conversation is a collaborator for provider-native/high-context work. Its output returns to the local Agent, which can then propagate conclusions or artifact references through the DSH Team.
+
+Local/API reasoning is expected and useful. The optimization target is to avoid unnecessary duplicate context work: for substantial source-heavy research/read tasks, the linked website participant should normally perform the first acquisition/read pass before the Local Agent reads the same corpus. The Local Agent may then inspect targeted raw sources where verification or exact judgment benefits from it.
+
+This model does not require externally executed Team members and therefore fits current DSH Agent Teams more closely.
+
+### 8.4 Browser replacement sits below the website adapter
+
+The current production implementation uses `BrowserManager` and Patchright directly. The target architecture should allow a better browser implementation to replace that layer without changing participant identity, conversation bindings, or workflow semantics.
+
+DSH `ctx.browserUse` demonstrates provider replaceability but intentionally exposes no common browser-operation API, so it is not automatically a drop-in replacement.
+
+A replacement browser/backend is valid only if the website adapter can preserve:
+
+```text
+authenticated account restoration
+exact native conversation identity
+provider mode selection
+completion observation
+turn reconciliation
+cancellation/failure semantics
+```
+
+Replaceability must preserve the semantics relied on by the workflow. An alternative implementation is valid only if it satisfies the required capability version, schemas, authority rules, side-effect/reconciliation behavior, cancellation semantics, and receipt/failure contracts.
+
+See [Product thesis and adaptive plugin composition](PRODUCT-THESIS.md) for the broader build-vs-adapt rationale.
+
 ## 9. Artifact-based communication
 
 Correctness-bearing semantic communication uses typed durable artifacts rather than transient chat transcripts.
@@ -431,6 +523,8 @@ A workflow must not silently resume under incompatible definitions. Cross-versio
 
 Efficiency is a first-class architectural goal.
 
+A key routing preference is **website-first source acquisition when appropriate**: if a linked website participant can search/read a large source set well, avoid having the Local Agent perform the same full pass before delegating it again. Local reasoning should focus first on decomposition, critique, verification, and decisions, with targeted raw-source inspection when useful.
+
 Principles include:
 
 ```text
@@ -495,9 +589,11 @@ A multi-day research workflow may look like:
 Admission
  -> Planning
  -> Research round 1
+      -> selected authenticated website participant
+      -> provider-native Search / Deep Research when requested
  -> EvidenceArtifacts
  -> Timer
- -> Research round 2
+ -> Research round 2 in the same bound native conversation when useful
  -> Evidence update/supersession
  -> Timer
  -> Final research round
@@ -505,6 +601,8 @@ Admission
  -> Citation/source verification
  -> ReportArtifact
 ```
+
+Generic host web search/fetch may supplement this workflow, but it is not an automatic replacement for native website research because it does not preserve the same participant conversation or product-native research semantics.
 
 If a paid/authenticated source is encountered:
 
