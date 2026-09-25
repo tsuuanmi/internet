@@ -57,10 +57,10 @@ describe("WorkflowRetentionManager", () => {
 			sequence: 1,
 			payload: "exact handoff payload",
 		});
-		const turnReceipts = new ProviderTurnReceiptStore(root, started.jobId, "chatgpt-thinker");
+		const turnReceipts = new ProviderTurnReceiptStore(root, "chatgpt-thinker");
 		const turnReceipt = turnReceipts.submit({
 			sessionId: `owner:workflow:${started.jobId}:research:A`,
-			requestKey: `${started.jobId}:${rootNode.nodeId}:${rootNode.input.inputHash}`,
+			requestId: `${started.jobId}:${rootNode.nodeId}:${rootNode.input.inputHash}`,
 			prompt: "exact workflow prompt",
 			previousResponse: "",
 		});
@@ -94,10 +94,10 @@ describe("WorkflowRetentionManager", () => {
 				`${old.jobId}:${rootNode.nodeId}:${rootNode.input.inputHash}`,
 			),
 		).toBeUndefined();
-		expect(existsSync(join(root, "workflows", "provider-turns", old.jobId))).toBe(false);
+		expect(existsSync(join(root, "provider-turns", "chatgpt-thinker"))).toBe(false);
 		expect(existsSync(join(root, "workflows", "events", old.jobId))).toBe(false);
 		expect(existsSync(join(root, "workflows", "cleanup-audit", `${audit.auditId}.json`))).toBe(true);
-		expect(turnReceipt.workflowJobId).toBe(old.jobId);
+		expect(turnReceipt.accountId).toBe("chatgpt-thinker");
 		expect(
 			retention.cleanup({ jobId: old.jobId, expectedUpdatedAt: old.updatedAt, operatorSessionId: "operator" }),
 		).toEqual(audit);
