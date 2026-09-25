@@ -13,10 +13,11 @@ describe("internet_artifact", () => {
 		const signal = new AbortController().signal;
 
 		await expect(
-			tool.execute(
-				{ artifact_id: "a".repeat(64), offset: 10, max_chars: 8 },
-				{ agent: { id: "teammate-session" }, callId: "call-read", signal } as never,
-			),
+			tool.execute({ artifact_id: "a".repeat(64), offset: 10, max_chars: 8 }, {
+				agent: { id: "teammate-session" },
+				callId: "call-read",
+				signal,
+			} as never),
 		).resolves.toEqual({
 			text: "evidence",
 			artifactId: "a".repeat(64),
@@ -35,10 +36,10 @@ describe("internet_artifact", () => {
 		const tool = defineInternetArtifactTool({ readText } as never);
 
 		await expect(
-			tool.execute(
-				{ artifact_id: "a".repeat(64) },
-				{ callId: "call-read", signal: new AbortController().signal } as never,
-			),
+			tool.execute({ artifact_id: "a".repeat(64) }, {
+				callId: "call-read",
+				signal: new AbortController().signal,
+			} as never),
 		).resolves.toMatchObject({
 			isError: true,
 			text: expect.stringContaining("agent-backed DSH session"),
@@ -56,12 +57,12 @@ describe("internet_artifact", () => {
 		} as never;
 
 		await expect(tool.execute({ artifact_id: "bad" }, exec)).resolves.toMatchObject({ isError: true });
-		await expect(
-			tool.execute({ artifact_id: "a".repeat(64), offset: -1 }, exec),
-		).resolves.toMatchObject({ isError: true });
-		await expect(
-			tool.execute({ artifact_id: "a".repeat(64), max_chars: 0 }, exec),
-		).resolves.toMatchObject({ isError: true });
+		await expect(tool.execute({ artifact_id: "a".repeat(64), offset: -1 }, exec)).resolves.toMatchObject({
+			isError: true,
+		});
+		await expect(tool.execute({ artifact_id: "a".repeat(64), max_chars: 0 }, exec)).resolves.toMatchObject({
+			isError: true,
+		});
 		expect(readText).not.toHaveBeenCalled();
 	});
 });
