@@ -262,7 +262,7 @@ Source: [internet-research.ts](https://github.com/tsuuanmi/internet/blob/main/sr
 
 That gives each teammate durable ordinary and research website threads anchored to the same DSH teammate identity. Whether future Deep Research should sometimes reuse the ordinary native conversation is a separate product decision.
 
-## 4.1 Native user interaction and DSH composition model
+### 4.1 Native user interaction and DSH composition model
 
 The user-facing interaction remains native DSH interaction:
 
@@ -544,7 +544,7 @@ A better target is an Internet website-participant service/adapter accepting par
 
 The DSH controller Agent can still decide **when and why** to invoke it; execution underneath remains reconcile-before-resubmit.
 
-## 7.1 Option A implementation plan
+### 7.1 Option A implementation plan
 
 The smallest complete implementation plan should preserve current production behavior until each boundary is proven.
 
