@@ -56,6 +56,24 @@ describe("account-aware plugin registration", () => {
 		expect(research?.text).toContain("thinker accounts");
 	});
 
+	it("adds website-first guidance only when DSH Agent Teams is present, without replacing current tools", () => {
+		const { context, sections, tools } = fakeContext();
+		const agentTeamsContext = {
+			...context,
+			get: (name: string) => (name === "agentTeams" ? {} : undefined),
+		};
+
+		apply(agentTeamsContext, {});
+
+		const integration = sections.find((section) => section.name === "integration:agent-teams");
+		expect(integration?.text).toContain("DSH Agent Teams");
+		expect(integration?.text).toContain("website-first");
+		expect(integration?.text).toContain("source-heavy");
+		expect(integration?.text).toContain("Local reasoning");
+		expect(integration?.text).toContain("comparison baseline");
+		expect(tools).toContain("internet_team");
+	});
+
 	it("keeps the two-ChatGPT team and workflow when Gemini is disabled", () => {
 		const { context, tools, commands } = fakeContext();
 		apply(context, { enableGemini: false });
