@@ -78,7 +78,7 @@ const INTERNET_WORKFLOW_GUIDANCE = [
 
 export interface PluginContext {
 	agents: WorkflowAgentRegistry;
-	get?(name: string): unknown;
+	inject?(services: readonly string[], callback: (scope: PluginContext) => void): unknown;
 	tools: { register(tool: ReturnType<typeof defineTool>): void };
 	commands: { register(command: CommandDefinition): void };
 	systemPrompt?: { section(options: { name: string; order: number; text: string }): void };
@@ -103,9 +103,9 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 	if (accounts.size === 0) return;
 	const thinkers = new Set([...accounts].filter((accountId) => getAccountDefinition(accountId).role === "thinker"));
 
-	if (ctx.get?.("agentTeams") !== undefined) {
-		ctx.systemPrompt?.section?.({ name: "integration:agent-teams", order: 118, text: AGENT_TEAMS_GUIDANCE });
-	}
+	ctx.inject?.(["agentTeams"], (scope) => {
+		scope.systemPrompt?.section?.({ name: "integration:agent-teams", order: 118, text: AGENT_TEAMS_GUIDANCE });
+	});
 
 	if (accounts.has("chatgpt-thinker")) ctx.commands.register(defineInternetCommand(manager));
 
