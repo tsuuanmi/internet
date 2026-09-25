@@ -1,10 +1,10 @@
 import type { BrowserManager, ChatRequest, ChatResult } from "#internet/browser/runtime";
 import { hashProviderTurnText } from "#internet/browser/turn-receipts";
-import { type AccountId, getAccountDefinition } from "#internet/core/accounts";
-import {
-	type WebsiteParticipantArtifact,
+import type { AccountId, getAccountDefinition } from "#internet/core/accounts";
+import type {
+	WebsiteParticipantArtifact,
 	WebsiteParticipantArtifactStore,
-	type WebsiteParticipantMode,
+	WebsiteParticipantMode,
 } from "#internet/participant/artifact-store";
 
 export const DEFAULT_WEBSITE_RESULT_INLINE_CHARS = 12_000;
