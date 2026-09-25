@@ -36,38 +36,40 @@ Internet should contribute collaboration semantics and compose capabilities expo
 Conceptually:
 
 ```text
-Host / Harness
+DeepSeek Harness / Cordis
 │
 ├── Internet plugin
 │   ├── work continuity
+│   ├── website-session participant bindings
 │   ├── collaboration state
 │   ├── capability routing
 │   ├── authority / approvals
 │   ├── artifacts / provenance
 │   └── recovery / reconciliation semantics
 │
-├── browser plugin
-├── repository/GitHub plugin
-├── coding-agent plugin
-├── search/research plugin
-├── storage plugin
-├── notification plugin
-└── future plugins
+├── DSH subagent/session services
+├── DSH Agent Teams when their semantics fit
+├── browser execution implementation
+├── workflow/runtime implementation
+└── other infrastructure providers
 ```
 
-Internet should not absorb a capability merely because it needs to call that capability.
+The important replaceability target is **infrastructure used to implement Internet**: browser control, team/subagent coordination, workflow runtime, persistence, and similar execution substrate.
+
+This principle is not primarily about making Jira, MCP, LSP, or every domain tool into an Internet abstraction. Those tools may still be available to agents through the host, but they are orthogonal to the architectural substitution boundary described here.
+
+Internet should not absorb an infrastructure subsystem merely because the workflow needs it.
 
 The preferred dependency direction is:
 
 ```text
-Internet semantic need
-  -> stable capability contract
-  -> host/plugin resolution
-  -> selected implementation
-  -> typed result / receipt
+Internet collaboration semantics
+  -> stable host/service or Internet capability contract
+  -> selected infrastructure/provider implementation
+  -> typed result / receipt / durable binding
 ```
 
-This allows Internet to improve when better ecosystem components appear without rewriting collaboration logic.
+This allows Internet to improve when DSH or an external project provides a better browser, team, subagent, or runtime implementation without rewriting collaboration semantics.
 
 ## 3. Problems worth solving
 
@@ -94,6 +96,20 @@ workflow
 ```
 
 Authenticated web accounts are therefore valuable adapters, not the definition of the core architecture.
+
+Their value is also not equivalent to ordinary host-side web search. ChatGPT and Gemini can search/research from inside the signed-in product conversation itself. That native path can preserve the same provider conversation context, use provider-native Search/Deep Research behavior, and consume the user's web-product allowance rather than forcing every research step through a separate API-backed `web.search/fetch` call.
+
+Therefore:
+
+```text
+website-native search / Deep Research
+  = first-class capability of the authenticated participant
+
+host web.search / fetch
+  = separate optional capability for Local/other agents
+```
+
+Internet should not silently downgrade a requested website-native research turn into generic host web search.
 
 ### 3.2 Real work is iterative, not one-shot
 
@@ -147,16 +163,29 @@ Participant
 Possible implementations include:
 
 ```text
-ChatGPT web account
-Gemini web account
-API-backed model agent
-coding-agent plugin
+ChatGPT website participant
+Gemini website participant
+DSH-hosted agent/subagent
+coding-agent integration
 local model
 human participant
 future specialist service
 ```
 
 The kernel should reason about required capabilities and authority, not provider brands.
+
+A website participant should remain bound to its **native website conversation**. Reusing DSH subagent or Agent-Team infrastructure must not redefine ChatGPT/Gemini Web as generic subagent providers if doing so loses their native-session behavior or inserts an unnecessary second reasoning model in front of every website turn.
+
+A useful target binding is:
+
+```text
+Internet participant identity
+  -> optional DSH agent/team identity
+  -> durable website-session binding
+  -> exact ChatGPT/Gemini native conversation
+```
+
+The DSH identity may help with host lifecycle, roster, messaging, or recovery. The provider conversation remains the actual website reasoning workspace.
 
 ## 4. Provider conversation is working memory, not authority
 
@@ -200,62 +229,110 @@ Internet should not automatically own:
 
 ```text
 browser engine
-Git implementation
-GitHub/GitLab client
-generic model API client
-sandbox/runtime
-search engine
-memory/vector database
+team roster/task/mailbox substrate
+subagent/session lifecycle substrate
+generic workflow scheduler/runtime
 workflow persistence backend
-coding-agent implementation
-notification transport
+generic model/API runtime
+sandbox/runtime
+other host infrastructure already supplied well by DSH or external projects
 ```
+
+Domain tools such as Jira, MCP servers, LSP, or arbitrary business integrations are not the main subject of this build-vs-adapt rule. Agents may use those through the host normally; Internet does not need to wrap them merely to claim composability.
 
 A subsystem should be built internally only when existing implementations cannot satisfy a correctness-bearing requirement or when adapting them would create a worse boundary than a small internal implementation.
 
 ## 6. Adaptive composition target
 
-The target is replaceability at real ownership/substitution boundaries, not abstraction for its own sake.
+The target is replaceability at real infrastructure ownership/substitution boundaries, not abstraction for its own sake.
 
-Illustrative capability contracts:
+The most important candidate seams are:
 
 ```text
-ConversationProvider
-BrowserRuntime
-ReasoningCapability
-ResearchCapability
-CodeWorkspace
-RepositoryHost
-ArtifactStore
+WebsiteSessionAdapter
+  owns provider-specific authenticated/native conversation behavior
+
+BrowserBackend
+  executes the website adapter's browser interactions
+
+TeamCoordination
+  roster / task board / mailbox / peer coordination
+
+HostParticipantLifecycle
+  durable child/session identity and continuation where useful
+
+WorkflowRuntime
+  scheduling / wakeup / recovery mechanics beneath Internet semantics
+
 WorkflowStore
-NotificationTransport
+  durable storage implementation
 ```
 
-Illustrative implementations/plugins:
+The separation matters:
 
 ```text
-ConversationProvider
-  -> ChatGPTWeb
-  -> GeminiWeb
-  -> API-backed participant
-  -> local participant
+Internet core
+  -> WebsiteSessionAdapter
+       -> BrowserBackend
 
-BrowserRuntime
-  -> current Patchright implementation
-  -> Browser Use adapter
-  -> Stagehand adapter
-  -> remote CDP/browser service
+Internet core
+  -> TeamCoordination / HostParticipantLifecycle
+       -> DSH services when semantics fit
 
-CodeWorkspace
-  -> local worktree
-  -> coding-agent workspace
-  -> remote sandbox
-
-RepositoryHost
-  -> GitHub
-  -> GitLab
-  -> Bitbucket
+Internet semantic workflow
+  -> WorkflowRuntime
+       -> native implementation today
+       -> replaceable implementation later if proven
 ```
+
+For ChatGPT/Gemini website participants, the website session adapter owns the stable account/conversation binding and provider-native capabilities such as Search or Deep Research. The browser is below that adapter and should be replaceable without changing participant identity or workflow semantics.
+
+### 6.1 Reuse DSH subagents without turning website sessions into generic subagent providers
+
+`ctx.subagents` is attractive because DSH already owns durable child Session identity, continuations, lifecycle, and messaging.
+
+However, direct reuse has a product constraint: Internet's website participants should stay linked to native ChatGPT/Gemini conversations and should not require a second API-model reasoning hop simply to relay each turn.
+
+Therefore a future integration should test one of these shapes rather than assuming a subagent-provider mapping:
+
+```text
+A. DSH child Session as host-side identity/controller
+   <-> durable binding
+   <-> native website conversation
+
+B. lightweight bridge/proxy with bounded/no duplicate reasoning
+   <-> native website conversation
+
+C. upstream DSH extension for externally executed continuable participants
+   <-> native website conversation
+```
+
+If using `ctx.subagents` requires an ordinary API-backed child model to reinterpret every prompt and call Internet again, the extra token cost, latency, and semantic hop must be justified; otherwise the integration defeats part of the website-session value proposition.
+
+### 6.2 Reuse DSH Agent Teams where the execution model fits
+
+DSH Agent Teams already provides a durable roster, task DAG, mailbox, and teammate messaging. Internet should prefer those semantics over rebuilding equivalent infrastructure when they fit.
+
+Current DSH Agent Teams creates teammates as continuable subagents. Because the target Internet website participant is **not** a generic subagent provider, direct adoption is not yet proven.
+
+The desired direction is:
+
+```text
+Internet workstream/team semantics
+  -> reuse DSH Agent Team roster/task/mailbox where possible
+  -> bind a member to a native website participant session
+  -> avoid duplicating team state inside Internet
+```
+
+A small bridge or upstream extension may be preferable to maintaining a second full team implementation. Until this is prototyped, current Internet team execution remains production reality.
+
+### 6.3 DSH browser-use is inspiration, not automatically the website backend
+
+DSH's `ctx.browserUse` seam intentionally registers a provider name but exposes no common browser-operation API; each provider owns its tools/resources.
+
+That is useful architectural evidence that browser infrastructure should stay independently replaceable, but it does not mean Internet can simply call `ctx.browserUse` as a drop-in replacement for `BrowserManager`.
+
+The website adapter requires stronger programmatic guarantees: authenticated account restoration, exact native-conversation binding, provider-mode selection, completion observation, and provider-turn reconciliation. A DSH or external browser backend is reusable only if the website adapter can obtain those guarantees without weakening them.
 
 These names are conceptual. vNext should avoid introducing interfaces merely to satisfy a plugin aesthetic.
 
