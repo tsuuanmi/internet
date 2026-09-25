@@ -85,7 +85,8 @@ describe("WebsiteParticipantService", () => {
 		const signal = new AbortController().signal;
 
 		const result = await service.execute({
-			ownerSessionId: "teammate-session:research:architecture",
+			ownerSessionId: "teammate-session",
+			conversationSessionId: "teammate-session:research:architecture",
 			accountId: "gemini-thinker",
 			logicalRequestId: "call-research",
 			mode: "research",
