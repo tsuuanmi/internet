@@ -11,6 +11,7 @@ export const DEFAULT_WEBSITE_RESULT_INLINE_CHARS = 12_000;
 
 export interface WebsiteParticipantRequest {
 	readonly ownerSessionId: string;
+	readonly conversationSessionId?: string;
 	readonly accountId: AccountId;
 	readonly logicalRequestId: string;
 	readonly mode: WebsiteParticipantMode;
@@ -56,7 +57,7 @@ function resultFromArtifact(artifact: WebsiteParticipantArtifact): WebsitePartic
 function browserRequest(request: WebsiteParticipantRequest): ChatRequest {
 	return {
 		prompt: request.prompt,
-		sessionId: request.ownerSessionId,
+		sessionId: request.conversationSessionId ?? request.ownerSessionId,
 		requestId: request.logicalRequestId,
 		visible: request.visible === true,
 		signal: request.signal,
