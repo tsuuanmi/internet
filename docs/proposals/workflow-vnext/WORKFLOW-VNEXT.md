@@ -272,25 +272,92 @@ monitoring.v1
 
 Provider/model/account/session routing remains below semantic capability selection.
 
-### 8.1 Internet remains a plugin and composes plugins
+### 8.1 Internet remains a plugin and composes host/external infrastructure
 
-Internet is not intended to become the host platform for every execution capability. It is itself a plugin running inside a host such as DeepSeek Harness and should consume other host/plugin capabilities through stable contracts where practical.
+Internet is not intended to become the host platform for every execution subsystem. It is itself a plugin running inside a host such as DeepSeek Harness and should reuse DSH/Cordis services or strong external implementations where their semantics fit.
+
+The main substitution targets are implementation infrastructure used by Internet itself:
+
+```text
+browser backend
+team coordination
+subagent/session lifecycle
+workflow runtime/scheduler
+persistence
+```
+
+This principle is not primarily about wrapping Jira, MCP, LSP, or arbitrary domain tools. Those may remain ordinary agent tools supplied by the host.
 
 The target dependency direction is:
 
 ```text
-workflow/profile semantic Need
-  -> versioned capability contract
-  -> host/plugin capability resolution
+Internet collaboration semantics
+  -> versioned semantic capability / participant binding
+  -> DSH service or external adapter
   -> selected implementation
-  -> typed Artifact / Assessment / Receipt
+  -> typed Artifact / Assessment / Receipt / durable binding
 ```
 
-The orchestrator should own collaboration correctness semantics, not commodity implementations merely because a workflow needs them.
+The orchestrator should own collaboration correctness semantics, not commodity infrastructure merely because a workflow needs it.
 
-Examples of capabilities that should remain independently replaceable when a real substitution boundary exists include browser runtime, repository hosting, coding-agent execution, search/research, storage backends, and notification transport.
+### 8.2 Website-native participants remain linked to native conversations
 
-Authenticated ChatGPT/Gemini web participation remains strategically useful, but it is a provider implementation below the participant/capability boundary rather than a generic-kernel assumption.
+Authenticated ChatGPT/Gemini website participation is strategically important because the signed-in product conversation itself can supply native Search/Deep Research, long-lived context, and website actions.
+
+A website-native research Need must therefore not be silently normalized into generic host `web.search/fetch` execution.
+
+```text
+Need(native website research)
+  -> selected website participant
+  -> stable authenticated native conversation
+  -> provider-native Search / Deep Research
+  -> typed result/artifact
+
+Need(generic host web lookup)
+  -> host web/search capability
+```
+
+The two paths may coexist but have different semantics, cost models, and context continuity.
+
+Internet durable state remains authoritative; the native website conversation is working context and provider-side execution state.
+
+### 8.3 Reuse DSH subagent and Agent-Team infrastructure without redefining website execution
+
+DSH `ctx.subagents` already provides durable child Session identity, continuable lifecycle, cold resume, and messaging. DSH Agent Teams adds a durable roster, task DAG, mailbox, and teammate coordination.
+
+Internet should attempt to reuse those facilities before maintaining duplicate infrastructure.
+
+However, current DSH Agent Teams creates teammates as continuable subagents. The target Internet website participant is **not** defined as a generic subagent provider. Its actual reasoning workspace remains the native ChatGPT/Gemini website conversation.
+
+A future bridge should therefore preserve a binding such as:
+
+```text
+Internet participant
+  <-> optional DSH child/team identity
+  <-> durable website-session binding
+  <-> exact native provider conversation
+```
+
+Reuse is only beneficial if it does not require a second API-backed model to reinterpret and relay every website turn. Any proxy/controller must keep duplicate reasoning and token cost bounded and explicit.
+
+If current DSH Team/Subagent contracts cannot represent an externally executed participant cleanly, Internet should prefer a small bridge or upstream DSH extension over inventing a second full team/runtime stack.
+
+### 8.4 Browser replacement sits below the website adapter
+
+The current production implementation uses `BrowserManager` and Patchright directly. The target architecture should allow a better browser implementation to replace that layer without changing participant identity, conversation bindings, or workflow semantics.
+
+DSH `ctx.browserUse` demonstrates provider replaceability but intentionally exposes no common browser-operation API, so it is not automatically a drop-in replacement.
+
+A replacement browser/backend is valid only if the website adapter can preserve:
+
+```text
+authenticated account restoration
+exact native conversation identity
+provider mode selection
+completion observation
+turn reconciliation
+cancellation/failure semantics
+```
 
 Replaceability must preserve the semantics relied on by the workflow. An alternative implementation is valid only if it satisfies the required capability version, schemas, authority rules, side-effect/reconciliation behavior, cancellation semantics, and receipt/failure contracts.
 
@@ -519,9 +586,11 @@ A multi-day research workflow may look like:
 Admission
  -> Planning
  -> Research round 1
+      -> selected authenticated website participant
+      -> provider-native Search / Deep Research when requested
  -> EvidenceArtifacts
  -> Timer
- -> Research round 2
+ -> Research round 2 in the same bound native conversation when useful
  -> Evidence update/supersession
  -> Timer
  -> Final research round
@@ -529,6 +598,8 @@ Admission
  -> Citation/source verification
  -> ReportArtifact
 ```
+
+Generic host web search/fetch may supplement this workflow, but it is not an automatic replacement for native website research because it does not preserve the same participant conversation or product-native research semantics.
 
 If a paid/authenticated source is encountered:
 
