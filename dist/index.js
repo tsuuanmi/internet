@@ -80,9 +80,9 @@ export function apply(ctx, rawConfig) {
     if (accounts.size === 0)
         return;
     const thinkers = new Set([...accounts].filter((accountId) => getAccountDefinition(accountId).role === "thinker"));
-    if (ctx.get?.("agentTeams") !== undefined) {
-        ctx.systemPrompt?.section?.({ name: "integration:agent-teams", order: 118, text: AGENT_TEAMS_GUIDANCE });
-    }
+    ctx.inject?.(["agentTeams"], (scope) => {
+        scope.systemPrompt?.section?.({ name: "integration:agent-teams", order: 118, text: AGENT_TEAMS_GUIDANCE });
+    });
     if (accounts.has("chatgpt-thinker"))
         ctx.commands.register(defineInternetCommand(manager));
     ctx.tools.register(defineInternetBrowserTool(manager, accounts));
