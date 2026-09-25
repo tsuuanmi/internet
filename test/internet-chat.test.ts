@@ -47,10 +47,11 @@ describe("internet_chat website participant boundary", () => {
 		const signal = new AbortController().signal;
 
 		await expect(
-			tool.execute(
-				{ account: "chatgpt-thinker", prompt: "inspect", visible: true },
-				{ agent: { id: "teammate-session" }, callId: "call-42", signal } as never,
-			),
+			tool.execute({ account: "chatgpt-thinker", prompt: "inspect", visible: true }, {
+				agent: { id: "teammate-session" },
+				callId: "call-42",
+				signal,
+			} as never),
 		).resolves.toMatchObject({
 			answer: "Answer",
 			artifactId: "a".repeat(64),
@@ -85,14 +86,16 @@ describe("internet_chat website participant boundary", () => {
 		}));
 		const tool = defineInternetChatTool({ execute } as never, 1_000, allowed);
 
-		await tool.execute(
-			{ account: "chatgpt-thinker", prompt: "alpha" },
-			{ agent: { id: "researcher-a" }, callId: "call-a", signal: new AbortController().signal } as never,
-		);
-		await tool.execute(
-			{ account: "chatgpt-thinker", prompt: "beta" },
-			{ agent: { id: "researcher-b" }, callId: "call-b", signal: new AbortController().signal } as never,
-		);
+		await tool.execute({ account: "chatgpt-thinker", prompt: "alpha" }, {
+			agent: { id: "researcher-a" },
+			callId: "call-a",
+			signal: new AbortController().signal,
+		} as never);
+		await tool.execute({ account: "chatgpt-thinker", prompt: "beta" }, {
+			agent: { id: "researcher-b" },
+			callId: "call-b",
+			signal: new AbortController().signal,
+		} as never);
 
 		expect(execute.mock.calls.map(([request]) => [request.ownerSessionId, request.logicalRequestId])).toEqual([
 			["researcher-a", "call-a"],
@@ -105,10 +108,10 @@ describe("internet_chat website participant boundary", () => {
 		const tool = defineInternetChatTool({ execute } as never, 1_000, allowed);
 
 		await expect(
-			tool.execute(
-				{ account: "chatgpt-thinker", prompt: "hello" },
-				{ callId: "call-1", signal: new AbortController().signal } as never,
-			),
+			tool.execute({ account: "chatgpt-thinker", prompt: "hello" }, {
+				callId: "call-1",
+				signal: new AbortController().signal,
+			} as never),
 		).resolves.toMatchObject({
 			isError: true,
 			answer: expect.stringContaining("agent-backed DSH session"),
