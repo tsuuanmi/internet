@@ -62,7 +62,6 @@ import {
 	hashProviderTurnText,
 	ProviderTurnReceiptStore,
 	reconcileProviderTurn,
-	workflowJobIdFromRequestKey,
 } from "#internet/browser/turn-receipts";
 import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
@@ -74,8 +73,8 @@ export interface ChatRequest {
 	prompt: string;
 	/** Durable owner key: the current DSH agent/session ID. */
 	sessionId: string;
-	/** Stable logical request identity used to reconcile workflow retries. */
-	requestKey?: string;
+	/** Stable logical request identity used to reconcile provider retries. */
+	requestId?: string;
 	/** Show automated Chrome on the user-managed display instead of managed Xvfb. */
 	visible?: boolean;
 	/** Enables provider Deep Research before this request is submitted. */
@@ -236,7 +235,7 @@ export class BrowserManager {
 	private readonly remoteLogins = new Map<AccountId, RemoteLoginSession>();
 	private readonly accounts: AccountStore;
 	private readonly conversations = new Map<AccountId, ConversationStore>();
-	private readonly turnReceipts = new Map<string, ProviderTurnReceiptStore>();
+	private readonly turnReceipts = new Map<AccountId, ProviderTurnReceiptStore>();
 	private readonly pendingCloses = new Map<AccountId, NodeJS.Timeout>();
 	private readonly activeContexts = new Map<AccountId, Map<AbortSignal, BrowserContext>>();
 	private readonly accountCommitQueues = new Map<AccountId, Promise<void>>();
@@ -276,13 +275,11 @@ export class BrowserManager {
 		return store;
 	}
 
-	private turnReceiptStore(accountId: AccountId, requestKey: string): ProviderTurnReceiptStore {
-		const workflowJobId = workflowJobIdFromRequestKey(requestKey);
-		const key = `${workflowJobId}:${accountId}`;
-		let store = this.turnReceipts.get(key);
+	private turnReceiptStore(accountId: AccountId): ProviderTurnReceiptStore {
+		let store = this.turnReceipts.get(accountId);
 		if (store === undefined) {
-			store = new ProviderTurnReceiptStore(this.config.dataDir, workflowJobId, accountId);
-			this.turnReceipts.set(key, store);
+			store = new ProviderTurnReceiptStore(this.config.dataDir, accountId);
+			this.turnReceipts.set(accountId, store);
 		}
 		return store;
 	}
@@ -940,10 +937,10 @@ export class BrowserManager {
 					persist: (url) => {
 						try {
 							const persisted = this.conversationStore(accountId).bind(request.sessionId, url);
-							if (request.requestKey !== undefined) {
-								this.turnReceiptStore(accountId, request.requestKey).bindConversation(
+							if (request.requestId !== undefined) {
+								this.turnReceiptStore(accountId).bindConversation(
 									request.sessionId,
-									request.requestKey,
+									request.requestId,
 									persisted.conversationUrl,
 								);
 							}
@@ -960,25 +957,26 @@ export class BrowserManager {
 				});
 			let result: { text: string; binding: ConversationBinding };
 			let completedSemanticText: string | undefined;
-			const currentSnapshot = () => (provider === "chatgpt-web" ? chatgptSnapshot(page!) : geminiSnapshot(page!));
+			const currentSnapshot = () =>
+				request.research === true
+					? provider === "chatgpt-web"
+						? chatgptDeepResearchSnapshot(page!)
+						: geminiDeepResearchSnapshot(page!)
+					: provider === "chatgpt-web"
+						? chatgptSnapshot(page!)
+						: geminiSnapshot(page!);
 			let resumeSubmittedTurn = false;
 			let previousResponseText: string | undefined;
-			if (request.requestKey !== undefined) {
-				if (request.research === true) {
-					throw new InternetError(
-						"config_error",
-						"provider turn reconciliation is only supported for ordinary workflow turns",
-					);
-				}
-				const receipts = this.turnReceiptStore(accountId, request.requestKey);
+			if (request.requestId !== undefined) {
+				const receipts = this.turnReceiptStore(accountId);
 				const snapshot = await currentSnapshot();
 				previousResponseText = snapshot.text;
-				const existing = receipts.read(request.sessionId, request.requestKey);
+				const existing = receipts.read(request.sessionId, request.requestId);
 				if (existing !== undefined) {
 					if (existing.promptHash !== hashProviderTurnText(request.prompt)) {
 						throw new InternetError(
 							"config_error",
-							"workflow request key was reused with different provider input",
+							"provider request id was reused with different input",
 						);
 					}
 					const reconciliation = reconcileProviderTurn(existing, snapshot);
@@ -1002,7 +1000,7 @@ export class BrowserManager {
 						}
 						receipts.complete(
 							request.sessionId,
-							request.requestKey,
+							request.requestId,
 							snapshot.text,
 							recoveredBinding.conversationUrl,
 						);
@@ -1022,7 +1020,7 @@ export class BrowserManager {
 					} else {
 						receipts.submit({
 							sessionId: request.sessionId,
-							requestKey: request.requestKey,
+							requestId: request.requestId,
 							prompt: request.prompt,
 							previousResponse: snapshot.text,
 							conversationUrl: binding?.conversationUrl,
@@ -1031,7 +1029,7 @@ export class BrowserManager {
 				} else {
 					receipts.submit({
 						sessionId: request.sessionId,
-						requestKey: request.requestKey,
+						requestId: request.requestId,
 						prompt: request.prompt,
 						previousResponse: snapshot.text,
 						conversationUrl: binding?.conversationUrl,
@@ -1084,7 +1082,7 @@ export class BrowserManager {
 					await geminiSend(page, request.prompt);
 				}
 				result = await observeBoundTurn(async (signal, remainingMs) => {
-					if (request.research === true && !resumeSubmittedTurn) {
+					if (request.research === true) {
 						await geminiStartResearchPlan(page!, { signal, timeoutMs: remainingMs() });
 					}
 					const completed = await waitForStableCompletion(
@@ -1100,13 +1098,13 @@ export class BrowserManager {
 					return renderCompletedResponse(completed, responseRepresentation);
 				});
 			}
-			if (request.requestKey !== undefined) {
+			if (request.requestId !== undefined) {
 				if (completedSemanticText === undefined) {
 					throw new InternetError("provider_error", "provider completion semantic text was unavailable");
 				}
-				this.turnReceiptStore(accountId, request.requestKey).complete(
+				this.turnReceiptStore(accountId).complete(
 					request.sessionId,
-					request.requestKey,
+					request.requestId,
 					completedSemanticText,
 					result.binding.conversationUrl,
 				);
