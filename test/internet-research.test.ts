@@ -83,16 +83,18 @@ describe("internet_research execution", () => {
 	});
 
 	it("uses account identity to keep parallel research receipts independent under one tool call", async () => {
-		const execute = vi.fn(async (request: { accountId: "chatgpt-thinker" | "gemini-thinker" }) => ({
+		const execute = vi.fn(async (request: {
+			accountId: "chatgpt-thinker" | "gemini-thinker";
+			logicalRequestId: string;
+		}) => ({
 			accountId: request.accountId,
 			provider: request.accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
 			mode: "research" as const,
 			text: request.accountId,
 			url: "https://example.com/conversation",
 			artifactId: request.accountId === "gemini-thinker" ? "d".repeat(64) : "e".repeat(64),
-				totalChars: request.accountId.length,
-			}),
-		);
+			totalChars: request.accountId.length,
+		}));
 		const tool = defineInternetResearchTool({ execute } as never, config, allowed);
 
 		await expect(
