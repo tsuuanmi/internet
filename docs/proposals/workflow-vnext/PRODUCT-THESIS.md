@@ -116,6 +116,8 @@ Local Agent
 
 A workflow may intentionally use more Local-Agent reasoning when that improves quality. Token efficiency is an optimization objective, not an authority rule or a prohibition on local reasoning.
 
+The default should also avoid duplicate source acquisition. When substantial source/web/file reading can be performed well by the linked website participant, the Local Agent should normally delegate that first-pass reading before ingesting the same corpus itself. Local re-reading remains appropriate for verification, disagreement resolution, implementation-critical details, or other reasoning that benefits from direct inspection.
+
 Therefore:
 
 ```text
@@ -191,18 +193,17 @@ future specialist service
 
 The kernel should reason about required capabilities and authority, not provider brands.
 
-A website participant should remain bound to its **native website conversation**. Reusing DSH subagent or Agent-Team infrastructure must not redefine ChatGPT/Gemini Web as generic subagent providers if doing so loses their native-session behavior or inserts an unnecessary second reasoning model in front of every website turn.
+A website participant should remain bound to its **native website conversation**. The website participant does not replace the DSH teammate: the local DSH Agent remains the Team member, reasoner, and coordination authority, while its linked website conversation provides native/high-context capabilities. Reusing DSH subagent or Agent-Team infrastructure must preserve that pairing.
 
 A useful target binding is:
 
 ```text
-Internet participant identity
-  -> optional DSH agent/team identity
-  -> durable website-session binding
-  -> exact ChatGPT/Gemini native conversation
+DSH local Agent / Team member
+  -> Internet participant binding
+  -> exact authenticated ChatGPT/Gemini native conversation
 ```
 
-The DSH identity may help with host lifecycle, roster, messaging, or recovery. The provider conversation remains the actual website reasoning workspace.
+The local Agent remains the user-facing/team-facing participant. Website output returns to that local Agent and can then flow through DSH Team messages, tasks, or Internet artifacts to the rest of the team. The provider conversation is the high-context/native-capability workspace, not an independent Team authority.
 
 ## 4. Provider conversation is working memory, not authority
 
