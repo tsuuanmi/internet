@@ -104,14 +104,16 @@ export function defineInternetResearchTool(
 				return { state: "failed", results: [] };
 			}
 			if (exec.agent?.id === undefined) return { state: "failed", results: [] };
-			const sessionId = `${String(exec.agent.id)}:research:${input.name ?? "default"}`;
+			const ownerSessionId = String(exec.agent.id);
+			const conversationSessionId = `${ownerSessionId}:research:${input.name ?? "default"}`;
 			const logicalRequestId = String(exec.callId);
 			const results = await Promise.all(
 				accounts.map(async (accountId): Promise<ResearchAccountResult> => {
 					const provider = getAccountDefinition(accountId).provider;
 					try {
 						const result = await participant.execute({
-							ownerSessionId: sessionId,
+							ownerSessionId,
+							conversationSessionId,
 							accountId,
 							logicalRequestId,
 							mode: "research",
