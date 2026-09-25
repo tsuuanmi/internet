@@ -59,9 +59,13 @@ Members see only ordinal roles (`Member 1`, `Member 2`, ...). Provider/account i
 
 ## Experimental DSH Agent Teams prototype
 
-Option A is opt-in while DSH Agent Teams remains experimental. Enable the upstream `@deepseek-ai/dsh-experimental-agent-team-profile` in the same DSH deployment **before** Internet so the `agentTeams` service is present when this plugin loads. The upstream profile owns the durable roster, teammate Sessions, task DAG, mailbox, wake/cold-resume behavior, Team tools, and Team UI; Internet does not mirror that state.
+Option A is opt-in while DSH Agent Teams remains experimental. Add the upstream `@deepseek-ai/dsh-experimental-agent-team-profile` to the same DSH profile alongside Internet. The upstream profile owns the durable roster, teammate Sessions, task DAG, mailbox, wake/cold-resume behavior, Team tools, and Team UI; Internet does not mirror that state.
 
-When `ctx.agentTeams` is present, Internet adds integration guidance with this ownership model:
+```sh
+dsh plugin --profile <name> add @deepseek-ai/dsh-experimental-agent-team-profile
+```
+
+Internet registers its integration through Cordis' optional service lifecycle, so it can load normally without Agent Teams and activates the guidance when the `agentTeams` service becomes available. The ownership model is:
 
 ```text
 DSH teammate Session
