@@ -2,10 +2,7 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import type { BrowserConfig, WebProvider } from "#internet/core/config";
 import { isInternetError } from "#internet/core/errors";
-import {
-	projectWebsiteParticipantResult,
-	type WebsiteParticipantService,
-} from "#internet/participant/service";
+import { projectWebsiteParticipantResult, type WebsiteParticipantService } from "#internet/participant/service";
 import { parseResearchArgs, type ResearchInput } from "#internet/tools/args";
 
 type ResearchAccountResult = {
