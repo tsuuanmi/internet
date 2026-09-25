@@ -67,7 +67,7 @@ describe("internet_chat DSH session continuity", () => {
 	});
 
 	it("keeps different DSH teammates in different website sessions", async () => {
-		const chat = vi.fn(async () => ({
+		const chat = vi.fn(async (_accountId: string, _request: { sessionId: string }) => ({
 			text: "Answer",
 			url: "https://chatgpt.com/c/native",
 			conversationId: "native",
