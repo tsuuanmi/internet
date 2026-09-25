@@ -171,27 +171,6 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 
 export { BrowserManager } from "#internet/browser/runtime";
 export {
-	WebsiteParticipantArtifactStore,
-	WebsiteParticipantArtifactStoreError,
-	parseWebsiteParticipantArtifact,
-} from "#internet/participant/artifact-store";
-export type {
-	CreateWebsiteParticipantArtifactInput,
-	WebsiteParticipantArtifact,
-	WebsiteParticipantMode,
-	WebsiteParticipantTextRange,
-} from "#internet/participant/artifact-store";
-export {
-	DEFAULT_WEBSITE_RESULT_INLINE_CHARS,
-	projectWebsiteParticipantResult,
-	WebsiteParticipantService,
-} from "#internet/participant/service";
-export type {
-	WebsiteParticipantProjection,
-	WebsiteParticipantRequest,
-	WebsiteParticipantResult,
-} from "#internet/participant/service";
-export {
 	hashProviderTurnText,
 	ProviderTurnReceiptStore,
 	parseProviderTurnReceipt,
