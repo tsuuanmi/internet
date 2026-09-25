@@ -1,10 +1,7 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import { isInternetError } from "#internet/core/errors";
-import {
-	projectWebsiteParticipantResult,
-	type WebsiteParticipantService,
-} from "#internet/participant/service";
+import { projectWebsiteParticipantResult, type WebsiteParticipantService } from "#internet/participant/service";
 import { parseChatArgs } from "#internet/tools/args";
 
 export type { ChatInput } from "#internet/tools/args";
