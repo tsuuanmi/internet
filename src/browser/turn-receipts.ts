@@ -53,11 +53,7 @@ function receiptId(accountId: AccountId, sessionHash: string, requestIdHash: str
 }
 
 export function providerTurnReceiptId(accountId: AccountId, sessionId: string, requestId: string): string {
-	return receiptId(
-		accountId,
-		identityHash(sessionId, "session id"),
-		identityHash(requestId, "request id"),
-	);
+	return receiptId(accountId, identityHash(sessionId, "session id"), identityHash(requestId, "request id"));
 }
 
 export function reconcileProviderTurn(
