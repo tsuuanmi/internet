@@ -21,12 +21,7 @@ function parseOffset(value: unknown): number {
 
 function parseMaxChars(value: unknown): number {
 	if (value === undefined) return DEFAULT_ARTIFACT_READ_CHARS;
-	if (
-		typeof value !== "number" ||
-		!Number.isSafeInteger(value) ||
-		value < 1 ||
-		value > MAX_ARTIFACT_READ_CHARS
-	) {
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > MAX_ARTIFACT_READ_CHARS) {
 		throw new Error(`internet_artifact max_chars must be an integer from 1 through ${MAX_ARTIFACT_READ_CHARS}`);
 	}
 	return value;
