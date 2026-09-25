@@ -57,6 +57,27 @@ describe("ProviderTurnReceiptStore", () => {
 		).toThrow("different prompt");
 	});
 
+	it("deletes receipts for one exact owner session without touching sibling sessions", () => {
+		const receipts = store();
+		receipts.submit({
+			sessionId: "workflow-session-a",
+			requestId: "call-a",
+			prompt: "a",
+			previousResponse: "",
+		});
+		receipts.submit({
+			sessionId: "workflow-session-b",
+			requestId: "call-b",
+			prompt: "b",
+			previousResponse: "",
+		});
+
+		expect(receipts.deleteSession("workflow-session-a")).toBe(1);
+		expect(receipts.read("workflow-session-a", "call-a")).toBeUndefined();
+		expect(receipts.read("workflow-session-b", "call-b")).toBeDefined();
+		expect(receipts.deleteSession("workflow-session-a")).toBe(0);
+	});
+
 	it("waits for a submitted live generation without resubmitting", () => {
 		const receipts = store();
 		const submitted = receipts.submit({
