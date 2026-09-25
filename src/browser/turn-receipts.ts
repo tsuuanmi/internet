@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { type AccountId, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
@@ -142,6 +142,42 @@ export class ProviderTurnReceiptStore {
 				`provider turn receipt ${id} is invalid: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
+	}
+
+	deleteSession(sessionId: string): number {
+		const sessionHash = identityHash(sessionId, "session id");
+		if (!existsSync(this.root)) return 0;
+		if (!lstatSync(this.root).isDirectory()) {
+			throw new ProviderTurnReceiptError(`provider turn receipt root is not a directory: ${this.root}`);
+		}
+		let deleted = 0;
+		for (const filename of readdirSync(this.root).sort()) {
+			if (!/^[0-9a-f]{64}\.json$/u.test(filename)) {
+				throw new ProviderTurnReceiptError(`unexpected provider turn receipt file: ${filename}`);
+			}
+			const path = join(this.root, filename);
+			const stat = lstatSync(path);
+			if (!stat.isFile()) throw new ProviderTurnReceiptError(`provider turn receipt ${filename} is not a regular file`);
+			if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) {
+				throw new ProviderTurnReceiptError(`provider turn receipt ${filename} permissions must be 0600`);
+			}
+			let receipt: ProviderTurnReceipt;
+			try {
+				receipt = parseProviderTurnReceipt(JSON.parse(readFileSync(path, "utf8")));
+			} catch (error) {
+				throw new ProviderTurnReceiptError(
+					`provider turn receipt ${filename} is invalid: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+			if (receipt.accountId !== this.accountId) {
+				throw new ProviderTurnReceiptError(`provider turn receipt ${filename} belongs to another account`);
+			}
+			if (receipt.sessionHash !== sessionHash) continue;
+			unlinkSync(path);
+			deleted += 1;
+		}
+		if (readdirSync(this.root).length === 0) rmdirSync(this.root);
+		return deleted;
 	}
 
 	submit(input: {
