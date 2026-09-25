@@ -329,18 +329,19 @@ Internet should attempt to reuse those facilities before maintaining duplicate i
 
 However, current DSH Agent Teams creates teammates as continuable subagents. The target Internet website participant is **not** defined as a generic subagent provider. Its actual reasoning workspace remains the native ChatGPT/Gemini website conversation.
 
-A future bridge should therefore preserve a binding such as:
+The preferred binding is:
 
 ```text
-Internet participant
-  <-> optional DSH child/team identity
-  <-> durable website-session binding
+local DSH Agent / Team teammate
+  <-> Internet website-participant binding
   <-> exact native provider conversation
 ```
 
-Reuse is only beneficial if it does not require a second API-backed model to reinterpret and relay every website turn. Any proxy/controller must keep duplicate reasoning and token cost bounded and explicit.
+The local Agent remains the Team member and can reason, coordinate, and use DSH tools normally. The linked website conversation is a collaborator for provider-native/high-context work. Its output returns to the local Agent, which can then propagate conclusions or artifact references through the DSH Team.
 
-If current DSH Team/Subagent contracts cannot represent an externally executed participant cleanly, Internet should prefer a small bridge or upstream DSH extension over inventing a second full team/runtime stack.
+Local/API reasoning is expected and useful. The optimization target is to avoid unnecessary duplicate context work: for substantial source-heavy research/read tasks, the linked website participant should normally perform the first acquisition/read pass before the Local Agent reads the same corpus. The Local Agent may then inspect targeted raw sources where verification or exact judgment benefits from it.
+
+This model does not require externally executed Team members and therefore fits current DSH Agent Teams more closely.
 
 ### 8.4 Browser replacement sits below the website adapter
 
@@ -521,6 +522,8 @@ A workflow must not silently resume under incompatible definitions. Cross-versio
 ## 16. Efficiency
 
 Efficiency is a first-class architectural goal.
+
+A key routing preference is **website-first source acquisition when appropriate**: if a linked website participant can search/read a large source set well, avoid having the Local Agent perform the same full pass before delegating it again. Local reasoning should focus first on decomposition, critique, verification, and decisions, with targeted raw-source inspection when useful.
 
 Principles include:
 
