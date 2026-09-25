@@ -33,7 +33,11 @@ describe("internet_research execution", () => {
 	const config = { researchTimeoutMs: 1 } as never;
 
 	it("routes each account through the durable website participant with a named research owner", async () => {
-		const execute = vi.fn(async (request: { accountId: "chatgpt-thinker" | "gemini-thinker" }) => ({
+		const execute = vi.fn(
+			async (request: {
+				accountId: "chatgpt-thinker" | "gemini-thinker";
+				logicalRequestId: string;
+			}) => ({
 			accountId: request.accountId,
 			provider: request.accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
 			mode: "research" as const,
@@ -87,17 +91,18 @@ describe("internet_research execution", () => {
 			text: request.accountId,
 			url: "https://example.com/conversation",
 			artifactId: request.accountId === "gemini-thinker" ? "d".repeat(64) : "e".repeat(64),
-			totalChars: request.accountId.length,
-		}));
+				totalChars: request.accountId.length,
+			}),
+		);
 		const tool = defineInternetResearchTool({ execute } as never, config, allowed);
 
-		const result = await tool.execute({ query: "Compare", accounts: ["chatgpt-thinker", "gemini-thinker"] }, {
-			agent: { id: "agent" },
-			callId: "call-shared",
-			signal: new AbortController().signal,
-		} as never);
-
-		expect(result.state).toBe("completed");
+		await expect(
+			tool.execute({ query: "Compare", accounts: ["chatgpt-thinker", "gemini-thinker"] }, {
+				agent: { id: "agent" },
+				callId: "call-shared",
+				signal: new AbortController().signal,
+			} as never),
+		).resolves.toMatchObject({ state: "completed" });
 		expect(execute.mock.calls.map(([request]) => [request.accountId, request.logicalRequestId])).toEqual([
 			["chatgpt-thinker", "call-shared"],
 			["gemini-thinker", "call-shared"],
