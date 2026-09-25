@@ -309,40 +309,35 @@ For ChatGPT/Gemini website participants, the website session adapter owns the st
 
 `ctx.subagents` is attractive because DSH already owns durable child Session identity, continuations, lifecycle, and messaging.
 
-However, direct reuse has a product constraint: Internet's website participants should stay linked to native ChatGPT/Gemini conversations. A host-side reasoning/controller hop is acceptable when it performs useful decomposition, critique, coordination, or authority work; it should not exist merely to relay large context that the website participant can process more efficiently.
-
-Therefore a future integration should test one of these shapes rather than assuming a subagent-provider mapping:
+The preferred model keeps the DSH child Session as the real local participant and links it durably to one native ChatGPT/Gemini conversation:
 
 ```text
-A. DSH child Session as host-side identity/controller
-   <-> durable binding
-   <-> native website conversation
-
-B. lightweight bridge/proxy with bounded/no duplicate reasoning
-   <-> native website conversation
-
-C. upstream DSH extension for externally executed continuable participants
-   <-> native website conversation
+DSH child Session / local teammate
+  <-> Internet participant binding
+  <-> native website conversation
 ```
 
-If using `ctx.subagents` adds an ordinary API-backed child model, that model should have a real controller/reasoning role. The design should avoid making the host child repeatedly ingest raw files, long source material, or full research transcripts that the website participant already processed well. Extra token cost, latency, and semantic transformation must buy useful reasoning rather than mere transport.
+The local model is not transport overhead. It may perform useful decomposition, critique, coordination, verification, and authority-sensitive reasoning. The efficiency requirement is narrower: avoid making the local model ingest large raw files, source corpora, or full research transcripts before asking the linked website participant to perform the same source-heavy pass.
+
+The website collaborator extends the local teammate; it does not replace it or become a separate Team authority.
 
 ### 6.2 Reuse DSH Agent Teams where the execution model fits
 
 DSH Agent Teams already provides a durable roster, task DAG, mailbox, and teammate messaging. Internet should prefer those semantics over rebuilding equivalent infrastructure when they fit.
 
-Current DSH Agent Teams creates teammates as continuable subagents. Because the target Internet website participant is **not** a generic subagent provider, direct adoption is not yet proven.
+Current DSH Agent Teams creates teammates as continuable local subagents, which matches the preferred Option A well: the DSH teammate remains the Team member and is linked to a native website conversation through Internet.
 
 The desired direction is:
 
 ```text
-Internet workstream/team semantics
-  -> reuse DSH Agent Team roster/task/mailbox where possible
-  -> bind a member to a native website participant session
-  -> avoid duplicating team state inside Internet
+DSH Agent Teams
+  -> authoritative local roster / task board / mailbox
+  -> continuable local teammate
+       <-> Internet website binding
+       <-> native ChatGPT/Gemini conversation
 ```
 
-A small bridge or upstream extension may be preferable to maintaining a second full team implementation. Until this is prototyped, current Internet team execution remains production reality.
+This integration is architecturally feasible with current primitives, but it is not yet production-proven. Internet should first validate conversation continuity, crash recovery, request reconciliation, token/context behavior, and output quality before replacing the current team execution path.
 
 ### 6.3 DSH browser-use is inspiration, not automatically the website backend
 
