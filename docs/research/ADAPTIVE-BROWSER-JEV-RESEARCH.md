@@ -1542,3 +1542,431 @@ The strongest candidate is a **hybrid deterministic + adaptive browser architect
 7. never let the recovery agent decide logical resubmission, user authority, workflow success, or exact prompt contents.
 
 This direction uses the most valuable browser ideas demonstrated by JEV while preserving the correctness model that internet already has.
+
+## Codebase-validated implementation direction
+
+A repository-level review against the current `main` branch materially refines the research direction above. The JEV-inspired concepts remain useful, but they should be introduced in layers that match internet's existing browser, provider, receipt, workflow, and authority boundaries rather than as one generic browser-agent feature.
+
+### Current execution paths that must not be conflated
+
+The repository currently has three distinct paths that can all be described informally as "research":
+
+1. **Workflow Research A/B** is part of the production v3 coding workflow. It runs through `WorkflowEngine -> BrowserWorkflowTeamRunner -> BrowserManager.chat()`. These are ordinary provider turns and already participate in workflow-scoped provider-turn receipts and reconcile-before-resubmit behavior.
+2. **`internet_research`** runs provider-native Deep Research through `BrowserManager.research()`. It has durable conversation binding, but it does not currently use workflow provider-turn receipts.
+3. **Workflow vNext external deep research** is represented by `WorkflowExternalDeepResearchAdapter -> BrowserManager.research()`. The capability and vNext runtime primitives exist in the repository, but the production plugin wiring in `src/index.ts` still instantiates the existing `WorkflowEngine` / `WorkflowDriver` path rather than the vNext coordinator.
+
+Recovery, retry, and live-control design must preserve these distinctions. In particular, a safe ordinary workflow-turn retry does not automatically imply that provider-native Deep Research can use the same retry semantics today.
+
+### Production workflow and vNext coexist intentionally
+
+The current plugin wiring still creates the v3 workflow runtime:
+
+~~~text
+WorkflowEngine
+    +
+WorkflowDriver
+    |
+    v
+BrowserManager
+~~~
+
+The repository also contains the newer capability/runtime/interaction architecture:
+
+~~~text
+workflow/runtime/*
+workflow/interactions/*
+capability-registry.ts
+artifact-store.ts
+input-bundle-store.ts
+work-item-store.ts
+profiles/research/deep-research-capability.ts
+~~~
+
+These newer modules are not obsolete merely because they are not yet the production entry path. They are the stronger future boundary for typed external signals, PendingAction authority, exact-input materialization, deterministic execution fencing, and capability routing.
+
+New browser primitives may be shared by both generations. New workflow control-plane concepts should not be grafted deeply into v3 if the same responsibility already has a canonical vNext home.
+
+### Split lightweight completion observation from full recovery observation
+
+JEV performs one rich browser observation per decision cycle. internet has a different workload: completion can be polled every few hundred milliseconds while provider generation may last minutes.
+
+A full JEV-style action-space scan on every completion poll would mix two distinct needs.
+
+The browser substrate should therefore expose at least two observation levels:
+
+~~~text
+LIGHTWEIGHT ATOMIC COMPLETION SNAPSHOT
+- newest provider response
+- response text/html
+- running state
+- minimal provider error/completion facts
+
+used frequently by waitForStableCompletion()
+
+FULL DIAGNOSTIC / ACTION SNAPSHOT
+- current semantic provider state
+- visible actionable controls
+- runtime-owned node identities
+- local context/guards
+- known interruption/error surfaces
+- modal/authority surfaces
+- freshness marker
+
+used at semantic boundaries, unexpected states, timeout/stall diagnosis,
+or before bounded recovery
+~~~
+
+This preserves the main JEV benefit — internally coherent observations with fewer round trips — without paying the cost of building a generic action table five times per second.
+
+### Provider completion remains provider-specific
+
+`waitForStableCompletion()` already has a useful narrow responsibility:
+
+- semantic progress transitions;
+- stall detection;
+- hard timeout;
+- stable completed response detection.
+
+It should not become the home of recovery policy or browser-agent reasoning.
+
+The preferred boundary is:
+
+~~~text
+provider-specific atomic completion reader
+        |
+        v
+waitForStableCompletion()
+        |
+        +-- completed -> return
+        |
+        +-- stall / timeout
+                 |
+                 v
+          recovery orchestration
+          using a FULL observation
+~~~
+
+The completion state machine remains reusable and deterministic.
+
+### Preserve current strict submission invariants
+
+Current ChatGPT submission deliberately verifies the exact attached prompt and requires the semantic Send action. Tests explicitly ensure the implementation never falls back to nearby controls such as Start Voice.
+
+Adaptive observation must preserve this invariant.
+
+A future recovery packet may report:
+
+~~~text
+expected:
+  semantic action = SEND_PROMPT
+
+observed:
+  [a31] button "Send message"
+  [a32] button "Start voice mode"
+~~~
+
+but that does not grant a generic browser agent permission to click either control. The provider/runtime layer still decides whether an observed candidate is semantically compatible with the intended action, then validates freshness and the postcondition before accepting success.
+
+### Self-debugging is the safest first adaptive capability
+
+The lowest-risk, highest-value first step is not autonomous recovery. It is structured diagnosis.
+
+Today failures may be flattened into a locator/provider error even though the page contains enough evidence for Local to understand that a deterministic provider assumption has drifted.
+
+A canonical diagnostic should capture, before context teardown:
+
+~~~text
+ProviderTurnDiagnostic
+  provider
+  stage
+  failure kind
+  expected semantic state / invariant
+  observed completion state
+  composer state
+  provider issue
+  sanitized visible action candidates
+  freshness identity
+~~~
+
+Example:
+
+~~~yaml
+kind: interaction_contract_changed
+stage: submit_prompt
+
+expected:
+  semanticAction: SEND_PROMPT
+  exactPromptAttached: true
+
+observed:
+  composerPresent: true
+
+actions:
+  - id: a31
+    role: button
+    name: Send message
+    enabled: true
+    scope: composer
+  - id: a32
+    role: button
+    name: Start voice mode
+    enabled: true
+    scope: composer
+~~~
+
+This is enough for a Local coding agent to understand a provider UI drift, create an offline fixture, reproduce the problem as a Red regression test, and update the deterministic adapter without first granting the agent browser mutation authority.
+
+### Authority surfaces must stay outside generic recovery
+
+`chatgpt-confirmation.ts` already classifies workflow-scoped GitHub confirmations and fails closed when structured metadata or authority cannot be proven.
+
+A generic action snapshot may report that an authority-bearing confirmation exists, but its approval controls must not become ordinary adaptive actions.
+
+Conceptually:
+
+~~~text
+snapshot:
+  authoritySurfacePresent = true
+
+generic recovery action space:
+  approval controls omitted
+
+authority path:
+  existing workflow confirmation policy
+~~~
+
+Adaptive UI handling must not become an authority bypass.
+
+### Ordinary workflow turns can gain recovery before Deep Research
+
+Ordinary workflow provider turns already have a durable logical identity through `ProviderTurnReceipt` and reconciliation states:
+
+~~~text
+WAIT
+RECOVER
+RESUBMIT
+AMBIGUOUS
+~~~
+
+This makes them the safer first place to test bounded recovery.
+
+The conceptual sequence can become:
+
+~~~text
+stall / timeout
+    |
+    v
+final full observation
+    |
+    v
+known recoverable provider state?
+    |
+    +-- yes -> validate durable receipt + semantic intent
+    |          -> validate fresh observed action
+    |          -> execute
+    |          -> verify postcondition
+    |          -> resume completion wait
+    |
+    +-- no  -> preserve existing workflow recovery
+               (for example RECREATE_SESSION or USER_ACTION)
+~~~
+
+Browser recovery should therefore augment the existing workflow recovery system rather than replace it.
+
+### Provider-native Deep Research needs stronger logical-turn identity first
+
+`BrowserManager.research()` does not currently use the ordinary workflow receipt path. `internet_research` and the vNext external deep-research adapter both call this provider-native flow without a workflow `requestKey`.
+
+The existing receipt implementation is also explicitly workflow-scoped: its logical request key embeds a 32-hex workflow job ID and its storage path lives under workflow provider-turn state.
+
+Therefore this rule is important:
+
+> A visible provider Retry button is not sufficient proof that retrying provider-native Deep Research is semantically safe.
+
+Before provider-native Deep Research gains adaptive Retry/Continue behavior, the logical provider-turn receipt concept should be generalized so that the same authoritative identity/reconciliation model can cover:
+
+- ordinary workflow turns;
+- direct `internet_research` turns;
+- vNext capability-owned Deep Research turns.
+
+Do not create a parallel `DeepResearchReceiptStore` unless code inspection proves that the semantics are genuinely different. Prefer one authoritative logical-turn representation.
+
+### Live user steering belongs in the workflow control plane
+
+The repository already contains vNext primitives for durable external interaction:
+
+- `WorkflowExternalSignal`;
+- request idempotency;
+- expected run revision;
+- provenance;
+- schema validation;
+- responder/authority policy;
+- durable PendingAction handling.
+
+These are a better foundation for user steering than a new browser-specific augmentation store.
+
+A future live update should follow a boundary like:
+
+~~~text
+User
+  |
+  v
+Local
+  |
+  v
+WorkflowExternalSignal
+  |
+  v
+schema + revision + authority validation
+  |
+  v
+effective execution input / control projection
+  |
+  v
+provider semantic intent
+  |
+  v
+fresh observed browser action
+~~~
+
+The final provider result must bind to the effective input that actually produced it. If a material user signal is incorporated during a run, the result cannot truthfully claim only the original InputBundle as its complete provenance.
+
+Because the vNext interaction/runtime path is not yet the production entry point, this live-control feature should not be implemented as a second ad-hoc protocol inside `WorkflowEngine` v3.
+
+### Proposed implementation sequence
+
+The refined implementation sequence is intentionally smaller and more dependency-aware than a single "adaptive browser" change.
+
+#### PR A — atomic observation and structured diagnostics
+
+No adaptive mutation behavior.
+
+Add a provider-neutral browser observation module for runtime-owned visible action identities and sanitized local context, plus a canonical provider-turn diagnostic type/formatter.
+
+Refactor ChatGPT and Gemini completion readers so the lightweight completion snapshot is atomic per provider document where practical.
+
+Capture a full diagnostic snapshot before BrowserManager closes a failed context.
+
+Return one typed diagnostic shape through `internet_chat` and `internet_research` rather than provider-specific diagnostic strings.
+
+TDD emphasis:
+
+- one DOM transition cannot combine response state from one revision with running state from another;
+- hidden, disabled, read-only, password, file, and irrelevant offscreen controls are excluded;
+- missing ChatGPT Send never permits Start Voice;
+- the same failure still exposes enough action metadata to diagnose the changed UI;
+- diagnostic collection failure never masks the original provider failure.
+
+#### PR B — freshness-safe observed action execution
+
+Introduce a browser execution primitive that accepts only runtime-owned observed action identities.
+
+Before interaction, revalidate:
+
+- document/freshness identity;
+- node connectivity;
+- visibility;
+- enabled/read-only state;
+- semantic guard;
+- click occlusion where relevant.
+
+Expose semantic intents such as `CONTINUE_CURRENT_ATTEMPT` or `DISMISS_TRANSIENT_MODAL`, not raw model-authored selectors or JavaScript.
+
+Keep authority-bearing confirmations outside this generic executor.
+
+#### PR C — bounded recovery for ordinary receipt-backed turns
+
+Use the full observation only after deterministic provider progress fails or reaches a recovery boundary.
+
+Allow a small fixed recovery budget for known safe provider-local actions.
+
+Every action must have a semantic postcondition, for example:
+
+~~~text
+Continue -> generation resumes
+Retry    -> same logical provider attempt becomes active
+Dismiss  -> blocking non-authority modal disappears
+~~~
+
+If recovery cannot be proven safe or makes no progress, fall back to the existing workflow recovery behavior.
+
+Do not add configuration knobs until there is evidence operators need them.
+
+#### PR D — generalize provider logical-turn identity and recover Deep Research
+
+Refactor the workflow-specific provider-turn receipt concept into one canonical logical provider-turn representation that can cover ordinary chat and provider-native Deep Research ownership.
+
+Preserve durable migration semantics for existing receipt data. Avoid maintaining two permanent runtime paths for old and new receipts.
+
+Only after this identity exists should provider-native Deep Research expose Retry/Continue recovery.
+
+#### Later — workflow-native Local <-> Website live control
+
+After the vNext runtime/control plane is the canonical production path, map user updates into typed durable external signals and effective-input lineage.
+
+Do not first implement this as a v3-only augmentation protocol that would later need to be migrated.
+
+### Module boundary guidance
+
+Do not immediately reorganize all provider files into a new directory tree. The architectural separation should first be made explicit through behavior and module responsibility.
+
+Keep these responsibilities narrow:
+
+~~~text
+browser/completion
+  completion/stall state machine only
+
+browser observation
+  what is currently visible/actionable
+
+browser execution
+  freshness-safe mechanical execution
+
+provider adapters
+  what controls and states mean for ChatGPT/Gemini
+
+BrowserManager
+  orchestration, session/account/conversation lifecycle
+
+workflow
+  logical correctness, receipts, authority, exact input, recovery ownership
+~~~
+
+After these boundaries stabilize, a later structural refactor may move provider semantics under `src/providers/` without mixing it into the behavioral change.
+
+### Dependency guidance
+
+Do not add Browser Harness solely because JEV uses it.
+
+internet already owns browser lifecycle through `patchright-core`. The useful JEV ideas — atomic observation, runtime-owned node identities, freshness guards, focused postconditions, and reduced protocol round trips — can be implemented without replacing the current browser stack.
+
+Optional raw CDP usage should be evidence-driven and narrowly scoped, for example for:
+
+- focus emulation experiments;
+- protocol-call instrumentation;
+- performance measurements that Patchright cannot expose cleanly.
+
+### Validation commands for implementation PRs
+
+The repository's canonical verification remains:
+
+~~~bash
+npm ci
+npm run check
+npm test
+npm run build
+git diff --exit-code -- dist
+test -z "$(git ls-files --others --exclude-standard -- dist)"
+npm run verify-package
+~~~
+
+During Red -> Green -> Refactor development, run focused tests first, then the complete canonical suite.
+
+### Promotion principle
+
+The most important refined rule is:
+
+> Learn from how JEV observes and safely executes against a changing browser; do not replace internet's provider semantics, workflow truth, receipts, or authority model with JEV's generic decision policy.
+
+The browser may become more adaptive about **how** it reaches a valid state. The workflow/runtime must remain authoritative about **which** states and actions are valid.
+
