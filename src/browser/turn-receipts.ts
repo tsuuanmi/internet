@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, rmdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { type AccountId, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
@@ -157,7 +157,8 @@ export class ProviderTurnReceiptStore {
 			}
 			const path = join(this.root, filename);
 			const stat = lstatSync(path);
-			if (!stat.isFile()) throw new ProviderTurnReceiptError(`provider turn receipt ${filename} is not a regular file`);
+			if (!stat.isFile())
+				throw new ProviderTurnReceiptError(`provider turn receipt ${filename} is not a regular file`);
 			if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) {
 				throw new ProviderTurnReceiptError(`provider turn receipt ${filename} permissions must be 0600`);
 			}
