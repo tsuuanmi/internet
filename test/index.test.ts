@@ -27,6 +27,7 @@ describe("account-aware plugin registration", () => {
 		const team = sections.find((section) => section.name === "tool:internet_team");
 		const chat = sections.find((section) => section.name === "tool:internet_chat");
 		const research = sections.find((section) => section.name === "tool:internet_research");
+		const artifact = sections.find((section) => section.name === "tool:internet_artifact");
 		const workflow = sections.find((section) => section.name === "tool:internet_workflow");
 
 		expect(sections.some((section) => section.name === "integration:agent-teams")).toBe(false);
@@ -49,12 +50,15 @@ describe("account-aware plugin registration", () => {
 			"internet_browser",
 			"internet_chat",
 			"internet_research",
+			"internet_artifact",
 			"internet_team",
 			"internet_workflow",
 			"internet_workflow_maintenance",
 		]);
 		expect(commands).toEqual(["internet", "workflow"]);
 		expect(research?.text).toContain("thinker accounts");
+		expect(artifact?.text).toContain("full website result");
+		expect(artifact?.text).toContain("artifact");
 	});
 
 	it("activates website-first guidance when DSH Agent Teams becomes available without replacing current tools", () => {
@@ -89,6 +93,7 @@ describe("account-aware plugin registration", () => {
 			"internet_browser",
 			"internet_chat",
 			"internet_research",
+			"internet_artifact",
 			"internet_team",
 			"internet_workflow",
 			"internet_workflow_maintenance",
@@ -100,7 +105,7 @@ describe("account-aware plugin registration", () => {
 		const { context, tools, commands } = fakeContext();
 		apply(context, { enableChatgpt: false });
 
-		expect(tools).toEqual(["internet_browser", "internet_chat", "internet_research"]);
+		expect(tools).toEqual(["internet_browser", "internet_chat", "internet_research", "internet_artifact"]);
 		expect(commands).toEqual([]);
 	});
 });
