@@ -255,3 +255,16 @@ The strongest product thesis is:
 > **Internet is a plugin that keeps heterogeneous AI participants and tools collaborating on the same evolving work across multiple rounds, while durable artifacts and human authority remain independent of any one provider or implementation.**
 
 The architecture should become more valuable as the surrounding ecosystem improves. Better browser runtimes, coding agents, search systems, storage backends, or repository tools should be composable into Internet rather than forcing Internet to compete with them.
+
+## 12. Primary references
+
+- [DeepSeek Harness architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md) — plugin/service composition and replaceability.
+- [DeepSeek Harness services](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/framework/service.md) — named service capabilities consumed through host injection rather than concrete provider imports.
+- [LangGraph persistence](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/persistence.mdx) — checkpointed graph state, conversation continuity, HITL, and fault tolerance.
+- [LangGraph checkpoint interface](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint/README.md) — replaceable persistence interface for durable graph execution.
+- [Letta](https://github.com/letta-ai/letta) — stateful agents with durable memory, identity, and conversations.
+- [OpenHands](https://github.com/OpenHands/OpenHands) — coding-agent runtime and software-engineering execution ecosystem.
+- [Browser Use](https://github.com/browser-use/browser-use) — browser-agent/runtime ecosystem and authenticated browser use cases.
+- [Stagehand](https://github.com/browserbase/stagehand) — Playwright-compatible adaptive browser automation.
+
+These references demonstrate that many execution layers already have dedicated ecosystems. They do not establish that Internet's proposed composition is unique; that claim should continue to be tested against new systems as they appear.
