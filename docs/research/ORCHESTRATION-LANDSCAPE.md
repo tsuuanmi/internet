@@ -210,7 +210,7 @@ Therefore the target is **not**:
 ChatGPT Web = generic DSH subagent provider
 ```
 
-Instead, research should prototype a binding such as:
+The preferred binding is:
 
 ```text
 DSH durable child/team identity
@@ -218,9 +218,9 @@ DSH durable child/team identity
   <-> native ChatGPT/Gemini conversation
 ```
 
-A reuse path is only attractive if it avoids a second API-model reasoning hop for every website turn. Spawning an ordinary DSH model merely so that it can call `internet_chat` would add API token cost, latency, and another semantic transformation layer.
+The DSH child is a real local reasoning/controller participant, not a relay that should be eliminated. Local/API token use is expected where it adds decomposition, critique, coordination, verification, or decision quality. The optimization target is avoiding duplicated source-heavy context work: the linked website conversation should normally perform the first broad search/read pass when it can do that well, and the Local Agent should inspect raw material selectively when useful.
 
-### 7.2 DSH Agent Teams is attractive infrastructure but current direct reuse is not yet proven
+### 7.2 DSH Agent Teams is the preferred local-team substrate to prototype
 
 DSH Agent Teams already owns:
 
@@ -232,19 +232,18 @@ teammate identity
 continuable teammate lifecycle
 ```
 
-Internet should prefer this substrate over maintaining a second equivalent team implementation if the execution boundary can be made compatible.
-
-Current Agent Teams creates teammates as continuable subagents and Team operations require live DSH Agent identities. Because Internet does not want to model ChatGPT/Gemini Web as generic subagent providers, there is a mismatch today.
-
-Candidate directions:
+These semantics align well with the preferred Option A because the Team member remains a real DSH Agent. Internet adds a durable 1:1 binding from that local teammate to its native website conversation.
 
 ```text
-1. lightweight host-side proxy/controller linked 1:1 to a native website session
-2. upstream DSH support for externally executed continuable participants
-3. selective reuse of Team roster/task/mailbox semantics while current Internet website execution remains separate
+DSH teammate
+  -> local reasoning / Team authority
+  <-> Internet website binding
+  <-> native ChatGPT/Gemini conversation
 ```
 
-The correct direction should be chosen by prototype, especially measuring extra API-token cost and whether state becomes duplicated.
+The website conversation does not need direct Team membership. Its output returns to the owning local teammate, which then shares compact conclusions or artifact references through the local Team.
+
+The remaining questions are implementation-quality questions rather than a fundamental identity mismatch: continuity across cold resume/restart, workflow-grade website-turn request identity, compact result projection, token/context allocation, and whether per-teammate composition controls are worth an upstream DSH extension.
 
 ### 7.3 DSH browser-use confirms replaceability, but is not a drop-in API
 
