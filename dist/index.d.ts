@@ -5,6 +5,7 @@ export declare const name = "internet";
 export declare const inject: readonly ["tools", "systemPrompt", "commands", "agents"];
 export interface PluginContext {
     agents: WorkflowAgentRegistry;
+    get?(name: string): unknown;
     tools: {
         register(tool: ReturnType<typeof defineTool>): void;
     };
