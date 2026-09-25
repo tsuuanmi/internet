@@ -74,14 +74,14 @@ describe("internet_chat DSH session continuity", () => {
 		}));
 		const tool = defineInternetChatTool({ chat } as never, 1_000, allowed);
 
-		await tool.execute(
-			{ account: "chatgpt-thinker", prompt: "alpha" },
-			{ agent: { id: "researcher-a" }, signal: new AbortController().signal } as never,
-		);
-		await tool.execute(
-			{ account: "chatgpt-thinker", prompt: "beta" },
-			{ agent: { id: "researcher-b" }, signal: new AbortController().signal } as never,
-		);
+		await tool.execute({ account: "chatgpt-thinker", prompt: "alpha" }, {
+			agent: { id: "researcher-a" },
+			signal: new AbortController().signal,
+		} as never);
+		await tool.execute({ account: "chatgpt-thinker", prompt: "beta" }, {
+			agent: { id: "researcher-b" },
+			signal: new AbortController().signal,
+		} as never);
 
 		expect(chat.mock.calls.map(([, request]) => request.sessionId)).toEqual(["researcher-a", "researcher-b"]);
 	});
