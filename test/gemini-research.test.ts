@@ -18,7 +18,10 @@ describe("geminiStartResearchPlan", () => {
 						}),
 					};
 				}
-				if (selector === 'div[data-test-id="deep-research-report"]') {
+				if (
+					selector ===
+					'response-container structured-content-container[data-test-id="message-content"] message-content #extended-response-markdown-content'
+				) {
 					return { filter: () => ({ count: vi.fn(async () => 1) }) };
 				}
 				throw new Error(`unexpected selector ${selector}`);
