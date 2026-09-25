@@ -7,7 +7,7 @@
 
 ## 1. Executive conclusion
 
-**Yes, Agent Teams is feasible as a near-term coordination substrate, but the best first integration is a DSH teammate acting as a controller for a linked native website conversation — not redefining ChatGPT/Gemini Web as a DSH subagent provider.**
+**Yes. The preferred Option A is a local-first team: every Team member remains a real DSH Agent, and selected local Agents are durably linked 1:1 to native ChatGPT/Gemini website conversations. Website Agents do not replace DSH teammates; they extend them with provider-native research, browsing, large-context reading, and website actions.**
 
 This is more feasible than it initially appeared because current Internet already has the key identity bridge:
 
@@ -22,20 +22,31 @@ DSH Agent id
 The resulting target is:
 
 ```text
-DSH Agent-Team teammate
-  = controller / coordinator / optional reasoner
+User
+  <-> Local Lead Agent
 
-Internet website participant
-  = native ChatGPT/Gemini reasoning workspace
-    + native Search / Deep Research
-    + large-context reading
-    + provider-native actions
+Local Lead Agent
+  -> DSH Workflow when bounded scripted fan-out helps
+  -> DSH Agent Teams for durable team coordination
 
-durable binding
-  DSH teammate SessionId
-    <-> accountId
-    <-> native website conversation
+DSH Team teammate
+  = real local Agent
+  = controller / coordinator / reasoner
+        |
+        | durable 1:1 link
+        v
+native ChatGPT/Gemini conversation
+  = website collaborator
+  = Search / Deep Research / large-context reading / website actions
+
+website output
+  -> linked local teammate
+  -> compact reasoning / artifact reference
+  -> DSH Team mailbox/task board
+  -> other local teammates / Lead
 ```
+
+The website conversation is therefore **not a Team member by itself**. The linked local Agent is the Team member and the bridge into local collaboration.
 
 The controller is allowed to use Local/API model tokens. The goal is not zero Local-Agent token use; it is to avoid spending Local-Agent context on work that the website participant can perform more efficiently, especially source-heavy browsing, large-file/diff reading, and provider-native research.
 
@@ -93,7 +104,39 @@ Website-product work:
   context that benefits from the persistent native thread
 ```
 
-No rule requires the Local Agent to avoid reading source material when it is the better path. Efficiency is workload allocation, not a hard routing policy.
+No rule forbids the Local Agent from reading source material when that is genuinely useful for reasoning, verification, or a final decision. However, source acquisition should avoid duplicate work.
+
+The default routing policy should be:
+
+```text
+if a task needs substantial web/source/file reading
+and the linked website Agent can perform it well:
+  delegate acquisition/first-pass reading to the website Agent first
+  receive a compact result / artifact reference
+  let the Local Agent inspect raw source only when needed for:
+    verification
+    disagreement resolution
+    exact implementation decisions
+    authority-sensitive reasoning
+```
+
+Avoid the wasteful pattern:
+
+```text
+Local Agent reads all sources
+  -> then website Agent reads the same sources again
+```
+
+Prefer:
+
+```text
+Local Agent frames the research question
+  -> website Agent performs the source-heavy pass
+  -> Local Agent critiques/uses the result
+  -> targeted Local re-reading only where useful
+```
+
+This is a routing preference, not a correctness shortcut.
 
 ## 3. Current DSH Agent Teams execution path
 
@@ -219,38 +262,178 @@ Source: [internet-research.ts](https://github.com/tsuuanmi/internet/blob/main/sr
 
 That gives each teammate durable ordinary and research website threads anchored to the same DSH teammate identity. Whether future Deep Research should sometimes reuse the ordinary native conversation is a separate product decision.
 
-## 5. Feasible integration options
+## 4.1 Native user interaction and DSH composition model
 
-### Option A — current Agent Teams + controller teammate
+The user-facing interaction remains native DSH interaction:
 
 ```text
-DSH Team teammate
-  -> Local/API model reasons and coordinates
-  -> calls internet_chat / internet_research
-  -> website session performs heavy research/reading
-  -> teammate sends compact Team result
+User
+  <-> Local Agent
 ```
 
-**Requires DSH change:** no.
+The user does not need to address ChatGPT/Gemini website accounts directly or manage Team internals.
 
-**Internet change:** little for a prototype.
+The Local Agent may use host capabilities when appropriate:
 
-**Reuse:** roster, durable mailbox, task DAG, cold-resume teammate Session, teammate identity, Team projection/UI, interruption and wait semantics.
+```text
+Local Agent
+  -> ordinary reasoning/tools
+  -> DSH Workflow for bounded scripted fan-out
+  -> DSH Agent Teams for durable roster/mailbox/task coordination
+  -> linked website conversation for native Search/Deep Research/high-context work
+```
 
-**Local token use:** non-zero by design. This is acceptable when the Local model performs useful controller work.
+DSH Workflow is useful inside a bounded round, but its current implementation is foreground-only and explicitly has no journaling/resume after process restart. It should therefore be treated as an execution primitive beneath Internet's longer-lived Workstream semantics, not as a replacement for them.
 
-**Main risks:**
+Source: [DSH workflow package](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/workflow/workflow/README.md)
 
-- Team policy + tool schemas consume tokens;
-- the teammate may ingest large website tool results into its Local context;
-- direct `internet_chat` lacks workflow-style durable request identity;
-- the child currently inherits normal Agent route/composition because Team spawn does not forward per-member `agentOptions` / tool restrictions;
-- long Team messages can duplicate context already present in the website thread.
+### 4.2 Website outputs flow through the local Team
+
+The linked website Agent does not need Team membership.
+
+Its output returns to the owning local Agent first:
+
+```text
+native website conversation
+  -> Internet result / artifact
+  -> owning DSH teammate
+```
+
+That local teammate then decides what the rest of the Team needs:
+
+```text
+owning teammate
+  -> critique / transform / accept
+  -> Team message
+  -> Team task update
+  -> artifact reference
+```
+
+This preserves a clean authority boundary:
+
+```text
+DSH Agent Teams
+  owns local membership / mailbox / task authority
+
+Internet
+  owns local-Agent <-> website-conversation binding and website execution
+
+website Agent
+  owns provider-native reasoning/context, but not Team authority
+```
+## 5. Feasible integration options
+
+### Option A — local DSH Team + linked website collaborator
+
+This is the recommended target, not merely a temporary proxy pattern.
+
+```text
+User
+  <-> Lead Local Agent
+        |
+        +-> DSH Agent Teams
+              |
+              +-> researcher-a (local DSH Agent)
+              |      |
+              |      +-> linked ChatGPT native conversation
+              |
+              +-> researcher-b (local DSH Agent)
+              |      |
+              |      +-> linked Gemini native conversation
+              |
+              +-> reviewer (local DSH Agent)
+```
+
+The local Agent remains the Team identity and can reason normally. Its linked website conversation is a high-context/native-capability collaborator.
+
+#### A.1 Routing behavior
+
+For substantial research/read-heavy work, the teammate should normally:
+
+1. identify the question or evidence gap;
+2. delegate the first source-heavy pass to its linked website conversation;
+3. receive a compact result and durable artifact/reference;
+4. reason locally over that result;
+5. inspect raw sources locally only when extra verification or exact judgment is useful;
+6. share only the necessary conclusion/artifact reference through the local Team.
+
+The policy should explicitly discourage duplicate full-pass reading by Local and Website Agents unless independent replication is intentionally requested.
+
+#### A.2 DSH capability reuse
+
+Use host capabilities rather than rebuilding them:
+
+```text
+Agent Teams
+  durable roster
+  task DAG
+  mailbox
+  wake / cold resume
+  Team UI projection
+
+DSH Workflow
+  bounded fan-out/pipeline inside a live round when useful
+
+Subagents
+  underlying continuable local teammate lifecycle
+
+Internet
+  website-session binding
+  native website execution
+  provider reconciliation
+  artifacts / Workstream semantics
+```
+
+Current DSH Workflow is foreground-only and has no journal/resume, so it remains a bounded execution helper rather than the owner of long-lived Internet workflows.
+
+#### A.3 Website output propagation
+
+```text
+website response
+  -> linked local teammate
+  -> optional local critique/reasoning
+  -> compact Team message and/or durable artifact reference
+  -> Lead / peer teammates
+```
+
+Do not inject an entire long report into every teammate by default.
+
+#### A.4 Current implementation fit
+
+Current Internet already has the key identity link:
+
+```text
+exec.agent.id
+  -> internet_chat sessionId
+  -> native conversation binding
+```
+
+So each DSH teammate naturally gets its own ordinary native website conversation.
+
+Research threads currently use:
+
+```text
+<agent-id>:research:<name>
+```
+
+which can remain separate when Deep Research benefits from its own durable thread.
+
+#### A.5 Required Internet changes for production
+
+Prototype requires little or no DSH change, but production should add:
+
+- a first-class local-Agent -> website-participant binding/service instead of relying only on a model-facing tool;
+- durable logical request identity for website turns;
+- compact/full result projection with artifact spill;
+- explicit routing guidance preferring website-first source acquisition when appropriate;
+- telemetry for Local tokens, website turns, artifact size, and duplicate reading;
+- tests proving Team cold resume preserves the same website binding.
+
+**Requires DSH change for prototype:** no.
+
+**Likely DSH optimization later:** allow bounded teammate composition such as route/persona/tool filtering if upstream accepts it.
 
 **Feasibility:** high.
-
-This is the recommended first prototype.
-
 ### Option B — controller teammate + small DSH composition extension
 
 The continuable-subagent API already supports fields including `agentOptions`, `toolFilter`, `persona`, and `maxDepth`, but current Agent Teams calls `startContinuable()` with only prompt and parent.
@@ -360,6 +543,106 @@ Therefore a production Agent-Teams integration should not treat the model-facing
 A better target is an Internet website-participant service/adapter accepting participant/session identity, logical request identity, prompt, execution mode, and cancellation, and returning native conversation identity plus durable result/artifact receipt and a compact controller projection.
 
 The DSH controller Agent can still decide **when and why** to invoke it; execution underneath remains reconcile-before-resubmit.
+
+## 7.1 Option A implementation plan
+
+The smallest complete implementation plan should preserve current production behavior until each boundary is proven.
+
+### Phase A0 — characterize current behavior
+
+Before production changes:
+
+- add/confirm tests for `exec.agent.id -> native conversation` continuity;
+- characterize `internet_research` namespaced research-thread behavior;
+- characterize ProviderTurnReceipt reconciliation;
+- record current `internet_team` behavior as the comparison baseline.
+
+### Phase A1 — compose Agent Teams in an experimental Internet profile
+
+Create an opt-in composition/profile using:
+
+```text
+durable DSH Session persistence
+DSH Agent Teams
+DSH Team tools
+Internet plugin
+existing subagent provider
+```
+
+Do not remove current `internet_team` yet.
+
+Goal: prove local teammates can use Internet and keep stable website conversations.
+
+### Phase A2 — define linked website participant service
+
+Refactor the correctness-bearing website call below the model-facing tools:
+
+```text
+WebsiteParticipantService.execute({
+  ownerSessionId,
+  accountId,
+  logicalRequestId,
+  mode,
+  prompt
+})
+```
+
+The model-facing `internet_chat` and `internet_research` become consumers of the same service.
+
+Required semantics:
+
+- stable owner Session -> native conversation binding;
+- request identity and reconcile-before-resubmit;
+- native chat/research mode;
+- cancellation/failure classification;
+- result/artifact identity.
+
+### Phase A3 — add website-first delegation policy
+
+Install concise guidance for linked teammates:
+
+```text
+For source-heavy research/read tasks:
+  prefer the linked website participant for first-pass acquisition.
+Do not read the full source corpus locally and then ask the website participant
+to repeat the same pass unless independent replication is intentional.
+Use Local reasoning for planning, critique, verification, and decisions.
+```
+
+This should be policy/guidance plus observability, not a brittle hard-coded router that prevents Local judgment.
+
+### Phase A4 — compact artifact/result path
+
+Add a bounded controller projection:
+
+```text
+website execution
+  -> full durable result/artifact
+  -> compact Local projection
+```
+
+The local teammate receives enough to reason and can request deeper material if needed. Team messages should normally carry compact conclusions + artifact ids rather than raw full reports.
+
+### Phase A5 — use Agent Teams as authoritative team substrate
+
+Once continuity/recovery/token tests pass:
+
+- route new team collaboration through DSH Agent Teams;
+- stop maintaining duplicate roster/mailbox/task state in Internet;
+- retain Internet-specific Workstream/artifact/authority state;
+- remove the old duplicate team implementation when migration no longer requires it.
+
+### Phase A6 — bounded DSH Workflow integration
+
+Allow Local Lead/teammates to use DSH Workflow for bounded live fan-out where appropriate.
+
+Do **not** make DSH Workflow the durable Workstream owner because current DSH Workflow has no journaling/resume and blocks until a live run settles.
+
+### Phase A7 — evaluate upstream optimization
+
+After measurements, decide whether Agent-Team spawn should expose a small subset of existing continuable-child composition controls such as `agentOptions`, `toolFilter`, or `persona`.
+
+Only pursue this if the controller composition materially improves token use, quality, or isolation.
 
 ## 8. Recommended prototype
 
