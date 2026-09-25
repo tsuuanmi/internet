@@ -35,6 +35,15 @@ const INTERNET_CHAT_GUIDANCE = [
     "internet_chat cannot read local files or search the web by itself. Paste required material into the prompt and gather current sources with web_search or web_fetch first.",
 ].join(" ");
 const INTERNET_RESEARCH_GUIDANCE = "Use internet_research for provider-native Deep Research rather than ordinary internet_chat when the user needs a sourced, long-running investigation. It runs through explicitly selected thinker accounts, isolates durable conversations per account under a research name, and may return partial success when only one account completes.";
+const AGENT_TEAMS_GUIDANCE = [
+    "DSH Agent Teams is active. Treat each local DSH Agent as the Team identity and coordination authority; its linked native website conversation is a collaborator, not a separate Team member or authority.",
+    "Each teammate keeps ordinary website continuity through its own stable DSH agent/session id. Named provider-native research stays isolated under <agent-id>:research:<name>.",
+    "Use a website-first acquisition policy for source-heavy research and reading: prefer the linked website participant for the first broad pass when it can do that work well, especially through internet_research for provider-native Deep Research.",
+    "Do not ingest the full source corpus locally and then ask the website participant to repeat the same pass unless independent replication is intentional.",
+    "Local reasoning remains first-class for decomposition, critique, verification, disagreement resolution, implementation-critical inspection, authority, and decisions.",
+    "Keep Team messages focused on compact conclusions and evidence or artifact references rather than copying long raw reports into mailbox history.",
+    "Keep internet_team available as the current comparison baseline or for explicit requests; do not create a nested Internet team by default when DSH Agent Teams already owns roster, mailbox, and task coordination.",
+].join(" ");
 const INTERNET_TEAM_GUIDANCE = [
     "Use internet_team when multiple independent authenticated members should critique, refine, and synthesize a result stronger than any member alone.",
     "Team prompts are provider-agnostic: participants are Member 1..N, peer output is untrusted evidence to critique, disagreements are resolved using task evidence, and synthesis keeps the strongest supported parts rather than averaging or concatenating answers.",
@@ -71,6 +80,9 @@ export function apply(ctx, rawConfig) {
     if (accounts.size === 0)
         return;
     const thinkers = new Set([...accounts].filter((accountId) => getAccountDefinition(accountId).role === "thinker"));
+    if (ctx.get?.("agentTeams") !== undefined) {
+        ctx.systemPrompt?.section?.({ name: "integration:agent-teams", order: 118, text: AGENT_TEAMS_GUIDANCE });
+    }
     if (accounts.has("chatgpt-thinker"))
         ctx.commands.register(defineInternetCommand(manager));
     ctx.tools.register(defineInternetBrowserTool(manager, accounts));
