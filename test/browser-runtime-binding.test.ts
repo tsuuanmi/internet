@@ -243,7 +243,6 @@ describe.each(providers)("%s runtime wiring", (provider) => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
-
 	it("recovers a completed durable research request without re-submitting it", async () => {
 		const turn = runtime(provider, true);
 		turn.page.url.mockImplementation(() => canonical(provider));
