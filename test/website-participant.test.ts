@@ -112,6 +112,36 @@ describe("WebsiteParticipantService", () => {
 		});
 	});
 
+	it("rejects logical request reuse against a different native conversation session", async () => {
+		const research = vi.fn(async () => ({
+			text: "research report",
+			url: "https://gemini.google.com/app/native",
+			conversationId: "native",
+		}));
+		const service = new WebsiteParticipantService({ chat: vi.fn(), research } as never, artifactStore());
+
+		await service.execute({
+			ownerSessionId: "teammate-session",
+			conversationSessionId: "teammate-session:research:first",
+			accountId: "gemini-thinker",
+			logicalRequestId: "call-1",
+			mode: "research",
+			prompt: "same prompt",
+		});
+
+		await expect(
+			service.execute({
+				ownerSessionId: "teammate-session",
+				conversationSessionId: "teammate-session:research:second",
+				accountId: "gemini-thinker",
+				logicalRequestId: "call-1",
+				mode: "research",
+				prompt: "same prompt",
+			}),
+		).rejects.toThrow(/different conversation session/i);
+		expect(research).toHaveBeenCalledTimes(1);
+	});
+
 	it("rejects logical request reuse with different input after completion", async () => {
 		const chat = vi.fn(async () => ({
 			text: "answer",
