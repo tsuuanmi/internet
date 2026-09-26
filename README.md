@@ -84,7 +84,7 @@ For source-heavy research and reading, the default policy is **website-first acq
 
 Team mailbox traffic should stay compact: share conclusions and evidence/artifact references instead of copying long raw reports when a compact handoff is enough. The existing `internet_team` tool remains available as the comparison baseline and for explicit requests; DSH Agent Teams does not silently replace the current production team/workflow runtime in this prototype.
 
-This first integration deliberately does **not** claim crash-safe website-turn execution for ordinary teammate tool calls. `internet_chat` currently has stable Session-to-conversation identity but no durable logical request key. Production migration still requires the planned website-participant service with reconcile-before-resubmit semantics, durable result/artifact identity, and compact/full result projection.
+Ordinary teammate website turns now run through the same first-class website-participant boundary. The DSH tool-call id is the durable logical request identity, provider receipts reconcile an interrupted submission before retrying, and an unresolved turn permits at most one resubmission before failing closed as ambiguous. Completed chat and research results are retained as owner-scoped artifacts before model-facing projection; long results stay compact in Local context and can be read selectively with `internet_artifact`.
 
 ## Coding workflow
 
