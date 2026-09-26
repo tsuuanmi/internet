@@ -163,10 +163,14 @@ describe.each(providers)("%s canonical binding", (provider) => {
 function runtime(
 	provider: WebProvider,
 	research = false,
-	options: { readonly maxOutputChars?: number; readonly preserveFullResult?: boolean } = {},
+	options: {
+		readonly dataDir?: string;
+		readonly maxOutputChars?: number;
+		readonly preserveFullResult?: boolean;
+	} = {},
 ) {
-	const dataDir = mkdtempSync(join(tmpdir(), "internet-binding-"));
-	roots.push(dataDir);
+	const dataDir = options.dataDir ?? mkdtempSync(join(tmpdir(), "internet-binding-"));
+	if (options.dataDir === undefined) roots.push(dataDir);
 	const manager = new BrowserManager(
 		resolveBrowserConfig({
 			dataDir,
@@ -251,6 +255,33 @@ describe.each(providers)("%s runtime wiring", (provider) => {
 			value: { text: "answer", conversationId: "native", url: canonical(provider) },
 		});
 		expect(turn.context.close).toHaveBeenCalledTimes(1);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("cold-resumes the same native conversation for the same DSH session after manager restart", async () => {
+		const dataDir = mkdtempSync(join(tmpdir(), "internet-binding-restart-"));
+		roots.push(dataDir);
+		const accountId = provider === "chatgpt-web" ? "chatgpt-thinker" : "gemini-thinker";
+		new ConversationStore(dataDir, accountId).bind("session", canonical(provider));
+
+		const resumed = runtime(provider, false, { dataDir });
+		let currentUrl = home(provider);
+		resumed.page.url.mockImplementation(() => currentUrl);
+		resumed.page.goto.mockImplementation(async (url: string) => {
+			currentUrl = url;
+		});
+
+		const outcome = resumed.start("restart-call");
+		await vi.advanceTimersByTimeAsync(45_000);
+
+		expect(resumed.page.goto).toHaveBeenCalledWith(canonical(provider), {
+			waitUntil: "domcontentloaded",
+			timeout: 60_000,
+		});
+		expect(await outcome).toMatchObject({
+			value: { text: "answer", conversationId: "native", url: canonical(provider) },
+		});
+		expect(resumed.providerSend).toHaveBeenCalledTimes(1);
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
