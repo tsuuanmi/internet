@@ -5,6 +5,9 @@ import { defineInternetCommand } from "#internet/commands/internet";
 import { defineWorkflowCommand } from "#internet/commands/workflow";
 import { ACCOUNT_IDS, type AccountId, DEFAULT_TEAM_ACCOUNTS, getAccountDefinition } from "#internet/core/accounts";
 import { resolveBrowserConfig } from "#internet/core/config";
+import { WebsiteParticipantArtifactStore } from "#internet/participant/artifact-store";
+import { WebsiteParticipantService } from "#internet/participant/service";
+import { defineInternetArtifactTool } from "#internet/tools/internet-artifact";
 import { defineInternetBrowserTool } from "#internet/tools/internet-browser";
 import { defineInternetChatTool } from "#internet/tools/internet-chat";
 import { defineInternetResearchTool } from "#internet/tools/internet-research";
@@ -37,10 +40,24 @@ const INTERNET_CHAT_GUIDANCE = [
 	"ChatGPT selects and verifies the configured reasoning level before every turn (High by default). Gemini selects and verifies the observed latest Flash model with Extended thinking before every ordinary turn; provider-native Deep Research uses its own mode.",
 	"If an account is missing or requires reauthentication, use internet_browser status and then login with that exact account ID. Every semantic account has separate login state and must never share browser storage with another account identity.",
 	"internet_chat cannot read local files or search the web by itself. Paste required material into the prompt and gather current sources with web_search or web_fetch first.",
+	"Completed website results are retained as durable owner-scoped artifacts. When a result is compacted, use internet_artifact with the returned artifact id and next offset to inspect only the needed continuation.",
 ].join(" ");
 
 const INTERNET_RESEARCH_GUIDANCE =
-	"Use internet_research for provider-native Deep Research rather than ordinary internet_chat when the user needs a sourced, long-running investigation. It runs through explicitly selected thinker accounts, isolates durable conversations per account under a research name, and may return partial success when only one account completes.";
+	"Use internet_research for provider-native Deep Research rather than ordinary internet_chat when the user needs a sourced, long-running investigation. It runs through explicitly selected thinker accounts, isolates durable conversations per account under a research name, and may return partial success when only one account completes. Full completed reports are retained as owner-scoped artifacts even when the model-facing report is compacted.";
+
+const INTERNET_ARTIFACT_GUIDANCE =
+	"Use internet_artifact to read an exact range from the full website result retained by internet_chat or internet_research. Prefer targeted artifact reads over copying the entire long report into Local context; continue from nextOffset only when more evidence is needed.";
+
+const AGENT_TEAMS_GUIDANCE = [
+	"DSH Agent Teams is active. Treat each local DSH Agent as the Team identity and coordination authority; its linked native website conversation is a collaborator, not a separate Team member or authority.",
+	"Each teammate keeps ordinary website continuity through its own stable DSH agent/session id. Named provider-native research stays isolated under <agent-id>:research:<name>.",
+	"Use a website-first acquisition policy for source-heavy research and reading: prefer the linked website participant for the first broad pass when it can do that work well, especially through internet_research for provider-native Deep Research.",
+	"Do not ingest the full source corpus locally and then ask the website participant to repeat the same pass unless independent replication is intentional.",
+	"Local reasoning remains first-class for decomposition, critique, verification, disagreement resolution, implementation-critical inspection, authority, and decisions.",
+	"Keep Team messages focused on compact conclusions and evidence or artifact references rather than copying long raw reports into mailbox history.",
+	"Keep internet_team available as the current comparison baseline or for explicit requests; do not create a nested Internet team by default when DSH Agent Teams already owns roster, mailbox, and task coordination.",
+].join(" ");
 
 const INTERNET_TEAM_GUIDANCE = [
 	"Use internet_team when multiple independent authenticated members should critique, refine, and synthesize a result stronger than any member alone.",
@@ -68,6 +85,7 @@ const INTERNET_WORKFLOW_GUIDANCE = [
 
 export interface PluginContext {
 	agents: WorkflowAgentRegistry;
+	inject?(services: readonly string[], callback: (scope: PluginContext) => void): unknown;
 	tools: { register(tool: ReturnType<typeof defineTool>): void };
 	commands: { register(command: CommandDefinition): void };
 	systemPrompt?: { section(options: { name: string; order: number; text: string }): void };
@@ -86,20 +104,28 @@ function enabledAccounts(config: ReturnType<typeof resolveBrowserConfig>): Set<A
 export function apply(ctx: PluginContext, rawConfig: unknown): void {
 	const config = resolveBrowserConfig(rawConfig);
 	const manager = new BrowserManager(config);
+	const artifacts = new WebsiteParticipantArtifactStore(config.dataDir);
+	const participant = new WebsiteParticipantService(manager, artifacts);
 	ctx.effect(() => () => manager.dispose());
 
 	const accounts = enabledAccounts(config);
 	if (accounts.size === 0) return;
 	const thinkers = new Set([...accounts].filter((accountId) => getAccountDefinition(accountId).role === "thinker"));
 
+	ctx.inject?.(["agentTeams"], (scope) => {
+		scope.systemPrompt?.section?.({ name: "integration:agent-teams", order: 118, text: AGENT_TEAMS_GUIDANCE });
+	});
+
 	if (accounts.has("chatgpt-thinker")) ctx.commands.register(defineInternetCommand(manager));
 
 	ctx.tools.register(defineInternetBrowserTool(manager, accounts));
 	if (thinkers.size > 0) {
-		ctx.tools.register(defineInternetChatTool(manager, config.turnTimeoutMs, thinkers));
-		ctx.tools.register(defineInternetResearchTool(manager, config, thinkers));
+		ctx.tools.register(defineInternetChatTool(participant, config.turnTimeoutMs, thinkers));
+		ctx.tools.register(defineInternetResearchTool(participant, config, thinkers));
+		ctx.tools.register(defineInternetArtifactTool(artifacts));
 		ctx.systemPrompt?.section?.({ name: "tool:internet_research", order: 119, text: INTERNET_RESEARCH_GUIDANCE });
 		ctx.systemPrompt?.section?.({ name: "tool:internet_chat", order: 120, text: INTERNET_CHAT_GUIDANCE });
+		ctx.systemPrompt?.section?.({ name: "tool:internet_artifact", order: 121, text: INTERNET_ARTIFACT_GUIDANCE });
 	}
 
 	if (thinkers.size >= 2 && thinkers.has(config.teamSynthesizer)) {
@@ -139,7 +165,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		ctx.commands.register(defineWorkflowCommand({ service, operator }));
 		ctx.tools.register(defineInternetWorkflowTool(service, { browser: manager }));
 		ctx.tools.register(defineInternetWorkflowMaintenanceTool(retention));
-		ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 121, text: INTERNET_WORKFLOW_GUIDANCE });
+		ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 123, text: INTERNET_WORKFLOW_GUIDANCE });
 	}
 }
 

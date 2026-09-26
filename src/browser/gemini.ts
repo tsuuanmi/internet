@@ -332,6 +332,11 @@ export async function geminiSnapshot(page: Page, previousTurnText?: string): Pro
 	return { responsePresent: !isPreviousTurn && trimmed.length > 0, text: trimmed, html, running };
 }
 
+/** Whether Gemini currently exposes a Deep Research report surface. */
+export async function geminiHasDeepResearchReport(page: Page): Promise<boolean> {
+	return (await page.locator(GEMINI_DEEP_RESEARCH_REPORT_SELECTOR).filter({ visible: true }).count()) > 0;
+}
+
 /** Read the previous completed Gemini Deep Research report, if any. */
 export async function geminiLastDeepResearchReportText(page: Page): Promise<string> {
 	const reports = page.locator(GEMINI_DEEP_RESEARCH_REPORT_SELECTOR).filter({ visible: true });

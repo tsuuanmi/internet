@@ -1,12 +1,13 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
 import { isInternetError } from "#internet/core/errors";
+import { projectWebsiteParticipantResult } from "#internet/participant/service";
 import { parseResearchArgs } from "#internet/tools/args";
 /** Run provider-native Deep Research with isolated durable account conversations. */
-export function defineInternetResearchTool(manager, config, allowed) {
+export function defineInternetResearchTool(participant, config, allowed) {
     return defineTool({
         name: "internet_research",
-        description: "Run provider-native Deep Research using explicitly selected thinker accounts. Research can take up to 30 minutes; each account uses an isolated durable research conversation.",
+        description: "Run provider-native Deep Research using explicitly selected thinker accounts. Research can take up to 30 minutes; each account uses an isolated durable research conversation. Completed reports are retained as owner-scoped artifacts.",
         parameters: {
             query: { type: "string", required: true, description: "The research question or task." },
             accounts: {
@@ -36,6 +37,10 @@ export function defineInternetResearchTool(manager, config, allowed) {
                                 report: { type: "string" },
                                 url: { type: "string" },
                                 conversationId: { type: "string" },
+                                artifactId: { type: "string" },
+                                totalChars: { type: "integer" },
+                                truncated: { type: "boolean" },
+                                nextOffset: { type: "integer" },
                                 diagnostic: { type: "string" },
                             },
                         },
@@ -71,23 +76,34 @@ export function defineInternetResearchTool(manager, config, allowed) {
             }
             if (exec.agent?.id === undefined)
                 return { state: "failed", results: [] };
-            const sessionId = `${String(exec.agent.id)}:research:${input.name ?? "default"}`;
+            const ownerSessionId = String(exec.agent.id);
+            const conversationSessionId = `${ownerSessionId}:research:${input.name ?? "default"}`;
+            const logicalRequestId = String(exec.callId);
             const results = await Promise.all(accounts.map(async (accountId) => {
                 const provider = getAccountDefinition(accountId).provider;
                 try {
-                    const result = await manager.research(accountId, {
+                    const result = await participant.execute({
+                        ownerSessionId,
+                        conversationSessionId,
+                        accountId,
+                        logicalRequestId,
+                        mode: "research",
                         prompt: input.query,
-                        sessionId,
                         visible: input.visible === true,
                         signal: exec.signal,
                     });
+                    const projection = projectWebsiteParticipantResult(result);
                     return {
                         accountId,
                         provider,
                         state: "completed",
-                        report: result.text,
+                        report: projection.text,
                         url: result.url,
-                        conversationId: result.conversationId,
+                        ...(result.conversationId === undefined ? {} : { conversationId: result.conversationId }),
+                        artifactId: projection.artifactId,
+                        totalChars: projection.totalChars,
+                        truncated: projection.truncated,
+                        ...(projection.nextOffset === undefined ? {} : { nextOffset: projection.nextOffset }),
                     };
                 }
                 catch (error) {

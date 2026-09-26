@@ -10,14 +10,16 @@ export interface ChatRequest {
     prompt: string;
     /** Durable owner key: the current DSH agent/session ID. */
     sessionId: string;
-    /** Stable logical request identity used to reconcile workflow retries. */
-    requestKey?: string;
+    /** Stable logical request identity used to reconcile provider retries. */
+    requestId?: string;
     /** Show automated Chrome on the user-managed display instead of managed Xvfb. */
     visible?: boolean;
     /** Enables provider Deep Research before this request is submitted. */
     research?: boolean;
     /** Representation returned after semantic provider completion. */
     responseRepresentation?: ResponseRepresentation;
+    /** Preserve the full rendered result for durable internal storage before caller projection. */
+    preserveFullResult?: boolean;
     /** Override the normal-turn hard completion deadline. */
     timeoutMs?: number;
     /** Optional semantic no-progress deadline, independent from the hard deadline. */

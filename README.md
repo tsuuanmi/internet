@@ -57,6 +57,35 @@ Members see only ordinal roles (`Member 1`, `Member 2`, ...). Provider/account i
 
 `internet_team` executes the plan in-memory. Workflow persists the same member/synthesis steps as durable graph nodes so recovery can target one exact step without replaying completed siblings.
 
+## Experimental DSH Agent Teams prototype
+
+Option A is opt-in while DSH Agent Teams remains experimental. Add the upstream `@deepseek-ai/dsh-experimental-agent-team-profile` to the same DSH profile alongside Internet. The upstream profile owns the durable roster, teammate Sessions, task DAG, mailbox, wake/cold-resume behavior, Team tools, and Team UI; Internet does not mirror that state.
+
+```sh
+dsh plugin --profile <name> add @deepseek-ai/dsh-experimental-agent-team-profile
+```
+
+Internet registers its integration through Cordis' optional service lifecycle, so it can load normally without Agent Teams and activates the guidance when the `agentTeams` service becomes available. The ownership model is:
+
+```text
+DSH teammate Session
+  -> local reasoning / Team authority
+  -> internet_chat
+       -> same teammate Session id
+       -> stable native website conversation
+
+DSH teammate Session
+  -> internet_research
+       -> <agent-id>:research:<name>
+       -> isolated durable native research thread
+```
+
+For source-heavy research and reading, the default policy is **website-first acquisition**: let the linked website participant perform the first broad pass when it can do that work well, especially through provider-native Deep Research, then use Local reasoning for decomposition, critique, selective verification, implementation-critical inspection, authority, and decisions. Do not make the Local Agent ingest the full corpus and then ask the website participant to repeat the same pass unless independent replication is intentional.
+
+Team mailbox traffic should stay compact: share conclusions and evidence/artifact references instead of copying long raw reports when a compact handoff is enough. The existing `internet_team` tool remains available as the comparison baseline and for explicit requests; DSH Agent Teams does not silently replace the current production team/workflow runtime in this prototype.
+
+Ordinary teammate website turns now run through the same first-class website-participant boundary. The DSH tool-call id is the durable logical request identity, provider receipts reconcile an interrupted submission before retrying, and an unresolved turn permits at most one resubmission before failing closed as ambiguous. Completed chat and research results are retained as owner-scoped artifacts before model-facing projection; long results stay compact in Local context and can be read selectively with `internet_artifact`.
+
 ## Coding workflow
 
 Start from a DSH session whose working directory is inside the target Git repository:

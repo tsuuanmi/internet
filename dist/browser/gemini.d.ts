@@ -39,6 +39,8 @@ export declare function geminiLastResponseText(page: Page): Promise<string>;
  * durable conversation where the previous turn is already visible on the page.
  */
 export declare function geminiSnapshot(page: Page, previousTurnText?: string): Promise<CompletionSnapshot>;
+/** Whether Gemini currently exposes a Deep Research report surface. */
+export declare function geminiHasDeepResearchReport(page: Page): Promise<boolean>;
 /** Read the previous completed Gemini Deep Research report, if any. */
 export declare function geminiLastDeepResearchReportText(page: Page): Promise<string>;
 /**
