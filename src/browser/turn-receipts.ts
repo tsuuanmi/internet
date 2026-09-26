@@ -10,7 +10,7 @@ export type ProviderTurnReceiptStatus = "SUBMITTED" | "COMPLETED";
 
 export interface ProviderTurnReceipt {
 	readonly schema: typeof PROVIDER_TURN_RECEIPT_SCHEMA;
-	readonly version: 2;
+	readonly version: 3;
 	readonly receiptId: string;
 	readonly accountId: AccountId;
 	readonly sessionHash: string;
@@ -19,6 +19,7 @@ export interface ProviderTurnReceipt {
 	readonly previousResponseHash: string;
 	readonly status: ProviderTurnReceiptStatus;
 	readonly revision: number;
+	readonly submissionCount: number;
 	readonly submittedAt: string;
 	readonly conversationUrl?: string;
 	readonly responseHash?: string;
@@ -31,6 +32,8 @@ export interface ProviderTurnSnapshot {
 }
 
 export type ProviderTurnReconciliation = "WAIT" | "RECOVER" | "RESUBMIT" | "AMBIGUOUS";
+
+const MAX_PROVIDER_TURN_SUBMISSIONS = 2;
 
 export class ProviderTurnReceiptError extends Error {
 	constructor(message: string) {
@@ -67,7 +70,7 @@ export function reconcileProviderTurn(
 		return text !== "" && receipt.responseHash === currentHash ? "RECOVER" : "AMBIGUOUS";
 	}
 	if (text !== "" && currentHash !== receipt.previousResponseHash) return "RECOVER";
-	return "RESUBMIT";
+	return receipt.submissionCount < MAX_PROVIDER_TURN_SUBMISSIONS ? "RESUBMIT" : "AMBIGUOUS";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -83,7 +86,7 @@ function hex(value: unknown): value is string {
 }
 
 export function parseProviderTurnReceipt(value: unknown): ProviderTurnReceipt {
-	if (!isRecord(value) || value.schema !== PROVIDER_TURN_RECEIPT_SCHEMA || value.version !== 2) {
+	if (!isRecord(value) || value.schema !== PROVIDER_TURN_RECEIPT_SCHEMA || value.version !== 3) {
 		throw new Error("unsupported provider turn receipt schema");
 	}
 	if (!isAccountId(value.accountId)) throw new Error("invalid provider turn account id");
@@ -96,7 +99,13 @@ export function parseProviderTurnReceipt(value: unknown): ProviderTurnReceipt {
 	if (value.status !== "SUBMITTED" && value.status !== "COMPLETED") {
 		throw new Error("invalid provider turn receipt status");
 	}
-	if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !timestamp(value.submittedAt)) {
+	if (
+		!Number.isSafeInteger(value.revision) ||
+		Number(value.revision) < 1 ||
+		!Number.isSafeInteger(value.submissionCount) ||
+		Number(value.submissionCount) < 1 ||
+		!timestamp(value.submittedAt)
+	) {
 		throw new Error("invalid provider turn receipt revision");
 	}
 	if (
@@ -206,7 +215,7 @@ export class ProviderTurnReceiptStore {
 		}
 		const next: ProviderTurnReceipt = {
 			schema: PROVIDER_TURN_RECEIPT_SCHEMA,
-			version: 2,
+			version: 3,
 			receiptId: id,
 			accountId: this.accountId,
 			sessionHash,
@@ -215,6 +224,7 @@ export class ProviderTurnReceiptStore {
 			previousResponseHash,
 			status: "SUBMITTED",
 			revision: (current?.revision ?? 0) + 1,
+			submissionCount: (current?.submissionCount ?? 0) + 1,
 			submittedAt: new Date().toISOString(),
 			...((input.conversationUrl ?? current?.conversationUrl)
 				? { conversationUrl: input.conversationUrl ?? current?.conversationUrl }
