@@ -55,6 +55,7 @@ describe("WebsiteParticipantService", () => {
 			sessionId: "teammate-session",
 			requestId: "call-42",
 			visible: true,
+			preserveFullResult: true,
 			signal,
 		});
 		expect(research).not.toHaveBeenCalled();
@@ -99,6 +100,7 @@ describe("WebsiteParticipantService", () => {
 			sessionId: "teammate-session:research:architecture",
 			requestId: "call-research",
 			visible: false,
+			preserveFullResult: true,
 			signal,
 		});
 		expect(chat).not.toHaveBeenCalled();
