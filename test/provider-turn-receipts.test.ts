@@ -133,7 +133,7 @@ describe("ProviderTurnReceiptStore", () => {
 			prompt: "prompt",
 			previousResponse: "old response",
 		});
-		expect(first.submissionCount).toBe(1);
+		expect(first).toMatchObject({ submissionCount: 1 });
 		expect(reconcileProviderTurn(first, { text: "old response", running: false })).toBe("RESUBMIT");
 
 		const second = receipts.submit({
@@ -142,7 +142,7 @@ describe("ProviderTurnReceiptStore", () => {
 			prompt: "prompt",
 			previousResponse: "old response",
 		});
-		expect(second.submissionCount).toBe(2);
+		expect(second).toMatchObject({ submissionCount: 2 });
 		expect(reconcileProviderTurn(second, { text: "old response", running: false })).toBe("AMBIGUOUS");
 	});
 
