@@ -77,6 +77,8 @@ export interface ChatRequest {
 	research?: boolean;
 	/** Representation returned after semantic provider completion. */
 	responseRepresentation?: ResponseRepresentation;
+	/** Preserve the full rendered result for durable internal storage before caller projection. */
+	preserveFullResult?: boolean;
 	/** Override the normal-turn hard completion deadline. */
 	timeoutMs?: number;
 	/** Optional semantic no-progress deadline, independent from the hard deadline. */
@@ -1000,10 +1002,10 @@ export class BrowserManager {
 						const storageState = await this.captureAccountSnapshot(context, previousStorageState);
 						await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
 						return {
-							text: renderCompletedResponse(snapshot, responseRepresentation).slice(
-								0,
-								this.config.maxOutputChars,
-							),
+							text:
+								request.preserveFullResult === true
+									? renderCompletedResponse(snapshot, responseRepresentation)
+									: renderCompletedResponse(snapshot, responseRepresentation).slice(0, this.config.maxOutputChars),
 							url: recoveredBinding.conversationUrl,
 							conversationId: recoveredBinding.conversationId,
 						};
@@ -1105,7 +1107,7 @@ export class BrowserManager {
 			const storageState = await this.captureAccountSnapshot(context, previousStorageState);
 			await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
 			return {
-				text: result.text.slice(0, this.config.maxOutputChars),
+				text: request.preserveFullResult === true ? result.text : result.text.slice(0, this.config.maxOutputChars),
 				url: result.binding.conversationUrl,
 				conversationId: result.binding.conversationId,
 			};
