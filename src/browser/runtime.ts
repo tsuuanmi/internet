@@ -1005,7 +1005,10 @@ export class BrowserManager {
 							text:
 								request.preserveFullResult === true
 									? renderCompletedResponse(snapshot, responseRepresentation)
-									: renderCompletedResponse(snapshot, responseRepresentation).slice(0, this.config.maxOutputChars),
+									: renderCompletedResponse(snapshot, responseRepresentation).slice(
+											0,
+											this.config.maxOutputChars,
+										),
 							url: recoveredBinding.conversationUrl,
 							conversationId: recoveredBinding.conversationId,
 						};
