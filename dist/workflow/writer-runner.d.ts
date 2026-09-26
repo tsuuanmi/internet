@@ -14,6 +14,7 @@ export interface WorkflowWriterBrowser {
         readonly sessionId: string;
         readonly timeoutMs: number;
         readonly stallTimeoutMs: number;
+        readonly requestId: string;
         readonly responseRepresentation: "text";
         readonly onProgress?: (event: ProviderProgressEvent) => void;
         readonly confirmation?: WorkflowApprovalScope;
