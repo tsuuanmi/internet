@@ -92,13 +92,13 @@ try {
 				"internet_workflow_maintenance",
 			],
 			commands: ["internet", "workflow"],
-			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_team", "tool:internet_workflow"],
+			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_artifact", "tool:internet_team", "tool:internet_workflow"],
 		},
 		{
 			config: { enableChatgpt: false },
 			tools: ["internet_browser", "internet_chat", "internet_research", "internet_artifact"],
 			commands: [],
-			sections: ["tool:internet_research", "tool:internet_chat"],
+			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_artifact"],
 		},
 		{
 			config: { enableGemini: false },
@@ -112,7 +112,7 @@ try {
 				"internet_workflow_maintenance",
 			],
 			commands: ["internet", "workflow"],
-			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_team", "tool:internet_workflow"],
+			sections: ["tool:internet_research", "tool:internet_chat", "tool:internet_artifact", "tool:internet_team", "tool:internet_workflow"],
 		},
 		{
 			config: { enableChatgpt: false, enableGemini: false },
