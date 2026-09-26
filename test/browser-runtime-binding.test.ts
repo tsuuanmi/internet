@@ -160,11 +160,21 @@ describe.each(providers)("%s canonical binding", (provider) => {
 	});
 });
 
-function runtime(provider: WebProvider, research = false) {
+function runtime(
+	provider: WebProvider,
+	research = false,
+	options: { readonly maxOutputChars?: number; readonly preserveFullResult?: boolean } = {},
+) {
 	const dataDir = mkdtempSync(join(tmpdir(), "internet-binding-"));
 	roots.push(dataDir);
 	const manager = new BrowserManager(
-		resolveBrowserConfig({ dataDir, pollMs: 1_000, stableMs: 1, turnTimeoutMs: 30_000 }),
+		resolveBrowserConfig({
+			dataDir,
+			pollMs: 1_000,
+			stableMs: 1,
+			turnTimeoutMs: 30_000,
+			...(options.maxOutputChars === undefined ? {} : { maxOutputChars: options.maxOutputChars }),
+		}),
 	);
 	const controller = new AbortController();
 	const page = { url: vi.fn((): string => home(provider)), goto: vi.fn() };
@@ -210,6 +220,7 @@ function runtime(provider: WebProvider, research = false) {
 					research,
 					timeoutMs: 90_000,
 					...(requestId === undefined ? {} : { requestId }),
+					...(options.preserveFullResult === true ? { preserveFullResult: true } : {}),
 				},
 				{ signal: controller.signal },
 			)
@@ -240,6 +251,21 @@ describe.each(providers)("%s runtime wiring", (provider) => {
 			value: { text: "answer", conversationId: "native", url: canonical(provider) },
 		});
 		expect(turn.context.close).toHaveBeenCalledTimes(1);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("can return the full semantic result for durable artifact storage before model projection", async () => {
+		const truncated = runtime(provider, false, { maxOutputChars: 3 });
+		truncated.page.url.mockImplementation(() => canonical(provider));
+		const truncatedOutcome = truncated.start();
+		await vi.advanceTimersByTimeAsync(45_000);
+		expect(await truncatedOutcome).toMatchObject({ value: { text: "ans" } });
+
+		const full = runtime(provider, false, { maxOutputChars: 3, preserveFullResult: true });
+		full.page.url.mockImplementation(() => canonical(provider));
+		const fullOutcome = full.start();
+		await vi.advanceTimersByTimeAsync(45_000);
+		expect(await fullOutcome).toMatchObject({ value: { text: "answer" } });
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
