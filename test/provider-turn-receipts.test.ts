@@ -125,6 +125,27 @@ describe("ProviderTurnReceiptStore", () => {
 		expect(reconcileProviderTurn(submitted, { text: "old response", running: false })).toBe("RESUBMIT");
 	});
 
+	it("allows at most one resubmission for the same unresolved logical request", () => {
+		const receipts = store();
+		const first = receipts.submit({
+			sessionId: "teammate-session",
+			requestId,
+			prompt: "prompt",
+			previousResponse: "old response",
+		});
+		expect(first.submissionCount).toBe(1);
+		expect(reconcileProviderTurn(first, { text: "old response", running: false })).toBe("RESUBMIT");
+
+		const second = receipts.submit({
+			sessionId: "teammate-session",
+			requestId,
+			prompt: "prompt",
+			previousResponse: "old response",
+		});
+		expect(second.submissionCount).toBe(2);
+		expect(reconcileProviderTurn(second, { text: "old response", running: false })).toBe("AMBIGUOUS");
+	});
+
 	it("fails closed when a completed receipt no longer matches provider conversation state", () => {
 		const receipts = store();
 		receipts.submit({
