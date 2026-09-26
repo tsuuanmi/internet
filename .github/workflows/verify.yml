@@ -20,6 +20,12 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - name: Dump generated dist diff
+        run: |
+          git diff -- dist
+          for file in $(git ls-files --others --exclude-standard -- dist); do
+            git diff --no-index -- /dev/null "$file" || true
+          done
       - name: Verify generated dist
         run: |
           git diff --exit-code -- dist
