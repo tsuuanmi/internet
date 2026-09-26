@@ -87,6 +87,12 @@ export class WebsiteParticipantService {
 			request.mode,
 		);
 		if (existing !== undefined) {
+			const conversationSessionHash = hashProviderTurnText(
+				request.conversationSessionId ?? request.ownerSessionId,
+			);
+			if (existing.conversationSessionHash !== conversationSessionHash) {
+				throw new Error("website participant logical request was reused with a different conversation session");
+			}
 			if (existing.promptHash !== hashProviderTurnText(request.prompt)) {
 				throw new Error("website participant logical request was reused with a different prompt");
 			}
@@ -99,6 +105,7 @@ export class WebsiteParticipantService {
 			ownerSessionId: request.ownerSessionId,
 			accountId: request.accountId,
 			logicalRequestId: request.logicalRequestId,
+			conversationSessionId: request.conversationSessionId ?? request.ownerSessionId,
 			mode: request.mode,
 			prompt: request.prompt,
 			text: result.text,
