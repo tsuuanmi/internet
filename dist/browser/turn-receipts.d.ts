@@ -3,16 +3,16 @@ export declare const PROVIDER_TURN_RECEIPT_SCHEMA: "@tsuuanmi/internet-provider-
 export type ProviderTurnReceiptStatus = "SUBMITTED" | "COMPLETED";
 export interface ProviderTurnReceipt {
     readonly schema: typeof PROVIDER_TURN_RECEIPT_SCHEMA;
-    readonly version: 1;
+    readonly version: 3;
     readonly receiptId: string;
-    readonly workflowJobId: string;
     readonly accountId: AccountId;
     readonly sessionHash: string;
-    readonly requestKeyHash: string;
+    readonly requestIdHash: string;
     readonly promptHash: string;
     readonly previousResponseHash: string;
     readonly status: ProviderTurnReceiptStatus;
     readonly revision: number;
+    readonly submissionCount: number;
     readonly submittedAt: string;
     readonly conversationUrl?: string;
     readonly responseHash?: string;
@@ -27,25 +27,24 @@ export declare class ProviderTurnReceiptError extends Error {
     constructor(message: string);
 }
 export declare function hashProviderTurnText(value: string): string;
-export declare function workflowJobIdFromRequestKey(requestKey: string): string;
-export declare function providerTurnReceiptId(workflowJobId: string, accountId: AccountId, sessionId: string, requestKey: string): string;
+export declare function providerTurnReceiptId(accountId: AccountId, sessionId: string, requestId: string): string;
 export declare function reconcileProviderTurn(receipt: ProviderTurnReceipt, snapshot: ProviderTurnSnapshot): ProviderTurnReconciliation;
 export declare function parseProviderTurnReceipt(value: unknown): ProviderTurnReceipt;
 export declare class ProviderTurnReceiptStore {
     private readonly root;
-    private readonly workflowJobId;
     private readonly accountId;
-    constructor(dataDir: string, workflowJobId: string, accountId: AccountId);
-    read(sessionId: string, requestKey: string): ProviderTurnReceipt | undefined;
+    constructor(dataDir: string, accountId: AccountId);
+    read(sessionId: string, requestId: string): ProviderTurnReceipt | undefined;
+    deleteSession(sessionId: string): number;
     submit(input: {
         readonly sessionId: string;
-        readonly requestKey: string;
+        readonly requestId: string;
         readonly prompt: string;
         readonly previousResponse: string;
         readonly conversationUrl?: string;
     }): ProviderTurnReceipt;
-    bindConversation(sessionId: string, requestKey: string, conversationUrl: string): ProviderTurnReceipt;
-    complete(sessionId: string, requestKey: string, response: string, conversationUrl: string): ProviderTurnReceipt;
+    bindConversation(sessionId: string, requestId: string, conversationUrl: string): ProviderTurnReceipt;
+    complete(sessionId: string, requestId: string, response: string, conversationUrl: string): ProviderTurnReceipt;
     private require;
     private write;
 }
