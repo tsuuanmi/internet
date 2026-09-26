@@ -60,6 +60,7 @@ function browserRequest(request: WebsiteParticipantRequest): ChatRequest {
 		sessionId: request.conversationSessionId ?? request.ownerSessionId,
 		requestId: request.logicalRequestId,
 		visible: request.visible === true,
+		preserveFullResult: true,
 		signal: request.signal,
 	};
 }
