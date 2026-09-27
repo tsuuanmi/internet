@@ -290,7 +290,9 @@ impl<B: TaskBackend> InternetTaskLifecycle<B> {
             .backend
             .observe(owner_ref, &record.subject_ref)
             .await
-            .map_err(|error| TaskLifecycleError::internal(format!("task backend observe failed: {error}")))?;
+            .map_err(|error| {
+                TaskLifecycleError::internal(format!("task backend observe failed: {error}"))
+            })?;
         Ok(project(&record, observed))
     }
 
