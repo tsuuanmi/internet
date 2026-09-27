@@ -218,6 +218,234 @@ Assessment: **useful reference, low fit for a local-first Internet plugin.**
 Source:
 - https://docs.dapr.io/contributing/protocol-reference/workflow-protocol/workflow-protocol-state-and-history/
 
+## 6.1 Graph boundary — split graph structure from agentic graph execution
+
+The word `graph` currently covers two different needs and they should not share one implementation contract.
+
+### Graph structure / dependency algorithms
+
+For acyclicity, topological ordering, reachability, strongly-connected components and stable graph mutation, a small graph library is a better boundary than an agent framework.
+
+Rust `petgraph` provides directed graph structures, `toposort`, cycle detection, SCC algorithms, path queries, transitive reduction/closure and an `Acyclic` wrapper that maintains the DAG invariant as edges are added.
+
+Recommended port:
+
+~~~text
+GraphModel
+  validate_acyclic()
+  predecessors() / successors()
+  ready_frontier()
+  topological_layers()
+  add/remove node/edge
+~~~
+
+First candidate: **petgraph** if this layer is implemented in Rust.
+
+Sources:
+- https://docs.rs/petgraph/latest/petgraph/algo/
+- https://docs.rs/petgraph/latest/petgraph/acyclic/
+
+### Agentic graph execution
+
+LangGraph is stronger when a component actually needs stateful agent graph execution: `StateGraph`, directed/conditional edges, parallel `Send`, node retry/timeout policies, checkpointing and dynamic interrupts.
+
+That makes LangGraph a strong implementation candidate for a `GraphExecutor` or planner/reviewer capability whose internal algorithm is naturally a stateful agent graph.
+
+It should not automatically own the Internet dependency graph, artifact lineage, authority or outer durable lifecycle. Its checkpointer/interrupt features overlap with durable runtime + MCP Tasks, so they should be used only inside the component when they add value.
+
+Recommended split:
+
+~~~text
+Internet GraphModel
+  -> petgraph or equivalent
+
+AgentGraphExecutor
+  -> LangGraph when the semantic capability benefits from it
+  -> another graph executor later
+~~~
+
+Sources:
+- https://reference.langchain.com/python/langgraph/graph/state/StateGraph
+- https://reference.langchain.com/python/langgraph/graph/state/StateGraph/add_conditional_edges
+- https://reference.langchain.com/python/langgraph/types/Send
+- https://langchain-ai.github.io/langgraph/concepts/breakpoints/
+
+## 6.2 Artifact boundary — split semantic metadata, blob storage and lineage export
+
+The current `WorkflowArtifact` combines a semantic envelope with an inline payload. Those concerns should be separated.
+
+Keep Internet-owned metadata:
+
+~~~text
+artifactId
+runId
+type / schemaRef
+producer
+inputBundleId
+typed lineage relations
+payloadDigest
+createdAt
+~~~
+
+### Blob/payload storage
+
+OCI artifacts via ORAS are a strong candidate for immutable content-addressed payload storage and distribution. OCI artifacts are addressable by digest, may be stored in a registry or local OCI Layout, and OCI referrers support attached related artifacts.
+
+Recommended port:
+
+~~~text
+ArtifactBlobStore
+  put(bytes, mediaType) -> digest
+  get(digest)
+  exists(digest)
+  delete_if_unreferenced(digest)
+~~~
+
+Candidate: **OCI/ORAS** for large/shareable payloads; inline small JSON remains an optimization behind the same port.
+
+Sources:
+- https://oras.land/docs/concepts/artifact/
+- https://oras.land/docs/concepts/reftypes/
+
+### Lineage interoperability
+
+OpenLineage standardizes Run/Job/Dataset events and explicit lineage edges, with extensible custom facets. It is valuable for exporting Internet lineage to external lineage/catalog tooling.
+
+It should not become the source of truth because Internet relations such as `supports`, `contradicts`, `resolves`, `supersedes`, `invalidates`, `consumes` and `validates`, plus exact InputBundle bindings, are richer than the standard data-pipeline lineage model.
+
+Recommended port:
+
+~~~text
+LineageExporter
+  publish(InternetArtifact/Run/Relation)
+~~~
+
+Candidate: **OpenLineage** as optional exporter/observability integration.
+
+Sources:
+- https://openlineage.io/docs/spec/run-cycle/
+- https://openlineage.io/docs/spec/facets/
+- https://openlineage.io/docs/spec/facets/job-facets/lineage/
+
+### MLflow assessment
+
+MLflow has a useful metadata-store/artifact-store split and supports local, database and object-store backends. However its first-class model is ML experiments/runs/models. Reusing that entire model would introduce unnecessary semantic coupling.
+
+Assessment: **use as architectural prior art, not the default Internet ArtifactStore.**
+
+Sources:
+- https://mlflow.org/docs/latest/self-hosting/architecture/artifact-store/
+- https://mlflow.org/docs/latest/tracking/backend-stores/
+
+## 6.3 Authorization policy — keep authority semantics, consider Cedar for policy evaluation
+
+Internet must continue to own facts such as principal identity, trusted provenance, PendingAction subject bindings and exact repository/head state.
+
+The boolean authorization decision itself does not need to remain hand-coded indefinitely.
+
+Cedar is purpose-built for authorization and models a request as principal + action + resource + context. It is default-deny, supports schema validation, is designed for analysis, and its production engine is implemented in Rust.
+
+Possible mapping:
+
+~~~text
+principal = WorkflowPrincipal
+action    = respond / execute / cancel / merge / read artifact
+resource  = run / action / artifact / PR exact-head entity
+context   = provenance / side-effect class / exact-state facts
+~~~
+
+Important boundary: Cedar cannot establish that the user really clicked approval. The trusted host/Tasks adapter must establish provenance first; Cedar can then decide whether that authenticated principal/provenance is authorized for the exact action/resource.
+
+Recommended port:
+
+~~~text
+AuthorizationPolicyEngine
+  decide(principal, action, resource, context) -> allow/deny + diagnostics
+~~~
+
+First candidate: **Cedar**. OPA/Rego remains a broader general-policy alternative, especially if policies expand beyond authorization.
+
+Sources:
+- https://docs.cedarpolicy.com/
+- https://docs.cedarpolicy.com/auth/authorization.html
+- https://github.com/cedar-policy/cedar
+- https://www.openpolicyagent.org/docs
+
+## 6.4 Observability — standardize on OpenTelemetry, not runtime-specific logs
+
+OpenTelemetry is vendor-neutral and standardizes traces, metrics, logs and events. Workflow state transitions are a natural fit for OTel events, while operations with duration should be spans.
+
+Recommended port:
+
+~~~text
+TelemetrySink
+  span(...)
+  event(...)
+  metric(...)
+~~~
+
+Use stable Internet IDs as correlation attributes:
+
+~~~text
+runId
+taskId
+workItemId
+executionId
+artifactId
+actionId
+capability id/version
+provider/worker kind
+~~~
+
+OpenTelemetry GenAI conventions can be adopted where stable/applicable, but telemetry is diagnostic and must never become authoritative workflow state.
+
+Sources:
+- https://opentelemetry.io/docs/
+- https://opentelemetry.io/docs/concepts/semantic-conventions/
+- https://opentelemetry.io/docs/specs/semconv/general/events/
+
+## 6.5 Refined component principle
+
+The target is explicitly **not** one selected workflow framework.
+
+~~~text
+Tasks lifecycle          -> MCP Tasks
+Graph algorithms         -> petgraph (candidate)
+Agent graph execution    -> LangGraph when useful
+Durable execution/queue  -> Restate PoC; DBOS/Temporal alternatives
+Artifact blobs           -> OCI/ORAS candidate
+Artifact semantics       -> Internet
+Lineage export           -> OpenLineage
+Authorization evaluation -> Cedar candidate
+Authority provenance     -> Internet + trusted host adapter
+Observability            -> OpenTelemetry
+Workers                  -> DSH / Codex / Claude / future
+~~~
+
+Every external implementation sits behind an Internet-owned port. The port must be defined from Internet semantics, not copied from the selected library API.
+
+Changing one component must not force migration of the others. For example, replacing Restate with DBOS must not alter Task IDs exposed through MCP, artifact identities, Cedar policy vocabulary, or graph semantics.
+
+## 6.6 Polyglot boundary
+
+Using Rust or Python for a component is acceptable when that ecosystem has the strongest production support.
+
+A preferred shape is:
+
+~~~text
+TypeScript Internet core / existing DSH adapters
+              |
+              +-- stable in-process interfaces where possible
+              |
+              +-- local service/RPC boundary for Rust/Python components
+                     |
+                     +-- Rust MCP Tasks / policy / graph service
+                     +-- Python LangGraph executor when needed
+~~~
+
+Do not rewrite the whole repository in another language merely to adopt one component. Language boundaries should coincide with replaceable component boundaries.
+
+
 ## 7. Component-by-component recommendation
 
 | Internet component | Own semantic? | Replace now? | Candidate |
@@ -226,7 +454,7 @@ Source:
 | Input-required client transport | No | **Yes** | **MCP Tasks** |
 | PendingAction authority/exact bindings | **Yes** | No | Internet |
 | Semantic artifact model | **Yes** | No | Internet |
-| Artifact physical persistence | No | Later | runtime DB/CAS |
+| Artifact physical persistence | No | **PoC** | **OCI/ORAS** for blobs; metadata DB remains separate |
 | Exact InputBundle | **Yes** | No | Internet |
 | InputBundle physical persistence | No | Later | runtime DB |
 | Capability registry semantics | **Yes** | No | Internet |
@@ -248,7 +476,10 @@ Source:
 | Worker implementation | No | Yes | DSH/Codex/Claude |
 | Physical retention/GC | No | Later | runtime/storage |
 | Retention policy | **Yes** | No | Internet |
-| Observability/tracing | No | Yes | OpenTelemetry + runtime UI |
+| Authorization decision engine | Mixed | **PoC** | **Cedar**; keep trusted provenance/exact binding in Internet |
+| Graph structure/algorithms | No | **PoC** | **petgraph**; LangGraph only for agentic graph execution |
+| Lineage interoperability | No | Yes | **OpenLineage exporter** |
+| Observability/tracing | No | Yes | **OpenTelemetry** + optional runtime/agent UI |
 | Legacy v3 graph/job engine | No long-term | **Retire** | vNext capability path |
 
 ## 8. Target architecture
@@ -302,9 +533,13 @@ Internet Workflow Capability
 1. **Adopt MCP Tasks now** for portable long-running client lifecycle.
 2. **Keep Internet semantic artifacts, exact-state, authority, PendingAction, reconciliation and convergence.**
 3. **Do not treat JSON stores, custom leases/retries/drivers as permanent architecture.**
-4. **Use Restate as the first runtime-substitution PoC**, not as an immediate wholesale migration.
-5. **Use Temporal as the maturity benchmark**, DBOS as the lightweight DB-backed alternative, Inngest/Hatchet as reference alternatives.
-6. **Do not use LangGraph as Workflow source of truth.** Use it only where its agent/reasoning graph is useful behind a capability.
-7. **Retire legacy/v3 rather than adapting it indefinitely.**
+4. **Use best-of-breed components per boundary rather than selecting one workflow framework.**
+5. **Use Restate as the first durable-runtime PoC**, not as an immediate wholesale migration.
+6. **For graph mechanics, prefer a small graph port/library such as petgraph; use LangGraph when a capability specifically needs stateful agent graph execution.**
+7. **Split artifacts into Internet semantic metadata + replaceable blob storage; evaluate OCI/ORAS and export lineage through OpenLineage.**
+8. **Evaluate Cedar for authorization decisions while retaining trusted provenance and exact authority bindings in Internet.**
+9. **Standardize diagnostics on OpenTelemetry.**
+10. **Use Temporal as the maturity benchmark**, DBOS as the lightweight DB-backed alternative, Inngest/Hatchet as reference alternatives.
+11. **Retire legacy/v3 rather than adapting it indefinitely.**
 
 The long-term goal is that replacing the workflow runtime is as ordinary as replacing Codex with DSH: stable Internet semantic contracts above replaceable runtime components.
