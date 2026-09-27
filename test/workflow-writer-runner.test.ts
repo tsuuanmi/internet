@@ -79,7 +79,7 @@ describe("BrowserWorkflowWriterRunner", () => {
 		expect(result).toMatchObject({ status: "PR_OPEN", conversationUrl });
 		expect(observedAccount).toBe("chatgpt-writer");
 		expect(observedRequest).toMatchObject({
-			requestKey: "writer-request",
+			requestId: "writer-request",
 			timeoutMs: policy.hardTimeoutMs,
 			stallTimeoutMs: policy.stallTimeoutMs,
 			responseRepresentation: "text",

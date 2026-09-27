@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { GEMINI_COMPOSER_SELECTOR } from "#internet/browser/gemini";
+import { GEMINI_COMPOSER_SELECTOR, geminiHasDeepResearchReport } from "#internet/browser/gemini";
 import { InternetError } from "#internet/core/errors";
 const GEMINI_TOOLS_TRIGGER = 'button[aria-label="Upload & tools"]';
 const GEMINI_DEEP_RESEARCH_OPTION = 'button[role="menuitemcheckbox"]';
@@ -52,6 +52,8 @@ export async function geminiStartResearchPlan(page, options = {}) {
         const planDeadline = Math.min(deadline, Date.now() + GEMINI_RESEARCH_PLAN_TIMEOUT_MS);
         while (true) {
             check();
+            if (await geminiHasDeepResearchReport(page))
+                return;
             if (await start.isVisible())
                 break;
             if (Date.now() >= planDeadline)

@@ -9,6 +9,7 @@ describe("DSH package contract", () => {
 		expect(patch).toContain("name: '@tsuuanmi/internet'");
 		expect(patch).not.toContain("DISPLAY");
 		expect(patch).not.toContain("disabled:");
+		expect(patch).not.toContain("dsh-experimental-agent-team");
 	});
 
 	it("publishes the built provider tools, client assets, and bundled Xvfb runtime", async () => {

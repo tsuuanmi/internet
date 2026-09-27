@@ -17,7 +17,7 @@ import { ProviderScheduler } from "#internet/browser/provider-scheduler";
 import { RemoteLoginSession } from "#internet/browser/remote-login";
 import { renderCompletedResponse } from "#internet/browser/response";
 import { accountLocations, ensureLoginProfileDirectory } from "#internet/browser/storage";
-import { hashProviderTurnText, ProviderTurnReceiptStore, reconcileProviderTurn, workflowJobIdFromRequestKey, } from "#internet/browser/turn-receipts";
+import { hashProviderTurnText, ProviderTurnReceiptStore, reconcileProviderTurn } from "#internet/browser/turn-receipts";
 import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
 import { InternetError } from "#internet/core/errors";
 import { sleep } from "#internet/core/sleep";
@@ -144,13 +144,11 @@ export class BrowserManager {
         }
         return store;
     }
-    turnReceiptStore(accountId, requestKey) {
-        const workflowJobId = workflowJobIdFromRequestKey(requestKey);
-        const key = `${workflowJobId}:${accountId}`;
-        let store = this.turnReceipts.get(key);
+    turnReceiptStore(accountId) {
+        let store = this.turnReceipts.get(accountId);
         if (store === undefined) {
-            store = new ProviderTurnReceiptStore(this.config.dataDir, workflowJobId, accountId);
-            this.turnReceipts.set(key, store);
+            store = new ProviderTurnReceiptStore(this.config.dataDir, accountId);
+            this.turnReceipts.set(accountId, store);
         }
         return store;
     }
@@ -716,8 +714,8 @@ export class BrowserManager {
                 persist: (url) => {
                     try {
                         const persisted = this.conversationStore(accountId).bind(request.sessionId, url);
-                        if (request.requestKey !== undefined) {
-                            this.turnReceiptStore(accountId, request.requestKey).bindConversation(request.sessionId, request.requestKey, persisted.conversationUrl);
+                        if (request.requestId !== undefined) {
+                            this.turnReceiptStore(accountId).bindConversation(request.sessionId, request.requestId, persisted.conversationUrl);
                         }
                         return persisted;
                     }
@@ -730,20 +728,23 @@ export class BrowserManager {
             });
             let result;
             let completedSemanticText;
-            const currentSnapshot = () => (provider === "chatgpt-web" ? chatgptSnapshot(page) : geminiSnapshot(page));
+            const currentSnapshot = () => request.research === true
+                ? provider === "chatgpt-web"
+                    ? chatgptDeepResearchSnapshot(page)
+                    : geminiDeepResearchSnapshot(page)
+                : provider === "chatgpt-web"
+                    ? chatgptSnapshot(page)
+                    : geminiSnapshot(page);
             let resumeSubmittedTurn = false;
             let previousResponseText;
-            if (request.requestKey !== undefined) {
-                if (request.research === true) {
-                    throw new InternetError("config_error", "provider turn reconciliation is only supported for ordinary workflow turns");
-                }
-                const receipts = this.turnReceiptStore(accountId, request.requestKey);
+            if (request.requestId !== undefined) {
+                const receipts = this.turnReceiptStore(accountId);
                 const snapshot = await currentSnapshot();
                 previousResponseText = snapshot.text;
-                const existing = receipts.read(request.sessionId, request.requestKey);
+                const existing = receipts.read(request.sessionId, request.requestId);
                 if (existing !== undefined) {
                     if (existing.promptHash !== hashProviderTurnText(request.prompt)) {
-                        throw new InternetError("config_error", "workflow request key was reused with different provider input");
+                        throw new InternetError("config_error", "provider request id was reused with different input");
                     }
                     const reconciliation = reconcileProviderTurn(existing, snapshot);
                     if (reconciliation === "AMBIGUOUS") {
@@ -759,11 +760,13 @@ export class BrowserManager {
                                 throw new InternetError("provider_reconciliation_failed", "provider response completed but its canonical conversation identity could not be reconciled");
                             }
                         }
-                        receipts.complete(request.sessionId, request.requestKey, snapshot.text, recoveredBinding.conversationUrl);
+                        receipts.complete(request.sessionId, request.requestId, snapshot.text, recoveredBinding.conversationUrl);
                         const storageState = await this.captureAccountSnapshot(context, previousStorageState);
                         await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
                         return {
-                            text: renderCompletedResponse(snapshot, responseRepresentation).slice(0, this.config.maxOutputChars),
+                            text: request.preserveFullResult === true
+                                ? renderCompletedResponse(snapshot, responseRepresentation)
+                                : renderCompletedResponse(snapshot, responseRepresentation).slice(0, this.config.maxOutputChars),
                             url: recoveredBinding.conversationUrl,
                             conversationId: recoveredBinding.conversationId,
                         };
@@ -774,7 +777,7 @@ export class BrowserManager {
                     else {
                         receipts.submit({
                             sessionId: request.sessionId,
-                            requestKey: request.requestKey,
+                            requestId: request.requestId,
                             prompt: request.prompt,
                             previousResponse: snapshot.text,
                             conversationUrl: binding?.conversationUrl,
@@ -784,7 +787,7 @@ export class BrowserManager {
                 else {
                     receipts.submit({
                         sessionId: request.sessionId,
-                        requestKey: request.requestKey,
+                        requestId: request.requestId,
                         prompt: request.prompt,
                         previousResponse: snapshot.text,
                         conversationUrl: binding?.conversationUrl,
@@ -830,7 +833,7 @@ export class BrowserManager {
                     await geminiSend(page, request.prompt);
                 }
                 result = await observeBoundTurn(async (signal, remainingMs) => {
-                    if (request.research === true && !resumeSubmittedTurn) {
+                    if (request.research === true) {
                         await geminiStartResearchPlan(page, { signal, timeoutMs: remainingMs() });
                     }
                     const completed = await waitForStableCompletion(() => request.research === true
@@ -842,16 +845,16 @@ export class BrowserManager {
                     return renderCompletedResponse(completed, responseRepresentation);
                 });
             }
-            if (request.requestKey !== undefined) {
+            if (request.requestId !== undefined) {
                 if (completedSemanticText === undefined) {
                     throw new InternetError("provider_error", "provider completion semantic text was unavailable");
                 }
-                this.turnReceiptStore(accountId, request.requestKey).complete(request.sessionId, request.requestKey, completedSemanticText, result.binding.conversationUrl);
+                this.turnReceiptStore(accountId).complete(request.sessionId, request.requestId, completedSemanticText, result.binding.conversationUrl);
             }
             const storageState = await this.captureAccountSnapshot(context, previousStorageState);
             await this.commitAccountSnapshot(accountId, lease, accountRevision, storageState);
             return {
-                text: result.text.slice(0, this.config.maxOutputChars),
+                text: request.preserveFullResult === true ? result.text : result.text.slice(0, this.config.maxOutputChars),
                 url: result.binding.conversationUrl,
                 conversationId: result.binding.conversationId,
             };
