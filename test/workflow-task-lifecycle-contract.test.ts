@@ -19,6 +19,8 @@ describe("workflow task lifecycle contract", () => {
 	it("requires explicit operation contract identity and request identity", () => {
 		expect(() =>
 			assertWorkflowTaskStartRequest({
+				schema: "@tsuuanmi/internet-workflow-task-start-request",
+				version: 1,
 				requestId: "req-1",
 				ownerRef: "principal:user-1",
 				operation: { id: "workflow.start", version: "1" },
@@ -29,6 +31,8 @@ describe("workflow task lifecycle contract", () => {
 
 		expect(() =>
 			assertWorkflowTaskStartRequest({
+				schema: "@tsuuanmi/internet-workflow-task-start-request",
+				version: 1,
 				requestId: "",
 				ownerRef: "principal:user-1",
 				operation: { id: "workflow.start", version: "1" },
@@ -39,6 +43,8 @@ describe("workflow task lifecycle contract", () => {
 	it("keeps transport task identity distinct from semantic subject identity", () => {
 		expect(() =>
 			assertWorkflowTaskHandle({
+				schema: "@tsuuanmi/internet-workflow-task-handle",
+				version: 1,
 				taskId: "task-1",
 				subjectRef: "workflow:wf-42",
 				status: "working",
@@ -48,6 +54,8 @@ describe("workflow task lifecycle contract", () => {
 
 		expect(() =>
 			assertWorkflowTaskHandle({
+				schema: "@tsuuanmi/internet-workflow-task-handle",
+				version: 1,
 				taskId: "workflow:wf-42",
 				subjectRef: "workflow:wf-42",
 				status: "working",
@@ -58,6 +66,8 @@ describe("workflow task lifecycle contract", () => {
 	it("rejects unsupported status and invalid polling interval", () => {
 		expect(() =>
 			assertWorkflowTaskHandle({
+				schema: "@tsuuanmi/internet-workflow-task-handle",
+				version: 1,
 				taskId: "task-1",
 				status: "pending" as never,
 			}),
@@ -65,6 +75,8 @@ describe("workflow task lifecycle contract", () => {
 
 		expect(() =>
 			assertWorkflowTaskHandle({
+				schema: "@tsuuanmi/internet-workflow-task-handle",
+				version: 1,
 				taskId: "task-1",
 				status: "working",
 				pollAfterMs: 0,
