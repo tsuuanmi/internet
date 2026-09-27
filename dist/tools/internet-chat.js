@@ -1,11 +1,9 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
-import { isInternetError } from "#internet/core/errors";
-import { projectWebsiteParticipantResult } from "#internet/participant/service";
 import { parseChatArgs } from "#internet/tools/args";
 export { parseChatArgs } from "#internet/tools/args";
-/** Define the `internet_chat` model tool over explicitly selected thinker accounts. */
-export function defineInternetChatTool(participant, timeoutMs, allowed) {
+/** Define the DSH adapter for host-neutral `internet_chat` application behavior. */
+export function defineInternetChatTool(application, timeoutMs) {
     return defineTool({
         name: "internet_chat",
         description: "Ask an explicitly selected authenticated web account. Thinker accounts durably resume one native conversation per current DSH session. Completed calls are retained as owner-scoped artifacts; long answers are compacted and can be continued with internet_artifact.",
@@ -49,59 +47,22 @@ export function defineInternetChatTool(participant, timeoutMs, allowed) {
         timeoutMs,
         isConcurrencySafe: () => false,
         async execute(args, exec) {
-            const { accountId, prompt, visible } = parseChatArgs(args);
-            const provider = getAccountDefinition(accountId).provider;
-            if (!allowed.has(accountId)) {
-                return {
-                    answer: `internet_chat account ${accountId} is not enabled for direct thinker chat.`,
-                    accountId,
-                    provider,
-                    isError: true,
-                };
-            }
+            const input = parseChatArgs(args);
+            const provider = getAccountDefinition(input.accountId).provider;
             const sessionId = exec.agent?.id;
             if (sessionId === undefined) {
                 return {
                     answer: "internet_chat requires an agent-backed DSH session to own the durable web conversation.",
-                    accountId,
+                    accountId: input.accountId,
                     provider,
                     isError: true,
                 };
             }
-            try {
-                const result = await participant.execute({
-                    ownerSessionId: String(sessionId),
-                    accountId,
-                    logicalRequestId: String(exec.callId),
-                    mode: "chat",
-                    prompt,
-                    visible,
-                    signal: exec.signal,
-                });
-                const projection = projectWebsiteParticipantResult(result);
-                return {
-                    answer: projection.text,
-                    accountId,
-                    provider,
-                    url: result.url,
-                    ...(result.conversationId === undefined ? {} : { conversationId: result.conversationId }),
-                    artifactId: projection.artifactId,
-                    totalChars: projection.totalChars,
-                    truncated: projection.truncated,
-                    ...(projection.nextOffset === undefined ? {} : { nextOffset: projection.nextOffset }),
-                };
-            }
-            catch (error) {
-                if (isInternetError(error)) {
-                    return {
-                        answer: `internet_chat failed (${error.kind}): ${error.message}`,
-                        accountId,
-                        provider,
-                        isError: true,
-                    };
-                }
-                throw error;
-            }
+            return application.execute({
+                ownerSessionId: String(sessionId),
+                requestId: String(exec.callId),
+                signal: exec.signal,
+            }, input);
         },
         presentCall: (args) => ({
             card: "generic",

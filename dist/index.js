@@ -1,3 +1,4 @@
+import { InternetArtifactApplicationService, InternetChatApplicationService } from "#internet/application";
 import { BrowserManager } from "#internet/browser/runtime";
 import { defineInternetCommand } from "#internet/commands/internet";
 import { defineWorkflowCommand } from "#internet/commands/workflow";
@@ -96,9 +97,11 @@ export function apply(ctx, rawConfig) {
         ctx.commands.register(defineInternetCommand(manager));
     ctx.tools.register(defineInternetBrowserTool(manager, accounts));
     if (thinkers.size > 0) {
-        ctx.tools.register(defineInternetChatTool(participant, config.turnTimeoutMs, thinkers));
+        const chatApplication = new InternetChatApplicationService(participant, thinkers);
+        const artifactApplication = new InternetArtifactApplicationService(artifacts);
+        ctx.tools.register(defineInternetChatTool(chatApplication, config.turnTimeoutMs));
         ctx.tools.register(defineInternetResearchTool(participant, config, thinkers));
-        ctx.tools.register(defineInternetArtifactTool(artifacts));
+        ctx.tools.register(defineInternetArtifactTool(artifactApplication));
         ctx.systemPrompt?.section?.({ name: "tool:internet_research", order: 119, text: INTERNET_RESEARCH_GUIDANCE });
         ctx.systemPrompt?.section?.({ name: "tool:internet_chat", order: 120, text: INTERNET_CHAT_GUIDANCE });
         ctx.systemPrompt?.section?.({ name: "tool:internet_artifact", order: 121, text: INTERNET_ARTIFACT_GUIDANCE });
@@ -134,6 +137,7 @@ export function apply(ctx, rawConfig) {
         ctx.systemPrompt?.section?.({ name: "tool:internet_workflow", order: 123, text: INTERNET_WORKFLOW_GUIDANCE });
     }
 }
+export * from "#internet/application";
 export { BrowserManager } from "#internet/browser/runtime";
 export { hashProviderTurnText, ProviderTurnReceiptStore, parseProviderTurnReceipt, providerTurnReceiptId, reconcileProviderTurn, } from "#internet/browser/turn-receipts";
 export { ACCOUNT_CAPABILITIES, ACCOUNT_IDS, ACCOUNT_ROLES, ACCOUNTS, accountHasCapability, accountsForProvider, accountsWithCapabilities, DEFAULT_TEAM_ACCOUNTS, DEFAULT_TEAM_SYNTHESIZER, getAccountDefinition, isAccountId, } from "#internet/core/accounts";

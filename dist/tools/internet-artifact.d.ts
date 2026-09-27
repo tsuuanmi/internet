@@ -1,5 +1,5 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import type { WebsiteParticipantArtifactStore } from "#internet/participant/artifact-store";
-/** Define exact owner-scoped reads over durable website participant results. */
-export declare function defineInternetArtifactTool(artifacts: Pick<WebsiteParticipantArtifactStore, "readText">): ReturnType<typeof defineTool>;
+import { type InternetArtifactApplicationService } from "#internet/application";
+/** Define the DSH adapter for host-neutral `internet_artifact` application behavior. */
+export declare function defineInternetArtifactTool(application: Pick<InternetArtifactApplicationService, "read">): ReturnType<typeof defineTool>;
 //# sourceMappingURL=internet-artifact.d.ts.map
