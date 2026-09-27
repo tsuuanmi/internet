@@ -8,7 +8,7 @@ use serde_json::json;
 use tempfile::tempdir;
 use tokio::sync::Mutex;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct FakeBackend {
     snapshot: Arc<Mutex<BackendTaskSnapshot>>,
     updates: Arc<Mutex<Vec<TaskInputResponses>>>,
@@ -19,7 +19,8 @@ impl FakeBackend {
     fn new(snapshot: BackendTaskSnapshot) -> Self {
         Self {
             snapshot: Arc::new(Mutex::new(snapshot)),
-            ..Self::default()
+            updates: Arc::new(Mutex::new(Vec::new())),
+            cancels: Arc::new(Mutex::new(0)),
         }
     }
 }
