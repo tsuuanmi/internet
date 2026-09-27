@@ -23,7 +23,8 @@ export interface WorkflowComponentContractRef {
 export function assertWorkflowComponentContractRef(
 	value: WorkflowComponentContractRef,
 ): asserts value is WorkflowComponentContractRef {
-	if (value.id.trim() === "") throw new WorkflowComponentError("INVALID_INPUT", "workflow component contract id is required");
+	if (value.id.trim() === "")
+		throw new WorkflowComponentError("INVALID_INPUT", "workflow component contract id is required");
 	if (value.version.trim() === "")
 		throw new WorkflowComponentError("INVALID_INPUT", "workflow component contract version is required");
 }
