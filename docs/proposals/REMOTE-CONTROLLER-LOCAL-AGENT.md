@@ -165,6 +165,74 @@ Workflow contracts
 
 No individual provider, model, UI, or local-agent product is architectural authority.
 
+### 3.4 Internet Team + Workflow are agnostic Local capabilities
+
+The most important portability boundary is not the remote UI. It is the capability layer available to Local Agents.
+
+Internet Team and Workflow should be consumable as agnostic plugin/service capabilities by any compatible Local Agent host.
+
+Conceptually:
+
+~~~text
+Local Agent
+  -> Internet Team capability
+  -> Workflow capability
+~~~
+
+Possible Local hosts include:
+
+~~~text
+DSH Agent
+Codex
+Claude Code
+another MCP/plugin-capable local agent
+future custom runtime
+~~~
+
+The plugin contract must not assume that the caller is DSH, Codex, Claude, or any other specific agent.
+
+Likewise, the Local Agent must not need to know whether an Internet capability is currently implemented through ChatGPT, Gemini, Claude, Grok, or another website/provider participant.
+
+This creates two independent substitution axes:
+
+~~~text
+Controller
+  -> replaceable
+
+Local Agent host
+  -> replaceable
+
+Internet capability providers
+  -> replaceable
+
+Workflow semantics
+  -> durable / provider-independent
+~~~
+
+A useful current composition may therefore be:
+
+~~~text
+Codex Remote
+  -> Local Codex
+       -> Internet Team plugin
+       -> Workflow plugin
+~~~
+
+without making Codex Remote or Local Codex the architecture.
+
+The same capabilities should remain usable from:
+
+~~~text
+ChatGPT Controller
+  -> DSH Local Agent
+       -> Internet Team
+       -> Workflow
+~~~
+
+or another compatible Controller/Local pair.
+
+DSH is currently attractive as the default Local host because it is itself plugin-oriented, can compose multiple models/providers, and does not make one model vendor the architectural center. That preference is an implementation/product choice, not a correctness dependency.
+
 ## 4. Controller is outside Internet Team
 
 The Controller is not an Internet Team member.
@@ -455,7 +523,7 @@ The Controller does not need a remote shell tool to request this.
 
 Research shows that OpenAI already provides mature functionality overlapping this proposal.
 
-Codex Remote already supports a strong remote local-coding control plane with host/workspace/worktree selection, approvals, diffs, tests, plugins, and mobile steering.
+Codex Remote already supports a strong remote local-coding control plane with host/workspace/worktree selection, approvals, diffs, tests, plugins, and mobile steering. It should therefore be treated as a first-class optional composition, not as the definition of Internet's remote architecture.
 
 ChatGPT Work already provides long-running cloud/mobile/desktop work and desktop-local file/app access.
 
@@ -474,7 +542,9 @@ Candidate differentiation:
 - access local datasets/services that belong to an existing DSH environment;
 - selectively delegate source-heavy work to website participants rather than making the local coding agent absorb it all.
 
-If these differences do not produce measurable value for actual tasks, prefer Work/Codex Remote and do not implement the bridge.
+A valid deployment may therefore use Codex Remote as the Controller surface and Local Codex as the Local Agent while Internet Team and Workflow remain external agnostic capabilities.
+
+However, if Internet-specific differences do not produce measurable value for actual tasks, prefer Work/Codex Remote and do not implement a duplicate bridge.
 
 ## 12. Transport should be replaceable
 
