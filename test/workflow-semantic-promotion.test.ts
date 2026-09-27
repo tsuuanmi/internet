@@ -3,12 +3,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
+import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import type { WorkflowInputBundle, WorkflowWorkItem } from "#internet/workflow/kernel/types";
 import {
 	promoteWorkflowSemanticResult,
 	WORKFLOW_PLANNING_CAPABILITY,
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
 } from "#internet/workflow/semantic/index";
+
+
+function artifactStore(root: string): WorkflowArtifactStore {
+	return new WorkflowArtifactStore(root, new LocalWorkflowArtifactBlobStore(root));
+}
 
 const runId = "1".repeat(32);
 const workItemId = "2".repeat(32);
@@ -62,7 +68,7 @@ const objectiveDraft = {
 
 describe("workflow semantic result promotion", () => {
 	it("promotes validated semantic output and preserves receipt references separately", () => {
-		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-workflow-semantic-")));
+		const store = artifactStore(mkdtempSync(join(tmpdir(), "internet-workflow-semantic-")));
 		const result = promoteWorkflowSemanticResult(
 			{ workItem, inputBundle, capability: WORKFLOW_PLANNING_CAPABILITY, artifactStore: store },
 			{
@@ -81,7 +87,7 @@ describe("workflow semantic result promotion", () => {
 	});
 
 	it("rejects results from an execution that does not belong to the WorkItem", () => {
-		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-workflow-semantic-execution-")));
+		const store = artifactStore(mkdtempSync(join(tmpdir(), "internet-workflow-semantic-execution-")));
 		expect(() =>
 			promoteWorkflowSemanticResult(
 				{ workItem, inputBundle, capability: WORKFLOW_PLANNING_CAPABILITY, artifactStore: store },
@@ -97,7 +103,7 @@ describe("workflow semantic result promotion", () => {
 	});
 
 	it("validates all artifact contracts before writing any artifact", () => {
-		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-workflow-semantic-atomic-")));
+		const store = artifactStore(mkdtempSync(join(tmpdir(), "internet-workflow-semantic-atomic-")));
 		expect(() =>
 			promoteWorkflowSemanticResult(
 				{ workItem, inputBundle, capability: WORKFLOW_PLANNING_CAPABILITY, artifactStore: store },
