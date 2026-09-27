@@ -34,8 +34,8 @@ import {
 	startWorkflowNode,
 	updateWorkflowExecution,
 } from "#internet/workflow/graph-reducer";
-import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
+import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowNodeResult, WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import {
@@ -139,9 +139,9 @@ export class WorkflowEngine {
 			{
 				graphId: jobId,
 				repository: input.repository,
-			baseRevision: input.baseRevision,
-			rounds: this.teams.rounds,
-			accounts: thinkerAccounts,
+				baseRevision: input.baseRevision,
+				rounds: this.teams.rounds,
+				accounts: thinkerAccounts,
 				synthesizer,
 				research,
 			},
