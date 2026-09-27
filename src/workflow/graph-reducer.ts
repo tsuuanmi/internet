@@ -1,5 +1,5 @@
 import {
-	assertWorkflowGraph,
+	assertWorkflowGraphState,
 	type WorkflowExecutionRecord,
 	type WorkflowFailure,
 	type WorkflowGraphNode,
@@ -12,6 +12,7 @@ import {
 	workflowNodeDependenciesCompleted,
 	workflowNodeInputMatchesDependencies,
 } from "#internet/workflow/graph";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 
 export class WorkflowGraphTransitionError extends Error {
 	constructor(message: string) {
@@ -193,8 +194,10 @@ export function failWorkflowNode(
 }
 
 export function appendWorkflowNodes(
+	graphId: string,
 	graph: WorkflowGraphSnapshot,
 	nodes: readonly WorkflowGraphNode[],
+	graphValidator: WorkflowGraphValidator,
 ): WorkflowGraphSnapshot {
 	if (nodes.length === 0) return graph;
 	const nextNodes: Record<string, WorkflowGraphNode> = { ...graph.nodes };
@@ -204,7 +207,9 @@ export function appendWorkflowNodes(
 		}
 		nextNodes[node.nodeId] = node;
 	}
-	return checked({ ...graph, graphRevision: graph.graphRevision + 1, nodes: nextNodes });
+	const candidate = { ...graph, graphRevision: graph.graphRevision + 1, nodes: nextNodes };
+	graphValidator.assert(graphId, candidate);
+	return candidate;
 }
 
 export function setWorkflowGraphStatus(
@@ -263,6 +268,6 @@ function replaceNode(graph: WorkflowGraphSnapshot, node: WorkflowGraphNode): Wor
 }
 
 function checked(graph: WorkflowGraphSnapshot): WorkflowGraphSnapshot {
-	assertWorkflowGraph(graph);
+	assertWorkflowGraphState(graph);
 	return graph;
 }

@@ -101,7 +101,7 @@ export function workflowNodeInputMatchesDependencies(node, nodes) {
 export function canReuseCompletedWorkflowNode(node, inputHash) {
     return node.state === "COMPLETED" && node.input?.inputHash === inputHash && node.output !== undefined;
 }
-export function assertWorkflowGraph(snapshot) {
+export function assertWorkflowGraphState(snapshot) {
     if (snapshot.graphRevision < 0 || !Number.isInteger(snapshot.graphRevision))
         throw new Error("workflow graphRevision must be a non-negative integer");
     if (snapshot.eventSeq < 0 || !Number.isInteger(snapshot.eventSeq))
@@ -142,7 +142,6 @@ export function assertWorkflowGraph(snapshot) {
         if (node.state === "FAILED" && !node.failure)
             throw new Error(`failed workflow graph node ${nodeId} requires a failure receipt`);
     }
-    assertAcyclic(snapshot.nodes);
 }
 function assertNodeInput(node) {
     const input = node.input;
@@ -180,22 +179,5 @@ function assertExecution(nodeId, execution, executionIds) {
 }
 function validTimestamp(value) {
     return Number.isFinite(Date.parse(value));
-}
-function assertAcyclic(nodes) {
-    const visiting = new Set();
-    const visited = new Set();
-    const visit = (nodeId) => {
-        if (visited.has(nodeId))
-            return;
-        if (visiting.has(nodeId))
-            throw new Error(`workflow graph contains a dependency cycle at ${nodeId}`);
-        visiting.add(nodeId);
-        for (const dependencyId of nodes[nodeId]?.dependencies ?? [])
-            visit(dependencyId);
-        visiting.delete(nodeId);
-        visited.add(nodeId);
-    };
-    for (const nodeId of Object.keys(nodes))
-        visit(nodeId);
 }
 //# sourceMappingURL=graph.js.map

@@ -51,6 +51,7 @@ export type { WorkflowAuthorizationContext, WorkflowPrincipal, WorkflowPrincipal
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 export type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
 export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
+export * from "#internet/workflow/components";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -59,7 +60,8 @@ export { WorkflowEngine } from "#internet/workflow/engine";
 export type { WorkflowAgentRegistry, WorkflowEventSink, WorkflowGraphEvent, WorkflowLocalAgent, } from "#internet/workflow/events";
 export { DshWorkflowEventSink, formatWorkflowEvent, parseWorkflowGraphEvent, WorkflowEventJournal, } from "#internet/workflow/events";
 export type { WorkflowExecutionRecord, WorkflowFailure, WorkflowGraphNode, WorkflowGraphSnapshot, WorkflowLifecycle, WorkflowNodeState, WorkflowPhase, } from "#internet/workflow/graph";
-export { assertWorkflowGraph, workflowNodeId } from "#internet/workflow/graph";
+export { assertWorkflowGraphState, workflowNodeId } from "#internet/workflow/graph";
+export { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 export type { CreateWorkflowHandoffInput, WorkflowHandoff, WorkflowHandoffStatus, } from "#internet/workflow/handoff-store";
 export { HANDOFF_SCHEMA, hashHandoffPayload, parseWorkflowHandoff, WorkflowHandoffStore, WorkflowHandoffStoreError, } from "#internet/workflow/handoff-store";
 export type { CreateWorkflowInputBundleInput } from "#internet/workflow/input-bundle-store";
