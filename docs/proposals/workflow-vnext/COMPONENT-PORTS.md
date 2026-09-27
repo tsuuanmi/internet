@@ -115,6 +115,61 @@ The initial implementation SHOULD validate schemas strictly and fail fast on uns
 
 MCP-facing contracts use JSON Schema 2020-12 input/output schemas and structured content.
 
+
+## 4.1 Port granularity rule
+
+A port is a semantic replacement boundary, not necessarily a separately deployed service or a separate dependency-injection slot.
+
+Split a port when one or more of these differ materially:
+
+- lifecycle;
+- authority requirements;
+- failure isolation;
+- persistence/retention;
+- scaling;
+- implementation candidates;
+- independent callers/consumers;
+- replacement cadence.
+
+Group related sub-ports behind a composite subsystem when they are normally implemented and configured together but still benefit from independent contract tests.
+
+Preferred top-level shape:
+
+~~~text
+TaskLifecyclePort
+
+GraphSubsystem
+  - GraphModelPort
+  - AgentGraphExecutorPort (optional)
+
+DurableRuntimePort
+  - DurableExecutionPort
+  - WorkQueuePort
+  - DurableWaitPort
+  - ExecutionJournalPort
+
+ArtifactSubsystem
+  - ArtifactMetadataPort
+  - ArtifactBlobStorePort
+  - LineageExporterPort (optional)
+
+AuthorizationPolicyPort
+TelemetryPort
+WorkerDispatcherPort
+~~~
+
+This avoids both extremes:
+
+~~~text
+too coarse:
+One WorkflowEngine interface that owns everything.
+
+too fine:
+Every method becomes a separately injected micro-port.
+~~~
+
+The composite subsystem is a composition convenience. Its sub-contracts remain independently testable and replaceable when a concrete use case justifies doing so.
+
 ## 5. TaskLifecyclePort
 
 ### Responsibility
@@ -237,7 +292,40 @@ AgentGraphResultV1 {
 - HITL inside LangGraph cannot replace Internet authority/PendingAction semantics;
 - external mutation still requires Internet reconciliation policy.
 
-## 8. DurableExecutionPort
+## 8. DurableRuntimePort
+
+### Responsibility
+
+Provide the commodity durable-runtime capabilities used by Workflow without defining Internet semantics.
+
+The application layer SHOULD normally depend on one composite `DurableRuntimePort` rather than independently wiring execution, queue, wait, and journal implementations.
+
+Conceptually:
+
+~~~text
+DurableRuntimePort {
+  execution: DurableExecutionPort
+  queue: WorkQueuePort
+  wait: DurableWaitPort
+  journal: ExecutionJournalPort
+}
+~~~
+
+A runtime implementation such as Restate, DBOS, or Temporal MAY implement all sub-ports in one adapter. A future deployment MAY replace only one sub-port if the contract remains satisfied.
+
+### Candidates
+
+Restate first PoC; DBOS and Temporal alternatives.
+
+### Invariants
+
+- runtime mechanics never define Internet semantic IDs;
+- semantic readiness is decided before queueing;
+- runtime retry cannot override side-effect/reconciliation policy;
+- runtime wait/signal transport cannot manufacture authority/provenance;
+- journal state is operational evidence, not the canonical semantic Artifact graph.
+
+### 8.1 DurableExecutionPort
 
 ### Responsibility
 
@@ -279,7 +367,7 @@ ExecutionOutcomeV1 {
 - runtime-native invocation IDs are not semantic IDs;
 - successful results still pass exact InputBundle currentness validation before promotion.
 
-## 9. WorkQueuePort
+### 8.2 WorkQueuePort
 
 ### Responsibility
 
@@ -311,7 +399,7 @@ QueueReceiptV1 {
 - readiness remains an Internet semantic decision before enqueue;
 - queue implementation may be Restate vqueues, Temporal task queues, DBOS queues or another backend.
 
-## 10. DurableWaitPort
+### 8.3 DurableWaitPort
 
 ### Responsibility
 
@@ -340,7 +428,51 @@ WaitResultV1 {
 
 PendingAction meaning remains above this port.
 
-## 11. ArtifactMetadataPort
+
+### 8.4 ExecutionJournalPort
+
+### Responsibility
+
+Persist runtime execution progress needed for crash recovery, deduplication, retry bookkeeping and operational inspection.
+
+### Input/output
+
+~~~text
+append(ExecutionJournalEntryV1) -> JournalOffsetV1
+read(executionId, after?)       -> ExecutionJournalPageV1
+latest(executionId)             -> ExecutionRuntimeSnapshotV1
+~~~
+
+### Invariants
+
+- journal entries never replace semantic Artifacts or InputBundles;
+- replay/recovery must preserve Internet execution IDs and idempotency keys;
+- implementation-specific offsets remain adapter-local except as opaque diagnostics;
+- journal corruption/failure is surfaced explicitly rather than silently reconstructed from model output.
+
+## 9. ArtifactSubsystem
+
+### Responsibility
+
+Own artifact persistence composition while preserving the distinction between authoritative semantic metadata, payload bytes, and optional external lineage export.
+
+Conceptually:
+
+~~~text
+ArtifactSubsystem {
+  metadata: ArtifactMetadataPort
+  blobs: ArtifactBlobStorePort
+  lineageExporter?: LineageExporterPort
+}
+~~~
+
+These sub-ports remain separate because their lifecycle and failure semantics differ:
+
+- metadata is authoritative and must succeed atomically with artifact creation;
+- blob storage is content-addressed payload persistence;
+- lineage export is non-authoritative and may fail independently.
+
+### 9.1 ArtifactMetadataPort
 
 ### Responsibility
 
@@ -372,7 +504,7 @@ Create/get/list/query results using the same canonical ArtifactRecord schema.
 - metadata is immutable after creation;
 - payload backend location is not part of artifact identity.
 
-## 12. ArtifactBlobStorePort
+### 9.2 ArtifactBlobStorePort
 
 ### Responsibility
 
@@ -396,7 +528,7 @@ exists(digest)         -> boolean
 - location/registry is adapter configuration, not semantic identity;
 - deletion must respect metadata references/retention policy.
 
-## 13. LineageExporterPort
+### 9.3 LineageExporterPort
 
 ### Responsibility
 
@@ -429,7 +561,7 @@ LineageExportReceiptV1 {
 
 Failure to export lineage must not mutate authoritative Internet lineage state.
 
-## 14. AuthorizationPolicyPort
+## 10. AuthorizationPolicyPort
 
 ### Responsibility
 
@@ -470,7 +602,7 @@ AuthorizationDecisionV1 {
 - exact head/revision/action bindings are supplied by Internet;
 - deny/error is fail-closed for consequential actions.
 
-## 15. TelemetryPort
+## 11. TelemetryPort
 
 ### Responsibility
 
@@ -503,7 +635,7 @@ TelemetryEventV1 {
 - IDs are attributes for correlation;
 - operations with duration should be represented as spans rather than point events.
 
-## 16. WorkerDispatcherPort
+## 12. WorkerDispatcherPort
 
 ### Responsibility
 
@@ -545,7 +677,7 @@ WorkerResultV1 {
 - external mutations require a reconciliation contract;
 - worker model/provider identity is metadata, not capability identity.
 
-## 17. Component dependency rule
+## 13. Component dependency rule
 
 Ports may depend on semantic IDs from upstream contracts but must not depend on another implementation's internal handle.
 
@@ -568,7 +700,7 @@ WorkerDispatcher mutates MCP Task state directly
 
 Cross-component orchestration belongs in the Internet capability layer.
 
-## 18. Conformance testing
+## 14. Conformance testing
 
 Each port MUST ship a reusable black-box conformance suite.
 
@@ -608,7 +740,7 @@ Examples:
 
 An implementation is admitted only after passing the same conformance suite as the implementation it replaces.
 
-## 19. Implementation loading
+## 15. Implementation loading
 
 Component selection is configuration/dependency injection, not semantic branching.
 
@@ -617,12 +749,20 @@ Conceptually:
 ~~~text
 ports = {
   taskLifecycle: McpTasksAdapter,
-  graphModel: PetgraphAdapter,
-  agentGraphExecutor: LangGraphAdapter,
-  durableExecution: RestateAdapter,
-  artifactMetadata: MetadataStoreAdapter,
-  artifactBlobs: OrasAdapter,
-  lineageExporter: OpenLineageAdapter,
+
+  graph: {
+    model: PetgraphAdapter,
+    agentExecutor: LangGraphAdapter,
+  },
+
+  durableRuntime: RestateAdapter,
+
+  artifacts: {
+    metadata: MetadataStoreAdapter,
+    blobs: OrasAdapter,
+    lineageExporter: OpenLineageAdapter,
+  },
+
   authorizationPolicy: CedarAdapter,
   telemetry: OpenTelemetryAdapter,
   workerDispatcher: CompositeWorkerAdapter,
@@ -631,7 +771,7 @@ ports = {
 
 A startup compatibility check validates required contract versions. There is no silent fallback to another implementation.
 
-## 20. Design rule
+## 16. Design rule
 
 > **Stable contracts outside; replaceable functions inside.**
 
