@@ -1,6 +1,7 @@
-import type { WorkflowGraphModelPort } from "#internet/workflow/components";
+import { TypeScriptWorkflowGraphModel, type WorkflowGraphModelPort } from "#internet/workflow/components";
 import { WorkflowEngine, type WorkflowEngineOptions } from "#internet/workflow/engine";
 import { WorkflowEventJournal } from "#internet/workflow/events";
+import { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
@@ -56,11 +57,13 @@ function defaultWriter(): WorkflowWriterRunner {
 }
 
 export function createWorkflowTestRuntime(root: string, options: WorkflowTestRuntimeOptions = {}): WorkflowTestRuntime {
-	const jobs = new WorkflowJobStore(root);
+	const graphValidator = new WorkflowGraphValidator(options.graphModel ?? new TypeScriptWorkflowGraphModel());
+	const jobs = new WorkflowJobStore(root, graphValidator);
 	const events = new WorkflowEventJournal(root);
 	const results = new WorkflowNodeResultStore(root);
 	const engine = new WorkflowEngine(
 		jobs,
+		graphValidator,
 		options.teams ?? defaultTeams(),
 		new WorkflowTeamPromptBuilder(),
 		new WorkflowHandoffStore(root),
