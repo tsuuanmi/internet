@@ -577,11 +577,17 @@ Cedar.
 AuthorizationRequestV1 {
   principal
   action
-  resource
+  resource {
+    kind
+    id
+    exactVersion?
+    attributes?
+  }
   context {
     provenance?
+    viaAgent?
     sideEffectClass?
-    exactBindings?
+    requestFacts?
   }
 }
 ~~~
@@ -599,7 +605,7 @@ AuthorizationDecisionV1 {
 
 - the policy engine does not authenticate the principal;
 - the policy engine does not manufacture `user_explicit` provenance;
-- exact head/revision/action bindings are supplied by Internet;
+- exact head/revision/action bindings are supplied by Internet as resource identity/version or resource attributes, not as untrusted model context;
 - deny/error is fail-closed for consequential actions.
 
 ## 11. TelemetryPort
