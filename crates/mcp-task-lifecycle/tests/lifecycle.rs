@@ -50,7 +50,6 @@ impl TaskBackend for FakeBackend {
     }
 }
 
-
 #[tokio::test]
 async fn create_is_idempotent_for_the_same_owner_and_request_id() {
     let dir = tempdir().unwrap();
@@ -191,7 +190,13 @@ async fn input_required_round_trips_exact_outstanding_requests_and_forwards_resp
     let backend = FakeBackend::new(BackendTaskSnapshot::input_required(requests.clone()));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
     let task = lifecycle
-        .create("principal:user-1", "request-2", "workflow:wf-42", None, Some(250))
+        .create(
+            "principal:user-1",
+            "request-2",
+            "workflow:wf-42",
+            None,
+            Some(250),
+        )
         .await
         .unwrap();
 
@@ -226,7 +231,13 @@ async fn update_ignores_responses_for_keys_that_are_not_outstanding() {
     let backend = FakeBackend::new(BackendTaskSnapshot::input_required(requests));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
     let task = lifecycle
-        .create("principal:user-1", "request-3", "workflow:wf-42", None, None)
+        .create(
+            "principal:user-1",
+            "request-3",
+            "workflow:wf-42",
+            None,
+            None,
+        )
         .await
         .unwrap();
 
@@ -246,7 +257,13 @@ async fn cancellation_is_ack_only_and_domain_backend_remains_authoritative_for_t
     let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
     let task = lifecycle
-        .create("principal:user-1", "request-3", "workflow:wf-42", None, None)
+        .create(
+            "principal:user-1",
+            "request-3",
+            "workflow:wf-42",
+            None,
+            None,
+        )
         .await
         .unwrap();
 
@@ -296,7 +313,13 @@ async fn task_access_is_bound_to_the_authenticated_owner() {
     let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend).unwrap();
     let task = lifecycle
-        .create("principal:user-1", "request-3", "workflow:wf-42", None, None)
+        .create(
+            "principal:user-1",
+            "request-3",
+            "workflow:wf-42",
+            None,
+            None,
+        )
         .await
         .unwrap();
 
