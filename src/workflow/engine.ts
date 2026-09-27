@@ -35,6 +35,7 @@ import {
 	updateWorkflowExecution,
 } from "#internet/workflow/graph-reducer";
 import type { WorkflowHandoff, WorkflowHandoffStore } from "#internet/workflow/handoff-store";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowNodeResult, WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
 import {
@@ -72,6 +73,7 @@ export interface WorkflowEngineOptions {
 
 export class WorkflowEngine {
 	private readonly jobs: WorkflowJobStore;
+	private readonly graphValidator: WorkflowGraphValidator;
 	private readonly teams: WorkflowTeamRunner;
 	private readonly prompts: WorkflowTeamPromptBuilder;
 	private readonly handoffs: WorkflowHandoffStore;
@@ -85,6 +87,7 @@ export class WorkflowEngine {
 
 	constructor(
 		jobs: WorkflowJobStore,
+		graphValidator: WorkflowGraphValidator,
 		teams: WorkflowTeamRunner,
 		prompts: WorkflowTeamPromptBuilder,
 		handoffs: WorkflowHandoffStore,
@@ -95,6 +98,7 @@ export class WorkflowEngine {
 		options: WorkflowEngineOptions = {},
 	) {
 		this.jobs = jobs;
+		this.graphValidator = graphValidator;
 		this.teams = teams;
 		this.prompts = prompts;
 		this.handoffs = handoffs;
@@ -131,14 +135,18 @@ export class WorkflowEngine {
 				sessionId: this.teamSession(input.ownerSessionId, jobId, "research", "B"),
 			},
 		};
-		const graph = buildInitialWorkflowGraph({
-			repository: input.repository,
+		const graph = buildInitialWorkflowGraph(
+			{
+				graphId: jobId,
+				repository: input.repository,
 			baseRevision: input.baseRevision,
 			rounds: this.teams.rounds,
 			accounts: thinkerAccounts,
-			synthesizer,
-			research,
-		});
+				synthesizer,
+				research,
+			},
+			this.graphValidator,
+		);
 		const at = new Date().toISOString();
 		return this.jobs.create({
 			schema: "@tsuuanmi/internet-workflow-job",
@@ -548,6 +556,7 @@ export class WorkflowEngine {
 					const pr = JSON.parse(result.payload) as WorkflowPullRequestReceipt;
 					const cycle = node.kind === "WRITER_IMPLEMENTATION" ? 1 : job.reviewCycle + 1;
 					graph = appendWorkflowNodes(
+						job.jobId,
 						graph,
 						buildReviewCycleNodes({
 							cycle,
@@ -556,6 +565,7 @@ export class WorkflowEngine {
 							accounts: job.accountRouting.thinkerAccounts,
 							synthesizer: job.accountRouting.synthesizerAccount,
 						}),
+						this.graphValidator,
 					);
 					next = {
 						...next,
@@ -574,7 +584,8 @@ export class WorkflowEngine {
 						};
 					} else {
 						const remediation = buildRemediationNode(cycle);
-						if (graph.nodes[remediation.nodeId] === undefined) graph = appendWorkflowNodes(graph, [remediation]);
+						if (graph.nodes[remediation.nodeId] === undefined)
+							graph = appendWorkflowNodes(job.jobId, graph, [remediation], this.graphValidator);
 						next = { ...next, graph: setWorkflowGraphStatus(graph, "WRITER", "RUNNING") };
 					}
 				}
