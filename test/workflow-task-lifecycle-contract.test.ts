@@ -7,13 +7,7 @@ import {
 
 describe("workflow task lifecycle contract", () => {
 	it("uses the MCP Tasks status vocabulary without compatibility states", () => {
-		expect(WORKFLOW_TASK_STATUSES).toEqual([
-			"working",
-			"input_required",
-			"completed",
-			"failed",
-			"cancelled",
-		]);
+		expect(WORKFLOW_TASK_STATUSES).toEqual(["working", "input_required", "completed", "failed", "cancelled"]);
 	});
 
 	it("requires explicit operation contract identity and request identity", () => {
