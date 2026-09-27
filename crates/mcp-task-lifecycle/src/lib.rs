@@ -109,7 +109,11 @@ impl BackendTaskSnapshot {
 
 #[allow(async_fn_in_trait)]
 pub trait TaskBackend: Clone + Send + Sync + 'static {
-    async fn observe(&self, owner_ref: &str, subject_ref: &str) -> Result<BackendTaskSnapshot, String>;
+    async fn observe(
+        &self,
+        owner_ref: &str,
+        subject_ref: &str,
+    ) -> Result<BackendTaskSnapshot, String>;
     async fn update(
         &self,
         owner_ref: &str,
@@ -145,11 +149,12 @@ impl TaskSnapshot {
             TaskStatus::InputRequired => {
                 let mut requests = InputRequests::new();
                 for (key, value) in &self.input_requests {
-                    let request = serde_json::from_value::<InputRequest>(value.clone()).map_err(|error| {
-                        TaskLifecycleError::internal(format!(
-                            "task input request {key:?} is not valid MCP input: {error}"
-                        ))
-                    })?;
+                    let request =
+                        serde_json::from_value::<InputRequest>(value.clone()).map_err(|error| {
+                            TaskLifecycleError::internal(format!(
+                                "task input request {key:?} is not valid MCP input: {error}"
+                            ))
+                        })?;
                     requests.insert(key.clone(), request);
                 }
                 TaskPayload::InputRequired {
@@ -256,7 +261,9 @@ impl<B: TaskBackend> InternetTaskLifecycle<B> {
             .backend
             .observe(owner_ref, subject_ref)
             .await
-            .map_err(|error| TaskLifecycleError::internal(format!("task backend observe failed: {error}")))?;
+            .map_err(|error| {
+                TaskLifecycleError::internal(format!("task backend observe failed: {error}"))
+            })?;
 
         let task_id = Uuid::new_v4().to_string();
         let record = TaskRecord {
@@ -315,7 +322,9 @@ impl<B: TaskBackend> InternetTaskLifecycle<B> {
         self.backend
             .update(owner_ref, &record.subject_ref, filtered)
             .await
-            .map_err(|error| TaskLifecycleError::internal(format!("task backend update failed: {error}")))
+            .map_err(|error| {
+                TaskLifecycleError::internal(format!("task backend update failed: {error}"))
+            })
     }
 
     pub async fn cancel(&self, owner_ref: &str, task_id: &str) -> Result<(), TaskLifecycleError> {
@@ -323,7 +332,9 @@ impl<B: TaskBackend> InternetTaskLifecycle<B> {
         self.backend
             .cancel(owner_ref, &record.subject_ref)
             .await
-            .map_err(|error| TaskLifecycleError::internal(format!("task backend cancel failed: {error}")))
+            .map_err(|error| {
+                TaskLifecycleError::internal(format!("task backend cancel failed: {error}"))
+            })
     }
 
     pub fn missing_required_capability() -> ErrorData {
@@ -363,11 +374,16 @@ impl<B: TaskBackend> InternetTaskLifecycle<B> {
         let mut contents = Vec::new();
         File::open(&path)
             .and_then(|mut file| file.read_to_end(&mut contents))
-            .map_err(|error| TaskLifecycleError::internal(format!("failed to read task record: {error}")))?;
-        let record = serde_json::from_slice::<TaskRecord>(&contents)
-            .map_err(|error| TaskLifecycleError::internal(format!("invalid task record: {error}")))?;
+            .map_err(|error| {
+                TaskLifecycleError::internal(format!("failed to read task record: {error}"))
+            })?;
+        let record = serde_json::from_slice::<TaskRecord>(&contents).map_err(|error| {
+            TaskLifecycleError::internal(format!("invalid task record: {error}"))
+        })?;
         if record.task_id != task_id {
-            return Err(TaskLifecycleError::internal("task record identity mismatch"));
+            return Err(TaskLifecycleError::internal(
+                "task record identity mismatch",
+            ));
         }
         Ok(Some(record))
     }
@@ -381,17 +397,18 @@ impl<B: TaskBackend> InternetTaskLifecycle<B> {
         let temp_path = self
             .root
             .join(format!(".{}.{}.tmp", record.task_id, Uuid::new_v4()));
-        let bytes = serde_json::to_vec(record)
-            .map_err(|error| TaskLifecycleError::internal(format!("failed to encode task record: {error}")))?;
+        let bytes = serde_json::to_vec(record).map_err(|error| {
+            TaskLifecycleError::internal(format!("failed to encode task record: {error}"))
+        })?;
 
         let mut options = OpenOptions::new();
         options.create_new(true).write(true);
         #[cfg(unix)]
         options.mode(0o600);
 
-        let mut file = options
-            .open(&temp_path)
-            .map_err(|error| TaskLifecycleError::internal(format!("failed to create task record: {error}")))?;
+        let mut file = options.open(&temp_path).map_err(|error| {
+            TaskLifecycleError::internal(format!("failed to create task record: {error}"))
+        })?;
         let write_result = (|| {
             file.write_all(&bytes)?;
             file.sync_all()?;
@@ -428,7 +445,9 @@ fn project(record: &TaskRecord, observed: BackendTaskSnapshot) -> TaskSnapshot {
 
 fn validate_ref(value: &str, label: &str) -> Result<(), TaskLifecycleError> {
     if value.trim().is_empty() {
-        return Err(TaskLifecycleError::invalid_params(format!("{label} is required")));
+        return Err(TaskLifecycleError::invalid_params(format!(
+            "{label} is required"
+        )));
     }
     Ok(())
 }
@@ -449,7 +468,9 @@ fn unknown_task(task_id: &str) -> TaskLifecycleError {
 fn now_unix_ms() -> Result<u64, TaskLifecycleError> {
     let duration = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|error| TaskLifecycleError::internal(format!("system clock is before Unix epoch: {error}")))?;
+        .map_err(|error| {
+            TaskLifecycleError::internal(format!("system clock is before Unix epoch: {error}"))
+        })?;
     u64::try_from(duration.as_millis())
         .map_err(|_| TaskLifecycleError::internal("system clock timestamp does not fit in u64"))
 }
@@ -463,19 +484,24 @@ fn record_is_expired(record: &TaskRecord) -> Result<bool, TaskLifecycleError> {
 }
 
 fn ensure_private_directory(path: &Path) -> Result<(), TaskLifecycleError> {
-    fs::create_dir_all(path)
-        .map_err(|error| TaskLifecycleError::internal(format!("failed to create task directory: {error}")))?;
+    fs::create_dir_all(path).map_err(|error| {
+        TaskLifecycleError::internal(format!("failed to create task directory: {error}"))
+    })?;
     #[cfg(unix)]
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
-        .map_err(|error| TaskLifecycleError::internal(format!("failed to secure task directory: {error}")))?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(|error| {
+        TaskLifecycleError::internal(format!("failed to secure task directory: {error}"))
+    })?;
     Ok(())
 }
 
 fn assert_private_regular_file(path: &Path) -> Result<(), TaskLifecycleError> {
-    let metadata = fs::symlink_metadata(path)
-        .map_err(|error| TaskLifecycleError::internal(format!("failed to inspect task record: {error}")))?;
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        TaskLifecycleError::internal(format!("failed to inspect task record: {error}"))
+    })?;
     if !metadata.file_type().is_file() {
-        return Err(TaskLifecycleError::internal("task record is not a regular file"));
+        return Err(TaskLifecycleError::internal(
+            "task record is not a regular file",
+        ));
     }
     #[cfg(unix)]
     if metadata.permissions().mode() & 0o077 != 0 {
