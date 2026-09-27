@@ -1,8 +1,8 @@
-import type { WebsiteParticipantArtifactStore } from "#internet/participant/artifact-store";
 import {
 	assertInternetApplicationRequestContext,
 	type InternetApplicationRequestContext,
 } from "#internet/application/context";
+import type { WebsiteParticipantArtifactStore } from "#internet/participant/artifact-store";
 
 const DEFAULT_ARTIFACT_READ_CHARS = 12_000;
 const MAX_ARTIFACT_READ_CHARS = 50_000;
