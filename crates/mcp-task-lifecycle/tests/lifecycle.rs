@@ -25,7 +25,11 @@ impl FakeBackend {
 }
 
 impl TaskBackend for FakeBackend {
-    async fn observe(&self, _owner_ref: &str, _subject_ref: &str) -> Result<BackendTaskSnapshot, String> {
+    async fn observe(
+        &self,
+        _owner_ref: &str,
+        _subject_ref: &str,
+    ) -> Result<BackendTaskSnapshot, String> {
         Ok(self.snapshot.lock().await.clone())
     }
 
@@ -57,14 +61,20 @@ async fn created_task_is_observable_before_return_and_survives_adapter_restart()
         .unwrap();
 
     assert_ne!(created.task_id, "workflow:wf-42");
-    let immediate = lifecycle.get("principal:user-1", &created.task_id).await.unwrap();
+    let immediate = lifecycle
+        .get("principal:user-1", &created.task_id)
+        .await
+        .unwrap();
     assert_eq!(immediate.status, TaskStatus::Working);
     assert_eq!(immediate.status_message.as_deref(), Some("planning"));
 
     drop(lifecycle);
 
     let reopened = InternetTaskLifecycle::open(dir.path(), backend).unwrap();
-    let recovered = reopened.get("principal:user-1", &created.task_id).await.unwrap();
+    let recovered = reopened
+        .get("principal:user-1", &created.task_id)
+        .await
+        .unwrap();
     assert_eq!(recovered.task_id, created.task_id);
     assert_eq!(recovered.subject_ref.as_deref(), Some("workflow:wf-42"));
 }
@@ -87,7 +97,10 @@ async fn input_required_round_trips_exact_outstanding_requests_and_forwards_resp
         .await
         .unwrap();
 
-    let snapshot = lifecycle.get("principal:user-1", &task.task_id).await.unwrap();
+    let snapshot = lifecycle
+        .get("principal:user-1", &task.task_id)
+        .await
+        .unwrap();
     assert_eq!(snapshot.status, TaskStatus::InputRequired);
     assert_eq!(snapshot.input_requests, requests);
 
@@ -111,10 +124,16 @@ async fn cancellation_is_ack_only_and_domain_backend_remains_authoritative_for_t
         .await
         .unwrap();
 
-    lifecycle.cancel("principal:user-1", &task.task_id).await.unwrap();
+    lifecycle
+        .cancel("principal:user-1", &task.task_id)
+        .await
+        .unwrap();
     assert_eq!(*backend.cancels.lock().await, 1);
 
-    let after_ack = lifecycle.get("principal:user-1", &task.task_id).await.unwrap();
+    let after_ack = lifecycle
+        .get("principal:user-1", &task.task_id)
+        .await
+        .unwrap();
     assert_eq!(after_ack.status, TaskStatus::Working);
 }
 
@@ -128,8 +147,14 @@ async fn unknown_task_is_invalid_params() {
     .unwrap();
 
     for error in [
-        lifecycle.get("principal:user-1", "missing").await.unwrap_err(),
-        lifecycle.cancel("principal:user-1", "missing").await.unwrap_err(),
+        lifecycle
+            .get("principal:user-1", "missing")
+            .await
+            .unwrap_err(),
+        lifecycle
+            .cancel("principal:user-1", "missing")
+            .await
+            .unwrap_err(),
         lifecycle
             .update("principal:user-1", "missing", BTreeMap::new())
             .await
@@ -150,7 +175,10 @@ async fn task_access_is_bound_to_the_authenticated_owner() {
         .unwrap();
 
     for error in [
-        lifecycle.get("principal:user-2", &task.task_id).await.unwrap_err(),
+        lifecycle
+            .get("principal:user-2", &task.task_id)
+            .await
+            .unwrap_err(),
         lifecycle
             .cancel("principal:user-2", &task.task_id)
             .await
