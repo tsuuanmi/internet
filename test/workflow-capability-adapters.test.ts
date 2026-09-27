@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getAccountDefinition } from "#internet/core/accounts";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
-import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
+import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import {
 	WORKFLOW_INPUT_BUNDLE_SCHEMA,
 	WORKFLOW_RUN_SCHEMA,
@@ -46,7 +46,6 @@ import {
 } from "#internet/workflow/semantic/index";
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
 import type { WorkflowWriterRunner } from "#internet/workflow/writer-runner";
-
 
 function artifactStore(root: string): WorkflowArtifactStore {
 	return new WorkflowArtifactStore(root, new LocalWorkflowArtifactBlobStore(root));
