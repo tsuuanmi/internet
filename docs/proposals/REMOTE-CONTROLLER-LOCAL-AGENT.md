@@ -620,6 +620,41 @@ Current research recommends Restate as the first focused runtime-substitution Po
 
 See [Workflow component decomposition and replacement landscape](../research/WORKFLOW-COMPONENT-LANDSCAPE.md).
 
+## 11.4 Best-of-breed component composition
+
+The Workflow capability should not select one framework as the permanent implementation of every concern.
+
+Each concern gets an Internet-owned contract and a replaceable implementation.
+
+Current candidates:
+
+~~~text
+portable task lifecycle   -> MCP Tasks (required)
+graph structure/DAG       -> petgraph candidate
+agentic graph execution   -> LangGraph when a capability benefits from it
+durable execution/queues  -> Restate PoC; DBOS/Temporal alternatives
+artifact blob storage     -> OCI/ORAS candidate
+artifact metadata         -> Internet semantic contract
+lineage interoperability  -> OpenLineage exporter
+authorization evaluation  -> Cedar candidate
+trusted authority facts   -> Internet + authenticated host adapter
+observability             -> OpenTelemetry
+worker execution          -> DSH / Codex / Claude / future adapters
+~~~
+
+Two related capabilities may use different implementations. For example, Internet may use petgraph for deterministic dependency analysis while a planning capability internally uses LangGraph for conditional agent execution. Neither implementation becomes the canonical Workflow model.
+
+Artifact handling follows the same rule: Internet retains artifact identity, schema, producer, exact InputBundle binding and typed semantic relations; an OCI/ORAS-backed blob store may hold immutable payloads, while OpenLineage may publish interoperable lineage views.
+
+Authorization follows the same split: the trusted host establishes authenticated principal/provenance and Internet defines exact resource/action semantics; a Cedar policy engine may evaluate the resulting authorization request.
+
+Language boundaries are allowed where they match component boundaries. Rust is a strong candidate for the MCP Tasks/policy/graph-facing service, while Python may host a LangGraph executor if that is the best implementation. Do not rewrite unrelated Internet code merely to standardize languages.
+
+The governing rule is:
+
+> **Select the best implementation for each explicit boundary; never copy a vendor/framework API into the Internet semantic contract.**
+
+
 ## 12. Transport should be replaceable
 
 The protocol should not depend on one transport.
