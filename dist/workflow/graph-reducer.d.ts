@@ -1,4 +1,5 @@
 import { type WorkflowExecutionRecord, type WorkflowFailure, type WorkflowGraphNode, type WorkflowGraphSnapshot, type WorkflowLifecycle, type WorkflowNodeInputReceipt, type WorkflowNodeOutputReceipt, type WorkflowPhase, type WorkflowRecoveryPlan } from "#internet/workflow/graph";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 export declare class WorkflowGraphTransitionError extends Error {
     constructor(message: string);
 }
@@ -11,7 +12,7 @@ export declare function completeWorkflowNode(graph: WorkflowGraphSnapshot, nodeI
 export declare function recoverWorkflowNode(graph: WorkflowGraphSnapshot, nodeId: string, executionId: string, executionState: "FENCED" | "ORPHANED" | "FAILED", failure: WorkflowFailure, recovery: WorkflowRecoveryPlan): WorkflowGraphSnapshot;
 export declare function retryWorkflowNode(graph: WorkflowGraphSnapshot, nodeId: string, execution: WorkflowExecutionRecord): WorkflowGraphSnapshot;
 export declare function failWorkflowNode(graph: WorkflowGraphSnapshot, nodeId: string, failure: WorkflowFailure): WorkflowGraphSnapshot;
-export declare function appendWorkflowNodes(graph: WorkflowGraphSnapshot, nodes: readonly WorkflowGraphNode[]): WorkflowGraphSnapshot;
+export declare function appendWorkflowNodes(graphId: string, graph: WorkflowGraphSnapshot, nodes: readonly WorkflowGraphNode[], graphValidator: WorkflowGraphValidator): WorkflowGraphSnapshot;
 export declare function setWorkflowGraphStatus(graph: WorkflowGraphSnapshot, phase: WorkflowPhase, lifecycle: WorkflowLifecycle): WorkflowGraphSnapshot;
 export declare function cancelWorkflowGraph(graph: WorkflowGraphSnapshot): WorkflowGraphSnapshot;
 //# sourceMappingURL=graph-reducer.d.ts.map

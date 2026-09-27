@@ -1,4 +1,4 @@
-import { assertWorkflowGraph, workflowNodeDependenciesCompleted, workflowNodeInputMatchesDependencies, } from "#internet/workflow/graph";
+import { assertWorkflowGraphState, workflowNodeDependenciesCompleted, workflowNodeInputMatchesDependencies, } from "#internet/workflow/graph";
 export class WorkflowGraphTransitionError extends Error {
     constructor(message) {
         super(message);
@@ -126,7 +126,7 @@ export function failWorkflowNode(graph, nodeId, failure) {
         ...(execution === undefined ? {} : { execution: { ...execution, state: "FAILED" } }),
     }));
 }
-export function appendWorkflowNodes(graph, nodes) {
+export function appendWorkflowNodes(graphId, graph, nodes, graphValidator) {
     if (nodes.length === 0)
         return graph;
     const nextNodes = { ...graph.nodes };
@@ -136,7 +136,9 @@ export function appendWorkflowNodes(graph, nodes) {
         }
         nextNodes[node.nodeId] = node;
     }
-    return checked({ ...graph, graphRevision: graph.graphRevision + 1, nodes: nextNodes });
+    const candidate = { ...graph, graphRevision: graph.graphRevision + 1, nodes: nextNodes };
+    graphValidator.assert(graphId, candidate);
+    return candidate;
 }
 export function setWorkflowGraphStatus(graph, phase, lifecycle) {
     if (graph.phase === phase && graph.lifecycle === lifecycle)
@@ -186,7 +188,7 @@ function replaceNode(graph, node) {
     };
 }
 function checked(graph) {
-    assertWorkflowGraph(graph);
+    assertWorkflowGraphState(graph);
     return graph;
 }
 //# sourceMappingURL=graph-reducer.js.map

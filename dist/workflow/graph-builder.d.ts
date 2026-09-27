@@ -3,11 +3,13 @@ import { type TeamPlan, type TeamPlanStep } from "#internet/team/plan";
 import type { TeamPromptStrategyId } from "#internet/team/prompt-strategy";
 import type { TeamTurn } from "#internet/team/types";
 import { type WorkflowGraphNode, type WorkflowGraphSnapshot, type WorkflowLane, type WorkflowNodeInputReceipt } from "#internet/workflow/graph";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 export interface WorkflowLaneInput {
     readonly task: string;
     readonly sessionId: string;
 }
 export interface InitialWorkflowGraphInput {
+    readonly graphId: string;
     readonly repository: string;
     readonly baseRevision: string;
     readonly rounds: number;
@@ -35,7 +37,7 @@ export interface TeamStepInputReceiptInput {
 export declare function hashWorkflowGraphValue(value: string): string;
 export declare function createWorkflowNodeInputReceipt(nodeId: string, dependencyOutputHashes: Readonly<Record<string, string>>, bindings: Readonly<Record<string, string | number | boolean>>): WorkflowNodeInputReceipt;
 export declare function createTeamStepInputReceipt(input: TeamStepInputReceiptInput): WorkflowNodeInputReceipt;
-export declare function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): WorkflowGraphSnapshot;
+export declare function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput, graphValidator: WorkflowGraphValidator): WorkflowGraphSnapshot;
 export declare function buildReviewCycleNodes(input: ReviewCycleGraphInput): readonly WorkflowGraphNode[];
 export declare function buildRemediationNode(cycle: number): WorkflowGraphNode;
 //# sourceMappingURL=graph-builder.d.ts.map

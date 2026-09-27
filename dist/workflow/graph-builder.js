@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { buildTeamPlan, prepareTeamStep } from "#internet/team/plan";
-import { assertWorkflowGraph, workflowNodeId, } from "#internet/workflow/graph";
+import { workflowNodeId, } from "#internet/workflow/graph";
 export function hashWorkflowGraphValue(value) {
     return createHash("sha256").update(value, "utf8").digest("hex");
 }
@@ -22,7 +22,7 @@ export function createTeamStepInputReceipt(input) {
         promptHash: hashWorkflowGraphValue(prepared.prompt),
     });
 }
-export function buildInitialWorkflowGraph(input) {
+export function buildInitialWorkflowGraph(input, graphValidator) {
     const plan = buildTeamPlan({
         accounts: input.accounts,
         rounds: input.rounds,
@@ -59,7 +59,7 @@ export function buildInitialWorkflowGraph(input) {
         lifecycle: "RUNNING",
         nodes,
     };
-    assertWorkflowGraph(graph);
+    graphValidator.assert(input.graphId, graph);
     return graph;
 }
 export function buildReviewCycleNodes(input) {

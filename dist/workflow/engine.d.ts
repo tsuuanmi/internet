@@ -1,4 +1,5 @@
 import type { WorkflowEventJournal, WorkflowEventSink } from "#internet/workflow/events";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 import type { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import type { WorkflowJobStore } from "#internet/workflow/job-store";
 import type { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
@@ -14,6 +15,7 @@ export interface WorkflowEngineOptions {
 }
 export declare class WorkflowEngine {
     private readonly jobs;
+    private readonly graphValidator;
     private readonly teams;
     private readonly prompts;
     private readonly handoffs;
@@ -24,7 +26,7 @@ export declare class WorkflowEngine {
     private readonly maxReviewCycles;
     private readonly executionLeaseMs;
     private readonly recoveryPolicy;
-    constructor(jobs: WorkflowJobStore, teams: WorkflowTeamRunner, prompts: WorkflowTeamPromptBuilder, handoffs: WorkflowHandoffStore, writer: WorkflowWriterRunner, results: WorkflowNodeResultStore, events?: WorkflowEventSink, journal?: WorkflowEventJournal, options?: WorkflowEngineOptions);
+    constructor(jobs: WorkflowJobStore, graphValidator: WorkflowGraphValidator, teams: WorkflowTeamRunner, prompts: WorkflowTeamPromptBuilder, handoffs: WorkflowHandoffStore, writer: WorkflowWriterRunner, results: WorkflowNodeResultStore, events?: WorkflowEventSink, journal?: WorkflowEventJournal, options?: WorkflowEngineOptions);
     start(input: StartWorkflowInput): WorkflowJob;
     status(jobId: string): WorkflowJob;
     advance(jobId: string): WorkflowJob;

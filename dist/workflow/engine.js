@@ -14,8 +14,9 @@ import { workflowJobIsTerminal, } from "#internet/workflow/types";
 const DEFAULT_MAX_REVIEW_CYCLES = 3;
 const DEFAULT_EXECUTION_LEASE_MS = 60_000;
 export class WorkflowEngine {
-    constructor(jobs, teams, prompts, handoffs, writer, results, events, journal, options = {}) {
+    constructor(jobs, graphValidator, teams, prompts, handoffs, writer, results, events, journal, options = {}) {
         this.jobs = jobs;
+        this.graphValidator = graphValidator;
         this.teams = teams;
         this.prompts = prompts;
         this.handoffs = handoffs;
@@ -55,13 +56,14 @@ export class WorkflowEngine {
             },
         };
         const graph = buildInitialWorkflowGraph({
+            graphId: jobId,
             repository: input.repository,
             baseRevision: input.baseRevision,
             rounds: this.teams.rounds,
             accounts: thinkerAccounts,
             synthesizer,
             research,
-        });
+        }, this.graphValidator);
         const at = new Date().toISOString();
         return this.jobs.create({
             schema: "@tsuuanmi/internet-workflow-job",
@@ -409,13 +411,13 @@ export class WorkflowEngine {
             if (node.kind === "WRITER_IMPLEMENTATION" || node.kind === "WRITER_REMEDIATION") {
                 const pr = JSON.parse(result.payload);
                 const cycle = node.kind === "WRITER_IMPLEMENTATION" ? 1 : job.reviewCycle + 1;
-                graph = appendWorkflowNodes(graph, buildReviewCycleNodes({
+                graph = appendWorkflowNodes(job.jobId, graph, buildReviewCycleNodes({
                     cycle,
                     sourceNodeId: nodeId,
                     rounds: this.teams.rounds,
                     accounts: job.accountRouting.thinkerAccounts,
                     synthesizer: job.accountRouting.synthesizerAccount,
-                }));
+                }), this.graphValidator);
                 next = {
                     ...next,
                     graph: setWorkflowGraphStatus(graph, "REVIEW", "RUNNING"),
@@ -436,7 +438,7 @@ export class WorkflowEngine {
                 else {
                     const remediation = buildRemediationNode(cycle);
                     if (graph.nodes[remediation.nodeId] === undefined)
-                        graph = appendWorkflowNodes(graph, [remediation]);
+                        graph = appendWorkflowNodes(job.jobId, graph, [remediation], this.graphValidator);
                     next = { ...next, graph: setWorkflowGraphStatus(graph, "WRITER", "RUNNING") };
                 }
             }
