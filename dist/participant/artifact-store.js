@@ -37,12 +37,13 @@ function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 export function parseWebsiteParticipantArtifact(value) {
-    if (!isRecord(value) || value.schema !== WEBSITE_PARTICIPANT_ARTIFACT_SCHEMA || value.version !== 1) {
+    if (!isRecord(value) || value.schema !== WEBSITE_PARTICIPANT_ARTIFACT_SCHEMA || value.version !== 2) {
         throw new Error("unsupported website participant artifact schema");
     }
     if (!hex(value.artifactId) ||
         !hex(value.ownerSessionHash) ||
         !hex(value.logicalRequestIdHash) ||
+        !hex(value.conversationSessionHash) ||
         !hex(value.promptHash) ||
         !hex(value.textHash)) {
         throw new Error("invalid website participant artifact identity");
@@ -97,6 +98,7 @@ export class WebsiteParticipantArtifactStore {
         const identity = artifactIdentity(input);
         const current = this.read(input.ownerSessionId, identity.artifactId);
         const promptHash = hashProviderTurnText(input.prompt);
+        const conversationSessionHash = identityHash(input.conversationSessionId ?? input.ownerSessionId, "conversation session id");
         const textHash = hashProviderTurnText(input.text);
         if (current !== undefined) {
             if (current.accountId !== input.accountId || current.mode !== input.mode) {
@@ -104,6 +106,9 @@ export class WebsiteParticipantArtifactStore {
             }
             if (current.logicalRequestIdHash !== identity.logicalRequestIdHash || current.promptHash !== promptHash) {
                 throw new WebsiteParticipantArtifactStoreError("website participant logical request was reused with a different prompt");
+            }
+            if (current.conversationSessionHash !== conversationSessionHash) {
+                throw new WebsiteParticipantArtifactStoreError("website participant logical request was reused with a different conversation session");
             }
             if (current.textHash !== textHash ||
                 current.url !== input.url ||
@@ -114,12 +119,13 @@ export class WebsiteParticipantArtifactStore {
         }
         const artifact = {
             schema: WEBSITE_PARTICIPANT_ARTIFACT_SCHEMA,
-            version: 1,
+            version: 2,
             artifactId: identity.artifactId,
             ownerSessionHash: identity.ownerSessionHash,
             accountId: input.accountId,
             provider: getAccountDefinition(input.accountId).provider,
             logicalRequestIdHash: identity.logicalRequestIdHash,
+            conversationSessionHash,
             mode: input.mode,
             promptHash,
             text: input.text,
