@@ -44,7 +44,10 @@ function compareText(left: string, right: string): number {
 	return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function detectCycles(ids: readonly string[], adjacency: ReadonlyMap<string, readonly string[]>): readonly (readonly string[])[] {
+function detectCycles(
+	ids: readonly string[],
+	adjacency: ReadonlyMap<string, readonly string[]>,
+): readonly (readonly string[])[] {
 	const state = new Map<string, 0 | 1 | 2>();
 	const stack: string[] = [];
 	const stackIndex = new Map<string, number>();
@@ -97,8 +100,7 @@ export class TypeScriptWorkflowGraphModel implements WorkflowGraphModelPort {
 		for (const edge of graph.edges) {
 			if (!nodes.has(edge.from))
 				throw new WorkflowComponentError("INVALID_INPUT", `unknown graph node ${edge.from}`);
-			if (!nodes.has(edge.to))
-				throw new WorkflowComponentError("INVALID_INPUT", `unknown graph node ${edge.to}`);
+			if (!nodes.has(edge.to)) throw new WorkflowComponentError("INVALID_INPUT", `unknown graph node ${edge.to}`);
 			const targets = adjacency.get(edge.from)!;
 			if (targets.has(edge.to)) continue;
 			targets.add(edge.to);
