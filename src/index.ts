@@ -237,6 +237,7 @@ export type {
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 export type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
 export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
+export * from "#internet/workflow/components";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -265,7 +266,6 @@ export type {
 } from "#internet/workflow/graph";
 export { assertWorkflowGraphState, workflowNodeId } from "#internet/workflow/graph";
 export { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
-export * from "#internet/workflow/components";
 export type {
 	CreateWorkflowHandoffInput,
 	WorkflowHandoff,
