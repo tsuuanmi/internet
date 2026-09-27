@@ -578,11 +578,24 @@ The design rules are:
 - large research/team output stays in durable artifacts with compact projections;
 - DSH may call the capability services directly in-process;
 - Codex/Claude/other hosts may call the same services through MCP;
-- modern MCP Tasks/input-required/Apps/Resources are progressive projections, not authoritative Internet state.
+- MCP Tasks is required for portable long-running execution from v1; clients without the extension are not supported for that path;
+- there is no blocking, bespoke-handle, or legacy compatibility fallback initially;
+- MCP Apps, Resources, and subscriptions remain optional presentation/observability enhancements;
+- Internet-specific artifact, authority, exact-state, reconciliation, and convergence semantics remain independent from the task lifecycle.
 
-MCP Tasks are especially promising for asynchronous interoperability because their durable task handle, polling, cancellation, and input-required lifecycle map naturally to long-running research and Workflow. Internet Workflow remains the source of truth; MCP Task state is only an adapter projection.
+MCP Tasks is part of the initial production contract for portable long-running capabilities. It standardizes durable task handles, polling, cancellation, recovery, and input-required interaction. Internet-specific Workflow semantics remain separate so the generic task lifecycle can be replaced or evolved without turning Workflow into a monolith.
 
 See [agnostic capability surface research](../research/AGNOSTIC-CAPABILITY-SURFACE.md).
+
+## 11.2 Tasks-required, no-fallback production stance
+
+For portable long-running Workflow and research operations, the initial production contract requires MCP 2026-07-28 plus the `io.modelcontextprotocol/tasks` extension.
+
+A client that does not support that contract is not supported for the long-running path yet.
+
+The initial implementation deliberately does not maintain a second execution lifecycle such as a blocking tool call, a custom polling handle, or the legacy experimental Tasks API.
+
+This keeps one correctness path. Additional compatibility paths should be added only when a concrete product requirement justifies their permanent testing and maintenance cost.
 
 ## 12. Transport should be replaceable
 
