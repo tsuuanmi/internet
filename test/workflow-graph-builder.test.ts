@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { TypeScriptWorkflowGraphModel } from "#internet/workflow/components";
 import { buildTeamPlan, prepareTeamStep } from "#internet/team/plan";
+import { TypeScriptWorkflowGraphModel } from "#internet/workflow/components";
 import { workflowNodeId } from "#internet/workflow/graph";
 import {
 	buildInitialWorkflowGraph,
