@@ -2,12 +2,9 @@ import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
-import {
-	LocalWorkflowArtifactBlobStore,
-	type WorkflowArtifactBlobStorePort,
-} from "#internet/workflow/components";
 import { canonicalJson } from "#internet/core/canonical-json";
+import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
+import { LocalWorkflowArtifactBlobStore, type WorkflowArtifactBlobStorePort } from "#internet/workflow/components";
 
 const runId = "11111111111111111111111111111111";
 const producerId = "33333333333333333333333333333333";
