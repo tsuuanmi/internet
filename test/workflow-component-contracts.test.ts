@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	WORKFLOW_COMPONENT_ERROR_CODES,
-	assertWorkflowComponentContractRef,
-} from "#internet/workflow/components";
+import { assertWorkflowComponentContractRef, WORKFLOW_COMPONENT_ERROR_CODES } from "#internet/workflow/components";
 
 describe("workflow component contracts", () => {
 	it("publishes one stable common error taxonomy", () => {
