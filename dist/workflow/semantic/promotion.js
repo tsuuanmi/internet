@@ -58,6 +58,8 @@ function schemaRef(type) {
             return WORKFLOW_SEMANTIC_SCHEMA_REFS.criterionAssessment;
         case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.report:
             return WORKFLOW_SEMANTIC_SCHEMA_REFS.report;
+        case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.implementationOutput:
+            return WORKFLOW_SEMANTIC_SCHEMA_REFS.implementationOutput;
         case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.delivery:
             return WORKFLOW_SEMANTIC_SCHEMA_REFS.delivery;
         case WORKFLOW_SEMANTIC_ARTIFACT_TYPES.userFeedback:

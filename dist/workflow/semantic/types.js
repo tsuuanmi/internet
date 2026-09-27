@@ -7,6 +7,7 @@ export const WORKFLOW_SEMANTIC_ARTIFACT_TYPES = {
     evidence: "evidence",
     criterionAssessment: "criterion_assessment",
     report: "report",
+    implementationOutput: "implementation_output",
     delivery: "delivery",
     userFeedback: "user_feedback",
 };
@@ -20,6 +21,7 @@ export const WORKFLOW_SEMANTIC_SCHEMA_REFS = {
     evidence: { id: "workflow.evidence", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
     criterionAssessment: { id: "workflow.criterion-assessment", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
     report: { id: "workflow.report", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
+    implementationOutput: { id: "workflow.implementation-output", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
     delivery: { id: "workflow.delivery", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
     userFeedback: { id: "workflow.user-feedback", version: WORKFLOW_SEMANTIC_SCHEMA_VERSION },
 };

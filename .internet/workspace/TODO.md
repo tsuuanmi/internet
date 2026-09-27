@@ -2,11 +2,11 @@
 
 ## Current status
 
-**Design Gate D0 and Phases 0-2 have landed on `main`; Phase 3 is implemented in PR #41, Phase 4 deterministic vNext runtime control is implemented in PR #42, Phase 5 capability adapters are implemented in PR #43, and Phase 6 durable external interactions are implemented in PR #44.**
+**Design Gate D0 and Phases 0-6 have landed on `main`; Phase 7 software Delivery/User-feedback lifecycle is implemented in PR #45.**
 
-The migration now has one authoritative `WorkflowService` boundary, durable provenance-preserving admission, the parallel vNext durable kernel substrate, typed semantic workflow artifacts, deterministic baseline convergence, a deterministic vNext coordinator/driver with exact-input scheduling and recovery, profile adapters for planning/software/research execution, and durable external interaction primitives with multi-action PendingAction state, responder authority/provenance, exact-state fencing, idempotent responses, and separately persisted typed unsolicited signals. The v3 runtime remains supported during migration.
+The migration now has one authoritative `WorkflowService` boundary, durable admission, the parallel vNext kernel/runtime, typed semantic artifacts, deterministic convergence, capability adapters, durable external interactions, and a software Delivery/User-feedback loop where implementation produces an exact reviewable output, review PASS creates an exact-head Delivery checkpoint, User/local feedback is persisted against that checkpoint, and reasoning capabilities—not the deterministic Orchestrator—derive typed consequences. The v3 runtime remains supported during migration.
 
-The next implementation milestone after Phase 6 is the vNext software Delivery/feedback loop.
+The next implementation milestone after Phase 7 is Workstream/continuation.
 
 ## D0 — Design contract harmonization
 
@@ -160,16 +160,16 @@ The next implementation milestone after Phase 6 is the vNext software Delivery/f
 
 ## P2 — Software delivery feedback loop
 
-- [ ] Add vNext exact-head `DeliveryArtifact` for reviewed PR checkpoints.
-- [ ] Add User-validation PendingAction after delivery when profile requires it.
-- [ ] Store User/local feedback as typed external input with raw source and target Delivery/head.
-- [ ] Route semantic interpretation of feedback to a reasoning capability.
-- [ ] Never let deterministic Orchestrator interpret free-form feedback into mutations directly.
-- [ ] Invalidate dependent current artifacts/results when correctness-bearing inputs change.
-- [ ] Require fresh exact-head assessment/review after any changed PR head.
-- [ ] Reject or explicitly reassess feedback targeting an obsolete Delivery/head.
-- [ ] Use baseline criterion assessment/convergence for terminal decision.
-- [ ] Preserve v3 behavior where review PASS is terminal.
+- [x] Add vNext exact-head `DeliveryArtifact` for reviewed PR checkpoints.
+- [x] Add User-validation PendingAction after delivery when profile requires it.
+- [x] Store User/local feedback as typed external input with raw source and target Delivery/head.
+- [x] Route semantic interpretation of feedback to a reasoning capability.
+- [x] Never let deterministic Orchestrator interpret free-form feedback into mutations directly.
+- [x] Invalidate dependent current artifacts/results when correctness-bearing inputs change.
+- [x] Require fresh exact-head assessment/review after any changed PR head.
+- [x] Reject or explicitly reassess feedback targeting an obsolete Delivery/head.
+- [x] Use baseline criterion assessment/convergence for terminal decision.
+- [x] Preserve v3 behavior where review PASS is terminal.
 
 ## P2 — Workstream and continuation
 

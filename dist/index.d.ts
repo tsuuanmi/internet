@@ -75,6 +75,10 @@ export { WorkflowPendingActionStore, WorkflowPendingActionStoreError } from "#in
 export { WorkflowPlanningCapabilityAdapter, WorkflowTeamPlanningExecutor, } from "#internet/workflow/profiles/common/planning-capability";
 export { WorkflowProfileRegistry, WorkflowProfileRegistryError } from "#internet/workflow/profiles/registry";
 export { EXTERNAL_DEEP_RESEARCH_CAPABILITY, WorkflowExternalDeepResearchAdapter, } from "#internet/workflow/profiles/research/deep-research-capability";
+export { withSoftwareDeliveryFeedbackPolicy } from "#internet/workflow/profiles/software/delivery-policy";
+export { WorkflowSoftwareFeedbackBridge } from "#internet/workflow/profiles/software/feedback-bridge";
+export { SOFTWARE_FEEDBACK_INTERPRETATION_CAPABILITY, WorkflowSoftwareFeedbackInterpretationAdapter, } from "#internet/workflow/profiles/software/feedback-capability";
+export { parseSoftwareUserFeedbackInput, SOFTWARE_USER_FEEDBACK_SCHEMA, SOFTWARE_USER_FEEDBACK_VERDICTS, type SoftwareUserFeedbackInput, type SoftwareUserFeedbackVerdict, } from "#internet/workflow/profiles/software/feedback-contract";
 export { SOFTWARE_IMPLEMENTATION_CAPABILITY, WorkflowSoftwareImplementationAdapter, type WorkflowSoftwareWriterRequestProjector, } from "#internet/workflow/profiles/software/implementation-capability";
 export { SOFTWARE_REPOSITORY_RESEARCH_CAPABILITY, WorkflowSoftwareRepositoryResearchAdapter, } from "#internet/workflow/profiles/software/research-capability";
 export { SOFTWARE_REVIEW_CAPABILITY, WorkflowSoftwareReviewAdapter, } from "#internet/workflow/profiles/software/review-capability";

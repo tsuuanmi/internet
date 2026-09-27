@@ -1,3 +1,4 @@
+import type { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowCapabilityActiveExecutionContext, WorkflowCapabilityExecutionContext, WorkflowCapabilityExecutor } from "#internet/workflow/runtime/types";
 import { type WorkflowSemanticExecutionResult } from "#internet/workflow/semantic/index";
 import type { WorkflowWriterControlRequest, WorkflowWriterRunner } from "#internet/workflow/writer-runner";
@@ -5,7 +6,7 @@ export declare const SOFTWARE_IMPLEMENTATION_CAPABILITY: {
     readonly id: "software.implementation_change";
     readonly version: "1";
     readonly acceptedNeedTypes: readonly ["execution"];
-    readonly producedArtifactTypes: readonly ["delivery"];
+    readonly producedArtifactTypes: readonly ["implementation_output", "need"];
     readonly producedReceiptTypes: readonly ["software.pull_request"];
     readonly sideEffect: "CONTROLLED_MUTATION";
     readonly requiredAuthority: readonly ["repository_mutation"];
@@ -25,7 +26,8 @@ export declare class WorkflowSoftwareImplementationAdapter implements WorkflowCa
     readonly kind = "software_implementation";
     private readonly runner;
     private readonly project;
-    constructor(runner: WorkflowWriterRunner, project: WorkflowSoftwareWriterRequestProjector);
+    private readonly artifacts;
+    constructor(runner: WorkflowWriterRunner, project: WorkflowSoftwareWriterRequestProjector, artifacts: WorkflowArtifactStore);
     execute(context: WorkflowCapabilityActiveExecutionContext): Promise<WorkflowSemanticExecutionResult>;
     reconcile(context: WorkflowCapabilityExecutionContext): Promise<WorkflowSemanticExecutionResult | undefined>;
 }
