@@ -20,6 +20,7 @@ describe("workflow task lifecycle contract", () => {
 		expect(() =>
 			assertWorkflowTaskStartRequest({
 				requestId: "req-1",
+				ownerRef: "principal:user-1",
 				operation: { id: "workflow.start", version: "1" },
 				subjectRef: "workflow:wf-42",
 				inputRef: "artifact:input-1",
@@ -29,6 +30,7 @@ describe("workflow task lifecycle contract", () => {
 		expect(() =>
 			assertWorkflowTaskStartRequest({
 				requestId: "",
+				ownerRef: "principal:user-1",
 				operation: { id: "workflow.start", version: "1" },
 			}),
 		).toThrow("request id");
