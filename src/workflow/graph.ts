@@ -1,4 +1,4 @@
-export const WORKFLOW_PHASES = ["RESEARCH", "WRITER", "REVIEW", "DONE"] as const;
+import { TypeScriptWorkflowGraphModel } from "#internet/workflow/components/graph-model";\n\nexport const WORKFLOW_PHASES = ["RESEARCH", "WRITER", "REVIEW", "DONE"] as const;
 export type WorkflowPhase = (typeof WORKFLOW_PHASES)[number];
 
 export const WORKFLOW_LIFECYCLES = ["RUNNING", "RECOVERING", "BLOCKED", "COMPLETED", "CANCELLED"] as const;
