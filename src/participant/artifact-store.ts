@@ -159,10 +159,7 @@ export class WebsiteParticipantArtifactStore {
 			if (current.accountId !== input.accountId || current.mode !== input.mode) {
 				throw new WebsiteParticipantArtifactStoreError("website participant artifact identity conflict");
 			}
-			if (
-				current.logicalRequestIdHash !== identity.logicalRequestIdHash ||
-				current.promptHash !== promptHash
-			) {
+			if (current.logicalRequestIdHash !== identity.logicalRequestIdHash || current.promptHash !== promptHash) {
 				throw new WebsiteParticipantArtifactStoreError(
 					"website participant logical request was reused with a different prompt",
 				);
