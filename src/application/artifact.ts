@@ -44,11 +44,15 @@ function parseMaxChars(value: unknown): number {
 	return value;
 }
 
-export function parseInternetArtifactReadInput(args: Record<string, unknown>): InternetArtifactReadInput {
+export function parseInternetArtifactReadInput(input: {
+	readonly artifactId: unknown;
+	readonly offset?: unknown;
+	readonly maxChars?: unknown;
+}): InternetArtifactReadInput {
 	return {
-		artifactId: parseArtifactId(args.artifact_id),
-		offset: parseOffset(args.offset),
-		maxChars: parseMaxChars(args.max_chars),
+		artifactId: parseArtifactId(input.artifactId),
+		offset: parseOffset(input.offset),
+		maxChars: parseMaxChars(input.maxChars),
 	};
 }
 
