@@ -21,3 +21,13 @@ export {
 	type WorkflowGraphAnalysisV1,
 	type WorkflowGraphModelPort,
 } from "#internet/workflow/components/graph-model";
+export {
+	assertWorkflowTaskHandle,
+	assertWorkflowTaskStartRequest,
+	WORKFLOW_TASK_HANDLE_SCHEMA,
+	WORKFLOW_TASK_START_REQUEST_SCHEMA,
+	WORKFLOW_TASK_STATUSES,
+	type WorkflowTaskHandleV1,
+	type WorkflowTaskStartRequestV1,
+	type WorkflowTaskStatus,
+} from "#internet/workflow/components/task-lifecycle";
