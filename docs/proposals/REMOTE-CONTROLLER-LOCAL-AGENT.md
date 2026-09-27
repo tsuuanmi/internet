@@ -655,6 +655,79 @@ The governing rule is:
 > **Select the best implementation for each explicit boundary; never copy a vendor/framework API into the Internet semantic contract.**
 
 
+## 11.5 Contract-first replaceability invariant
+
+Every replaceable component must be defined by a stable, versioned Internet contract with explicit input and output.
+
+The component implementation is the replaceable function between those contracts:
+
+~~~text
+Input contract
+    |
+    v
+ComponentPort
+    |
+    +-- implementation A
+    +-- implementation B
+    +-- implementation C
+    |
+    v
+Output contract
+~~~
+
+Changing the implementation must not require callers or downstream consumers to change as long as the replacement satisfies the same contract and invariants.
+
+Required properties:
+
+- explicit versioned input schema;
+- explicit versioned output schema;
+- no hidden shared state across component boundaries;
+- no transport-session identity as semantic identity;
+- deterministic validation at the boundary;
+- explicit error taxonomy;
+- explicit side-effect class;
+- explicit idempotency/retry contract where relevant;
+- stable Internet IDs and references rather than vendor/runtime handles;
+- conformance tests shared by every implementation of the same port.
+
+Examples:
+
+~~~text
+TaskLifecyclePort
+  Input:  StartTaskRequestV1
+  Output: TaskHandleV1 / TaskUpdateV1
+  Impl:   MCP Tasks
+
+GraphModelPort
+  Input:  DependencyGraphV1
+  Output: GraphAnalysisV1
+  Impl:   petgraph / future library
+
+AgentGraphExecutorPort
+  Input:  AgentGraphRequestV1
+  Output: AgentGraphResultV1
+  Impl:   LangGraph / future executor
+
+ArtifactBlobStorePort
+  Input:  BlobPut/GetRequestV1
+  Output: BlobDigest/BlobPayloadV1
+  Impl:   OCI/ORAS / filesystem / object store
+
+AuthorizationPolicyPort
+  Input:  AuthorizationRequestV1
+  Output: AuthorizationDecisionV1
+  Impl:   Cedar / future policy engine
+~~~
+
+MCP 2026-07-28 reinforces this approach: tool `inputSchema` and `outputSchema` use full JSON Schema 2020-12, and `structuredContent` is validated against the declared output schema. The protocol core is stateless, so application identity/state must be explicit rather than hidden in a transport session.
+
+Conformance must be tested at the port level. A replacement is accepted only if it passes the same contract tests and Internet invariants as the implementation it replaces.
+
+The architectural rule is:
+
+> **Input/output contracts are stable; the function in the middle is replaceable.**
+
+
 ## 12. Transport should be replaceable
 
 The protocol should not depend on one transport.
