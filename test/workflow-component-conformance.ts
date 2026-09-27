@@ -1,8 +1,5 @@
 import { expect, it } from "vitest";
-import type {
-	WorkflowArtifactBlobStorePort,
-	WorkflowGraphModelPort,
-} from "#internet/workflow/components";
+import type { WorkflowArtifactBlobStorePort, WorkflowGraphModelPort } from "#internet/workflow/components";
 
 export function graphModelConformance(factory: () => WorkflowGraphModelPort): void {
 	it("analyzes a deterministic dependency DAG", () => {
