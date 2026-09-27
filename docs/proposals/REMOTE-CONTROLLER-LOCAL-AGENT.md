@@ -727,6 +727,8 @@ The architectural rule is:
 
 > **Input/output contracts are stable; the function in the middle is replaceable.**
 
+The concrete proposed port catalog is documented in [Workflow vNext Component Port Contracts](workflow-vnext/COMPONENT-PORTS.md).
+
 
 ## 12. Transport should be replaceable
 
