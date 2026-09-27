@@ -1,19 +1,13 @@
 import {
 	assertWorkflowComponentContractRef,
-	WorkflowComponentError,
 	type WorkflowComponentContractRef,
+	WorkflowComponentError,
 } from "#internet/workflow/components/contracts";
 
 export const WORKFLOW_TASK_START_REQUEST_SCHEMA = "@tsuuanmi/internet-workflow-task-start-request" as const;
 export const WORKFLOW_TASK_HANDLE_SCHEMA = "@tsuuanmi/internet-workflow-task-handle" as const;
 
-export const WORKFLOW_TASK_STATUSES = [
-	"working",
-	"input_required",
-	"completed",
-	"failed",
-	"cancelled",
-] as const;
+export const WORKFLOW_TASK_STATUSES = ["working", "input_required", "completed", "failed", "cancelled"] as const;
 
 export type WorkflowTaskStatus = (typeof WORKFLOW_TASK_STATUSES)[number];
 
