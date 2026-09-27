@@ -24,19 +24,6 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Capture generated task artifacts
-        run: |
-          {
-            printf '%s\n' Cargo.lock
-            git diff --name-only -- dist
-            git ls-files --others --exclude-standard -- dist
-          } | sort -u | while IFS= read -r file; do
-            if [ -f "$file" ]; then
-              printf 'TASK_ARTIFACT_CAPTURE %s ' "$file"
-              base64 -w0 "$file"
-              printf '\n'
-            fi
-          done
       - name: Verify generated dist
         run: |
           git diff --exit-code -- dist
