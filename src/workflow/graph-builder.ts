@@ -3,7 +3,6 @@ import type { AccountId } from "#internet/core/accounts";
 import { buildTeamPlan, prepareTeamStep, type TeamPlan, type TeamPlanStep } from "#internet/team/plan";
 import type { TeamPromptStrategyId } from "#internet/team/prompt-strategy";
 import type { TeamTurn } from "#internet/team/types";
-import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 import {
 	type WorkflowGraphNode,
 	type WorkflowGraphSnapshot,
@@ -11,6 +10,7 @@ import {
 	type WorkflowNodeInputReceipt,
 	workflowNodeId,
 } from "#internet/workflow/graph";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 
 export interface WorkflowLaneInput {
 	readonly task: string;
