@@ -111,6 +111,49 @@ async fn request_id_reuse_with_different_subject_is_rejected() {
 }
 
 #[tokio::test]
+async fn request_id_reuse_with_different_creation_options_is_rejected() {
+    let dir = tempdir().unwrap();
+    let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
+    let lifecycle = InternetTaskLifecycle::open(dir.path(), backend).unwrap();
+
+    lifecycle
+        .create(
+            "principal:user-1",
+            "request-stable",
+            "workflow:wf-42",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    for error in [
+        lifecycle
+            .create(
+                "principal:user-1",
+                "request-stable",
+                "workflow:wf-42",
+                Some(1_000),
+                None,
+            )
+            .await
+            .unwrap_err(),
+        lifecycle
+            .create(
+                "principal:user-1",
+                "request-stable",
+                "workflow:wf-42",
+                None,
+                Some(250),
+            )
+            .await
+            .unwrap_err(),
+    ] {
+        assert_eq!(error.code(), ErrorCode::INVALID_PARAMS);
+    }
+}
+
+#[tokio::test]
 async fn same_request_id_is_scoped_by_owner() {
     let dir = tempdir().unwrap();
     let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
