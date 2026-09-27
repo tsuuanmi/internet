@@ -7,6 +7,8 @@ Workflow vNext is the current evolutionary design for a domain-agnostic durable 
 - [Umbrella requirements](SRS-VNEXT.md)
 - [Product thesis and adaptive plugin composition](PRODUCT-THESIS.md)
 - [Target architecture](WORKFLOW-VNEXT.md)
+- [Component port contracts](COMPONENT-PORTS.md)
+- [Contract-first component migration plan](COMPONENT-MIGRATION-PLAN.md)
 - [End-to-end use cases](WORKFLOW-VNEXT-USE-CASES.md)
 - [Proposed ADRs](adr/README.md)
 
