@@ -1,4 +1,3 @@
-import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 import {
 	assertWorkflowGraphState,
 	type WorkflowExecutionRecord,
@@ -13,6 +12,7 @@ import {
 	workflowNodeDependenciesCompleted,
 	workflowNodeInputMatchesDependencies,
 } from "#internet/workflow/graph";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 
 export class WorkflowGraphTransitionError extends Error {
 	constructor(message: string) {
