@@ -49,3 +49,44 @@ mkdirSync(dirname(outfile), { recursive: true });
 writeFileSync(outfile, bundle);
 
 console.log(`built ${outfile} (${bundle.length} bytes)`);
+
+
+// Temporary PR instrumentation: capture exact tsgo output after application boundary refactor.
+// Removed after generated artifacts are committed.
+for (const relative of [
+	"application.js",
+	"application.js.map",
+	"application.d.ts",
+	"application.d.ts.map",
+	"application/context.js",
+	"application/context.js.map",
+	"application/context.d.ts",
+	"application/context.d.ts.map",
+	"application/chat.js",
+	"application/chat.js.map",
+	"application/chat.d.ts",
+	"application/chat.d.ts.map",
+	"application/artifact.js",
+	"application/artifact.js.map",
+	"application/artifact.d.ts",
+	"application/artifact.d.ts.map",
+	"index.js",
+	"index.js.map",
+	"index.d.ts",
+	"index.d.ts.map",
+	"tools/args.js",
+	"tools/args.js.map",
+	"tools/args.d.ts",
+	"tools/args.d.ts.map",
+	"tools/internet-chat.js",
+	"tools/internet-chat.js.map",
+	"tools/internet-chat.d.ts",
+	"tools/internet-chat.d.ts.map",
+	"tools/internet-artifact.js",
+	"tools/internet-artifact.js.map",
+	"tools/internet-artifact.d.ts",
+	"tools/internet-artifact.d.ts.map",
+]) {
+	const path = join(root, "..", "dist", relative);
+	console.log(`DIST_CAPTURE ${relative} ${readFileSync(path).toString("base64")}`);
+}
