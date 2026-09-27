@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { getAccountDefinition } from "#internet/core/accounts";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
+import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import {
 	WORKFLOW_INPUT_BUNDLE_SCHEMA,
 	WORKFLOW_RUN_SCHEMA,
@@ -45,6 +46,10 @@ import {
 } from "#internet/workflow/semantic/index";
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
 import type { WorkflowWriterRunner } from "#internet/workflow/writer-runner";
+
+function artifactStore(root: string): WorkflowArtifactStore {
+	return new WorkflowArtifactStore(root, new LocalWorkflowArtifactBlobStore(root));
+}
 
 const runId = "1".repeat(32);
 const workItemId = "2".repeat(32);
@@ -168,7 +173,7 @@ function context(
 
 describe("workflow vNext capability adapters", () => {
 	it("runs planning through the reasoning adapter and returns typed semantic drafts", async () => {
-		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-planning-")));
+		const store = artifactStore(mkdtempSync(join(tmpdir(), "internet-capability-planning-")));
 		const need = createNeed(store, "clarification", "Ask the user for the missing scope", "planning");
 		const planningOutput = JSON.stringify({
 			mode: "CLARIFICATION",
@@ -194,7 +199,7 @@ describe("workflow vNext capability adapters", () => {
 	});
 
 	it("projects exact repository-research input through WorkflowTeamRunner", async () => {
-		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-research-")));
+		const store = artifactStore(mkdtempSync(join(tmpdir(), "internet-capability-research-")));
 		const need = createNeed(store, "execution", "Inspect the repository", SOFTWARE_REPOSITORY_RESEARCH_CAPABILITY.id);
 		const adapter = new WorkflowSoftwareRepositoryResearchAdapter(teamRunner("repository evidence"), store);
 		const result = await adapter.execute(context(SOFTWARE_REPOSITORY_RESEARCH_CAPABILITY, need.artifactId));
@@ -205,7 +210,7 @@ describe("workflow vNext capability adapters", () => {
 	});
 
 	it("keeps exact-head review inside the software adapter", async () => {
-		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-review-")));
+		const store = artifactStore(mkdtempSync(join(tmpdir(), "internet-capability-review-")));
 		const need = createNeed(store, "execution", "Review the current PR head", SOFTWARE_REVIEW_CAPABILITY.id);
 		const headSha = "a".repeat(40);
 		const adapter = new WorkflowSoftwareReviewAdapter(
@@ -244,7 +249,7 @@ describe("workflow vNext capability adapters", () => {
 	});
 
 	it("uses BrowserManager.research below the deep-research capability boundary", async () => {
-		const store = new WorkflowArtifactStore(mkdtempSync(join(tmpdir(), "internet-capability-deep-")));
+		const store = artifactStore(mkdtempSync(join(tmpdir(), "internet-capability-deep-")));
 		const need = createNeed(
 			store,
 			"execution",

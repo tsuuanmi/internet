@@ -1,3 +1,4 @@
+import type { WorkflowArtifactBlobStorePort } from "#internet/workflow/components";
 import { type WorkflowArtifact, type WorkflowArtifactLineage, type WorkflowArtifactProducer, type WorkflowVersionRef } from "#internet/workflow/kernel/types";
 export interface CreateWorkflowArtifactInput {
     readonly runId: string;
@@ -13,7 +14,8 @@ export declare class WorkflowArtifactStoreError extends Error {
 }
 export declare class WorkflowArtifactStore {
     private readonly root;
-    constructor(dataDir: string);
+    private readonly blobs;
+    constructor(dataDir: string, blobs: WorkflowArtifactBlobStorePort);
     private runDir;
     pathFor(runId: string, artifactId: string): string;
     create(input: CreateWorkflowArtifactInput): WorkflowArtifact;

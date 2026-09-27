@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
 import { type WorkflowCapabilityDescriptor, WorkflowCapabilityRegistry } from "#internet/workflow/capability-registry";
+import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import { WorkflowRunStore } from "#internet/workflow/run-store";
@@ -16,6 +17,10 @@ import {
 } from "#internet/workflow/runtime/index";
 import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES } from "#internet/workflow/semantic/index";
 import { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
+
+function artifactStore(root: string): WorkflowArtifactStore {
+	return new WorkflowArtifactStore(root, new LocalWorkflowArtifactBlobStore(root));
+}
 
 const runId = "1".repeat(32);
 const capability: WorkflowCapabilityDescriptor = {
@@ -85,7 +90,7 @@ function policy(blockers: readonly string[] = []): WorkflowRuntimePolicy {
 function fixture(runtimePolicy = policy()) {
 	const root = mkdtempSync(join(tmpdir(), "internet-workflow-runtime-"));
 	const runs = new WorkflowRunStore(root);
-	const artifacts = new WorkflowArtifactStore(root);
+	const artifacts = artifactStore(root);
 	const workItems = new WorkflowWorkItemStore(root);
 	const inputBundles = new WorkflowInputBundleStore(root);
 	runs.create(workflowRun());
@@ -203,7 +208,7 @@ describe("workflow vNext run coordinator", () => {
 	it("keeps autonomous work ACTIVE while an independent PendingAction waits", () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-workflow-interactions-"));
 		const runs = new WorkflowRunStore(root);
-		const artifacts = new WorkflowArtifactStore(root);
+		const artifacts = artifactStore(root);
 		const workItems = new WorkflowWorkItemStore(root);
 		const inputBundles = new WorkflowInputBundleStore(root);
 		const executions = new WorkflowExecutionStore(root);
