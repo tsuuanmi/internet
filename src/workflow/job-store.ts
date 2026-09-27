@@ -2,7 +2,8 @@ import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { accountHasCapability, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
-import { assertWorkflowGraph, type WorkflowGraphSnapshot } from "#internet/workflow/graph";
+import { assertWorkflowGraphState, type WorkflowGraphSnapshot } from "#internet/workflow/graph";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 import { WORKFLOW_PENDING_ACTION_KINDS, type WorkflowJob } from "#internet/workflow/types";
 
 const JOB_SCHEMA = "@tsuuanmi/internet-workflow-job" as const;
@@ -15,10 +16,12 @@ export class WorkflowJobStoreError extends Error {
 }
 
 export class WorkflowJobStore {
+	private readonly graphValidator: WorkflowGraphValidator;
 	private readonly jobsDir: string;
 
-	constructor(dataDir: string) {
+	constructor(dataDir: string, graphValidator: WorkflowGraphValidator) {
 		this.jobsDir = join(dataDir, "workflows", "jobs");
+		this.graphValidator = graphValidator;
 	}
 
 	pathFor(jobId: string): string {
@@ -27,7 +30,7 @@ export class WorkflowJobStore {
 	}
 
 	create(job: WorkflowJob): WorkflowJob {
-		parseWorkflowJob(job);
+		parseWorkflowJobState(job);
 		const path = this.pathFor(job.jobId);
 		if (existsSync(path)) throw new WorkflowJobStoreError(`workflow job ${job.jobId} already exists`);
 		ensurePrivateDirectory(this.jobsDir);
@@ -36,16 +39,7 @@ export class WorkflowJobStore {
 	}
 
 	get(jobId: string): WorkflowJob | undefined {
-		const path = this.pathFor(jobId);
-		if (!existsSync(path)) return undefined;
-		assertPrivateFile(path, `workflow job ${jobId}`);
-		try {
-			return parseWorkflowJob(JSON.parse(readFileSync(path, "utf8")));
-		} catch (error) {
-			throw new WorkflowJobStoreError(
-				`workflow job ${jobId} is invalid: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		}
+		return this.read(jobId, true);
 	}
 
 	list(): readonly WorkflowJob[] {
@@ -64,7 +58,7 @@ export class WorkflowJobStore {
 	}
 
 	update(jobId: string, expectedRevision: number, mutate: (current: WorkflowJob) => WorkflowJob): WorkflowJob {
-		const current = this.get(jobId);
+		const current = this.read(jobId, false);
 		if (current === undefined) throw new WorkflowJobStoreError(`workflow job ${jobId} does not exist`);
 		if (current.revision !== expectedRevision) {
 			throw new WorkflowJobStoreError(
@@ -75,13 +69,33 @@ export class WorkflowJobStore {
 		if (next.jobId !== current.jobId) throw new WorkflowJobStoreError("workflow job id cannot change");
 		if (next.revision !== current.revision + 1)
 			throw new WorkflowJobStoreError("workflow job revision must increment by one");
-		parseWorkflowJob(next);
+		parseWorkflowJobState(next);
 		writePrivateJson(this.pathFor(jobId), next);
 		return next;
 	}
+
+	private read(jobId: string, validateTopology: boolean): WorkflowJob | undefined {
+		const path = this.pathFor(jobId);
+		if (!existsSync(path)) return undefined;
+		assertPrivateFile(path, `workflow job ${jobId}`);
+		try {
+			const value = JSON.parse(readFileSync(path, "utf8"));
+			return validateTopology ? parseWorkflowJob(value, this.graphValidator) : parseWorkflowJobState(value);
+		} catch (error) {
+			throw new WorkflowJobStoreError(
+				`workflow job ${jobId} is invalid: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
 }
 
-export function parseWorkflowJob(value: unknown): WorkflowJob {
+export function parseWorkflowJob(value: unknown, graphValidator: WorkflowGraphValidator): WorkflowJob {
+	const job = parseWorkflowJobState(value);
+	graphValidator.assert(job.jobId, job.graph);
+	return job;
+}
+
+function parseWorkflowJobState(value: unknown): WorkflowJob {
 	if (!isRecord(value) || value.schema !== JOB_SCHEMA || value.version !== 3) {
 		throw new Error("unsupported workflow job schema; only review-handoff job version 3 is accepted");
 	}
@@ -95,7 +109,7 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 		throw new Error("invalid workflow repository");
 	if (!isFullSha(value.baseRevision)) throw new Error("invalid workflow base revision");
 	if (!isRecord(value.graph)) throw new Error("invalid workflow graph");
-	assertWorkflowGraph(value.graph as unknown as WorkflowGraphSnapshot);
+	assertWorkflowGraphState(value.graph as unknown as WorkflowGraphSnapshot);
 	assertAccountRouting(value.accountRouting);
 	assertWriterConversation(value.writerConversation, value.ownerSessionId, value.jobId);
 	assertHandoffReceipts(value.handoffReceipts);

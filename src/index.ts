@@ -16,9 +16,11 @@ import { defineInternetWorkflowTool } from "#internet/tools/internet-workflow";
 import { defineInternetWorkflowMaintenanceTool } from "#internet/tools/internet-workflow-maintenance";
 import { WorkflowAdmissionService } from "#internet/workflow/admission/service";
 import { WorkflowAdmissionStore } from "#internet/workflow/admission/store";
+import { TypeScriptWorkflowGraphModel } from "#internet/workflow/components";
 import { WorkflowDriver } from "#internet/workflow/driver";
 import { WorkflowEngine } from "#internet/workflow/engine";
 import { DshWorkflowEventSink, type WorkflowAgentRegistry, WorkflowEventJournal } from "#internet/workflow/events";
+import { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
 import { WorkflowJobStore } from "#internet/workflow/job-store";
 import { WorkflowNodeResultStore } from "#internet/workflow/node-result-store";
@@ -135,7 +137,8 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 
 	const workflowTeamReady = DEFAULT_TEAM_ACCOUNTS.every((accountId) => thinkers.has(accountId));
 	if (workflowTeamReady && accounts.has("chatgpt-writer")) {
-		const jobs = new WorkflowJobStore(config.dataDir);
+		const graphValidator = new WorkflowGraphValidator(new TypeScriptWorkflowGraphModel());
+		const jobs = new WorkflowJobStore(config.dataDir, graphValidator);
 		const admissions = new WorkflowAdmissionStore(config.dataDir);
 		const profiles = new WorkflowProfileRegistry([SOFTWARE_WORKFLOW_PROFILE], SOFTWARE_WORKFLOW_PROFILE.id);
 		const admissionService = new WorkflowAdmissionService(admissions, profiles);
@@ -146,6 +149,7 @@ export function apply(ctx: PluginContext, rawConfig: unknown): void {
 		const retention = new WorkflowRetentionManager(config.dataDir, jobs);
 		const engine = new WorkflowEngine(
 			jobs,
+			graphValidator,
 			new BrowserWorkflowTeamRunner(manager, config),
 			new WorkflowTeamPromptBuilder(),
 			handoffs,
@@ -259,6 +263,7 @@ export type {
 export { workflowSessionAuthorizationContext } from "#internet/workflow/authorization";
 export type { WorkflowCapabilityDescriptor } from "#internet/workflow/capability-registry";
 export { WorkflowCapabilityRegistry, WorkflowCapabilityRegistryError } from "#internet/workflow/capability-registry";
+export * from "#internet/workflow/components";
 export type { WorkflowControlKind, WorkflowControlMessage } from "#internet/workflow/control";
 export { createWorkflowControlMessage, WORKFLOW_CONTROL_KINDS } from "#internet/workflow/control";
 export type { WorkflowDriverEngine } from "#internet/workflow/driver";
@@ -285,7 +290,8 @@ export type {
 	WorkflowNodeState,
 	WorkflowPhase,
 } from "#internet/workflow/graph";
-export { assertWorkflowGraph, workflowNodeId } from "#internet/workflow/graph";
+export { assertWorkflowGraphState, workflowNodeId } from "#internet/workflow/graph";
+export { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 export type {
 	CreateWorkflowHandoffInput,
 	WorkflowHandoff,

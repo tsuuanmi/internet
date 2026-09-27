@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { accountHasCapability, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
-import { assertWorkflowGraph } from "#internet/workflow/graph";
+import { assertWorkflowGraphState } from "#internet/workflow/graph";
 import { WORKFLOW_PENDING_ACTION_KINDS } from "#internet/workflow/types";
 const JOB_SCHEMA = "@tsuuanmi/internet-workflow-job";
 export class WorkflowJobStoreError extends Error {
@@ -12,15 +12,16 @@ export class WorkflowJobStoreError extends Error {
     }
 }
 export class WorkflowJobStore {
-    constructor(dataDir) {
+    constructor(dataDir, graphValidator) {
         this.jobsDir = join(dataDir, "workflows", "jobs");
+        this.graphValidator = graphValidator;
     }
     pathFor(jobId) {
         assertJobId(jobId);
         return join(this.jobsDir, `${jobId}.json`);
     }
     create(job) {
-        parseWorkflowJob(job);
+        parseWorkflowJobState(job);
         const path = this.pathFor(job.jobId);
         if (existsSync(path))
             throw new WorkflowJobStoreError(`workflow job ${job.jobId} already exists`);
@@ -29,16 +30,7 @@ export class WorkflowJobStore {
         return job;
     }
     get(jobId) {
-        const path = this.pathFor(jobId);
-        if (!existsSync(path))
-            return undefined;
-        assertPrivateFile(path, `workflow job ${jobId}`);
-        try {
-            return parseWorkflowJob(JSON.parse(readFileSync(path, "utf8")));
-        }
-        catch (error) {
-            throw new WorkflowJobStoreError(`workflow job ${jobId} is invalid: ${error instanceof Error ? error.message : String(error)}`);
-        }
+        return this.read(jobId, true);
     }
     list() {
         if (!existsSync(this.jobsDir))
@@ -56,7 +48,7 @@ export class WorkflowJobStore {
         });
     }
     update(jobId, expectedRevision, mutate) {
-        const current = this.get(jobId);
+        const current = this.read(jobId, false);
         if (current === undefined)
             throw new WorkflowJobStoreError(`workflow job ${jobId} does not exist`);
         if (current.revision !== expectedRevision) {
@@ -67,12 +59,30 @@ export class WorkflowJobStore {
             throw new WorkflowJobStoreError("workflow job id cannot change");
         if (next.revision !== current.revision + 1)
             throw new WorkflowJobStoreError("workflow job revision must increment by one");
-        parseWorkflowJob(next);
+        parseWorkflowJobState(next);
         writePrivateJson(this.pathFor(jobId), next);
         return next;
     }
+    read(jobId, validateTopology) {
+        const path = this.pathFor(jobId);
+        if (!existsSync(path))
+            return undefined;
+        assertPrivateFile(path, `workflow job ${jobId}`);
+        try {
+            const value = JSON.parse(readFileSync(path, "utf8"));
+            return validateTopology ? parseWorkflowJob(value, this.graphValidator) : parseWorkflowJobState(value);
+        }
+        catch (error) {
+            throw new WorkflowJobStoreError(`workflow job ${jobId} is invalid: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
 }
-export function parseWorkflowJob(value) {
+export function parseWorkflowJob(value, graphValidator) {
+    const job = parseWorkflowJobState(value);
+    graphValidator.assert(job.jobId, job.graph);
+    return job;
+}
+function parseWorkflowJobState(value) {
     if (!isRecord(value) || value.schema !== JOB_SCHEMA || value.version !== 3) {
         throw new Error("unsupported workflow job schema; only review-handoff job version 3 is accepted");
     }
@@ -89,7 +99,7 @@ export function parseWorkflowJob(value) {
         throw new Error("invalid workflow base revision");
     if (!isRecord(value.graph))
         throw new Error("invalid workflow graph");
-    assertWorkflowGraph(value.graph);
+    assertWorkflowGraphState(value.graph);
     assertAccountRouting(value.accountRouting);
     assertWriterConversation(value.writerConversation, value.ownerSessionId, value.jobId);
     assertHandoffReceipts(value.handoffReceipts);

@@ -194,7 +194,7 @@ export function canReuseCompletedWorkflowNode(node: WorkflowGraphNode, inputHash
 	return node.state === "COMPLETED" && node.input?.inputHash === inputHash && node.output !== undefined;
 }
 
-export function assertWorkflowGraph(snapshot: WorkflowGraphSnapshot): void {
+export function assertWorkflowGraphState(snapshot: WorkflowGraphSnapshot): void {
 	if (snapshot.graphRevision < 0 || !Number.isInteger(snapshot.graphRevision))
 		throw new Error("workflow graphRevision must be a non-negative integer");
 	if (snapshot.eventSeq < 0 || !Number.isInteger(snapshot.eventSeq))
@@ -231,7 +231,6 @@ export function assertWorkflowGraph(snapshot: WorkflowGraphSnapshot): void {
 		if (node.state === "FAILED" && !node.failure)
 			throw new Error(`failed workflow graph node ${nodeId} requires a failure receipt`);
 	}
-	assertAcyclic(snapshot.nodes);
 }
 
 function assertNodeInput(node: WorkflowGraphNode): void {
@@ -270,18 +269,4 @@ function assertExecution(nodeId: string, execution: WorkflowExecutionRecord, exe
 
 function validTimestamp(value: string): boolean {
 	return Number.isFinite(Date.parse(value));
-}
-
-function assertAcyclic(nodes: Readonly<Record<string, WorkflowGraphNode>>): void {
-	const visiting = new Set<string>();
-	const visited = new Set<string>();
-	const visit = (nodeId: string): void => {
-		if (visited.has(nodeId)) return;
-		if (visiting.has(nodeId)) throw new Error(`workflow graph contains a dependency cycle at ${nodeId}`);
-		visiting.add(nodeId);
-		for (const dependencyId of nodes[nodeId]?.dependencies ?? []) visit(dependencyId);
-		visiting.delete(nodeId);
-		visited.add(nodeId);
-	};
-	for (const nodeId of Object.keys(nodes)) visit(nodeId);
 }

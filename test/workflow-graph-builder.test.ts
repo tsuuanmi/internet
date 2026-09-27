@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildTeamPlan, prepareTeamStep } from "#internet/team/plan";
+import { TypeScriptWorkflowGraphModel } from "#internet/workflow/components";
 import { workflowNodeId } from "#internet/workflow/graph";
 import {
 	buildInitialWorkflowGraph,
@@ -9,8 +10,12 @@ import {
 	hashWorkflowGraphValue,
 } from "#internet/workflow/graph-builder";
 import { readyWorkflowNodeIds } from "#internet/workflow/graph-reducer";
+import { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
+
+const graphValidator = new WorkflowGraphValidator(new TypeScriptWorkflowGraphModel());
 
 const base = {
+	graphId: "11111111111111111111111111111111",
 	repository: "https://github.com/example/repo",
 	baseRevision: "0123456789abcdef0123456789abcdef01234567",
 	rounds: 2,
@@ -24,7 +29,7 @@ const base = {
 
 describe("workflow graph builder", () => {
 	it("builds both research lanes concurrently from shared team dependencies", () => {
-		const graph = buildInitialWorkflowGraph(base);
+		const graph = buildInitialWorkflowGraph(base, graphValidator);
 		expect(readyWorkflowNodeIds(graph)).toEqual([
 			workflowNodeId.researchMember("A", 1, 1),
 			workflowNodeId.researchMember("B", 1, 1),
@@ -41,7 +46,7 @@ describe("workflow graph builder", () => {
 	});
 
 	it("binds root inputs to the exact prepared provider prompt", () => {
-		const graph = buildInitialWorkflowGraph(base);
+		const graph = buildInitialWorkflowGraph(base, graphValidator);
 		const plan = buildTeamPlan({
 			accounts: base.accounts,
 			rounds: base.rounds,
@@ -87,7 +92,7 @@ describe("workflow graph builder", () => {
 	});
 
 	it("blocks the writer behind both synthesis results and the research handoff gate", () => {
-		const graph = buildInitialWorkflowGraph(base);
+		const graph = buildInitialWorkflowGraph(base, graphValidator);
 		const gate = graph.nodes[workflowNodeId.researchHandoffGate()];
 		expect(gate?.dependencies).toEqual([
 			workflowNodeId.researchSynthesis("A"),
@@ -128,11 +133,14 @@ describe("workflow graph builder", () => {
 	});
 
 	it("binds root-node identity to task/session/repository/base without storing task text", () => {
-		const first = buildInitialWorkflowGraph(base);
-		const changed = buildInitialWorkflowGraph({
-			...base,
-			research: { ...base.research, A: { ...base.research.A, task: "changed A" } },
-		});
+		const first = buildInitialWorkflowGraph(base, graphValidator);
+		const changed = buildInitialWorkflowGraph(
+			{
+				...base,
+				research: { ...base.research, A: { ...base.research.A, task: "changed A" } },
+			},
+			graphValidator,
+		);
 		const id = workflowNodeId.researchMember("A", 1, 1);
 		expect(first.nodes[id]?.input?.inputHash).not.toBe(changed.nodes[id]?.input?.inputHash);
 		expect(first.nodes[id]?.input?.bindings?.taskHash).toMatch(/^[0-9a-f]{64}$/u);
