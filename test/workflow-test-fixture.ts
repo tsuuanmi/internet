@@ -1,3 +1,4 @@
+import type { WorkflowGraphModelPort } from "#internet/workflow/components";
 import { WorkflowEngine, type WorkflowEngineOptions } from "#internet/workflow/engine";
 import { WorkflowEventJournal } from "#internet/workflow/events";
 import { WorkflowHandoffStore } from "#internet/workflow/handoff-store";
@@ -15,6 +16,7 @@ export interface WorkflowTestRuntime {
 }
 
 export interface WorkflowTestRuntimeOptions {
+	readonly graphModel?: WorkflowGraphModelPort;
 	readonly teams?: WorkflowTeamRunner;
 	readonly writer?: WorkflowWriterRunner;
 	readonly engine?: WorkflowEngineOptions;
