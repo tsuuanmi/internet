@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { TypeScriptWorkflowGraphModel } from "#internet/workflow/components";
 import {
-	assertWorkflowGraph,
+	assertWorkflowGraphState,
 	canReuseCompletedWorkflowNode,
 	type WorkflowGraphNode,
 	type WorkflowGraphSnapshot,
@@ -8,6 +9,7 @@ import {
 	workflowNodeId,
 	workflowNodeInputMatchesDependencies,
 } from "#internet/workflow/graph";
+import { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 
 const now = "2026-09-10T10:00:00.000Z";
 const resultId = "a".repeat(64);
@@ -69,12 +71,12 @@ describe("workflow graph model", () => {
 		const first = completedNode("first");
 		const second = completedNode("second", [first.nodeId]);
 		expect(() =>
-			assertWorkflowGraph(
+			assertWorkflowGraphState(
 				snapshot([first, { ...second, input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} } }]),
 			),
 		).toThrow("keys do not match dependencies");
 		expect(() =>
-			assertWorkflowGraph(
+			assertWorkflowGraphState(
 				snapshot([
 					first,
 					{
@@ -101,8 +103,11 @@ describe("workflow graph model", () => {
 			dependencies: ["a"],
 			state: "WAITING",
 		};
-		expect(() => assertWorkflowGraph(snapshot([a, b]))).toThrow("dependency cycle");
-		expect(() => assertWorkflowGraph(snapshot([{ ...a, dependencies: ["missing"] }]))).toThrow("unknown dependency");
+		const validator = new WorkflowGraphValidator(new TypeScriptWorkflowGraphModel());
+		expect(() => validator.assert("graph-cycle", snapshot([a, b]))).toThrow("dependency cycle");
+		expect(() => assertWorkflowGraphState(snapshot([{ ...a, dependencies: ["missing"] }]))).toThrow(
+			"unknown dependency",
+		);
 	});
 
 	it("requires exact receipts for completed and recovering nodes", () => {
@@ -114,14 +119,14 @@ describe("workflow graph model", () => {
 			state: "COMPLETED",
 			input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} },
 		};
-		expect(() => assertWorkflowGraph(snapshot([completed]))).toThrow("requires an output receipt");
+		expect(() => assertWorkflowGraphState(snapshot([completed]))).toThrow("requires an output receipt");
 		const recovering: WorkflowGraphNode = {
 			...completed,
 			nodeId: "recovering",
 			state: "RECOVERING",
 			output: undefined,
 		};
-		expect(() => assertWorkflowGraph(snapshot([recovering]))).toThrow("requires failure and recovery receipts");
+		expect(() => assertWorkflowGraphState(snapshot([recovering]))).toThrow("requires failure and recovery receipts");
 	});
 
 	it("requires running nodes to own a valid unique live execution", () => {
@@ -133,7 +138,7 @@ describe("workflow graph model", () => {
 			state: "RUNNING",
 			input: { inputHash: "b".repeat(64), dependencyOutputHashes: {} },
 		};
-		expect(() => assertWorkflowGraph(snapshot([running]))).toThrow("requires a live execution");
+		expect(() => assertWorkflowGraphState(snapshot([running]))).toThrow("requires a live execution");
 		const live: WorkflowGraphNode = {
 			...running,
 			execution: {
@@ -146,8 +151,8 @@ describe("workflow graph model", () => {
 				leaseUntil: "2026-09-10T10:01:00.000Z",
 			},
 		};
-		expect(() => assertWorkflowGraph(snapshot([live]))).not.toThrow();
-		expect(() => assertWorkflowGraph(snapshot([live, { ...live, nodeId: "writer:other" }]))).toThrow(
+		expect(() => assertWorkflowGraphState(snapshot([live]))).not.toThrow();
+		expect(() => assertWorkflowGraphState(snapshot([live, { ...live, nodeId: "writer:other" }]))).toThrow(
 			"execution id is duplicated",
 		);
 	});
