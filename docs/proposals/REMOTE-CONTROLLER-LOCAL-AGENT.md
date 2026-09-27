@@ -96,21 +96,25 @@ The Local Agent remains free to reason itself when that is useful.
 
 The objective is not zero local token usage. The objective is to avoid forcing Local to perform expensive duplicate acquisition or reasoning when a website participant handles it better.
 
-### 2.4 Workflow Runtime — durable deterministic coordination
+### 2.4 Workflow capability — durable semantics over replaceable runtime components
 
-Workflow owns:
+Workflow is not one permanent engine implementation. Internet should own the durable collaboration and correctness contracts while allowing runtime components to be replaced when better infrastructure exists.
 
-- durable state;
-- scheduling;
-- typed artifacts;
+Required responsibility boundaries include:
+
+- durable state and artifact lineage;
+- semantic planning and decomposition;
+- scheduling and dependency readiness;
+- asynchronous task lifecycle and client projection;
+- worker dispatch;
 - exact-input bindings;
-- retries/fencing;
-- PendingActions;
-- authority gates;
-- reconciliation;
+- retries, fencing, and reconciliation;
+- PendingActions and authority gates;
 - convergence.
 
-Workflow correctness must not depend on Controller connectivity, Local Agent hidden reasoning, or one provider conversation remaining alive.
+MCP Tasks is the preferred production component for the portable asynchronous task lifecycle rather than a parallel Internet-specific job abstraction. Other runtime components should remain similarly replaceable behind explicit contracts.
+
+Workflow correctness must not depend on Controller connectivity, Local Agent hidden reasoning, one provider conversation remaining alive, or one specific scheduler, task runtime, worker implementation, or persistence engine.
 
 ## 3. Why this separation is useful
 
