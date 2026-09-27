@@ -167,7 +167,7 @@ evidence/source refs
 continuity handle when useful
 ~~~
 
-For long-running work, use MCP Tasks when supported; otherwise return an explicit operation handle.
+For long-running work in the portable plugin, MCP Tasks is required. A client that does not declare `io.modelcontextprotocol/tasks` is not eligible to start that long-running capability. There is intentionally no synchronous or bespoke-handle fallback in the initial production contract.
 
 ### consult
 
@@ -197,7 +197,7 @@ The server may return:
 - input or confirmation required;
 - validation error.
 
-When the client supports modern MCP input-required behavior, an admission confirmation can be projected through that mechanism. Otherwise it can be represented as a durable pending action.
+Admission confirmation remains a durable Internet PendingAction and is projected through the task's `input_required` / input-request lifecycle. The portable production path does not add a separate compatibility response path.
 
 ### workflow_list
 
@@ -362,37 +362,77 @@ maintenance/retention operations
 
 They can remain operator/admin or DSH-native advanced controls.
 
-## 12. Progressive enhancement
+## 12. Tasks-required production contract
 
-Do not require every MCP client to support every modern extension.
-
-Baseline:
+For portable long-running capabilities, the initial production contract requires the MCP Tasks extension.
 
 ~~~text
-ordinary MCP tools
-explicit IDs
-structured outputs
-artifact reads
-workflow get/respond/cancel
+required:
+  MCP 2026-07-28
+  io.modelcontextprotocol/tasks
+  durable task creation before response
+  tasks/get
+  tasks/update
+  tasks/cancel
+  input_required for outstanding interaction
+
+optional presentation enhancements:
+  MCP Apps
+  Resources
+  subscriptions/listen
 ~~~
 
-Enhanced path when supported:
+There is intentionally no fallback to a blocking tool call, custom polling handle, or legacy Tasks surface.
+
+If a target host does not support the required Tasks contract, that host is not considered supported for long-running Internet Workflow execution yet.
+
+This keeps one production lifecycle instead of maintaining parallel semantics.
+
+### 12.1 Workflow is a composition, not a monolith
+
+The term "Workflow" describes the durable collaboration capability and its invariants, not one permanently-owned engine implementation.
+
+Its internal responsibilities should be separable behind explicit contracts:
 
 ~~~text
-MCP Tasks
-  -> async research/workflow projection
-
-input-required / elicitation
-  -> PendingAction presentation
-
-MCP Apps
-  -> rich workflow status/approval UI
-
-Resources
-  -> artifact browsing
+Workflow capability
+  |
+  +-- async task lifecycle / client projection
+  |     -> MCP Tasks today
+  |     -> replaceable later
+  |
+  +-- semantic planning / decomposition
+  |     -> planner capability
+  |
+  +-- scheduling / dependency readiness
+  |     -> current scheduler
+  |     -> replaceable runtime later
+  |
+  +-- execution / worker dispatch
+  |     -> DSH / Codex / Claude / future workers
+  |
+  +-- interaction / approvals
+  |     -> PendingAction semantics
+  |     -> MCP input_required projection
+  |
+  +-- artifacts / lineage / provenance
+  |
+  +-- exact-state bindings / reconciliation
+  |
+  +-- authority policy
+  |
+  +-- convergence
 ~~~
 
-Internet remains the authoritative state machine in both paths.
+MCP Tasks can replace or standardize the generic asynchronous task lifecycle, polling, cancellation, recovery handle, and client input transport.
+
+It does **not** by itself replace Internet-specific semantics such as artifact lineage, exact repository/head bindings, authority policy, causal invalidation, convergence, or domain capability routing.
+
+Those components should also remain independently replaceable when a better implementation appears, provided the Internet contracts and invariants remain satisfied.
+
+The build-vs-adapt rule therefore applies *inside* Workflow as well:
+
+> Own only the collaboration/correctness semantics that distinguish Internet; compose commodity runtime components behind those semantics.
 
 ## 13. Recommended v1
 
@@ -419,7 +459,8 @@ Nine tools cover the primary cross-host goals without exporting browser/provider
 3. Keep existing DSH tools as adapters over those services.
 4. Add one MCP adapter over the same services; do not duplicate business logic.
 5. Add provider-neutral skills.
-6. Adopt MCP Tasks/input-required/Apps only after client support is verified.
+6. Make MCP Tasks part of the initial portable production contract; validate target-host support before declaring that host supported. Do not add a second long-running fallback path.
+7. Keep runtime responsibilities behind replaceable contracts so Tasks or future runtimes can replace commodity workflow mechanics without rewriting Internet semantics.
 
 ## 15. Conclusion
 
@@ -446,4 +487,4 @@ MCP is the portability protocol.
 
 Skills provide portable usage guidance.
 
-MCP Tasks and input-required behavior can improve long-running workflow projection, but Internet durable state remains authoritative.
+MCP Tasks is the required portable long-running execution/projection contract for the initial production design. Internet durable collaboration semantics remain authoritative, while the concrete task lifecycle, scheduler, worker runtime, persistence, and other mechanics remain replaceable components behind explicit contracts.
