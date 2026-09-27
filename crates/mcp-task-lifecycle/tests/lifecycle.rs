@@ -56,7 +56,12 @@ async fn created_task_is_observable_before_return_and_survives_adapter_restart()
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
 
     let created = lifecycle
-        .create("principal:user-1", "workflow:wf-42", Some(120_000), Some(500))
+        .create(
+            "principal:user-1",
+            "workflow:wf-42",
+            Some(120_000),
+            Some(500),
+        )
         .await
         .unwrap();
 
