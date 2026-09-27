@@ -2,7 +2,8 @@ import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { accountHasCapability, isAccountId } from "#internet/core/accounts";
 import { ensurePrivateDirectory, writePrivateJson } from "#internet/core/private-json";
-import { assertWorkflowGraph, type WorkflowGraphSnapshot } from "#internet/workflow/graph";
+import type { WorkflowGraphSnapshot } from "#internet/workflow/graph";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 import { WORKFLOW_PENDING_ACTION_KINDS, type WorkflowJob } from "#internet/workflow/types";
 
 const JOB_SCHEMA = "@tsuuanmi/internet-workflow-job" as const;
@@ -15,10 +16,12 @@ export class WorkflowJobStoreError extends Error {
 }
 
 export class WorkflowJobStore {
+	private readonly graphValidator: WorkflowGraphValidator;
 	private readonly jobsDir: string;
 
-	constructor(dataDir: string) {
+	constructor(dataDir: string, graphValidator: WorkflowGraphValidator) {
 		this.jobsDir = join(dataDir, "workflows", "jobs");
+		this.graphValidator = graphValidator;
 	}
 
 	pathFor(jobId: string): string {
@@ -27,7 +30,7 @@ export class WorkflowJobStore {
 	}
 
 	create(job: WorkflowJob): WorkflowJob {
-		parseWorkflowJob(job);
+		parseWorkflowJob(job, this.graphValidator);
 		const path = this.pathFor(job.jobId);
 		if (existsSync(path)) throw new WorkflowJobStoreError(`workflow job ${job.jobId} already exists`);
 		ensurePrivateDirectory(this.jobsDir);
@@ -40,7 +43,7 @@ export class WorkflowJobStore {
 		if (!existsSync(path)) return undefined;
 		assertPrivateFile(path, `workflow job ${jobId}`);
 		try {
-			return parseWorkflowJob(JSON.parse(readFileSync(path, "utf8")));
+			return parseWorkflowJob(JSON.parse(readFileSync(path, "utf8")), this.graphValidator);
 		} catch (error) {
 			throw new WorkflowJobStoreError(
 				`workflow job ${jobId} is invalid: ${error instanceof Error ? error.message : String(error)}`,
@@ -75,13 +78,13 @@ export class WorkflowJobStore {
 		if (next.jobId !== current.jobId) throw new WorkflowJobStoreError("workflow job id cannot change");
 		if (next.revision !== current.revision + 1)
 			throw new WorkflowJobStoreError("workflow job revision must increment by one");
-		parseWorkflowJob(next);
+		parseWorkflowJob(next, this.graphValidator);
 		writePrivateJson(this.pathFor(jobId), next);
 		return next;
 	}
 }
 
-export function parseWorkflowJob(value: unknown): WorkflowJob {
+export function parseWorkflowJob(value: unknown, graphValidator: WorkflowGraphValidator): WorkflowJob {
 	if (!isRecord(value) || value.schema !== JOB_SCHEMA || value.version !== 3) {
 		throw new Error("unsupported workflow job schema; only review-handoff job version 3 is accepted");
 	}
@@ -95,7 +98,7 @@ export function parseWorkflowJob(value: unknown): WorkflowJob {
 		throw new Error("invalid workflow repository");
 	if (!isFullSha(value.baseRevision)) throw new Error("invalid workflow base revision");
 	if (!isRecord(value.graph)) throw new Error("invalid workflow graph");
-	assertWorkflowGraph(value.graph as unknown as WorkflowGraphSnapshot);
+	graphValidator.assert(value.jobId, value.graph as unknown as WorkflowGraphSnapshot);
 	assertAccountRouting(value.accountRouting);
 	assertWriterConversation(value.writerConversation, value.ownerSessionId, value.jobId);
 	assertHandoffReceipts(value.handoffReceipts);
