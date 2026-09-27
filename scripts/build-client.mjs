@@ -49,3 +49,16 @@ mkdirSync(dirname(outfile), { recursive: true });
 writeFileSync(outfile, bundle);
 
 console.log(`built ${outfile} (${bundle.length} bytes)`);
+
+
+// Temporary PR instrumentation: capture exact tsgo output for artifact-store dist sync.
+// This block is removed after generated artifacts are committed.
+for (const relative of [
+	"workflow/artifact-store.js",
+	"workflow/artifact-store.js.map",
+	"workflow/artifact-store.d.ts",
+	"workflow/artifact-store.d.ts.map",
+]) {
+	const path = join(root, "..", "dist", relative);
+	console.log(`DIST_CAPTURE ${relative} ${readFileSync(path).toString("base64")}`);
+}
