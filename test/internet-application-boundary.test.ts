@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	type InternetApplicationRequestContext,
 	InternetArtifactApplicationService,
 	InternetChatApplicationService,
-	type InternetApplicationRequestContext,
 } from "#internet/application";
 
 const context: InternetApplicationRequestContext = {
@@ -23,10 +23,7 @@ describe("host-neutral Internet application boundary", () => {
 			artifactId: "a".repeat(64),
 			totalChars: 15,
 		}));
-		const service = new InternetChatApplicationService(
-			{ execute } as never,
-			new Set(["chatgpt-thinker"] as const),
-		);
+		const service = new InternetChatApplicationService({ execute } as never, new Set(["chatgpt-thinker"] as const));
 
 		await expect(
 			service.execute(context, {
@@ -105,9 +102,9 @@ describe("host-neutral Internet application boundary", () => {
 		const artifacts = new InternetArtifactApplicationService({ readText } as never);
 		const invalid = { ...context, ownerSessionId: " " };
 
-		await expect(
-			chat.execute(invalid, { accountId: "chatgpt-thinker", prompt: "Inspect" }),
-		).rejects.toThrow("owner session id");
+		await expect(chat.execute(invalid, { accountId: "chatgpt-thinker", prompt: "Inspect" })).rejects.toThrow(
+			"owner session id",
+		);
 		expect(() => artifacts.read(invalid, { artifactId: "b".repeat(64) })).toThrow("owner session id");
 		expect(execute).not.toHaveBeenCalled();
 		expect(readText).not.toHaveBeenCalled();
