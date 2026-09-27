@@ -34,6 +34,19 @@ describe("workflow task lifecycle contract", () => {
 		).toThrow("request id");
 	});
 
+	it("requires an explicit semantic subject for the task projection", () => {
+		expect(() =>
+			assertWorkflowTaskStartRequest({
+				schema: "@tsuuanmi/internet-workflow-task-start-request",
+				version: 1,
+				requestId: "req-1",
+				ownerRef: "principal:user-1",
+				operation: { id: "workflow.start", version: "1" },
+				subjectRef: "",
+			}),
+		).toThrow("subject ref");
+	});
+
 	it("keeps transport task identity distinct from semantic subject identity", () => {
 		expect(() =>
 			assertWorkflowTaskHandle({
