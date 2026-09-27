@@ -49,3 +49,28 @@ mkdirSync(dirname(outfile), { recursive: true });
 writeFileSync(outfile, bundle);
 
 console.log(`built ${outfile} (${bundle.length} bytes)`);
+
+
+// Temporary PR instrumentation: capture exact tsgo output for newly added workflow component seams.
+// This block is removed after the generated dist artifacts are committed.
+for (const relative of [
+	"workflow/components.js",
+	"workflow/components.js.map",
+	"workflow/components.d.ts",
+	"workflow/components.d.ts.map",
+	"workflow/components/contracts.js",
+	"workflow/components/contracts.js.map",
+	"workflow/components/contracts.d.ts",
+	"workflow/components/contracts.d.ts.map",
+	"workflow/components/graph-model.js",
+	"workflow/components/graph-model.js.map",
+	"workflow/components/graph-model.d.ts",
+	"workflow/components/graph-model.d.ts.map",
+	"workflow/components/artifact-blob-store.js",
+	"workflow/components/artifact-blob-store.js.map",
+	"workflow/components/artifact-blob-store.d.ts",
+	"workflow/components/artifact-blob-store.d.ts.map",
+]) {
+	const path = join(root, "..", "dist", relative);
+	console.log(`DIST_CAPTURE ${relative} ${readFileSync(path).toString("base64")}`);
+}
