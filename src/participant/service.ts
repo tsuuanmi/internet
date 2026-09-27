@@ -87,9 +87,7 @@ export class WebsiteParticipantService {
 			request.mode,
 		);
 		if (existing !== undefined) {
-			const conversationSessionHash = hashProviderTurnText(
-				request.conversationSessionId ?? request.ownerSessionId,
-			);
+			const conversationSessionHash = hashProviderTurnText(request.conversationSessionId ?? request.ownerSessionId);
 			if (existing.conversationSessionHash !== conversationSessionHash) {
 				throw new Error("website participant logical request was reused with a different conversation session");
 			}
