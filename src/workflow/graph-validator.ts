@@ -1,4 +1,4 @@
-import type { WorkflowGraphModelPort } from "#internet/workflow/components";
+import { WORKFLOW_GRAPH_ANALYSIS_SCHEMA, type WorkflowGraphModelPort } from "#internet/workflow/components";
 import { assertWorkflowGraphState, type WorkflowGraphSnapshot } from "#internet/workflow/graph";
 
 export class WorkflowGraphValidator {
@@ -21,6 +21,9 @@ export class WorkflowGraphValidator {
 				node.dependencies.map((dependencyId) => ({ from: dependencyId, to: node.nodeId })),
 			),
 		});
+		if (analysis.schema !== WORKFLOW_GRAPH_ANALYSIS_SCHEMA || analysis.version !== 1) {
+			throw new Error("unsupported workflow graph analysis schema");
+		}
 		if (analysis.graphId !== graphId || analysis.revision !== graph.graphRevision) {
 			throw new Error("workflow graph model returned a mismatched graph identity");
 		}
