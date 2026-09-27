@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
-import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import { type WorkflowAuthorizationContext, workflowPrincipalEquals } from "#internet/workflow/authorization";
+import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import {
 	type WorkflowInteractionAuthorityPolicy,
@@ -18,7 +18,6 @@ import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel
 import { WorkflowPendingActionStore } from "#internet/workflow/pending-action-store";
 import { WorkflowRunStore } from "#internet/workflow/run-store";
 import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES, WORKFLOW_SEMANTIC_SCHEMA_REFS } from "#internet/workflow/semantic/index";
-
 
 function artifactStore(root: string): WorkflowArtifactStore {
 	return new WorkflowArtifactStore(root, new LocalWorkflowArtifactBlobStore(root));
