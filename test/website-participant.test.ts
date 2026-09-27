@@ -36,7 +36,6 @@ describe("WebsiteParticipantService", () => {
 			mode: "chat",
 			prompt: "Inspect the source",
 			visible: true,
-			preserveFullResult: true,
 			signal,
 		});
 		const repeated = await service.execute({
