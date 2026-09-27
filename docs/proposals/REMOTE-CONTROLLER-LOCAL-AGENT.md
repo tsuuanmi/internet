@@ -546,6 +546,40 @@ A valid deployment may therefore use Codex Remote as the Controller surface and 
 
 However, if Internet-specific differences do not produce measurable value for actual tasks, prefer Work/Codex Remote and do not implement a duplicate bridge.
 
+## 11.1 Canonical agnostic capability surface
+
+Research now recommends that Internet standardize the semantic capability layer underneath the current DSH tool definitions rather than exporting those definitions directly.
+
+A deliberately small portable first surface is:
+
+~~~text
+research
+consult
+workflow_start
+workflow_list
+workflow_get
+workflow_respond
+workflow_signal
+workflow_cancel
+artifact_read
+~~~
+
+The design rules are:
+
+- user-goal tools rather than internal API mirrors;
+- provider/account/team-topology routing stays server-side;
+- workflow admission/activation internals stay behind workflow_start;
+- unsolicited workflow steering stays separate from resolving a persisted PendingAction;
+- USER_AUTHORITY provenance cannot be self-asserted by model input;
+- large research/team output stays in durable artifacts with compact projections;
+- DSH may call the capability services directly in-process;
+- Codex/Claude/other hosts may call the same services through MCP;
+- modern MCP Tasks/input-required/Apps/Resources are progressive projections, not authoritative Internet state.
+
+MCP Tasks are especially promising for asynchronous interoperability because their durable task handle, polling, cancellation, and input-required lifecycle map naturally to long-running research and Workflow. Internet Workflow remains the source of truth; MCP Task state is only an adapter projection.
+
+See [agnostic capability surface research](../research/AGNOSTIC-CAPABILITY-SURFACE.md).
+
 ## 12. Transport should be replaceable
 
 The protocol should not depend on one transport.
