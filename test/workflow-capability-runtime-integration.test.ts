@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getAccountDefinition } from "#internet/core/accounts";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
+import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import { WorkflowCapabilityRegistry } from "#internet/workflow/capability-registry";
 import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
@@ -21,6 +22,11 @@ import {
 import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES, WORKFLOW_SEMANTIC_SCHEMA_REFS } from "#internet/workflow/semantic/index";
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
+
+
+function artifactStore(root: string): WorkflowArtifactStore {
+	return new WorkflowArtifactStore(root, new LocalWorkflowArtifactBlobStore(root));
+}
 
 const runId = "7".repeat(32);
 
@@ -110,7 +116,7 @@ describe("workflow vNext capability runtime integration", () => {
 	it("executes repository research through the Phase 4 coordinator and promotes exact semantic output", async () => {
 		const root = mkdtempSync(join(tmpdir(), "internet-capability-runtime-"));
 		const runs = new WorkflowRunStore(root);
-		const artifacts = new WorkflowArtifactStore(root);
+		const artifacts = artifactStore(root);
 		const workItems = new WorkflowWorkItemStore(root);
 		const inputBundles = new WorkflowInputBundleStore(root);
 		const executions = new WorkflowExecutionStore(root);
