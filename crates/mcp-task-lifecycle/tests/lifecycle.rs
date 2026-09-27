@@ -25,12 +25,13 @@ impl FakeBackend {
 }
 
 impl TaskBackend for FakeBackend {
-    async fn observe(&self, _subject_ref: &str) -> Result<BackendTaskSnapshot, String> {
+    async fn observe(&self, _owner_ref: &str, _subject_ref: &str) -> Result<BackendTaskSnapshot, String> {
         Ok(self.snapshot.lock().await.clone())
     }
 
     async fn update(
         &self,
+        _owner_ref: &str,
         _subject_ref: &str,
         responses: TaskInputResponses,
     ) -> Result<(), String> {
@@ -38,7 +39,7 @@ impl TaskBackend for FakeBackend {
         Ok(())
     }
 
-    async fn cancel(&self, _subject_ref: &str) -> Result<(), String> {
+    async fn cancel(&self, _owner_ref: &str, _subject_ref: &str) -> Result<(), String> {
         *self.cancels.lock().await += 1;
         Ok(())
     }
@@ -51,19 +52,19 @@ async fn created_task_is_observable_before_return_and_survives_adapter_restart()
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
 
     let created = lifecycle
-        .create("workflow:wf-42", Some(120_000), Some(500))
+        .create("principal:user-1", "workflow:wf-42", Some(120_000), Some(500))
         .await
         .unwrap();
 
     assert_ne!(created.task_id, "workflow:wf-42");
-    let immediate = lifecycle.get(&created.task_id).await.unwrap();
+    let immediate = lifecycle.get("principal:user-1", &created.task_id).await.unwrap();
     assert_eq!(immediate.status, TaskStatus::Working);
     assert_eq!(immediate.status_message.as_deref(), Some("planning"));
 
     drop(lifecycle);
 
     let reopened = InternetTaskLifecycle::open(dir.path(), backend).unwrap();
-    let recovered = reopened.get(&created.task_id).await.unwrap();
+    let recovered = reopened.get("principal:user-1", &created.task_id).await.unwrap();
     assert_eq!(recovered.task_id, created.task_id);
     assert_eq!(recovered.subject_ref.as_deref(), Some("workflow:wf-42"));
 }
@@ -82,18 +83,18 @@ async fn input_required_round_trips_exact_outstanding_requests_and_forwards_resp
     let backend = FakeBackend::new(BackendTaskSnapshot::input_required(requests.clone()));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
     let task = lifecycle
-        .create("workflow:wf-42", None, Some(250))
+        .create("principal:user-1", "workflow:wf-42", None, Some(250))
         .await
         .unwrap();
 
-    let snapshot = lifecycle.get(&task.task_id).await.unwrap();
+    let snapshot = lifecycle.get("principal:user-1", &task.task_id).await.unwrap();
     assert_eq!(snapshot.status, TaskStatus::InputRequired);
     assert_eq!(snapshot.input_requests, requests);
 
     let mut responses = BTreeMap::new();
     responses.insert("merge-approval".to_string(), json!({"action": "accept"}));
     lifecycle
-        .update(&task.task_id, responses.clone())
+        .update("principal:user-1", &task.task_id, responses.clone())
         .await
         .unwrap();
 
@@ -106,14 +107,14 @@ async fn cancellation_is_ack_only_and_domain_backend_remains_authoritative_for_t
     let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
     let task = lifecycle
-        .create("workflow:wf-42", None, None)
+        .create("principal:user-1", "workflow:wf-42", None, None)
         .await
         .unwrap();
 
-    lifecycle.cancel(&task.task_id).await.unwrap();
+    lifecycle.cancel("principal:user-1", &task.task_id).await.unwrap();
     assert_eq!(*backend.cancels.lock().await, 1);
 
-    let after_ack = lifecycle.get(&task.task_id).await.unwrap();
+    let after_ack = lifecycle.get("principal:user-1", &task.task_id).await.unwrap();
     assert_eq!(after_ack.status, TaskStatus::Working);
 }
 
@@ -127,10 +128,35 @@ async fn unknown_task_is_invalid_params() {
     .unwrap();
 
     for error in [
-        lifecycle.get("missing").await.unwrap_err(),
-        lifecycle.cancel("missing").await.unwrap_err(),
+        lifecycle.get("principal:user-1", "missing").await.unwrap_err(),
+        lifecycle.cancel("principal:user-1", "missing").await.unwrap_err(),
         lifecycle
-            .update("missing", BTreeMap::new())
+            .update("principal:user-1", "missing", BTreeMap::new())
+            .await
+            .unwrap_err(),
+    ] {
+        assert_eq!(error.code(), ErrorCode::INVALID_PARAMS);
+    }
+}
+
+#[tokio::test]
+async fn task_access_is_bound_to_the_authenticated_owner() {
+    let dir = tempdir().unwrap();
+    let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
+    let lifecycle = InternetTaskLifecycle::open(dir.path(), backend).unwrap();
+    let task = lifecycle
+        .create("principal:user-1", "workflow:wf-42", None, None)
+        .await
+        .unwrap();
+
+    for error in [
+        lifecycle.get("principal:user-2", &task.task_id).await.unwrap_err(),
+        lifecycle
+            .cancel("principal:user-2", &task.task_id)
+            .await
+            .unwrap_err(),
+        lifecycle
+            .update("principal:user-2", &task.task_id, BTreeMap::new())
             .await
             .unwrap_err(),
     ] {
