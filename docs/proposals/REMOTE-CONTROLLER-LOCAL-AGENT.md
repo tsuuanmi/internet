@@ -597,6 +597,29 @@ The initial implementation deliberately does not maintain a second execution lif
 
 This keeps one correctness path. Additional compatibility paths should be added only when a concrete product requirement justifies their permanent testing and maintenance cost.
 
+## 11.3 Workflow component ownership and replacement strategy
+
+Workflow is now decomposed explicitly into Internet-owned semantics and replaceable runtime mechanics.
+
+Internet should continue to own:
+
+- typed Need/Artifact/InputBundle semantics;
+- exact-state currentness and causal invalidation;
+- authority and PendingAction contracts;
+- reconcile-before-resubmit policy;
+- convergence and domain profiles.
+
+Commodity mechanics should remain replaceable:
+
+- async task lifecycle and input transport -> MCP Tasks;
+- queue/concurrency, retries, worker recovery, timers/waits, execution journal and process recovery -> durable runtime;
+- physical persistence/GC -> runtime/database/storage backend;
+- worker implementations -> DSH/Codex/Claude/future adapters.
+
+Current research recommends Restate as the first focused runtime-substitution PoC, Temporal as the maturity benchmark, DBOS as a lighter database-backed alternative, and LangGraph only as a possible reasoning/executor adapter rather than the authoritative Workflow state model.
+
+See [Workflow component decomposition and replacement landscape](../research/WORKFLOW-COMPONENT-LANDSCAPE.md).
+
 ## 12. Transport should be replaceable
 
 The protocol should not depend on one transport.
