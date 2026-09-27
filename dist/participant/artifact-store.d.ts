@@ -3,12 +3,13 @@ export declare const WEBSITE_PARTICIPANT_ARTIFACT_SCHEMA: "@tsuuanmi/internet-we
 export type WebsiteParticipantMode = "chat" | "research";
 export interface WebsiteParticipantArtifact {
     readonly schema: typeof WEBSITE_PARTICIPANT_ARTIFACT_SCHEMA;
-    readonly version: 1;
+    readonly version: 2;
     readonly artifactId: string;
     readonly ownerSessionHash: string;
     readonly accountId: AccountId;
     readonly provider: ReturnType<typeof getAccountDefinition>["provider"];
     readonly logicalRequestIdHash: string;
+    readonly conversationSessionHash: string;
     readonly mode: WebsiteParticipantMode;
     readonly promptHash: string;
     readonly text: string;
@@ -21,6 +22,7 @@ export interface CreateWebsiteParticipantArtifactInput {
     readonly ownerSessionId: string;
     readonly accountId: AccountId;
     readonly logicalRequestId: string;
+    readonly conversationSessionId?: string;
     readonly mode: WebsiteParticipantMode;
     readonly prompt: string;
     readonly text: string;
