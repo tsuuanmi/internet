@@ -85,5 +85,5 @@ export declare const workflowNodeId: {
 export declare function workflowNodeDependenciesCompleted(node: WorkflowGraphNode, nodes: Readonly<Record<string, WorkflowGraphNode>>): boolean;
 export declare function workflowNodeInputMatchesDependencies(node: WorkflowGraphNode, nodes: Readonly<Record<string, WorkflowGraphNode>>): boolean;
 export declare function canReuseCompletedWorkflowNode(node: WorkflowGraphNode, inputHash: string): boolean;
-export declare function assertWorkflowGraph(snapshot: WorkflowGraphSnapshot): void;
+export declare function assertWorkflowGraphState(snapshot: WorkflowGraphSnapshot): void;
 //# sourceMappingURL=graph.d.ts.map
