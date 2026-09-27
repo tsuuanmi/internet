@@ -9,8 +9,8 @@ const MAX_ARTIFACT_READ_CHARS = 50_000;
 
 export interface InternetArtifactReadInput {
 	readonly artifactId: string;
-	readonly offset: number;
-	readonly maxChars: number;
+	readonly offset?: number;
+	readonly maxChars?: number;
 }
 
 export interface InternetArtifactReadResult {
@@ -61,13 +61,13 @@ export class InternetArtifactApplicationService {
 
 	read(context: InternetApplicationRequestContext, input: InternetArtifactReadInput): InternetArtifactReadResult {
 		assertInternetApplicationRequestContext(context);
-		const result = this.artifacts.readText(context.ownerSessionId, input.artifactId, {
-			offset: input.offset,
-			maxChars: input.maxChars,
-		});
+		const artifactId = parseArtifactId(input.artifactId);
+		const offset = parseOffset(input.offset);
+		const maxChars = parseMaxChars(input.maxChars);
+		const result = this.artifacts.readText(context.ownerSessionId, artifactId, { offset, maxChars });
 		return {
 			text: result.text,
-			artifactId: input.artifactId,
+			artifactId,
 			offset: result.offset,
 			totalChars: result.totalChars,
 			...(result.nextOffset === undefined ? {} : { nextOffset: result.nextOffset }),
