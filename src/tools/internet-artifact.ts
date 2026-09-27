@@ -1,8 +1,5 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import {
-	type InternetArtifactApplicationService,
-	parseInternetArtifactReadInput,
-} from "#internet/application";
+import { type InternetArtifactApplicationService, parseInternetArtifactReadInput } from "#internet/application";
 
 /** Define the DSH adapter for host-neutral `internet_artifact` application behavior. */
 export function defineInternetArtifactTool(
