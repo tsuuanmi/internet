@@ -33,7 +33,10 @@ interface StoredWorkflowArtifactBlob {
 
 function assertDigest(digest: string): void {
 	if (!/^[0-9a-f]{64}$/u.test(digest))
-		throw new WorkflowComponentError("INVALID_INPUT", "workflow artifact blob digest must be 64 lowercase hex characters");
+		throw new WorkflowComponentError(
+			"INVALID_INPUT",
+			"workflow artifact blob digest must be 64 lowercase hex characters",
+		);
 }
 
 function digestBytes(bytes: Uint8Array): string {
@@ -42,7 +45,8 @@ function digestBytes(bytes: Uint8Array): string {
 
 function assertPrivateFile(path: string): void {
 	const stat = lstatSync(path);
-	if (!stat.isFile()) throw new WorkflowComponentError("PERMANENT_FAILURE", "workflow artifact blob is not a regular file");
+	if (!stat.isFile())
+		throw new WorkflowComponentError("PERMANENT_FAILURE", "workflow artifact blob is not a regular file");
 	if (process.platform !== "win32" && (stat.mode & 0o077) !== 0)
 		throw new WorkflowComponentError("PERMANENT_FAILURE", "workflow artifact blob permissions must be 0600");
 }
