@@ -159,12 +159,14 @@ Current `WorkflowArtifactStore` hashes and writes an artifact envelope containin
 Refactor into:
 
 ~~~text
-ArtifactService
+ArtifactSubsystem
   |
   +-- ArtifactMetadataPort
   +-- ArtifactBlobStorePort
   +-- LineageExporterPort (optional)
 ~~~
+
+Keep these sub-ports separate because authoritative metadata, payload storage and optional lineage export have different lifecycle/failure semantics.
 
 Red characterization tests first:
 
@@ -221,14 +223,17 @@ Conformance scenarios:
 
 Split `runtime/execution-manager.ts` and scheduler/driver mechanics into explicit runtime ports.
 
-Suggested boundaries:
+Suggested top-level boundary:
 
 ~~~text
-DurableExecutionPort
-WorkQueuePort
-DurableWaitPort
-ExecutionJournalPort
+DurableRuntimePort
+  - DurableExecutionPort
+  - WorkQueuePort
+  - DurableWaitPort
+  - ExecutionJournalPort
 ~~~
+
+The application layer depends on the composite runtime port. Sub-ports remain independently testable and replaceable but should not be injected separately unless a real implementation split requires it.
 
 Keep outside those ports:
 
@@ -368,6 +373,43 @@ This establishes the seams first.
 Second PR can add MCP Tasks at the portable edge.
 
 Third/following PRs can add petgraph, ORAS, Cedar and durable-runtime adapters independently.
+
+## 15.1 Port granularity acceptance rule
+
+Before creating a new top-level port, answer:
+
+1. Can this concern fail independently?
+2. Can it be authorized independently?
+3. Does it have a different persistence/retention lifecycle?
+4. Does it have different scaling requirements?
+5. Are there realistic alternative implementations that would be swapped without swapping neighboring concerns?
+6. Does another component consume it directly?
+
+If most answers are no, prefer a sub-contract inside an existing subsystem rather than another top-level dependency.
+
+Current grouping decision:
+
+~~~text
+Top-level:
+  TaskLifecyclePort
+  GraphSubsystem
+  DurableRuntimePort
+  ArtifactSubsystem
+  AuthorizationPolicyPort
+  TelemetryPort
+  WorkerDispatcherPort
+
+Sub-contracts:
+  GraphModelPort
+  AgentGraphExecutorPort
+  DurableExecutionPort
+  WorkQueuePort
+  DurableWaitPort
+  ExecutionJournalPort
+  ArtifactMetadataPort
+  ArtifactBlobStorePort
+  LineageExporterPort
+~~~
 
 ## 16. Definition of replaceability
 
