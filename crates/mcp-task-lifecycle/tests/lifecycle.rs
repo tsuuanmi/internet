@@ -50,6 +50,97 @@ impl TaskBackend for FakeBackend {
     }
 }
 
+
+#[tokio::test]
+async fn create_is_idempotent_for_the_same_owner_and_request_id() {
+    let dir = tempdir().unwrap();
+    let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
+    let lifecycle = InternetTaskLifecycle::open(dir.path(), backend).unwrap();
+
+    let first = lifecycle
+        .create(
+            "principal:user-1",
+            "request-stable",
+            "workflow:wf-42",
+            Some(120_000),
+            Some(500),
+        )
+        .await
+        .unwrap();
+    let second = lifecycle
+        .create(
+            "principal:user-1",
+            "request-stable",
+            "workflow:wf-42",
+            Some(120_000),
+            Some(500),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(second.task_id, first.task_id);
+}
+
+#[tokio::test]
+async fn request_id_reuse_with_different_subject_is_rejected() {
+    let dir = tempdir().unwrap();
+    let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
+    let lifecycle = InternetTaskLifecycle::open(dir.path(), backend).unwrap();
+
+    lifecycle
+        .create(
+            "principal:user-1",
+            "request-stable",
+            "workflow:wf-42",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let error = lifecycle
+        .create(
+            "principal:user-1",
+            "request-stable",
+            "workflow:wf-43",
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), ErrorCode::INVALID_PARAMS);
+}
+
+#[tokio::test]
+async fn same_request_id_is_scoped_by_owner() {
+    let dir = tempdir().unwrap();
+    let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
+    let lifecycle = InternetTaskLifecycle::open(dir.path(), backend).unwrap();
+
+    let first = lifecycle
+        .create(
+            "principal:user-1",
+            "request-stable",
+            "workflow:wf-42",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let second = lifecycle
+        .create(
+            "principal:user-2",
+            "request-stable",
+            "workflow:wf-42",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_ne!(second.task_id, first.task_id);
+}
+
 #[tokio::test]
 async fn created_task_is_observable_before_return_and_survives_adapter_restart() {
     let dir = tempdir().unwrap();
@@ -59,6 +150,7 @@ async fn created_task_is_observable_before_return_and_survives_adapter_restart()
     let created = lifecycle
         .create(
             "principal:user-1",
+            "request-1",
             "workflow:wf-42",
             Some(120_000),
             Some(500),
@@ -99,7 +191,7 @@ async fn input_required_round_trips_exact_outstanding_requests_and_forwards_resp
     let backend = FakeBackend::new(BackendTaskSnapshot::input_required(requests.clone()));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
     let task = lifecycle
-        .create("principal:user-1", "workflow:wf-42", None, Some(250))
+        .create("principal:user-1", "request-2", "workflow:wf-42", None, Some(250))
         .await
         .unwrap();
 
@@ -134,7 +226,7 @@ async fn update_ignores_responses_for_keys_that_are_not_outstanding() {
     let backend = FakeBackend::new(BackendTaskSnapshot::input_required(requests));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
     let task = lifecycle
-        .create("principal:user-1", "workflow:wf-42", None, None)
+        .create("principal:user-1", "request-3", "workflow:wf-42", None, None)
         .await
         .unwrap();
 
@@ -154,7 +246,7 @@ async fn cancellation_is_ack_only_and_domain_backend_remains_authoritative_for_t
     let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
     let task = lifecycle
-        .create("principal:user-1", "workflow:wf-42", None, None)
+        .create("principal:user-1", "request-3", "workflow:wf-42", None, None)
         .await
         .unwrap();
 
@@ -204,7 +296,7 @@ async fn task_access_is_bound_to_the_authenticated_owner() {
     let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend).unwrap();
     let task = lifecycle
-        .create("principal:user-1", "workflow:wf-42", None, None)
+        .create("principal:user-1", "request-3", "workflow:wf-42", None, None)
         .await
         .unwrap();
 
