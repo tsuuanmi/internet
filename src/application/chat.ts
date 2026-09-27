@@ -34,7 +34,10 @@ export class InternetChatApplicationService {
 		this.allowed = allowed;
 	}
 
-	async execute(context: InternetApplicationRequestContext, input: InternetChatInput): Promise<InternetChatApplicationResult> {
+	async execute(
+		context: InternetApplicationRequestContext,
+		input: InternetChatInput,
+	): Promise<InternetChatApplicationResult> {
 		assertInternetApplicationRequestContext(context);
 		const provider = getAccountDefinition(input.accountId).provider;
 		if (!this.allowed.has(input.accountId)) {
