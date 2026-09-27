@@ -119,7 +119,6 @@ async fn input_required_round_trips_exact_outstanding_requests_and_forwards_resp
     assert_eq!(backend.updates.lock().await.as_slice(), &[responses]);
 }
 
-
 #[tokio::test]
 async fn update_ignores_responses_for_keys_that_are_not_outstanding() {
     let dir = tempdir().unwrap();
