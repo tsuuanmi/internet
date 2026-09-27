@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getAccountDefinition } from "#internet/core/accounts";
 import { WorkflowArtifactStore } from "#internet/workflow/artifact-store";
-import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import { WorkflowCapabilityRegistry } from "#internet/workflow/capability-registry";
+import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
 import { WorkflowInputBundleStore } from "#internet/workflow/input-bundle-store";
 import { WORKFLOW_RUN_SCHEMA, type WorkflowRun } from "#internet/workflow/kernel/types";
 import {
@@ -22,7 +22,6 @@ import {
 import { WORKFLOW_SEMANTIC_ARTIFACT_TYPES, WORKFLOW_SEMANTIC_SCHEMA_REFS } from "#internet/workflow/semantic/index";
 import type { WorkflowTeamRunner } from "#internet/workflow/team-runner";
 import { WorkflowWorkItemStore } from "#internet/workflow/work-item-store";
-
 
 function artifactStore(root: string): WorkflowArtifactStore {
 	return new WorkflowArtifactStore(root, new LocalWorkflowArtifactBlobStore(root));
