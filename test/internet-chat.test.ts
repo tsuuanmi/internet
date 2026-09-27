@@ -70,11 +70,16 @@ describe("internet_chat DSH adapter", () => {
 	});
 
 	it("keeps host request identities separate while preserving the owner session", async () => {
-		const execute = vi.fn(async () => ({
-			answer: "Answer",
-			accountId: "chatgpt-thinker" as const,
-			provider: "chatgpt-web" as const,
-		}));
+		const execute = vi.fn(
+			async (
+				_context: { ownerSessionId: string; requestId: string },
+				_input: { accountId: string; prompt: string },
+			) => ({
+				answer: "Answer",
+				accountId: "chatgpt-thinker" as const,
+				provider: "chatgpt-web" as const,
+			}),
+		);
 		const tool = defineInternetChatTool({ execute } as never, 1_000);
 
 		await tool.execute({ account: "chatgpt-thinker", prompt: "alpha" }, {
