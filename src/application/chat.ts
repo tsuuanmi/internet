@@ -5,7 +5,12 @@ import {
 import { type AccountId, getAccountDefinition } from "#internet/core/accounts";
 import { isInternetError } from "#internet/core/errors";
 import { projectWebsiteParticipantResult, type WebsiteParticipantService } from "#internet/participant/service";
-import type { ChatInput } from "#internet/tools/args";
+
+export interface InternetChatInput {
+	readonly accountId: AccountId;
+	readonly prompt: string;
+	readonly visible?: boolean;
+}
 
 export interface InternetChatApplicationResult {
 	readonly answer: string;
@@ -29,7 +34,7 @@ export class InternetChatApplicationService {
 		this.allowed = allowed;
 	}
 
-	async execute(context: InternetApplicationRequestContext, input: ChatInput): Promise<InternetChatApplicationResult> {
+	async execute(context: InternetApplicationRequestContext, input: InternetChatInput): Promise<InternetChatApplicationResult> {
 		assertInternetApplicationRequestContext(context);
 		const provider = getAccountDefinition(input.accountId).provider;
 		if (!this.allowed.has(input.accountId)) {
