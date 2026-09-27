@@ -11,7 +11,6 @@ import {
 	WORKFLOW_SEMANTIC_ARTIFACT_TYPES,
 } from "#internet/workflow/semantic/index";
 
-
 function artifactStore(root: string): WorkflowArtifactStore {
 	return new WorkflowArtifactStore(root, new LocalWorkflowArtifactBlobStore(root));
 }
