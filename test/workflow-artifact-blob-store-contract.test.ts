@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe } from "vitest";
 import { LocalWorkflowArtifactBlobStore } from "#internet/workflow/components";
-import { artifactBlobStoreConformance } from "./workflow-component-conformance";
+import { artifactBlobStoreConformance } from "./workflow-component-conformance.js";
 
 describe("local workflow artifact blob store", () => {
 	artifactBlobStoreConformance(
