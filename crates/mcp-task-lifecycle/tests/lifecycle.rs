@@ -119,6 +119,35 @@ async fn input_required_round_trips_exact_outstanding_requests_and_forwards_resp
     assert_eq!(backend.updates.lock().await.as_slice(), &[responses]);
 }
 
+
+#[tokio::test]
+async fn update_ignores_responses_for_keys_that_are_not_outstanding() {
+    let dir = tempdir().unwrap();
+    let mut requests = BTreeMap::new();
+    requests.insert(
+        "merge-approval".to_string(),
+        json!({
+            "method": "elicitation/create",
+            "params": {"message": "Approve merge?"}
+        }),
+    );
+    let backend = FakeBackend::new(BackendTaskSnapshot::input_required(requests));
+    let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
+    let task = lifecycle
+        .create("principal:user-1", "workflow:wf-42", None, None)
+        .await
+        .unwrap();
+
+    let mut responses = BTreeMap::new();
+    responses.insert("unknown".to_string(), json!({"action": "accept"}));
+    lifecycle
+        .update("principal:user-1", &task.task_id, responses)
+        .await
+        .unwrap();
+
+    assert!(backend.updates.lock().await.is_empty());
+}
+
 #[tokio::test]
 async fn cancellation_is_ack_only_and_domain_backend_remains_authoritative_for_terminal_state() {
     let dir = tempdir().unwrap();
