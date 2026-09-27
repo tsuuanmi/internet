@@ -3,8 +3,8 @@ import type { AccountId } from "#internet/core/accounts";
 import { buildTeamPlan, prepareTeamStep, type TeamPlan, type TeamPlanStep } from "#internet/team/plan";
 import type { TeamPromptStrategyId } from "#internet/team/prompt-strategy";
 import type { TeamTurn } from "#internet/team/types";
+import type { WorkflowGraphValidator } from "#internet/workflow/graph-validator";
 import {
-	assertWorkflowGraph,
 	type WorkflowGraphNode,
 	type WorkflowGraphSnapshot,
 	type WorkflowLane,
@@ -18,6 +18,7 @@ export interface WorkflowLaneInput {
 }
 
 export interface InitialWorkflowGraphInput {
+	readonly graphId: string;
 	readonly repository: string;
 	readonly baseRevision: string;
 	readonly rounds: number;
@@ -73,7 +74,10 @@ export function createTeamStepInputReceipt(input: TeamStepInputReceiptInput): Wo
 	});
 }
 
-export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): WorkflowGraphSnapshot {
+export function buildInitialWorkflowGraph(
+	input: InitialWorkflowGraphInput,
+	graphValidator: WorkflowGraphValidator,
+): WorkflowGraphSnapshot {
 	const plan = buildTeamPlan({
 		accounts: input.accounts,
 		rounds: input.rounds,
@@ -113,7 +117,7 @@ export function buildInitialWorkflowGraph(input: InitialWorkflowGraphInput): Wor
 		lifecycle: "RUNNING",
 		nodes,
 	};
-	assertWorkflowGraph(graph);
+	graphValidator.assert(input.graphId, graph);
 	return graph;
 }
 
