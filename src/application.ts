@@ -7,6 +7,7 @@ export {
 export {
 	type InternetChatApplicationResult,
 	InternetChatApplicationService,
+	type InternetChatInput,
 } from "#internet/application/chat";
 export {
 	assertInternetApplicationRequestContext,
