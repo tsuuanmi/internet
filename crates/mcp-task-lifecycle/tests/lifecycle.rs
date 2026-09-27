@@ -29,7 +29,11 @@ impl TaskBackend for FakeBackend {
         Ok(self.snapshot.lock().await.clone())
     }
 
-    async fn update(&self, _subject_ref: &str, responses: TaskInputResponses) -> Result<(), String> {
+    async fn update(
+        &self,
+        _subject_ref: &str,
+        responses: TaskInputResponses,
+    ) -> Result<(), String> {
         self.updates.lock().await.push(responses);
         Ok(())
     }
@@ -77,7 +81,10 @@ async fn input_required_round_trips_exact_outstanding_requests_and_forwards_resp
     );
     let backend = FakeBackend::new(BackendTaskSnapshot::input_required(requests.clone()));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
-    let task = lifecycle.create("workflow:wf-42", None, Some(250)).await.unwrap();
+    let task = lifecycle
+        .create("workflow:wf-42", None, Some(250))
+        .await
+        .unwrap();
 
     let snapshot = lifecycle.get(&task.task_id).await.unwrap();
     assert_eq!(snapshot.status, TaskStatus::InputRequired);
@@ -98,7 +105,10 @@ async fn cancellation_is_ack_only_and_domain_backend_remains_authoritative_for_t
     let dir = tempdir().unwrap();
     let backend = FakeBackend::new(BackendTaskSnapshot::working("running"));
     let lifecycle = InternetTaskLifecycle::open(dir.path(), backend.clone()).unwrap();
-    let task = lifecycle.create("workflow:wf-42", None, None).await.unwrap();
+    let task = lifecycle
+        .create("workflow:wf-42", None, None)
+        .await
+        .unwrap();
 
     lifecycle.cancel(&task.task_id).await.unwrap();
     assert_eq!(*backend.cancels.lock().await, 1);
@@ -119,7 +129,10 @@ async fn unknown_task_is_invalid_params() {
     for error in [
         lifecycle.get("missing").await.unwrap_err(),
         lifecycle.cancel("missing").await.unwrap_err(),
-        lifecycle.update("missing", BTreeMap::new()).await.unwrap_err(),
+        lifecycle
+            .update("missing", BTreeMap::new())
+            .await
+            .unwrap_err(),
     ] {
         assert_eq!(error.code(), ErrorCode::INVALID_PARAMS);
     }
