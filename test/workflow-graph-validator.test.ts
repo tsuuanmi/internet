@@ -29,7 +29,11 @@ function graph(): WorkflowGraphSnapshot {
 }
 
 class InvalidResultGraphModel implements WorkflowGraphModelPort {
-	constructor(private readonly mutate: (result: WorkflowGraphAnalysisV1) => WorkflowGraphAnalysisV1) {}
+	private readonly mutate: (result: WorkflowGraphAnalysisV1) => WorkflowGraphAnalysisV1;
+
+	constructor(mutate: (result: WorkflowGraphAnalysisV1) => WorkflowGraphAnalysisV1) {
+		this.mutate = mutate;
+	}
 
 	analyze(input: WorkflowDependencyGraphV1): WorkflowGraphAnalysisV1 {
 		return this.mutate({
