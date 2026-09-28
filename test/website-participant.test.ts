@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("WebsiteParticipantService", () => {
-	it("uses the DSH tool call as the durable provider request identity and persists one completed result", async () => {
+	it("uses the host request id as the durable provider request identity and persists one completed result", async () => {
 		const chat = vi.fn(async () => ({
 			text: "website answer",
 			url: "https://chatgpt.com/c/native",
