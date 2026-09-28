@@ -1,10 +1,7 @@
+import type { InternetChatInput } from "#internet/application/chat";
 import { type AccountId } from "#internet/core/accounts";
 /** Validated `internet_chat` arguments. */
-export interface ChatInput {
-    accountId: AccountId;
-    prompt: string;
-    visible?: boolean;
-}
+export type ChatInput = InternetChatInput;
 /** Validate and normalize model-facing `internet_chat` arguments. */
 export declare function parseChatArgs(args: Record<string, unknown>): ChatInput;
 /** Validated `internet_research` arguments. */

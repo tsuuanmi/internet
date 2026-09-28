@@ -22,6 +22,7 @@ export interface PluginContext {
     effect(fn: () => (() => void | Promise<void>) | void): void;
 }
 export declare function apply(ctx: PluginContext, rawConfig: unknown): void;
+export * from "#internet/application";
 export { BrowserManager } from "#internet/browser/runtime";
 export { hashProviderTurnText, ProviderTurnReceiptStore, parseProviderTurnReceipt, providerTurnReceiptId, reconcileProviderTurn, } from "#internet/browser/turn-receipts";
 export type { AccountCapability, AccountDefinition, AccountId, AccountRole } from "#internet/core/accounts";

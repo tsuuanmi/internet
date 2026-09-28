@@ -29,21 +29,18 @@ describe("parseChatArgs", () => {
 	});
 });
 
-describe("internet_chat website participant boundary", () => {
-	const allowed = new Set(["chatgpt-thinker"] as const);
-
-	it("uses the owning DSH session and tool call id as durable website identities", async () => {
+describe("internet_chat DSH adapter", () => {
+	it("maps DSH session and call identity into the host-neutral application context", async () => {
 		const execute = vi.fn(async () => ({
-			accountId: "chatgpt-thinker" as const,
-			provider: "chatgpt-web" as const,
-			mode: "chat" as const,
-			text: "Answer",
-			url: "https://chatgpt.com/c/native",
-			conversationId: "native",
+			answer: "Answer",
 			artifactId: "a".repeat(64),
 			totalChars: 6,
+			truncated: false,
+			accountId: "chatgpt-thinker" as const,
+			provider: "chatgpt-web" as const,
+			conversationId: "native",
 		}));
-		const tool = defineInternetChatTool({ execute } as never, 1_000, allowed);
+		const tool = defineInternetChatTool({ execute } as never, 1_000);
 		const signal = new AbortController().signal;
 
 		await expect(
@@ -55,36 +52,35 @@ describe("internet_chat website participant boundary", () => {
 		).resolves.toMatchObject({
 			answer: "Answer",
 			artifactId: "a".repeat(64),
-			totalChars: 6,
-			truncated: false,
 			accountId: "chatgpt-thinker",
 			provider: "chatgpt-web",
-			conversationId: "native",
 		});
-		expect(execute).toHaveBeenCalledWith({
-			ownerSessionId: "teammate-session",
-			accountId: "chatgpt-thinker",
-			logicalRequestId: "call-42",
-			mode: "chat",
-			prompt: "inspect",
-			visible: true,
-			signal,
-		});
+		expect(execute).toHaveBeenCalledWith(
+			{
+				ownerSessionId: "teammate-session",
+				requestId: "call-42",
+				signal,
+			},
+			{
+				accountId: "chatgpt-thinker",
+				prompt: "inspect",
+				visible: true,
+			},
+		);
 	});
 
-	it("keeps teammate request identities separate without changing their conversation owner", async () => {
-		const execute = vi.fn(async (request: { ownerSessionId: string; logicalRequestId: string }) => ({
-			accountId: "chatgpt-thinker" as const,
-			provider: "chatgpt-web" as const,
-			mode: "chat" as const,
-			text: "Answer",
-			url: "https://chatgpt.com/c/native",
-			conversationId: "native",
-			artifactId: "b".repeat(64),
-			totalChars: 6,
-			ownerSessionId: request.ownerSessionId,
-		}));
-		const tool = defineInternetChatTool({ execute } as never, 1_000, allowed);
+	it("keeps host request identities separate while preserving the owner session", async () => {
+		const execute = vi.fn(
+			async (
+				_context: { ownerSessionId: string; requestId: string },
+				_input: { accountId: string; prompt: string },
+			) => ({
+				answer: "Answer",
+				accountId: "chatgpt-thinker" as const,
+				provider: "chatgpt-web" as const,
+			}),
+		);
+		const tool = defineInternetChatTool({ execute } as never, 1_000);
 
 		await tool.execute({ account: "chatgpt-thinker", prompt: "alpha" }, {
 			agent: { id: "researcher-a" },
@@ -97,7 +93,7 @@ describe("internet_chat website participant boundary", () => {
 			signal: new AbortController().signal,
 		} as never);
 
-		expect(execute.mock.calls.map(([request]) => [request.ownerSessionId, request.logicalRequestId])).toEqual([
+		expect(execute.mock.calls.map(([context]) => [context.ownerSessionId, context.requestId])).toEqual([
 			["researcher-a", "call-a"],
 			["researcher-b", "call-b"],
 		]);
@@ -105,7 +101,7 @@ describe("internet_chat website participant boundary", () => {
 
 	it("fails closed without an agent-backed DSH session", async () => {
 		const execute = vi.fn();
-		const tool = defineInternetChatTool({ execute } as never, 1_000, allowed);
+		const tool = defineInternetChatTool({ execute } as never, 1_000);
 
 		await expect(
 			tool.execute({ account: "chatgpt-thinker", prompt: "hello" }, {

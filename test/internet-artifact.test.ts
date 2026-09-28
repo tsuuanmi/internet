@@ -1,15 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { defineInternetArtifactTool } from "#internet/tools/internet-artifact";
 
-describe("internet_artifact", () => {
-	it("reads an owner-scoped exact artifact range", async () => {
-		const readText = vi.fn(() => ({
+describe("internet_artifact DSH adapter", () => {
+	it("maps DSH identity and validated range into the host-neutral application service", async () => {
+		const read = vi.fn(() => ({
 			text: "evidence",
+			artifactId: "a".repeat(64),
 			offset: 10,
 			totalChars: 42,
 			nextOffset: 18,
 		}));
-		const tool = defineInternetArtifactTool({ readText } as never);
+		const tool = defineInternetArtifactTool({ read } as never);
 		const signal = new AbortController().signal;
 
 		await expect(
@@ -25,15 +26,23 @@ describe("internet_artifact", () => {
 			totalChars: 42,
 			nextOffset: 18,
 		});
-		expect(readText).toHaveBeenCalledWith("teammate-session", "a".repeat(64), {
-			offset: 10,
-			maxChars: 8,
-		});
+		expect(read).toHaveBeenCalledWith(
+			{
+				ownerSessionId: "teammate-session",
+				requestId: "call-read",
+				signal,
+			},
+			{
+				artifactId: "a".repeat(64),
+				offset: 10,
+				maxChars: 8,
+			},
+		);
 	});
 
 	it("fails closed without an agent-backed owner", async () => {
-		const readText = vi.fn();
-		const tool = defineInternetArtifactTool({ readText } as never);
+		const read = vi.fn();
+		const tool = defineInternetArtifactTool({ read } as never);
 
 		await expect(
 			tool.execute({ artifact_id: "a".repeat(64) }, {
@@ -44,12 +53,12 @@ describe("internet_artifact", () => {
 			isError: true,
 			text: expect.stringContaining("agent-backed DSH session"),
 		});
-		expect(readText).not.toHaveBeenCalled();
+		expect(read).not.toHaveBeenCalled();
 	});
 
-	it("rejects invalid artifact ids and ranges before storage access", async () => {
-		const readText = vi.fn();
-		const tool = defineInternetArtifactTool({ readText } as never);
+	it("rejects invalid artifact ids and ranges before application execution", async () => {
+		const read = vi.fn();
+		const tool = defineInternetArtifactTool({ read } as never);
 		const exec = {
 			agent: { id: "teammate-session" },
 			callId: "call-read",
@@ -63,6 +72,6 @@ describe("internet_artifact", () => {
 		await expect(tool.execute({ artifact_id: "a".repeat(64), max_chars: 0 }, exec)).resolves.toMatchObject({
 			isError: true,
 		});
-		expect(readText).not.toHaveBeenCalled();
+		expect(read).not.toHaveBeenCalled();
 	});
 });

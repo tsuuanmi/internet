@@ -164,7 +164,7 @@ export class WebsiteParticipantArtifactStore {
             throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} is invalid: ${error instanceof Error ? error.message : String(error)}`);
         }
         if (artifact.ownerSessionHash !== identityHash(ownerSessionId, "owner session id")) {
-            throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} does not belong to this DSH session`);
+            throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} does not belong to this owner session`);
         }
         return artifact;
     }
