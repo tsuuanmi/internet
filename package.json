@@ -67,6 +67,7 @@
 		"react": "^18.2.0"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/server": "2.1.0",
 		"@novnc/novnc": "1.7.0",
 		"patchright-core": "1.62.1",
 		"turndown": "7.2.0",
