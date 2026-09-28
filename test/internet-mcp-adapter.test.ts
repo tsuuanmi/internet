@@ -22,10 +22,7 @@ describe("Internet MCP adapter", () => {
 		const request: InternetMcpToolRequestContext = { requestId: 42, signal };
 
 		await expect(
-			chat?.invoke(
-				{ account: "chatgpt-thinker", prompt: "Inspect", visible: true },
-				request,
-			),
+			chat?.invoke({ account: "chatgpt-thinker", prompt: "Inspect", visible: true }, request),
 		).resolves.toMatchObject({
 			structuredContent: {
 				answer: "portable answer",
@@ -56,10 +53,7 @@ describe("Internet MCP adapter", () => {
 		const artifact = tools.find((tool) => tool.name === "internet_artifact");
 
 		await expect(
-			artifact?.invoke(
-				{ artifact_id: "b".repeat(64), offset: 4, max_chars: 8 },
-				{ requestId: "req-artifact" },
-			),
+			artifact?.invoke({ artifact_id: "b".repeat(64), offset: 4, max_chars: 8 }, { requestId: "req-artifact" }),
 		).resolves.toEqual({
 			content: [{ type: "text", text: "evidence" }],
 			structuredContent: {
@@ -91,10 +85,7 @@ describe("Internet MCP adapter", () => {
 		const chat = tools.find((tool) => tool.name === "internet_chat");
 
 		await expect(
-			chat?.invoke(
-				{ account: "chatgpt-thinker", prompt: "Inspect" },
-				{ requestId: "req-error" },
-			),
+			chat?.invoke({ account: "chatgpt-thinker", prompt: "Inspect" }, { requestId: "req-error" }),
 		).resolves.toMatchObject({
 			isError: true,
 			content: [{ type: "text", text: expect.stringContaining("timeout") }],
