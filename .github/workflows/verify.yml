@@ -18,7 +18,7 @@ jobs:
           cache: npm
       - name: Generate MCP dependency lock
         run: |
-          npm install --package-lock-only --ignore-scripts --save-exact @modelcontextprotocol/server@2.1.0
+          timeout 180s npm install --package-lock-only --ignore-scripts --no-audit --no-fund --save-exact @modelcontextprotocol/server@2.1.0
           node -e 'const fs=require("node:fs"); for (const f of ["package.json","package-lock.json"]) console.log("PACKAGE_CAPTURE "+f+" "+fs.readFileSync(f).toString("base64"))'
       - run: npm ci
       - run: npm run check
