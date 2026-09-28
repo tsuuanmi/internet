@@ -1,4 +1,5 @@
 export { LocalWorkflowArtifactBlobStore, type WorkflowArtifactBlob, type WorkflowArtifactBlobRef, type WorkflowArtifactBlobStorePort, } from "#internet/workflow/components/artifact-blob-store";
 export { assertWorkflowComponentContractRef, WORKFLOW_COMPONENT_ERROR_CODES, type WorkflowComponentContractRef, WorkflowComponentError, type WorkflowComponentErrorCode, } from "#internet/workflow/components/contracts";
 export { TypeScriptWorkflowGraphModel, WORKFLOW_DEPENDENCY_GRAPH_SCHEMA, WORKFLOW_GRAPH_ANALYSIS_SCHEMA, type WorkflowDependencyGraphEdgeV1, type WorkflowDependencyGraphNodeV1, type WorkflowDependencyGraphV1, type WorkflowGraphAnalysisV1, type WorkflowGraphModelPort, } from "#internet/workflow/components/graph-model";
+export { assertWorkflowTaskHandle, assertWorkflowTaskStartRequest, WORKFLOW_TASK_HANDLE_SCHEMA, WORKFLOW_TASK_START_REQUEST_SCHEMA, WORKFLOW_TASK_STATUSES, type WorkflowTaskHandleV1, type WorkflowTaskStartRequestV1, type WorkflowTaskStatus, } from "#internet/workflow/components/task-lifecycle";
 //# sourceMappingURL=components.d.ts.map

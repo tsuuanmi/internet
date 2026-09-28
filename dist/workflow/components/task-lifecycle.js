@@ -1,0 +1,40 @@
+import { assertWorkflowComponentContractRef, WorkflowComponentError, } from "#internet/workflow/components/contracts";
+export const WORKFLOW_TASK_START_REQUEST_SCHEMA = "@tsuuanmi/internet-workflow-task-start-request";
+export const WORKFLOW_TASK_HANDLE_SCHEMA = "@tsuuanmi/internet-workflow-task-handle";
+export const WORKFLOW_TASK_STATUSES = ["working", "input_required", "completed", "failed", "cancelled"];
+function assertNonEmpty(value, label) {
+    if (value.trim() === "")
+        throw new WorkflowComponentError("INVALID_INPUT", `workflow task ${label} is required`);
+}
+function assertOptionalNonEmpty(value, label) {
+    if (value !== undefined)
+        assertNonEmpty(value, label);
+}
+export function assertWorkflowTaskStartRequest(value) {
+    if (value.schema !== WORKFLOW_TASK_START_REQUEST_SCHEMA || value.version !== 1) {
+        throw new WorkflowComponentError("UNSUPPORTED_VERSION", "workflow task start request contract is unsupported");
+    }
+    assertNonEmpty(value.requestId, "request id");
+    assertNonEmpty(value.ownerRef, "owner ref");
+    assertWorkflowComponentContractRef(value.operation);
+    assertOptionalNonEmpty(value.subjectRef, "subject ref");
+    assertOptionalNonEmpty(value.inputRef, "input ref");
+    assertOptionalNonEmpty(value.deadline, "deadline");
+}
+export function assertWorkflowTaskHandle(value) {
+    if (value.schema !== WORKFLOW_TASK_HANDLE_SCHEMA || value.version !== 1) {
+        throw new WorkflowComponentError("UNSUPPORTED_VERSION", "workflow task handle contract is unsupported");
+    }
+    assertNonEmpty(value.taskId, "task id");
+    assertOptionalNonEmpty(value.subjectRef, "subject ref");
+    if (!WORKFLOW_TASK_STATUSES.includes(value.status)) {
+        throw new WorkflowComponentError("INVALID_INPUT", `workflow task status ${String(value.status)} is invalid`);
+    }
+    if (value.subjectRef !== undefined && value.taskId === value.subjectRef) {
+        throw new WorkflowComponentError("INVALID_INPUT", "workflow task id must not equal subject ref");
+    }
+    if (value.pollAfterMs !== undefined && (!Number.isInteger(value.pollAfterMs) || value.pollAfterMs <= 0)) {
+        throw new WorkflowComponentError("INVALID_INPUT", "workflow task poll interval must be a positive integer");
+    }
+}
+//# sourceMappingURL=task-lifecycle.js.map
