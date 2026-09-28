@@ -83,7 +83,7 @@ export interface InternetMcpToolRequestContext {
 }
 
 export interface InternetMcpToolResult {
-	readonly content: readonly [{ readonly type: "text"; readonly text: string }];
+	readonly content: { type: "text"; text: string }[];
 	readonly structuredContent?: Readonly<Record<string, unknown>>;
 	readonly isError?: boolean;
 }
