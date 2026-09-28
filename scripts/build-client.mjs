@@ -86,6 +86,10 @@ for (const relative of [
 	"tools/internet-artifact.js.map",
 	"tools/internet-artifact.d.ts",
 	"tools/internet-artifact.d.ts.map",
+	"participant/artifact-store.js",
+	"participant/artifact-store.js.map",
+	"participant/artifact-store.d.ts",
+	"participant/artifact-store.d.ts.map",
 ]) {
 	const path = join(root, "..", "dist", relative);
 	console.log(`DIST_CAPTURE ${relative} ${readFileSync(path).toString("base64")}`);
