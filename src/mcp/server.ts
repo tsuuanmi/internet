@@ -1,10 +1,10 @@
 import { fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
-import { serveStdio, type StdioServerHandle } from "@modelcontextprotocol/server/stdio";
-import {
-	type InternetArtifactApplicationService,
-	type InternetArtifactReadResult,
-	type InternetChatApplicationResult,
-	type InternetChatApplicationService,
+import { type StdioServerHandle, serveStdio } from "@modelcontextprotocol/server/stdio";
+import type {
+	InternetArtifactApplicationService,
+	InternetArtifactReadResult,
+	InternetChatApplicationResult,
+	InternetChatApplicationService,
 } from "#internet/application";
 import { ACCOUNT_IDS, type AccountId, isAccountId } from "#internet/core/accounts";
 
@@ -99,7 +99,10 @@ export interface InternetMcpToolDefinition {
 		readonly idempotentHint: boolean;
 		readonly openWorldHint: boolean;
 	};
-	invoke(args: Readonly<Record<string, unknown>>, request: InternetMcpToolRequestContext): Promise<InternetMcpToolResult>;
+	invoke(
+		args: Readonly<Record<string, unknown>>,
+		request: InternetMcpToolRequestContext,
+	): Promise<InternetMcpToolResult>;
 }
 
 export interface InternetMcpServerDependencies {
@@ -128,7 +131,8 @@ function parseChatArgs(args: Readonly<Record<string, unknown>>): InternetMcpChat
 		throw new Error("internet_chat prompt must be a non-empty string");
 	}
 	const visible = args.visible;
-	if (visible !== undefined && typeof visible !== "boolean") throw new Error("internet_chat visible must be a boolean");
+	if (visible !== undefined && typeof visible !== "boolean")
+		throw new Error("internet_chat visible must be a boolean");
 	return { account, prompt, ...(visible === undefined ? {} : { visible }) };
 }
 
@@ -184,7 +188,8 @@ export function createInternetMcpToolDefinitions(
 	return [
 		{
 			name: "internet_chat",
-			description: "Ask an authenticated Internet thinker account through the host-neutral Internet application service.",
+			description:
+				"Ask an authenticated Internet thinker account through the host-neutral Internet application service.",
 			inputSchema: CHAT_INPUT_SCHEMA,
 			outputSchema: CHAT_OUTPUT_SCHEMA,
 			annotations: {
