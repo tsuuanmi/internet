@@ -49,7 +49,11 @@ export function defineInternetArtifactTool(application) {
                     ownerSessionId: String(ownerSessionId),
                     requestId: String(exec.callId),
                     signal: exec.signal,
-                }, parseInternetArtifactReadInput(args));
+                }, parseInternetArtifactReadInput({
+                    artifactId: args.artifact_id,
+                    offset: args.offset,
+                    maxChars: args.max_chars,
+                }));
             }
             catch (error) {
                 return {

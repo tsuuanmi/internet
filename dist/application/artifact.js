@@ -23,11 +23,11 @@ function parseMaxChars(value) {
     }
     return value;
 }
-export function parseInternetArtifactReadInput(args) {
+export function parseInternetArtifactReadInput(input) {
     return {
-        artifactId: parseArtifactId(args.artifact_id),
-        offset: parseOffset(args.offset),
-        maxChars: parseMaxChars(args.max_chars),
+        artifactId: parseArtifactId(input.artifactId),
+        offset: parseOffset(input.offset),
+        maxChars: parseMaxChars(input.maxChars),
     };
 }
 export class InternetArtifactApplicationService {

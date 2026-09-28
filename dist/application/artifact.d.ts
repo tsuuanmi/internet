@@ -12,7 +12,11 @@ export interface InternetArtifactReadResult {
     readonly totalChars: number;
     readonly nextOffset?: number;
 }
-export declare function parseInternetArtifactReadInput(args: Record<string, unknown>): InternetArtifactReadInput;
+export declare function parseInternetArtifactReadInput(input: {
+    readonly artifactId: unknown;
+    readonly offset?: unknown;
+    readonly maxChars?: unknown;
+}): InternetArtifactReadInput;
 export declare class InternetArtifactApplicationService {
     private readonly artifacts;
     constructor(artifacts: Pick<WebsiteParticipantArtifactStore, "readText">);
