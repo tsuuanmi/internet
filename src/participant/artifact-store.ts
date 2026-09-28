@@ -234,7 +234,7 @@ export class WebsiteParticipantArtifactStore {
 			);
 		}
 		if (artifact.ownerSessionHash !== identityHash(ownerSessionId, "owner session id")) {
-			throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} does not belong to this DSH session`);
+			throw new WebsiteParticipantArtifactStoreError(`artifact ${artifactId} does not belong to this owner session`);
 		}
 		return artifact;
 	}
