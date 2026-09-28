@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-	createInternetMcpToolDefinitions,
-	type InternetMcpToolRequestContext,
-} from "#internet/mcp/server";
+import { createInternetMcpToolDefinitions, type InternetMcpToolRequestContext } from "#internet/mcp/server";
 
 describe("Internet MCP adapter", () => {
 	it("maps MCP chat calls into the host-neutral application context", async () => {
