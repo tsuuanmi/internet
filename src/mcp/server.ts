@@ -245,12 +245,14 @@ export function createInternetMcpToolDefinitions(
 export function createInternetMcpServer(dependencies: InternetMcpServerDependencies): McpServer {
 	const server = new McpServer({ name: "@tsuuanmi/internet", version: "0.0.1" });
 	for (const tool of createInternetMcpToolDefinitions(dependencies)) {
-		server.registerTool(
+		const inputSchema = fromJsonSchema<Record<string, unknown>>(tool.inputSchema);
+		const outputSchema = fromJsonSchema<Record<string, unknown>>(tool.outputSchema);
+		server.registerTool<typeof outputSchema, typeof inputSchema>(
 			tool.name,
 			{
 				description: tool.description,
-				inputSchema: fromJsonSchema<Record<string, unknown>>(tool.inputSchema),
-				outputSchema: fromJsonSchema<Record<string, unknown>>(tool.outputSchema),
+				inputSchema,
+				outputSchema,
 				annotations: tool.annotations,
 			},
 			async (args, ctx) =>
