@@ -1,5 +1,6 @@
 export interface InternetApplicationRequestContext {
     readonly ownerSessionId: string;
+    readonly conversationSessionId?: string;
     readonly requestId: string;
     readonly signal?: AbortSignal;
 }
