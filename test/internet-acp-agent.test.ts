@@ -3,11 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createInternetAcpAgent } from "#internet/acp/agent";
 
 function testClient(updates: acp.SessionNotification[]) {
-	return acp
-		.client({ name: "internet-acp-test-client" })
-		.onNotification(acp.methods.client.session.update, (ctx) => {
-			updates.push(ctx.params);
-		});
+	return acp.client({ name: "internet-acp-test-client" }).onNotification(acp.methods.client.session.update, (ctx) => {
+		updates.push(ctx.params);
+	});
 }
 
 describe("Internet Website ACP Agent", () => {
