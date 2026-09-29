@@ -85,10 +85,12 @@ describe("protocol-neutral Internet conversation identity", () => {
 			new Set(["chatgpt-thinker"] as const),
 		);
 
-		await expect(service.execute(
-			{ ...protocolContext, conversationSessionId: " " },
-			{ accountId: "chatgpt-thinker", prompt: "Inspect" },
-		)).rejects.toThrow("conversation session id");
+		await expect(
+			service.execute(
+				{ ...protocolContext, conversationSessionId: " " },
+				{ accountId: "chatgpt-thinker", prompt: "Inspect" },
+			),
+		).rejects.toThrow("conversation session id");
 
 		expect(execute).not.toHaveBeenCalled();
 	});
