@@ -35,22 +35,15 @@ describe("internet_research execution", () => {
 			results: [],
 		}));
 		const config = { researchTimeoutMs: 1 } as never;
-		const tool = defineInternetResearchTool(
-			{ execute } as never,
-			config,
-			new Set(["gemini-thinker"] as const),
-		);
+		const tool = defineInternetResearchTool({ execute } as never, config, new Set(["gemini-thinker"] as const));
 		const signal = new AbortController().signal;
 
 		await expect(
-			tool.execute(
-				{ query: "Compare policies", name: "policy", accounts: ["gemini-thinker"], visible: true },
-				{
-					agent: { id: "agent-member" },
-					callId: "call-research",
-					signal,
-				} as never,
-			),
+			tool.execute({ query: "Compare policies", name: "policy", accounts: ["gemini-thinker"], visible: true }, {
+				agent: { id: "agent-member" },
+				callId: "call-research",
+				signal,
+			} as never),
 		).resolves.toEqual({ state: "completed", results: [] });
 
 		expect(execute).toHaveBeenCalledWith(
