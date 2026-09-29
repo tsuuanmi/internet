@@ -16,7 +16,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm install
+      - name: Capture ACP lock delta
+        run: |
+          git diff -- package-lock.json
+          exit 1
       - run: npm run check
       - run: npm test
       - run: npm run build
