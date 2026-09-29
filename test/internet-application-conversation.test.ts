@@ -23,10 +23,7 @@ describe("protocol-neutral Internet conversation identity", () => {
 			artifactId: "a".repeat(64),
 			totalChars: 6,
 		}));
-		const service = new InternetChatApplicationService(
-			{ execute } as never,
-			new Set(["chatgpt-thinker"] as const),
-		);
+		const service = new InternetChatApplicationService({ execute } as never, new Set(["chatgpt-thinker"] as const));
 
 		await service.execute(protocolContext, {
 			accountId: "chatgpt-thinker",
