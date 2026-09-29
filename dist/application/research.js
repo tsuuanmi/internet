@@ -15,7 +15,7 @@ export class InternetResearchApplicationService {
         if (accountIds.some((accountId) => !this.allowed.has(accountId))) {
             return { state: "failed", results: [] };
         }
-        const conversationSessionId = `${context.ownerSessionId}:research:${input.name ?? "default"}`;
+        const conversationSessionId = context.conversationSessionId ?? `${context.ownerSessionId}:research:${input.name ?? "default"}`;
         const results = await Promise.all(accountIds.map(async (accountId) => {
             const provider = getAccountDefinition(accountId).provider;
             try {
