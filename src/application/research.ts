@@ -53,7 +53,8 @@ export class InternetResearchApplicationService {
 			return { state: "failed", results: [] };
 		}
 
-		const conversationSessionId = `${context.ownerSessionId}:research:${input.name ?? "default"}`;
+		const conversationSessionId =
+			context.conversationSessionId ?? `${context.ownerSessionId}:research:${input.name ?? "default"}`;
 		const results = await Promise.all(
 			accountIds.map(async (accountId): Promise<InternetResearchAccountResult> => {
 				const provider = getAccountDefinition(accountId).provider;
