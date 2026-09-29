@@ -77,10 +77,7 @@ describe("protocol-neutral Internet conversation identity", () => {
 
 	it("fails closed on an explicitly empty conversation id", async () => {
 		const execute = vi.fn();
-		const service = new InternetChatApplicationService(
-			{ execute } as never,
-			new Set(["chatgpt-thinker"] as const),
-		);
+		const service = new InternetChatApplicationService({ execute } as never, new Set(["chatgpt-thinker"] as const));
 
 		await expect(
 			service.execute(
