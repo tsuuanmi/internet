@@ -29,6 +29,45 @@ describe("parseResearchArgs", () => {
 });
 
 describe("internet_research execution", () => {
+	it("delegates host identity to the research application service", async () => {
+		const execute = vi.fn(async () => ({
+			state: "completed" as const,
+			results: [],
+		}));
+		const config = { researchTimeoutMs: 1 } as never;
+		const tool = defineInternetResearchTool(
+			{ execute } as never,
+			config,
+			new Set(["gemini-thinker"] as const),
+		);
+		const signal = new AbortController().signal;
+
+		await expect(
+			tool.execute(
+				{ query: "Compare policies", name: "policy", accounts: ["gemini-thinker"], visible: true },
+				{
+					agent: { id: "agent-member" },
+					callId: "call-research",
+					signal,
+				} as never,
+			),
+		).resolves.toEqual({ state: "completed", results: [] });
+
+		expect(execute).toHaveBeenCalledWith(
+			{
+				ownerSessionId: "agent-member",
+				requestId: "call-research",
+				signal,
+			},
+			{
+				query: "Compare policies",
+				name: "policy",
+				accountIds: ["gemini-thinker"],
+				visible: true,
+			},
+		);
+	});
+
 	const allowed = new Set(["chatgpt-thinker", "gemini-thinker"] as const);
 	const config = { researchTimeoutMs: 1 } as never;
 
