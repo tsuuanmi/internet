@@ -13,3 +13,9 @@ export {
 	assertInternetApplicationRequestContext,
 	type InternetApplicationRequestContext,
 } from "#internet/application/context";
+export {
+	type InternetResearchAccountResult,
+	type InternetResearchApplicationResult,
+	InternetResearchApplicationService,
+	type InternetResearchInput,
+} from "#internet/application/research";
