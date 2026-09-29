@@ -1,8 +1,5 @@
 import * as acp from "@agentclientprotocol/sdk";
-import type {
-	InternetChatApplicationService,
-	InternetResearchApplicationService,
-} from "#internet/application";
+import type { InternetChatApplicationService, InternetResearchApplicationService } from "#internet/application";
 import type { AccountId } from "#internet/core/accounts";
 
 type WebsiteMode = "chat" | "research";
