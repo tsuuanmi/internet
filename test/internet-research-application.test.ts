@@ -102,20 +102,22 @@ describe("host-neutral Internet research application service", () => {
 	});
 
 	it("derives default research account selection and preserves the caller AbortSignal", async () => {
-		const execute = vi.fn(async (request: {
-			accountId: "chatgpt-thinker" | "gemini-thinker";
-			logicalRequestId: string;
-			signal?: AbortSignal;
-			mode: "research";
-		}) => ({
-			accountId: request.accountId,
-			provider: request.accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
-			mode: "research" as const,
-			text: request.accountId,
-			url: "https://example.com/research",
-			artifactId: request.accountId === "gemini-thinker" ? "c".repeat(64) : "d".repeat(64),
-			totalChars: request.accountId.length,
-		}));
+		const execute = vi.fn(
+			async (request: {
+				accountId: "chatgpt-thinker" | "gemini-thinker";
+				logicalRequestId: string;
+				signal?: AbortSignal;
+				mode: "research";
+			}) => ({
+				accountId: request.accountId,
+				provider: request.accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
+				mode: "research" as const,
+				text: request.accountId,
+				url: "https://example.com/research",
+				artifactId: request.accountId === "gemini-thinker" ? "c".repeat(64) : "d".repeat(64),
+				totalChars: request.accountId.length,
+			}),
+		);
 		const service = new InternetResearchApplicationService({ execute } as never, allowed);
 
 		const result = await service.execute(context, { query: "Compare" });
