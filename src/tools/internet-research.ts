@@ -1,8 +1,5 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import type {
-	InternetResearchAccountResult,
-	InternetResearchApplicationService,
-} from "#internet/application";
+import type { InternetResearchAccountResult, InternetResearchApplicationService } from "#internet/application";
 import type { BrowserConfig } from "#internet/core/config";
 import { parseResearchArgs, type ResearchInput } from "#internet/tools/args";
 
