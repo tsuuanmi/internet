@@ -1,0 +1,1 @@
+{"version":3,"file":"acp.js","sourceRoot":"","sources":["../src/acp.ts"],"names":[],"mappings":"AAAA,OAAO,EACN,sBAAsB,GAEtB,MAAM,qBAAqB,CAAC","sourcesContent":["export {\n\tcreateInternetAcpAgent,\n\ttype InternetAcpAgentOptions,\n} from \"#internet/acp/agent\";\n"]}
