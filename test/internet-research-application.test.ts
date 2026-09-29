@@ -102,7 +102,12 @@ describe("host-neutral Internet research application service", () => {
 	});
 
 	it("derives default research account selection and preserves the caller AbortSignal", async () => {
-		const execute = vi.fn(async (request: { accountId: "chatgpt-thinker" | "gemini-thinker" }) => ({
+		const execute = vi.fn(async (request: {
+			accountId: "chatgpt-thinker" | "gemini-thinker";
+			logicalRequestId: string;
+			signal?: AbortSignal;
+			mode: "research";
+		}) => ({
 			accountId: request.accountId,
 			provider: request.accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
 			mode: "research" as const,
