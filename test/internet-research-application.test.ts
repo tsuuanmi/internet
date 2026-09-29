@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-	type InternetApplicationRequestContext,
-	InternetResearchApplicationService,
-} from "#internet/application";
+import { type InternetApplicationRequestContext, InternetResearchApplicationService } from "#internet/application";
 
 const context: InternetApplicationRequestContext = {
 	ownerSessionId: "portable-host-session",
@@ -14,19 +11,18 @@ describe("host-neutral Internet research application service", () => {
 	const allowed = new Set(["chatgpt-thinker", "gemini-thinker"] as const);
 
 	it("routes provider-native research without any DSH execution object", async () => {
-		const execute = vi.fn(async (request: {
-			accountId: "chatgpt-thinker" | "gemini-thinker";
-			conversationSessionId?: string;
-		}) => ({
-			accountId: request.accountId,
-			provider: request.accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
-			mode: "research" as const,
-			text: "Research report",
-			url: "https://example.com/research",
-			conversationId: "native-research",
-			artifactId: "a".repeat(64),
-			totalChars: 15,
-		}));
+		const execute = vi.fn(
+			async (request: { accountId: "chatgpt-thinker" | "gemini-thinker"; conversationSessionId?: string }) => ({
+				accountId: request.accountId,
+				provider: request.accountId === "gemini-thinker" ? ("gemini-web" as const) : ("chatgpt-web" as const),
+				mode: "research" as const,
+				text: "Research report",
+				url: "https://example.com/research",
+				conversationId: "native-research",
+				artifactId: "a".repeat(64),
+				totalChars: 15,
+			}),
+		);
 		const service = new InternetResearchApplicationService({ execute } as never, allowed);
 
 		await expect(
