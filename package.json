@@ -23,7 +23,11 @@
 			"types": "./dist/client.d.ts",
 			"default": "./dist/client.js"
 		},
-		"./package.json": "./package.json"
+		"./package.json": "./package.json",
+		"./acp": {
+			"types": "./dist/acp.d.ts",
+			"default": "./dist/acp.js"
+		}
 	},
 	"files": [
 		"dist",
