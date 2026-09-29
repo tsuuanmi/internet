@@ -22,6 +22,6 @@ jobs:
       - run: npm run build
       - name: Verify generated dist
         run: |
+          git add -N dist
           git diff --exit-code -- dist
-          test -z "$(git ls-files --others --exclude-standard -- dist)"
       - run: npm run verify-package
