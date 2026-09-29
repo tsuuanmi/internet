@@ -1,4 +1,4 @@
-import { InternetArtifactApplicationService, InternetChatApplicationService } from "#internet/application";
+import { InternetArtifactApplicationService, InternetChatApplicationService, InternetResearchApplicationService, } from "#internet/application";
 import { BrowserManager } from "#internet/browser/runtime";
 import { defineInternetCommand } from "#internet/commands/internet";
 import { defineWorkflowCommand } from "#internet/commands/workflow";
@@ -98,9 +98,10 @@ export function apply(ctx, rawConfig) {
     ctx.tools.register(defineInternetBrowserTool(manager, accounts));
     if (thinkers.size > 0) {
         const chatApplication = new InternetChatApplicationService(participant, thinkers);
+        const researchApplication = new InternetResearchApplicationService(participant, thinkers);
         const artifactApplication = new InternetArtifactApplicationService(artifacts);
         ctx.tools.register(defineInternetChatTool(chatApplication, config.turnTimeoutMs));
-        ctx.tools.register(defineInternetResearchTool(participant, config, thinkers));
+        ctx.tools.register(defineInternetResearchTool(researchApplication, config));
         ctx.tools.register(defineInternetArtifactTool(artifactApplication));
         ctx.systemPrompt?.section?.({ name: "tool:internet_research", order: 119, text: INTERNET_RESEARCH_GUIDANCE });
         ctx.systemPrompt?.section?.({ name: "tool:internet_chat", order: 120, text: INTERNET_CHAT_GUIDANCE });

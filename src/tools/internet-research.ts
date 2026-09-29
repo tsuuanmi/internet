@@ -1,29 +1,12 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { ACCOUNT_IDS, type AccountId, getAccountDefinition } from "#internet/core/accounts";
-import type { BrowserConfig, WebProvider } from "#internet/core/config";
-import { isInternetError } from "#internet/core/errors";
-import { projectWebsiteParticipantResult, type WebsiteParticipantService } from "#internet/participant/service";
+import type { InternetResearchAccountResult, InternetResearchApplicationService } from "#internet/application";
+import type { BrowserConfig } from "#internet/core/config";
 import { parseResearchArgs, type ResearchInput } from "#internet/tools/args";
 
-type ResearchAccountResult = {
-	accountId: AccountId;
-	provider: WebProvider;
-	state: "completed" | "failed";
-	report?: string;
-	url?: string;
-	conversationId?: string;
-	artifactId?: string;
-	totalChars?: number;
-	truncated?: boolean;
-	nextOffset?: number;
-	diagnostic?: string;
-};
-
-/** Run provider-native Deep Research with isolated durable account conversations. */
+/** Thin DSH adapter over the host-neutral provider-native research application service. */
 export function defineInternetResearchTool(
-	participant: Pick<WebsiteParticipantService, "execute">,
+	research: Pick<InternetResearchApplicationService, "execute">,
 	config: BrowserConfig,
-	allowed: ReadonlySet<AccountId>,
 ): ReturnType<typeof defineTool> {
 	return defineTool({
 		name: "internet_research",
@@ -33,7 +16,7 @@ export function defineInternetResearchTool(
 			query: { type: "string", required: true, description: "The research question or task." },
 			accounts: {
 				type: "array",
-				items: { type: "string", enum: [...ACCOUNT_IDS] },
+				items: { type: "string" },
 				description: "Thinker accounts to research with. Defaults to all enabled thinker accounts.",
 			},
 			name: { type: "string", description: "Durable research thread name. Defaults to default." },
@@ -69,7 +52,7 @@ export function defineInternetResearchTool(
 				},
 			},
 			render: (_args, value) => {
-				const result = value as { results?: ResearchAccountResult[] };
+				const result = value as { results?: InternetResearchAccountResult[] };
 				return [
 					{
 						type: "text",
@@ -83,69 +66,28 @@ export function defineInternetResearchTool(
 		},
 		timeoutMs: config.researchTimeoutMs,
 		isConcurrencySafe: () => false,
-		async execute(
-			args,
-			exec,
-		): Promise<{
-			state: "completed" | "partial_success" | "failed";
-			results: ResearchAccountResult[];
-		}> {
+		async execute(args, exec) {
 			let input: ResearchInput;
 			try {
 				input = parseResearchArgs(args);
 			} catch {
-				return { state: "failed", results: [] };
+				return { state: "failed" as const, results: [] };
 			}
-			const accounts = input.accounts ?? [...allowed];
-			if (accounts.some((accountId) => !allowed.has(accountId))) {
-				return { state: "failed", results: [] };
-			}
-			if (exec.agent?.id === undefined) return { state: "failed", results: [] };
-			const ownerSessionId = String(exec.agent.id);
-			const conversationSessionId = `${ownerSessionId}:research:${input.name ?? "default"}`;
-			const logicalRequestId = String(exec.callId);
-			const results = await Promise.all(
-				accounts.map(async (accountId): Promise<ResearchAccountResult> => {
-					const provider = getAccountDefinition(accountId).provider;
-					try {
-						const result = await participant.execute({
-							ownerSessionId,
-							conversationSessionId,
-							accountId,
-							logicalRequestId,
-							mode: "research",
-							prompt: input.query,
-							visible: input.visible === true,
-							signal: exec.signal,
-						});
-						const projection = projectWebsiteParticipantResult(result);
-						return {
-							accountId,
-							provider,
-							state: "completed",
-							report: projection.text,
-							url: result.url,
-							...(result.conversationId === undefined ? {} : { conversationId: result.conversationId }),
-							artifactId: projection.artifactId,
-							totalChars: projection.totalChars,
-							truncated: projection.truncated,
-							...(projection.nextOffset === undefined ? {} : { nextOffset: projection.nextOffset }),
-						};
-					} catch (error) {
-						return {
-							accountId,
-							provider,
-							state: "failed",
-							diagnostic: isInternetError(error) ? `${error.kind}: ${error.message}` : String(error),
-						};
-					}
-				}),
+			if (exec.agent?.id === undefined) return { state: "failed" as const, results: [] };
+
+			return research.execute(
+				{
+					ownerSessionId: String(exec.agent.id),
+					requestId: String(exec.callId),
+					signal: exec.signal,
+				},
+				{
+					query: input.query,
+					...(input.accounts === undefined ? {} : { accountIds: input.accounts }),
+					...(input.name === undefined ? {} : { name: input.name }),
+					...(input.visible === undefined ? {} : { visible: input.visible }),
+				},
 			);
-			const completed = results.filter((result) => result.state === "completed").length;
-			return {
-				state: completed === results.length ? "completed" : completed > 0 ? "partial_success" : "failed",
-				results,
-			};
 		},
 		presentCall: (args) => ({
 			card: "generic",

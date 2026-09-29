@@ -51,6 +51,9 @@ export class InternetChatApplicationService {
 		try {
 			const result = await this.participant.execute({
 				ownerSessionId: context.ownerSessionId,
+				...(context.conversationSessionId === undefined
+					? {}
+					: { conversationSessionId: context.conversationSessionId }),
 				accountId: input.accountId,
 				logicalRequestId: context.requestId,
 				mode: "chat",

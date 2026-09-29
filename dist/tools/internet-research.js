@@ -1,10 +1,7 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { ACCOUNT_IDS, getAccountDefinition } from "#internet/core/accounts";
-import { isInternetError } from "#internet/core/errors";
-import { projectWebsiteParticipantResult } from "#internet/participant/service";
 import { parseResearchArgs } from "#internet/tools/args";
-/** Run provider-native Deep Research with isolated durable account conversations. */
-export function defineInternetResearchTool(participant, config, allowed) {
+/** Thin DSH adapter over the host-neutral provider-native research application service. */
+export function defineInternetResearchTool(research, config) {
     return defineTool({
         name: "internet_research",
         description: "Run provider-native Deep Research using explicitly selected thinker accounts. Research can take up to 30 minutes; each account uses an isolated durable research conversation. Completed reports are retained as owner-scoped artifacts.",
@@ -12,7 +9,7 @@ export function defineInternetResearchTool(participant, config, allowed) {
             query: { type: "string", required: true, description: "The research question or task." },
             accounts: {
                 type: "array",
-                items: { type: "string", enum: [...ACCOUNT_IDS] },
+                items: { type: "string" },
                 description: "Thinker accounts to research with. Defaults to all enabled thinker accounts.",
             },
             name: { type: "string", description: "Durable research thread name. Defaults to default." },
@@ -70,56 +67,18 @@ export function defineInternetResearchTool(participant, config, allowed) {
             catch {
                 return { state: "failed", results: [] };
             }
-            const accounts = input.accounts ?? [...allowed];
-            if (accounts.some((accountId) => !allowed.has(accountId))) {
-                return { state: "failed", results: [] };
-            }
             if (exec.agent?.id === undefined)
                 return { state: "failed", results: [] };
-            const ownerSessionId = String(exec.agent.id);
-            const conversationSessionId = `${ownerSessionId}:research:${input.name ?? "default"}`;
-            const logicalRequestId = String(exec.callId);
-            const results = await Promise.all(accounts.map(async (accountId) => {
-                const provider = getAccountDefinition(accountId).provider;
-                try {
-                    const result = await participant.execute({
-                        ownerSessionId,
-                        conversationSessionId,
-                        accountId,
-                        logicalRequestId,
-                        mode: "research",
-                        prompt: input.query,
-                        visible: input.visible === true,
-                        signal: exec.signal,
-                    });
-                    const projection = projectWebsiteParticipantResult(result);
-                    return {
-                        accountId,
-                        provider,
-                        state: "completed",
-                        report: projection.text,
-                        url: result.url,
-                        ...(result.conversationId === undefined ? {} : { conversationId: result.conversationId }),
-                        artifactId: projection.artifactId,
-                        totalChars: projection.totalChars,
-                        truncated: projection.truncated,
-                        ...(projection.nextOffset === undefined ? {} : { nextOffset: projection.nextOffset }),
-                    };
-                }
-                catch (error) {
-                    return {
-                        accountId,
-                        provider,
-                        state: "failed",
-                        diagnostic: isInternetError(error) ? `${error.kind}: ${error.message}` : String(error),
-                    };
-                }
-            }));
-            const completed = results.filter((result) => result.state === "completed").length;
-            return {
-                state: completed === results.length ? "completed" : completed > 0 ? "partial_success" : "failed",
-                results,
-            };
+            return research.execute({
+                ownerSessionId: String(exec.agent.id),
+                requestId: String(exec.callId),
+                signal: exec.signal,
+            }, {
+                query: input.query,
+                ...(input.accounts === undefined ? {} : { accountIds: input.accounts }),
+                ...(input.name === undefined ? {} : { name: input.name }),
+                ...(input.visible === undefined ? {} : { visible: input.visible }),
+            });
         },
         presentCall: (args) => ({
             card: "generic",
