@@ -27,7 +27,15 @@ try {
 		{ cwd: consumer, stdio: "pipe" },
 	);
 	const installed = join(consumer, "node_modules", "@tsuuanmi", "internet");
-	for (const artifact of ["dist/index.js", "dist/client.js", "dist/client.d.ts", "dist/remote-login-client.js", "cordis.patch.yml"]) {
+	for (const artifact of [
+		"dist/index.js",
+		"dist/acp.js",
+		"dist/acp.d.ts",
+		"dist/client.js",
+		"dist/client.d.ts",
+		"dist/remote-login-client.js",
+		"cordis.patch.yml",
+	]) {
 		if (!existsSync(join(installed, artifact))) throw new Error(`packed consumer artifact missing: ${artifact}`);
 	}
 	for (const artifact of [
@@ -78,6 +86,9 @@ try {
 			stdio: "pipe",
 		});
 	}
+	const acpEntry = await import(pathToFileURL(join(installed, "dist/acp.js")).href);
+	assert.equal(typeof acpEntry.createInternetAcpAgent, "function");
+	console.log("verified public ACP subpath");
 	const plugin = await import(pathToFileURL(join(installed, "dist/index.js")).href);
 	const scenarios = [
 		{
