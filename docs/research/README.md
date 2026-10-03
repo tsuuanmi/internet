@@ -2,6 +2,7 @@
 
 Research is exploratory evidence, not production authority.
 
+- [Adaptive browser interaction — lessons from JEV Ultrafast](ADAPTIVE-BROWSER-JEV-RESEARCH.md)
 - [Workflow vNext external research](WORKFLOW-VNEXT-RESEARCH.md)
 - [Orchestration landscape and build-vs-adapt research](ORCHESTRATION-LANDSCAPE.md)
 - [DSH Agent Teams feasibility for Internet](DSH-AGENT-TEAMS-FEASIBILITY.md)
