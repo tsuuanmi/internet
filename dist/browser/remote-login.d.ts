@@ -66,6 +66,8 @@ export declare class RemoteLoginSession {
     private startServer;
     private startChrome;
     private handleRequest;
+    private respondToSave;
+    private respondWithStatus;
     private authorized;
     private securityHeaders;
     private page;
